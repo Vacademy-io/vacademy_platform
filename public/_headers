@@ -10,13 +10,13 @@
 
 /audience-response
   X-Frame-Options: ALLOWALL
-  Content-Security-Policy: frame-ancestors 'self' https://*.vacademy.io https://admin.vacademy.io https://admin-stage.vacademy.io *
+  Content-Security-Policy: frame-ancestors 'self' https: http:
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
 /audience-response/*
   X-Frame-Options: ALLOWALL
-  Content-Security-Policy: frame-ancestors 'self' https://*.vacademy.io https://admin.vacademy.io https://admin-stage.vacademy.io *
+  Content-Security-Policy: frame-ancestors 'self' https: http:
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 

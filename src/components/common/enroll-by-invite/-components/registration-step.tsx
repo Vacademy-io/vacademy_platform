@@ -180,7 +180,7 @@ const RegistrationStep = ({
         return getCountryCode(countryField.value, "in");
       }
     }
-    return "au"; // Default to Australia
+    return "gb"; // Default to United Kingdom
   };
 
   // Helper function to find the email field dynamically

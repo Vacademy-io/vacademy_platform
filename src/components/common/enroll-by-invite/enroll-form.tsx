@@ -559,7 +559,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       } catch (err) {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
-        setError(err?.response?.data?.ex);
+        const errorData = err?.response?.data;
+        if (errorData?.responseCode?.includes("510")) {
+          toast.error(errorData?.ex || "Enrollment failed");
+        }
+        setError(errorData?.ex);
       } finally {
         setLoading(false);
       }
@@ -612,7 +616,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       } catch (err) {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
-        setError(err?.response?.data?.ex);
+        const errorData = err?.response?.data;
+        if (errorData?.responseCode?.includes("510")) {
+          toast.error(errorData?.ex || "Payment failed");
+        }
+        setError(errorData?.ex);
         console.error(err);
       } finally {
         setLoading(false);
@@ -680,7 +688,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       } catch (err) {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
-        setError(err?.response?.data?.ex || "Failed to initiate payment");
+        const errorData = err?.response?.data;
+        if (errorData?.responseCode?.includes("510")) {
+          toast.error(errorData?.ex || "Failed to initiate payment");
+        }
+        setError(errorData?.ex || "Failed to initiate payment");
         console.error("Razorpay enrollment error:", err);
         setLoading(false);
       }
@@ -744,7 +756,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     } catch (err) {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-expect-error
-      setError(err?.response?.data?.ex);
+      const errorData = err?.response?.data;
+      if (errorData?.responseCode?.includes("510")) {
+        toast.error(errorData?.ex || "Payment failed");
+      }
+      setError(errorData?.ex);
       console.error(err);
     } finally {
       setLoading(false);
@@ -805,7 +821,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         } catch (err) {
           // eslint-disable-next-line @typescript-eslint/ban-ts-comment
           // @ts-expect-error
-          setError(err?.response?.data?.ex || "Failed to complete enrollment");
+          const errorData = err?.response?.data;
+          if (errorData?.responseCode?.includes("510")) {
+            toast.error(errorData?.ex || "Failed to complete enrollment");
+          }
+          setError(errorData?.ex || "Failed to complete enrollment");
           console.error("Razorpay completion error:", err);
         } finally {
           setLoading(false);
@@ -948,6 +968,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     };
   };
 
+  // State to track if there is unapplied referral code text
+  const [hasUnappliedReferral, setHasUnappliedReferral] = useState(false);
+
   const renderCurrentStep = () => {
     switch (currentStep) {
       case 0:
@@ -977,6 +1000,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               }
               setReferRequest={setReferRequest}
               refCode={ref || ""}
+              onUnappliedCodeChange={setHasUnappliedReferral}
             />
           );
         }
@@ -1028,6 +1052,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             }
             setReferRequest={setReferRequest}
             refCode={ref || ""}
+            onUnappliedCodeChange={setHasUnappliedReferral}
           />
         );
       case 3: {
@@ -1259,12 +1284,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 {inviteData?.name || courseData.course}
               </h1>
 
-              {courseData.description && (
+              {/* {courseData.description && (
                 <div
                   className="text-lg text-gray-100 leading-relaxed mt-6 flex-grow"
                   dangerouslySetInnerHTML={{ __html: courseData.description }}
                 />
-              )}
+              )} */}
 
               {/* Enroll Button */}
               {currentStep === 0 && (
@@ -1512,6 +1537,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                               : false
                         : false
                     }
+                    hasUnappliedReferral={hasUnappliedReferral}
                   />
                 )}
             </div>

@@ -14,6 +14,7 @@ interface NavigationButtonsProps {
   donationAmountValid?: boolean;
   paymentVendor?: PaymentVendor;
   isPaymentDataReady?: boolean; // For Stripe processor or Eway encrypted data
+  hasUnappliedReferral?: boolean;
 }
 
 const NavigationButtons = ({
@@ -27,9 +28,11 @@ const NavigationButtons = ({
   donationAmountValid,
   paymentVendor,
   isPaymentDataReady = false,
+  hasUnappliedReferral = false,
 }: NavigationButtonsProps) => {
   const isNextDisabled = () => {
     if (loading) return true;
+    if (hasUnappliedReferral) return true;
 
     // Step 1: Payment selection
     if (currentStep === 1 && !selectedPayment) return true;

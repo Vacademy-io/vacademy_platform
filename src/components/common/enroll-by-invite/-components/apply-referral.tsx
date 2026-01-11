@@ -4,7 +4,7 @@ import { VERIFY_COUPON_URL } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { AxiosResponse } from "axios";
 import { Check, Tag, X } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ReferRequest } from "../-services/enroll-invite-services";
 
 // Common base interface
@@ -76,21 +76,32 @@ const ReferralCodeComponent = ({
   package_session_id,
   setReferRequest,
   refCode,
+  onUnappliedCodeChange,
 }: {
   referralOptionId: string;
   setCouponVerified: (value: boolean) => void;
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
   refCode: string | null;
+  onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
 }) => {
   const [referralCode, setReferralCode] = useState(refCode || "");
   const [isApplying, setIsApplying] = useState(false);
+  const [isApplied, setIsApplied] = useState(false);
   const [appliedReferral, setAppliedReferral] = useState<{
     code: string;
     discount: number;
     type: "percentage" | "fixed";
   } | null>(null);
   const [error, setError] = useState("");
+
+    useEffect(() => {
+      if (refCode && refCode.trim().length > 0 && !isApplied) {
+        if (onUnappliedCodeChange) {
+          onUnappliedCodeChange(true);
+        }
+      }
+    }, []);
 
   const applyReferralCode = async () => {
     if (!referralCode.trim()) {
@@ -121,8 +132,10 @@ const ReferralCodeComponent = ({
         },
       });
 
-      if (response.data.verified) {
-        setCouponVerified(true);
+        if (response.data.verified) {
+          setCouponVerified(true);
+          setIsApplied(true);
+          if (onUnappliedCodeChange) onUnappliedCodeChange(false);
 
         // Create and set the ReferRequest when coupon is verified
         const referRequest: ReferRequest = {
@@ -132,27 +145,45 @@ const ReferralCodeComponent = ({
         };
         setReferRequest(referRequest);
 
-        setReferralCode("");
+        // setReferralCode("");
       } else {
         setError("Invalid referral code");
         setCouponVerified(false);
+        setIsApplied(false);
         setReferRequest(null);
+        if (onUnappliedCodeChange) onUnappliedCodeChange(true);
       }
     } catch {
       setError("Failed to apply referral code. Please try again.");
       setCouponVerified(false);
       setReferRequest(null);
+      setIsApplied(false);
+      if (onUnappliedCodeChange) onUnappliedCodeChange(true);
     } finally {
       setIsApplying(false);
     }
   };
 
-  const removeReferralCode = () => {
-    setAppliedReferral(null);
-    setError("");
-    setCouponVerified(false);
-    setReferRequest(null);
-  };
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setReferralCode(value);
+
+      // Check if there is text and it's not applied
+      // If user is typing, it's considered unapplied until they click Apply or it matches the applied code (which isn't possible here since edit resets applied state)
+      const hasText = value.trim().length > 0;
+      if (onUnappliedCodeChange) {
+        onUnappliedCodeChange(hasText);
+      }
+
+      // Reset states on edit
+      if (isApplied) {
+        setIsApplied(false);
+        setCouponVerified(false);
+        setReferRequest(null);
+        if (onUnappliedCodeChange) onUnappliedCodeChange(true);
+      }
+      if (error) setError("");
+    };
 
   return (
     <div className="bg-blue-50 rounded-lg p-4">
@@ -161,7 +192,6 @@ const ReferralCodeComponent = ({
         <h3 className="font-semibold text-gray-900 text-lg">Referral Code</h3>
       </div>
 
-      {!appliedReferral ? (
         <div className="space-y-3">
           <div className="flex gap-2">
             <div className="flex-1">
@@ -169,8 +199,9 @@ const ReferralCodeComponent = ({
                 type="text"
                 placeholder="Enter referral code"
                 value={referralCode}
-                onChange={(e) => setReferralCode(e.target.value)}
+                onChange={handleInputChange}
                 className="!w-full"
+                disabled={isApplying}
               />
             </div>
             <MyButton
@@ -178,38 +209,29 @@ const ReferralCodeComponent = ({
               buttonType="primary"
               scale="medium"
               onClick={applyReferralCode}
-              disable={isApplying || !referralCode.trim()}
+              disable={isApplying || !referralCode.trim() || isApplied}
               className="whitespace-nowrap"
             >
-              {isApplying ? "Applying..." : "Apply"}
+              {isApplied ? (
+                <>
+                  <Check className="w-4 h-4 mr-1" />
+                  Applied
+                </>
+              ) : isApplying ? (
+                "Applying..."
+              ) : (
+                "Apply"
+              )}
             </MyButton>
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 text-red-600 text-sm">
+            <div className="flex items-center gap-2 text-danger-600 text-sm">
               <X className="w-4 h-4" />
               <span>{error}</span>
             </div>
           )}
         </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-green-600" />
-              <span className="text-green-600 font-medium">
-                Code "{appliedReferral.code}" applied
-              </span>
-            </div>
-            <button
-              onClick={removeReferralCode}
-              className="text-red-600 hover:text-red-700 text-sm underline"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+      </div>
+    );
+  };

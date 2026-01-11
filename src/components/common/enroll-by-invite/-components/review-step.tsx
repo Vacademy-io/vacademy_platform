@@ -17,6 +17,7 @@ interface ReviewStepProps {
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
   refCode: string | null;
+  onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
 }
 
 const ReviewStep = ({
@@ -26,6 +27,7 @@ const ReviewStep = ({
   package_session_id,
   setReferRequest,
   refCode,
+  onUnappliedCodeChange,
 }: ReviewStepProps) => {
   return (
     <div className="space-y-6">
@@ -71,6 +73,7 @@ const ReviewStep = ({
                 package_session_id={package_session_id}
                 setReferRequest={setReferRequest}
                 refCode={refCode}
+                onUnappliedCodeChange={onUnappliedCodeChange}
               />
             ) : (
               <FreePlanReview
@@ -78,6 +81,7 @@ const ReviewStep = ({
                 package_session_id={package_session_id}
                 setReferRequest={setReferRequest}
                 refCode={refCode}
+                onUnappliedCodeChange={onUnappliedCodeChange}
               />
             )}
           </div>
@@ -130,10 +134,10 @@ const formatNonPricingBenefits = (benefit: ReferralBenefit): string | null => {
       const deliveryText = formatDeliveryMediums(
         benefit.benefitValue.deliveryMediums
       );
-      return `You will get bonus content${deliveryText} 🎉`;
+      return `You will get bonus content ${deliveryText} after enrolling in the course. 🎉`;
     }
     case "POINTS":
-      return `Earn ${benefit.benefitValue.points} reward points ⭐️`;
+      return `Earn ${benefit.benefitValue.points} reward points ⭐️ after enrolling in the course. 🎉` ;
     default:
       console.log("Unknown benefit type:", benefit.benefitType);
       return null;
@@ -167,11 +171,13 @@ const PaidPlanReview = ({
   package_session_id,
   setReferRequest,
   refCode,
+  onUnappliedCodeChange,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
   refCode: string | null;
+  onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
@@ -276,6 +282,7 @@ const PaidPlanReview = ({
           package_session_id={package_session_id || ""}
           setReferRequest={setReferRequest}
           refCode={refCode}
+          onUnappliedCodeChange={onUnappliedCodeChange}
         />
       )}
 
@@ -382,11 +389,13 @@ const FreePlanReview = ({
   package_session_id,
   setReferRequest,
   refCode,
+  onUnappliedCodeChange,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
   refCode: string | null;
+  onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
@@ -471,6 +480,7 @@ const FreePlanReview = ({
           package_session_id={package_session_id || ""}
           setReferRequest={setReferRequest}
           refCode={refCode}
+          onUnappliedCodeChange={onUnappliedCodeChange}
         />
       )}
 

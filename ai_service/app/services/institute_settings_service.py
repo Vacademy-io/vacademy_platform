@@ -67,7 +67,15 @@ class InstituteSettingsService:
             if setting_json:
                 try:
                     settings = json.loads(setting_json) if isinstance(setting_json, str) else setting_json
-                    ai_settings = settings.get("CHATBOT_SETTING", self.DEFAULT_AI_SETTINGS.copy())
+
+                    chatbot_setting = settings.get("setting", {}).get("CHATBOT_SETTING", {})
+                    
+                    ai_settings = chatbot_setting.get("data")
+                    
+                    # If no data or data is null, use defaults
+                    if not ai_settings:
+                        logger.warning(f"CHATBOT_SETTING data is empty for institute {institute_id}, using defaults")
+                        ai_settings = self.DEFAULT_AI_SETTINGS.copy()
                     
                     # Ensure institute_name is set
                     if "institute_name" not in ai_settings and institute_name:

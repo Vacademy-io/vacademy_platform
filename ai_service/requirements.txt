@@ -6,6 +6,7 @@ pydantic-settings==2.6.1
 python-dotenv==1.0.1
 httpx==0.27.2
 boto3==1.34.0
+sse-starlette==1.6.5
 
 
 

@@ -28,6 +28,8 @@ import {
   resolveDomainRouting,
   getCurrentDomainInfo,
 } from "@/services/domain-routing";
+import { ChatbotPanel } from "@/components/chatbot/ChatbotPanel";
+import { ChatbotProvider } from "@/components/chatbot/ChatbotContext";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -67,7 +69,9 @@ const isAuthenticated = async () => {
 
   const hasToken = !isNullOrEmptyOrUndefined(token);
   const hasStudentDetails = !isNullOrEmptyOrUndefined(studentDetails?.value);
-  const hasInstituteDetails = !isNullOrEmptyOrUndefined(instituteDetails?.value);
+  const hasInstituteDetails = !isNullOrEmptyOrUndefined(
+    instituteDetails?.value
+  );
 
   console.log(`🔍 Authentication check:`, {
     hasToken,
@@ -277,15 +281,15 @@ const RootComponent = () => {
     const isPopupWindow = (() => {
       try {
         if (window.opener && !window.opener.closed) return true;
-      } catch { }
+      } catch {}
       try {
         if (window.name && window.name.toLowerCase() === "oauth_popup")
           return true;
-      } catch { }
+      } catch {}
       try {
         const q = new URLSearchParams(window.location.search);
         if (q.get("popup") === "1") return true;
-      } catch { }
+      } catch {}
       return false;
     })();
 
@@ -411,9 +415,10 @@ const RootComponent = () => {
   }, []);
 
   return (
-    <>
+    <ChatbotProvider>
       <Outlet />
-    </>
+      <ChatbotPanel />
+    </ChatbotProvider>
   );
 };
 
@@ -432,11 +437,17 @@ export const Route = createRootRouteWithContext<{
     if (urlAccessToken && urlRefreshToken) {
       console.log("[__root] Detected tokens in URL, performing auto-login...");
       try {
-        const { performFullAuthCycle } = await import("@/services/auth-cycle-service");
+        const { performFullAuthCycle } = await import(
+          "@/services/auth-cycle-service"
+        );
         // We'll need the instituteId. We can try to decode it from the token first.
-        const { getTokenDecodedData } = await import("@/lib/auth/sessionUtility");
+        const { getTokenDecodedData } = await import(
+          "@/lib/auth/sessionUtility"
+        );
         const decoded = getTokenDecodedData(urlAccessToken);
-        const instituteId = decoded?.authorities ? Object.keys(decoded.authorities)[0] : undefined;
+        const instituteId = decoded?.authorities
+          ? Object.keys(decoded.authorities)[0]
+          : undefined;
 
         if (instituteId) {
           await performFullAuthCycle(
@@ -453,7 +464,10 @@ export const Route = createRootRouteWithContext<{
           console.log("[__root] Auto-login complete, reloading route...");
           // We can't easily "continue" here without a redirect or reload
           // For now, let's just let the rest of the logic proceed or throw a redirect
-          throw redirect({ to: location.pathname as never, search: Object.fromEntries(newUrl.searchParams) as any });
+          throw redirect({
+            to: location.pathname as never,
+            search: Object.fromEntries(newUrl.searchParams) as any,
+          });
         }
       } catch (error) {
         if (error instanceof Response) throw error;

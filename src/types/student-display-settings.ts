@@ -45,7 +45,11 @@ export interface StudentDashboardWidgetConfig {
 }
 
 // Signup/Login
-export type StudentSignupProvider = "google" | "github" | "usernamePassword" | "emailOtp";
+export type StudentSignupProvider =
+  | "google"
+  | "github"
+  | "usernamePassword"
+  | "emailOtp";
 export type StudentDefaultProvider = StudentSignupProvider;
 export type UsernameStrategy = "email" | "random" | "manual";
 export type PasswordStrategy = "manual" | "autoRandom";
@@ -65,7 +69,11 @@ export interface StudentSignupSettings {
 }
 
 // Course details
-export type StudentCourseDetailsTabId = "OUTLINE" | "CONTENT_STRUCTURE" | "TEACHERS" | "ASSESSMENTS";
+export type StudentCourseDetailsTabId =
+  | "OUTLINE"
+  | "CONTENT_STRUCTURE"
+  | "TEACHERS"
+  | "ASSESSMENTS";
 
 export interface StudentCourseDetailsTabConfig {
   id: StudentCourseDetailsTabId;
@@ -85,7 +93,11 @@ export interface StudentCourseDetailsSettings {
   showCourseConfiguration: boolean;
   showCourseContentPrefixes: boolean;
   courseOverview: { visible: boolean; showSlidesData: boolean };
-  slidesView: { showLearningPath: boolean; feedbackVisible: boolean; canAskDoubt: boolean };
+  slidesView: {
+    showLearningPath: boolean;
+    feedbackVisible: boolean;
+    canAskDoubt: boolean;
+  };
 }
 
 // All Courses page
@@ -175,5 +187,3 @@ export interface StudentDisplaySettingsData {
   ui: StudentUISettings;
   postLoginRedirectRoute: string;
 }
-
-

@@ -79,56 +79,33 @@
     --danger-700: 359 83% 55%;
 
     /* Warning Colors */
-    --warning-50: 45 100% 96%;
-    /* #FFF9EB */
-    --warning-100: 45 90% 88%;
-    /* #FFF0D6 */
-    --warning-200: 43 85% 80%;
-    /* #FFE4B8 */
-    --warning-300: 41 80% 71%;
-    /* #FFD699 */
-    --warning-400: 39 75% 63%;
-    /* #FFC266 */
-    --warning-500: 37 100% 50%;
-    /* #FFA500 */
-    --warning-600: 35 95% 47%;
-    /* #FF9900 */
-    --warning-700: 33 90% 44%;
-    /* #FF8800 */
+    --warning-50: 45 100% 96%; /* #FFF9EB */
+    --warning-100: 45 90% 88%; /* #FFF0D6 */
+    --warning-200: 43 85% 80%; /* #FFE4B8 */
+    --warning-300: 41 80% 71%; /* #FFD699 */
+    --warning-400: 39 75% 63%; /* #FFC266 */
+    --warning-500: 37 100% 50%; /* #FFA500 */
+    --warning-600: 35 95% 47%; /* #FF9900 */
+    --warning-700: 33 90% 44%; /* #FF8800 */
 
     /* Success Colors */
-    --success-50: 142 76% 95%;
-    /* #E6F7EF */
-    --success-100: 142 72% 88%;
-    /* #D1F0E2 */
-    --success-200: 142 68% 80%;
-    /* #B3E6D1 */
-    --success-300: 142 64% 71%;
-    /* #8CD9BC */
-    --success-400: 142 60% 63%;
-    /* #66CCA7 */
-    --success-500: 142 56% 54%;
-    /* #40BF91 */
-    --success-600: 142 52% 47%;
-    /* #33A67E */
-    --success-700: 142 48% 40%;
-    /* #26996B */
+    --success-50: 142 76% 95%; /* #E6F7EF */
+    --success-100: 142 72% 88%; /* #D1F0E2 */
+    --success-200: 142 68% 80%; /* #B3E6D1 */
+    --success-300: 142 64% 71%; /* #8CD9BC */
+    --success-400: 142 60% 63%; /* #66CCA7 */
+    --success-500: 142 56% 54%; /* #40BF91 */
+    --success-600: 142 52% 47%; /* #33A67E */
+    --success-700: 142 48% 40%; /* #26996B */
 
     /* Info Colors */
-    --info-50: 214 97% 95%;
-    /* #E9F3FF */
-    --info-100: 214 93% 88%;
-    /* #D6E9FF */
-    --info-200: 214 89% 80%;
-    /* #B3D6FF */
-    --info-300: 214 85% 71%;
-    /* #8CC2FF */
-    --info-400: 214 81% 63%;
-    /* #66ADFF */
-    --info-500: 214 77% 54%;
-    /* #4096FF */
-    --info-600: 214 73% 47%;
-    /* #2680FF */
+    --info-50: 214 97% 95%; /* #E9F3FF */
+    --info-100: 214 93% 88%; /* #D6E9FF */
+    --info-200: 214 89% 80%; /* #B3D6FF */
+    --info-300: 214 85% 71%; /* #8CC2FF */
+    --info-400: 214 81% 63%; /* #66ADFF */
+    --info-500: 214 77% 54%; /* #4096FF */
+    --info-600: 214 73% 47%; /* #2680FF */
     --info-700: 214 69% 40%;
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -143,10 +120,8 @@
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
-    --card: 0 0% 100%;
-    /* keep cards white in dark */
-    --card-foreground: 222.2 47.4% 11.2%;
-    /* readable dark text on white card */
+    --card: 0 0% 100%; /* keep cards white in dark */
+    --card-foreground: 222.2 47.4% 11.2%; /* readable dark text on white card */
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
     --primary: 210 40% 98%;
@@ -188,16 +163,13 @@
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
-
   /* Navbar tweaks: stronger separator and playful indicator */
   .ui-vibrant .navbar .w-1.h-6 {
     box-shadow: 0 1px 0 hsl(var(--primary-400) / 0.25);
   }
-
   .ui-vibrant .navbar .text-base {
     letter-spacing: 0.1px;
   }
-
   .ui-vibrant .navbar h1,
   .ui-vibrant .navbar .text-base {
     font-size: 1.125rem !important;
@@ -206,30 +178,24 @@
 
   /* Sidebar tiles: clearer solid backgrounds */
   .ui-vibrant .sidebar-content .border {
-    border-width: 1px !important;
+    border-width: 2px !important;
   }
-
   .ui-vibrant .sidebar-content .bg-primary-50 {
     background-color: hsl(var(--primary-100)) !important;
   }
-
   .ui-vibrant .sidebar-content .hover\:bg-primary-50:hover {
     background-color: hsl(var(--primary-200)) !important;
   }
-
   /* Add secondary/tertiary options in vibrant sidebar */
   .ui-vibrant .sidebar-content .bg-secondary-50 {
     background-color: hsl(var(--secondary-100)) !important;
   }
-
   .ui-vibrant .sidebar-content .hover\:bg-secondary-50:hover {
     background-color: hsl(var(--secondary-200)) !important;
   }
-
   .ui-vibrant .sidebar-content .bg-tertiary-50 {
     background-color: hsl(var(--tertiary-100)) !important;
   }
-
   .ui-vibrant .sidebar-content .hover\:bg-tertiary-50:hover {
     background-color: hsl(var(--tertiary-200)) !important;
   }
@@ -238,7 +204,6 @@
   .ui-vibrant .sidebar-content {
     font-size: 1rem;
   }
-
   .ui-vibrant .sidebar-content a,
   .ui-vibrant .sidebar-content button,
   .ui-vibrant .sidebar-content .text-xs,
@@ -246,7 +211,6 @@
     font-size: 1rem !important;
     line-height: 1.5rem !important;
   }
-
   .ui-vibrant .sidebar-content .text-base {
     font-size: 1.125rem !important;
     line-height: 1.6rem !important;
@@ -268,7 +232,6 @@
     line-height: 1.6rem !important;
     letter-spacing: 0.1px;
   }
-
   .ui-vibrant .course-card-subtitle,
   .ui-vibrant p.text-sm {
     font-size: 1rem !important;
@@ -280,34 +243,28 @@
     background-image: none !important;
     background-color: hsl(var(--primary-50)) !important;
   }
-
   .ui-vibrant .course-card-title-icon {
     display: inline-block !important;
   }
-
   .ui-vibrant .level-badge {
-    border-width: 1px !important;
+    border-width: 2px !important;
   }
-
   .ui-vibrant .course-tag {
     background-color: hsl(var(--info-100)) !important;
     color: hsl(var(--info-700)) !important;
     border-color: hsl(var(--info-300)) !important;
   }
-
   /* Secondary/Tertiary tag variants */
   .ui-vibrant .course-tag--secondary {
     background-color: hsl(var(--secondary-100)) !important;
     color: hsl(var(--secondary-500)) !important;
     border-color: hsl(var(--secondary-300)) !important;
   }
-
   .ui-vibrant .course-tag--tertiary {
     background-color: hsl(var(--tertiary-100)) !important;
     color: hsl(var(--text-secondary)) !important;
     border-color: hsl(var(--tertiary-300)) !important;
   }
-
   .ui-vibrant .course-stats {
     background: hsl(var(--primary-50));
     border-color: hsl(var(--primary-200));
@@ -318,7 +275,6 @@
     font-size: 0.875rem !important;
     line-height: 1.25rem !important;
   }
-
   .ui-vibrant .text-sm {
     font-size: 1rem !important;
     line-height: 1.5rem !important;
@@ -332,18 +288,15 @@
     border-color: hsl(var(--primary-400)) !important;
     color: hsl(var(--primary-foreground)) !important;
   }
-
   .ui-vibrant .stat-card-inner .text-gray-900,
   .ui-vibrant .stat-card-inner .text-gray-800,
   .ui-vibrant .stat-card-inner .text-gray-700,
   .ui-vibrant .stat-card-inner .text-gray-600 {
     color: hsl(var(--primary-foreground)) !important;
   }
-
   .ui-vibrant .stat-card-inner .bg-primary-100 {
     background-color: hsl(var(--primary-500)) !important;
   }
-
   .ui-vibrant .stat-card-inner .text-primary-600 {
     color: hsl(var(--primary-foreground)) !important;
   }
@@ -353,12 +306,10 @@
     width: 32px !important;
     height: 32px !important;
   }
-
   .ui-vibrant .stat-card-inner .text-xl {
     font-size: 1.5rem !important;
     line-height: 1.85rem !important;
   }
-
   .ui-vibrant .stat-card-inner .text-xs {
     font-size: 0.95rem !important;
   }
@@ -367,21 +318,17 @@
   .ui-vibrant .continue-learning-card {
     border-color: hsl(var(--primary-200)) !important;
   }
-
   .ui-vibrant .dashboard-user-avatar {
     background-color: hsl(var(--primary-200)) !important;
   }
-
   .ui-vibrant .dashboard-user-avatar {
-    border: 1px solid hsl(var(--primary-300)) !important;
+    border: 2px solid hsl(var(--primary-300)) !important;
   }
-
   /* Secondary/Tertiary card variants */
   .ui-vibrant .card-secondary {
     background-color: hsl(var(--secondary-50)) !important;
     border-color: hsl(var(--secondary-200)) !important;
   }
-
   .ui-vibrant .card-tertiary {
     background-color: hsl(var(--tertiary-50)) !important;
     border-color: hsl(var(--tertiary-200)) !important;
@@ -392,65 +339,54 @@
     background-color: hsl(var(--info-500)) !important;
     border-color: hsl(var(--info-400)) !important;
   }
-
   .ui-vibrant .stat-card--assignments .stat-card-inner {
     background-color: hsl(var(--warning-500)) !important;
     border-color: hsl(var(--warning-400)) !important;
   }
-
   .ui-vibrant .stat-card--evaluations .stat-card-inner {
     background-color: hsl(var(--success-500)) !important;
     border-color: hsl(var(--success-400)) !important;
   }
-
   .ui-vibrant .stat-card--attendance .stat-card-inner {
     background-color: hsl(var(--primary-500)) !important;
     border-color: hsl(var(--primary-400)) !important;
   }
-
   .ui-vibrant .stat-card--live .stat-card-inner {
     background-color: hsl(var(--success-500)) !important;
     border-color: hsl(var(--success-400)) !important;
   }
-
   /* Pastel overrides for dashboard stat cards (theme-agnostic) */
   .ui-vibrant .dashboard-container .stat-card--courses .stat-card-inner {
-    background-color: #AFD9E8 !important;
-    border-color: #8BC6DC !important;
+    background-color: #afd9e8 !important;
+    border-color: #8bc6dc !important;
     color: #0f172a !important;
   }
-
   .ui-vibrant .dashboard-container .stat-card--assignments .stat-card-inner {
-    background-color: #FFDAB9 !important;
-    border-color: #FFC899 !important;
+    background-color: #ffdab9 !important;
+    border-color: #ffc899 !important;
     color: #0f172a !important;
   }
-
   .ui-vibrant .dashboard-container .stat-card--evaluations .stat-card-inner {
-    background-color: #D7BDE2 !important;
-    border-color: #C9A7D7 !important;
+    background-color: #d7bde2 !important;
+    border-color: #c9a7d7 !important;
     color: #0f172a !important;
   }
-
   .ui-vibrant .dashboard-container .stat-card--attendance .stat-card-inner {
-    background-color: #B6E2B6 !important;
-    border-color: #94D794 !important;
+    background-color: #b6e2b6 !important;
+    border-color: #94d794 !important;
     color: #0f172a !important;
   }
-
   .ui-vibrant .dashboard-container .stat-card--live .stat-card-inner {
-    background-color: #B2DFDB !important;
-    border-color: #93D3CD !important;
+    background-color: #b2dfdb !important;
+    border-color: #93d3cd !important;
     color: #0f172a !important;
   }
-
   /* Optional alt stat colors using secondary/tertiary */
   .ui-vibrant .stat-card--alt-secondary .stat-card-inner {
     background-color: hsl(var(--secondary-500)) !important;
     border-color: hsl(var(--secondary-400)) !important;
     color: hsl(var(--primary-foreground)) !important;
   }
-
   .ui-vibrant .stat-card--alt-tertiary .stat-card-inner {
     background-color: hsl(var(--tertiary-500)) !important;
     border-color: hsl(var(--tertiary-400)) !important;
@@ -477,7 +413,6 @@
     position: relative;
     padding-left: 18px;
   }
-
   .ui-vibrant .stat-card-title::before {
     content: "";
     position: absolute;
@@ -487,24 +422,40 @@
     height: 12px;
     transform: translateY(-50%) rotate(15deg);
     border-radius: 3px;
-    background: linear-gradient(135deg, hsl(var(--primary-300)), hsl(var(--primary-500)));
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary-300)),
+      hsl(var(--primary-500))
+    );
     opacity: 0.9;
   }
-
   .ui-vibrant .stat-card--courses .stat-card-title::before {
-    background: linear-gradient(135deg, hsl(var(--info-300)), hsl(var(--info-500)));
+    background: linear-gradient(
+      135deg,
+      hsl(var(--info-300)),
+      hsl(var(--info-500))
+    );
   }
-
   .ui-vibrant .stat-card--assignments .stat-card-title::before {
-    background: linear-gradient(135deg, hsl(var(--warning-300)), hsl(var(--warning-500)));
+    background: linear-gradient(
+      135deg,
+      hsl(var(--warning-300)),
+      hsl(var(--warning-500))
+    );
   }
-
   .ui-vibrant .stat-card--evaluations .stat-card-title::before {
-    background: linear-gradient(135deg, hsl(var(--success-300)), hsl(var(--success-500)));
+    background: linear-gradient(
+      135deg,
+      hsl(var(--success-300)),
+      hsl(var(--success-500))
+    );
   }
-
   .ui-vibrant .stat-card--live .stat-card-title::before {
-    background: linear-gradient(135deg, hsl(var(--success-300)), hsl(var(--success-500)));
+    background: linear-gradient(
+      135deg,
+      hsl(var(--success-300)),
+      hsl(var(--success-500))
+    );
   }
 
   /* Prevent double animation conflicts in vibrant mode (GSAP handles it) */
@@ -513,7 +464,6 @@
     opacity: 1 !important;
     transform: none !important;
   }
-
   .ui-vibrant .animate-fade-in-down {
     animation: none !important;
     opacity: 1 !important;
@@ -524,7 +474,6 @@
   .animate-fade-in-up {
     animation-fill-mode: both;
   }
-
   .animate-fade-in-down {
     animation-fill-mode: both;
   }
@@ -532,8 +481,10 @@
   /* ================= Playful page backgrounds (vibrant) ================ */
   .ui-vibrant .dashboard-container {
     /* Soft dotted pattern using theme tints; very light for readability */
-    background-image:
-      radial-gradient(hsl(var(--primary-50)) 1px, transparent 1px),
+    background-image: radial-gradient(
+        hsl(var(--primary-50)) 1px,
+        transparent 1px
+      ),
       radial-gradient(hsl(var(--info-50)) 1px, transparent 1px);
     background-size: 24px 24px, 32px 32px;
     background-position: 0 0, 12px 12px;
@@ -558,10 +509,11 @@
   .ui-vibrant .btn,
   .ui-vibrant .my-button {
     position: relative;
-    box-shadow: none !important;
-    transition: transform 120ms ease, background-color 120ms ease;
-    border-radius: 8px;
-    outline: none !important;
+    box-shadow: inset 0 -1.5px 0 hsl(var(--primary-300));
+    transition: transform 120ms ease, box-shadow 120ms ease;
+    border-radius: 10px; /* match global radius */
+    outline: 0.5px solid hsl(var(--border));
+    outline-offset: 0;
   }
 
   /* Vibrant chips using secondary and tertiary palettes */
@@ -570,37 +522,32 @@
     color: hsl(var(--primary-foreground)) !important;
     border-color: hsl(var(--secondary-300)) !important;
   }
-
   .ui-vibrant .chip-secondary-strong {
     background-color: hsl(var(--secondary-200)) !important;
     color: hsl(var(--primary)) !important;
     border-color: hsl(var(--secondary-400)) !important;
   }
-
   .ui-vibrant .chip-tertiary {
     background-color: hsl(var(--tertiary-100)) !important;
     color: hsl(var(--text-secondary)) !important;
     border-color: hsl(var(--tertiary-300)) !important;
   }
-
   .ui-vibrant .chip-tertiary-strong {
     background-color: hsl(var(--tertiary-200)) !important;
     color: hsl(var(--text-primary)) !important;
     border-color: hsl(var(--tertiary-400)) !important;
   }
-
   .ui-vibrant button:hover,
   .ui-vibrant .btn:hover,
   .ui-vibrant .my-button:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+    box-shadow: inset 0 -6px 0 hsl(var(--primary-500));
     transform: translateY(-1px);
-    outline: none !important;
+    outline: 1.5px solid hsl(var(--primary-300));
   }
-
   .ui-vibrant button:active,
   .ui-vibrant .btn:active,
   .ui-vibrant .my-button:active {
-    box-shadow: none !important;
+    box-shadow: inset 0 -2px 0 hsl(var(--primary-300));
     transform: translateY(0);
   }
 
@@ -611,19 +558,16 @@
     border-color: hsl(var(--secondary-400)) !important;
     box-shadow: inset 0 -1.5px 0 hsl(var(--secondary-300));
   }
-
   .ui-vibrant .btn-secondary:hover {
     background-color: hsl(var(--secondary-400)) !important;
     box-shadow: inset 0 -6px 0 hsl(var(--secondary-500));
   }
-
   .ui-vibrant .btn-tertiary {
     background-color: hsl(var(--tertiary-500)) !important;
     color: hsl(var(--text-primary)) !important;
     border-color: hsl(var(--tertiary-400)) !important;
     box-shadow: inset 0 -1.5px 0 hsl(var(--tertiary-300));
   }
-
   .ui-vibrant .btn-tertiary:hover {
     background-color: hsl(var(--tertiary-400)) !important;
     box-shadow: inset 0 -6px 0 hsl(var(--tertiary-500));
@@ -633,34 +577,32 @@
   .ui-vibrant .bg-gray-50 {
     background-color: hsl(var(--surface-muted)) !important;
   }
-
   .ui-vibrant .bg-white\/80 {
     background-color: hsl(var(--surface) / 0.8) !important;
   }
 
   /* ================= Neutralize excessive primary accents ================= */
   /* Dashboard stat cards: avoid primary hover text on vibrant solids */
-  .ui-vibrant .stat-card-inner .group:hover [class*="group-hover:text-primary-"] {
+  .ui-vibrant
+    .stat-card-inner
+    .group:hover
+    [class*="group-hover:text-primary-"] {
     color: hsl(var(--primary-foreground)) !important;
   }
-
   .ui-vibrant .stat-card-inner .group:hover .lucide-chevron-right {
     color: hsl(var(--primary-foreground)) !important;
   }
-
   /* Sidebar hover text: use neutral instead of primary */
   .ui-vibrant .sidebar-content a:hover,
   .ui-vibrant .sidebar-content button:hover,
   .ui-vibrant .sidebar-content [class*="hover:text-primary-"]:hover {
     color: hsl(var(--text-secondary)) !important;
   }
-
   /* Sidebar outlines and shadows: more neutral */
   .ui-vibrant .sidebar-content .border,
   .ui-vibrant .sidebar-content [class*="border-primary-"] {
     border-color: hsl(var(--border)) !important;
   }
-
   .ui-vibrant .sidebar-content .shadow-sm,
   .ui-vibrant .sidebar-content .shadow {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
@@ -671,101 +613,74 @@
   * {
     @apply border-border;
   }
-
   body {
     @apply bg-background text-foreground;
     color: hsl(var(--text-secondary));
-    font-family: 'Figtree', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-family: "Figtree", system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     font-variation-settings: normal;
   }
-
   /* Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
-
   .no-scrollbar {
-    -ms-overflow-style: none;
-    /* IE and Edge */
-    scrollbar-width: none;
-    /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
   }
-
   .scaled-gap {
     --scale: 0.5;
     margin-top: calc((var(--scale) - 1) * 100%);
   }
 
   .error-toast {
-    background-color: #fef2f2 !important;
-    /* danger-100 */
-    color: #4b4b4b !important;
-    /* neutral-600 */
+    background-color: #fef2f2 !important; /* danger-100 */
+    color: #4b4b4b !important; /* neutral-600 */
   }
 
-  .error-toast>div {
-    color: #f64c4c !important;
-    /* danger-600 */
+  .error-toast > div {
+    color: #f64c4c !important; /* danger-600 */
     font-weight: 600 !important;
     font-size: 16px !important;
   }
-
   .success-toast {
-    background-color: #f2faf6 !important;
-    /* danger-100 */
-    color: #4b4b4b !important;
-    /* neutral-600 */
+    background-color: #f2faf6 !important; /* danger-100 */
+    color: #4b4b4b !important; /* neutral-600 */
   }
 
-  .success-toast>div {
-    color: #47b881 !important;
-    /* danger-600 */
+  .success-toast > div {
+    color: #47b881 !important; /* danger-600 */
     font-weight: 600 !important;
     font-size: 16px !important;
   }
 }
 
 @layer utilities {
-
   /* ================= Typography scale (tokens used across the app) ================ */
   /* Keep text sizes uniform by using these utilities instead of ad-hoc responsive sizes */
   .text-title {
-    font-size: 20px;
-    /* 1.25rem */
-    line-height: 28px;
-    /* 1.75rem */
+    font-size: 20px; /* 1.25rem */
+    line-height: 28px; /* 1.75rem */
     letter-spacing: -0.005em;
   }
-
   .text-title-lg {
-    font-size: 24px;
-    /* 1.5rem */
-    line-height: 32px;
-    /* 2rem */
+    font-size: 24px; /* 1.5rem */
+    line-height: 32px; /* 2rem */
     letter-spacing: -0.01em;
   }
-
   .text-subtitle {
-    font-size: 18px;
-    /* 1.125rem */
-    line-height: 26px;
-    /* ~1.625rem */
+    font-size: 18px; /* 1.125rem */
+    line-height: 26px; /* ~1.625rem */
     letter-spacing: -0.003em;
   }
-
   .text-body {
-    font-size: 16px;
-    /* 1rem */
-    line-height: 24px;
-    /* 1.5rem */
+    font-size: 16px; /* 1rem */
+    line-height: 24px; /* 1.5rem */
   }
-
   .text-caption {
-    font-size: 13px;
-    /* ~0.8125rem */
-    line-height: 18px;
-    /* ~1.125rem */
+    font-size: 13px; /* ~0.8125rem */
+    line-height: 18px; /* ~1.125rem */
   }
 
   /* ================= Card and interactive utilities ================= */
@@ -774,12 +689,10 @@
     @apply bg-card text-card-foreground border rounded-[8px] shadow-sm transition;
     border-color: hsl(var(--border));
   }
-
   /* Uniform interactive focus and hover states for cards */
   .card-interactive {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
-
   .card-hover {
     @apply hover:shadow-md;
     border-color: hsl(var(--border));
@@ -792,16 +705,15 @@
   .bg-white.border.rounded-xl,
   .bg-white.border.rounded-2xl {
     border-width: 1.5px !important;
-    border-color: hsl(var(--border) / 0.5) !important;
-    /* lighter by default */
+    border-color: hsl(var(--border) / 0.5) !important; /* lighter by default */
     transition: border-color 0.18s;
   }
-
   .bg-white.border.rounded-2xl:hover,
   .bg-white.border.rounded-2xl:focus,
   .bg-white.border.rounded-2xl:active {
-    border-color: hsl(var(--border)) !important;
-    /* darker on hover/focus/active */
+    border-color: hsl(
+      var(--border)
+    ) !important; /* darker on hover/focus/active */
   }
 
   /* In dark mode, many cards still use dark:bg-neutral-900 class; ensure their borders are visible too */
@@ -813,63 +725,51 @@
     border-width: 2px !important;
     border-color: hsl(var(--border)) !important;
   }
-
   /* Neutralize dark hardcoded card backgrounds across the app */
   .dark .bg-neutral-900 {
     background-color: hsl(var(--card)) !important;
   }
-
   .dark .hover\:bg-neutral-900:hover {
     background-color: hsl(var(--card)) !important;
   }
-
   .dark .bg-neutral-900\/70 {
     background-color: hsl(var(--card) / 0.7) !important;
   }
-
   .dark .bg-neutral-900\/50 {
     background-color: hsl(var(--card) / 0.5) !important;
   }
-
   .dark .bg-neutral-900\/20 {
     background-color: hsl(var(--card) / 0.2) !important;
   }
-
   /* Card media utility: 16:10 aspect, rounded top corners, full-bleed */
   .card-media {
     position: relative;
     width: 100%;
-    aspect-ratio: 16 / 10;
-    /* ~320x200 */
+    aspect-ratio: 16 / 10; /* ~320x200 */
     overflow: hidden;
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
   }
-
-  .card-media>img,
-  .card-media>picture,
-  .card-media>video,
-  .card-media>canvas {
+  .card-media > img,
+  .card-media > picture,
+  .card-media > video,
+  .card-media > canvas {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
   }
-
   /* Disable gradients globally when wrapped with .no-gradients */
   .no-gradients [class*="bg-gradient-to-"] {
     background-image: none !important;
   }
-
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
 
   .no-scrollbar {
-    -ms-overflow-scrollbar: none;
-    /* For IE and Edge */
-    scrollbar-width: none;
-    /* For Firefox */
+    -ms-overflow-scrollbar: none; /* For IE and Edge */
+    scrollbar-width: none; /* For Firefox */
   }
 
   /* Remove remap that forced white to dark; keep white surfaces white */
@@ -878,19 +778,15 @@
   .dark .bg-white\/95 {
     background-color: hsl(var(--card) / 0.95) !important;
   }
-
   .dark .bg-white\/80 {
     background-color: hsl(var(--card) / 0.8) !important;
   }
-
   .dark .bg-white\/50 {
     background-color: hsl(var(--card) / 0.5) !important;
   }
-
   .dark .bg-white\/30 {
     background-color: hsl(var(--card) / 0.3) !important;
   }
-
   .dark .bg-white\/20 {
     background-color: hsl(var(--card) / 0.2) !important;
   }
@@ -899,11 +795,9 @@
   .dark .border-gray-200 {
     border-color: hsl(var(--border)) !important;
   }
-
   .dark .border-neutral-100 {
     border-color: hsl(var(--border)) !important;
   }
-
   .dark .border-neutral-200 {
     border-color: hsl(var(--border)) !important;
   }
@@ -912,34 +806,27 @@
   .dark .text-gray-900 {
     color: hsl(var(--foreground)) !important;
   }
-
   .dark .text-gray-800 {
     color: hsl(var(--foreground)) !important;
   }
-
   .dark .text-neutral-900 {
     color: hsl(var(--foreground)) !important;
   }
-
   .dark .text-neutral-800 {
     color: hsl(var(--foreground)) !important;
   }
-
   .dark .text-gray-700,
   .dark .text-neutral-700 {
     color: hsl(var(--text-secondary)) !important;
   }
-
   .dark .text-gray-600,
   .dark .text-neutral-600 {
     color: hsl(var(--text-secondary)) !important;
   }
-
   .dark .text-gray-500,
   .dark .text-neutral-500 {
     color: hsl(var(--text-muted)) !important;
   }
-
   .dark .text-gray-400,
   .dark .text-neutral-400 {
     color: hsl(var(--text-muted)) !important;
@@ -949,19 +836,15 @@
   .dark .bg-primary-50 {
     background-color: hsl(var(--primary-500) / 0.08) !important;
   }
-
   .dark .bg-primary-100 {
     background-color: hsl(var(--primary-500) / 0.15) !important;
   }
-
   .dark .hover\:bg-primary-200:hover {
     background-color: hsl(var(--primary-500) / 0.25) !important;
   }
-
   .dark .text-primary-700 {
     color: hsl(var(--primary-200)) !important;
   }
-
   .dark .border-primary-200 {
     border-color: hsl(var(--primary-400)) !important;
   }
@@ -972,27 +855,23 @@
     --tw-gradient-to: rgb(255 255 255 / 0) !important;
     --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
   }
-
   .dark .to-white {
     --tw-gradient-to: hsl(var(--card)) !important;
   }
-
   .dark .via-white {
-    --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--card)), var(--tw-gradient-to) !important;
+    --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--card)),
+      var(--tw-gradient-to) !important;
   }
 
   .dark .from-white\/90 {
     --tw-gradient-from: hsl(var(--card) / 0.9) !important;
   }
-
   .dark .from-white\/80 {
     --tw-gradient-from: hsl(var(--card) / 0.8) !important;
   }
-
   .dark .to-white\/80 {
     --tw-gradient-to: hsl(var(--card) / 0.8) !important;
   }
-
   .dark .to-white\/30 {
     --tw-gradient-to: hsl(var(--card) / 0.3) !important;
   }
@@ -1003,23 +882,20 @@
     --tw-gradient-to: rgb(255 255 255 / 0) !important;
     --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
   }
-
   .dark .to-primary-50 {
     --tw-gradient-to: hsl(var(--primary-500) / 0.12) !important;
   }
-
   .dark .from-primary-100 {
     --tw-gradient-from: hsl(var(--primary-500) / 0.18) !important;
     --tw-gradient-to: rgb(255 255 255 / 0) !important;
     --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
   }
-
   .dark .to-primary-100 {
     --tw-gradient-to: hsl(var(--primary-500) / 0.18) !important;
   }
-
   .dark .via-primary-50 {
-    --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--primary-500) / 0.14), var(--tw-gradient-to) !important;
+    --tw-gradient-stops: var(--tw-gradient-from), hsl(var(--primary-500) / 0.14),
+      var(--tw-gradient-to) !important;
   }
 
   /* Primary text remap for mid tones */
@@ -1058,7 +934,6 @@
       opacity: 0;
       transform: translateY(-10px);
     }
-
     to {
       opacity: 1;
       transform: translateY(0);
@@ -1070,7 +945,6 @@
       opacity: 0;
       transform: translateX(-20px);
     }
-
     to {
       opacity: 1;
       transform: translateX(0);
@@ -1082,7 +956,6 @@
       opacity: 0;
       transform: translateX(20px);
     }
-
     to {
       opacity: 1;
       transform: translateX(0);
@@ -1090,10 +963,8 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar {
-    height: 8px;
-    /* for horizontal scrollbar */
-    width: 8px;
-    /* for vertical scrollbar */
+    height: 8px; /* for horizontal scrollbar */
+    width: 8px; /* for vertical scrollbar */
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
@@ -1101,45 +972,21 @@
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgb(var(--primary-200));
-    /* assuming primary-200 is defined in your CSS variables */
+    background: rgb(
+      var(--primary-200)
+    ); /* assuming primary-200 is defined in your CSS variables */
     border-radius: 4px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgb(var(--primary-300));
   }
-
-  /* Custom Pulse Animations */
-  .animate-pulse-slow {
-    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-
-  .animate-gentle-pulse {
-    animation: gentlePulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-
-  @keyframes gentlePulse {
-
-    0%,
-    100% {
-      opacity: 1;
-    }
-
-    50% {
-      opacity: 0.8;
-      transform: scale(0.98);
-    }
-  }
 }
-
-
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-
   body {
     @apply bg-background text-foreground;
   }
@@ -1147,197 +994,366 @@
 
 /* ========== Vibrant UI additive styles (opt-in via .ui-vibrant on container) ========== */
 @layer components {
-
-  /* --- Typography Enchancements (Vibrant) --- */
-  .ui-vibrant .text-xs {
-    font-size: 0.8125rem;
-    line-height: 1.25rem;
+  .ui-vibrant .stat-card .text-xl,
+  .ui-vibrant .stat-card .text-2xl,
+  .ui-vibrant .stat-card .text-base,
+  .ui-vibrant .stat-card .text-sm {
+    letter-spacing: 0.1px;
   }
 
-  /* 13px */
-  .ui-vibrant .text-sm {
-    font-size: 0.9375rem;
-    line-height: 1.375rem;
+  .ui-vibrant .continue-learning-card .text-sm,
+  .ui-vibrant .continue-learning-card .text-xs {
+    font-size: 0.95rem; /* slight bump for readability for kids */
   }
 
-  /* 15px */
-  .ui-vibrant .text-base {
-    font-size: 1.0625rem;
-    line-height: 1.625rem;
+  .ui-vibrant .continue-learning-card .slide-title {
+    font-weight: 700;
   }
 
-  /* 17px */
-  .ui-vibrant h1,
-  .ui-vibrant h2,
-  .ui-vibrant h3 {
-    letter-spacing: -0.01em;
+  .ui-vibrant .continue-learning-card .slide-description {
+    opacity: 0.95;
   }
 
-  /* --- Card Styling (Vibrant: Clean, Modern, Pop) --- */
-  .ui-vibrant .card,
-  .ui-vibrant .Card,
-  .ui-vibrant .stat-card-inner,
-  .ui-vibrant .continue-learning-card,
-  .ui-vibrant .live-session-card {
-    border-radius: 12px !important;
-    border: 1px solid hsl(var(--border) / 0.6) !important;
-    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03) !important;
+  /* Solid playful chips for icons using existing semantic colors */
+  .ui-vibrant .bg-primary-100 {
+    background-color: hsl(var(--primary-300) / 0.25) !important;
+  }
+  .ui-vibrant .text-primary-600 {
+    color: hsl(var(--primary-500)) !important;
   }
 
-  /* Remove the "inset" shadows from buttons for a cleaner flat/modern look */
-  .ui-vibrant button,
-  .ui-vibrant .btn {
-    border-radius: 8px;
-    font-weight: 600;
-    transition: all 0.2s ease;
+  /* Use success/info/warning for multi-colored accents */
+  .ui-vibrant .badge-success,
+  .ui-vibrant .bg-success-100 {
+    background-color: hsl(var(--success-100)) !important;
+    color: hsl(var(--success-700)) !important;
   }
-
-  .ui-vibrant button:hover,
-  .ui-vibrant .btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(var(--primary), 0.15);
+  .ui-vibrant .badge-info,
+  .ui-vibrant .bg-info-100 {
+    background-color: hsl(var(--info-100)) !important;
+    color: hsl(var(--info-700)) !important;
   }
-
-  /* --- Vibrant Backgrounds (Subtle & Professional) --- */
-  /* Replaces the chaotic dot/grid patterns with very subtle gradients */
-  .ui-vibrant .dashboard-container {
-    background-image: linear-gradient(to bottom right, hsl(var(--primary-50) / 0.3), hsl(var(--surface)));
+  .ui-vibrant .badge-warning,
+  .ui-vibrant .bg-warning-100 {
+    background-color: hsl(var(--warning-100)) !important;
+    color: hsl(var(--warning-700)) !important;
   }
-
-  /* --- Stat Cards (Vibrant) --- */
-  /* We use semantic colors but with higher saturation/opacity for that "pop" without being "baby" */
-
-  /* Generic Stat Card Base */
-  .ui-vibrant .stat-card-inner {
-    background: white !important;
-    position: relative;
-    overflow: hidden;
-  }
-
-  /* Tinted backgrounds for specific stats */
-  .ui-vibrant .stat-card--courses .stat-card-inner {
-    background: linear-gradient(145deg, hsl(var(--info-50)), white) !important;
-    border-color: hsl(var(--info-200)) !important;
-  }
-
-  .ui-vibrant .stat-card--assignments .stat-card-inner {
-    background: linear-gradient(145deg, hsl(var(--warning-50)), white) !important;
-    border-color: hsl(var(--warning-200)) !important;
-  }
-
-  .ui-vibrant .stat-card--evaluations .stat-card-inner {
-    background: linear-gradient(145deg, hsl(var(--success-50)), white) !important;
-    border-color: hsl(var(--success-200)) !important;
-  }
-
-  .ui-vibrant .stat-card--attendance .stat-card-inner {
-    background: linear-gradient(145deg, hsl(var(--primary-50)), white) !important;
-    border-color: hsl(var(--primary-200)) !important;
-  }
-
-  .ui-vibrant .stat-card--live .stat-card-inner {
-    background: linear-gradient(145deg, hsl(var(--success-50)), white) !important;
-    border-color: hsl(var(--success-200)) !important;
-  }
-
-  /* Icons: Vivid backgrounds with dark icons for contrast */
-  .ui-vibrant .stat-card--courses .stat-card-icon {
-    background-color: hsl(var(--info-500)) !important;
-    color: white !important;
-  }
-
-  .ui-vibrant .stat-card--assignments .stat-card-icon {
-    background-color: hsl(var(--warning-500)) !important;
-    color: white !important;
-  }
-
-  .ui-vibrant .stat-card--evaluations .stat-card-icon {
-    background-color: hsl(var(--success-500)) !important;
-    color: white !important;
-  }
-
-  .ui-vibrant .stat-card--attendance .stat-card-icon {
-    background-color: hsl(var(--primary-500)) !important;
-    color: white !important;
-  }
-
-  .ui-vibrant .stat-card--live .stat-card-icon {
-    background-color: hsl(var(--success-600)) !important;
-    color: white !important;
-  }
-
-  /* Text colors in vibrant mode - Dark for readability */
-  .ui-vibrant .stat-card-inner .text-gray-900,
-  .ui-vibrant .stat-card-inner .text-gray-800,
-  .ui-vibrant .stat-card-inner .text-xl,
-  .ui-vibrant .stat-card-inner .text-2xl {
-    color: hsl(var(--foreground)) !important;
-    font-weight: 700 !important;
-  }
-
-  /* --- Badges & Chips (Vibrant) --- */
-  .ui-vibrant .badge,
-  .ui-vibrant .chip {
-    border-radius: 6px !important;
-    /* Slightly softer than default, but not pill-shaped if not desired */
-    font-weight: 600;
-    border: 1px solid transparent;
-  }
-
   .ui-vibrant .badge-secondary {
-    background-color: hsl(var(--secondary-100));
-    color: hsl(var(--secondary-700));
+    background-color: hsl(var(--secondary-100)) !important;
+    color: hsl(var(--secondary-500)) !important;
+    border: 1px solid hsl(var(--secondary-300)) !important;
   }
-
   .ui-vibrant .badge-tertiary {
-    background-color: hsl(var(--tertiary-100));
-    color: hsl(var(--tertiary-700));
+    background-color: hsl(var(--tertiary-100)) !important;
+    color: hsl(var(--text-secondary)) !important;
+    border: 1px solid hsl(var(--tertiary-300)) !important;
   }
 
-  /* --- Sidebar (Vibrant) --- */
-  .ui-vibrant .sidebar-container {
-    background-color: hsl(var(--surface-muted)) !important;
-    /* Slightly tinted sidebar */
+  /* ========== Vibrant Pastel Palette (theme-agnostic) ========== */
+  /* Fixed pastel utilities to use across vibrant widgets regardless of theme */
+  .ui-vibrant .pastel-bg-blue {
+    background-color: #afd9e8 !important;
+  }
+  .ui-vibrant .pastel-border-blue {
+    border-color: #afd9e8 !important;
+  }
+  .ui-vibrant .pastel-bg-green {
+    background-color: #b6e2b6 !important;
+  }
+  .ui-vibrant .pastel-border-green {
+    border-color: #b6e2b6 !important;
+  }
+  .ui-vibrant .pastel-bg-yellow {
+    background-color: #fff5ba !important;
+  }
+  .ui-vibrant .pastel-border-yellow {
+    border-color: #fff5ba !important;
+  }
+  .ui-vibrant .pastel-bg-red {
+    background-color: #ffb5b5 !important;
+  }
+  .ui-vibrant .pastel-border-red {
+    border-color: #ffb5b5 !important;
+  }
+  .ui-vibrant .pastel-bg-purple {
+    background-color: #d7bde2 !important;
+  }
+  .ui-vibrant .pastel-border-purple {
+    border-color: #d7bde2 !important;
+  }
+  .ui-vibrant .pastel-bg-orange {
+    background-color: #ffdab9 !important;
+  }
+  .ui-vibrant .pastel-border-orange {
+    border-color: #ffdab9 !important;
+  }
+  .ui-vibrant .pastel-bg-pink {
+    background-color: #fbc4c4 !important;
+  }
+  .ui-vibrant .pastel-border-pink {
+    border-color: #fbc4c4 !important;
+  }
+  .ui-vibrant .pastel-bg-teal {
+    background-color: #b2dfdb !important;
+  }
+  .ui-vibrant .pastel-border-teal {
+    border-color: #b2dfdb !important;
   }
 
-  .ui-vibrant .sidebar-content .bg-primary-50 {
-    background-color: hsl(var(--primary-100)) !important;
-    /* Use semantic standard */
+  /* Pastel chips and badges */
+  .ui-vibrant .pastel-chip {
+    color: #0f172a !important;
+    border-width: 1px !important;
+  }
+  .ui-vibrant .pastel-chip-blue {
+    background-color: #afd9e8 !important;
+    border-color: #8bc6dc !important;
+    color: #0f172a !important;
+  }
+  .ui-vibrant .pastel-chip-green {
+    background-color: #b6e2b6 !important;
+    border-color: #94d794 !important;
+    color: #0f172a !important;
+  }
+  .ui-vibrant .pastel-chip-yellow {
+    background-color: #fff5ba !important;
+    border-color: #ffe98a !important;
+    color: #0f172a !important;
+  }
+  .ui-vibrant .pastel-chip-red {
+    background-color: #ffb5b5 !important;
+    border-color: #ff9b9b !important;
+    color: #0f172a !important;
+  }
+  .ui-vibrant .pastel-chip-purple {
+    background-color: #d7bde2 !important;
+    border-color: #c9a7d7 !important;
+    color: #0f172a !important;
+  }
+  .ui-vibrant .pastel-chip-orange {
+    background-color: #ffdab9 !important;
+    border-color: #ffc899 !important;
+    color: #0f172a !important;
+  }
+  .ui-vibrant .pastel-chip-pink {
+    background-color: #fbc4c4 !important;
+    border-color: #f7a9a9 !important;
+    color: #0f172a !important;
+  }
+  .ui-vibrant .pastel-chip-teal {
+    background-color: #b2dfdb !important;
+    border-color: #93d3cd !important;
+    color: #0f172a !important;
   }
 
+  /* Tab trigger active override helper */
+  .ui-vibrant .pastel-tab-active[data-state="active"] {
+    background-color: #afd9e8 !important;
+    color: #0f172a !important;
+  }
+
+  /* ========== Playful white surfaces (vibrant) ========== */
+  /* Subtle dot pattern that respects the current theme palette */
+  .ui-vibrant .bg-white,
+  .ui-vibrant .card,
+  .ui-vibrant .Card {
+    background-image: radial-gradient(
+        hsl(var(--primary-50) / 0.45) 1px,
+        transparent 1px
+      ),
+      radial-gradient(hsl(var(--secondary-50) / 0.35) 1px, transparent 1px);
+    background-size: 24px 24px, 32px 32px;
+    background-position: 0 0, 12px 12px;
+  }
+
+  /* Opt‑in helpers for stronger patterns on hero/empty states */
+  .ui-vibrant .playful-surface {
+    background-color: hsl(var(--surface));
+    background-image: radial-gradient(
+        hsl(var(--primary-50) / 0.6) 1px,
+        transparent 1px
+      ),
+      radial-gradient(hsl(var(--tertiary-50) / 0.6) 1.2px, transparent 1px);
+    background-size: 22px 22px, 28px 28px;
+    background-position: 0 0, 11px 11px;
+  }
+
+  .ui-vibrant .playful-surface--stripes {
+    background-image: linear-gradient(
+        135deg,
+        hsl(var(--primary-50) / 0.35) 12.5%,
+        transparent 12.5%,
+        transparent 50%,
+        hsl(var(--primary-50) / 0.35) 50%,
+        hsl(var(--primary-50) / 0.35) 62.5%,
+        transparent 62.5%,
+        transparent 100%
+      ),
+      linear-gradient(
+        135deg,
+        hsl(var(--secondary-50) / 0.35) 12.5%,
+        transparent 12.5%,
+        transparent 50%,
+        hsl(var(--secondary-50) / 0.35) 50%,
+        hsl(var(--secondary-50) / 0.35) 62.5%,
+        transparent 62.5%,
+        transparent 100%
+      );
+    background-size: 16px 16px, 16px 16px;
+    background-position: 0 0, 8px 8px;
+  }
+
+  /* Escape hatch to opt-out on specific elements */
+  .ui-vibrant .no-surface-pattern {
+    background-image: none !important;
+  }
+
+  /* ========== Additional playful surface variants (opt-in) ========== */
+  /* Crisp grid using theme tints */
+  .ui-vibrant .playful-surface--grid {
+    background-color: hsl(var(--surface));
+    background-image: repeating-linear-gradient(
+        0deg,
+        hsl(var(--secondary-50) / 0.45) 0 1px,
+        transparent 1px 16px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        hsl(var(--secondary-50) / 0.45) 0 1px,
+        transparent 1px 16px
+      );
+    background-size: 16px 16px, 16px 16px;
+  }
+
+  /* Playful bubbles using radial spots */
+  .ui-vibrant .playful-surface--bubbles {
+    background-color: hsl(var(--surface));
+    background-image: radial-gradient(
+        circle at 20% 28%,
+        hsl(var(--primary-50) / 0.6) 0 12px,
+        transparent 13px
+      ),
+      radial-gradient(
+        circle at 78% 22%,
+        hsl(var(--info-50) / 0.55) 0 10px,
+        transparent 11px
+      ),
+      radial-gradient(
+        circle at 64% 76%,
+        hsl(var(--success-50) / 0.55) 0 14px,
+        transparent 15px
+      ),
+      radial-gradient(
+        circle at 18% 78%,
+        hsl(var(--warning-50) / 0.45) 0 9px,
+        transparent 10px
+      );
+    background-size: auto;
+    background-repeat: no-repeat;
+  }
+
+  /* Sunburst rays from corners (very subtle) */
+  .ui-vibrant .playful-surface--rays {
+    background-color: hsl(var(--surface));
+    background-image: conic-gradient(
+        from 225deg at 0% 0%,
+        hsl(var(--primary-50) / 0.45) 0 22deg,
+        transparent 22deg
+      ),
+      conic-gradient(
+        from 315deg at 100% 0%,
+        hsl(var(--info-50) / 0.4) 0 18deg,
+        transparent 18deg
+      );
+    background-size: 100% 100%, 100% 100%;
+    background-repeat: no-repeat;
+  }
+
+  /* Corner doodles using radial accents */
+  .ui-vibrant .playful-surface--corners {
+    background-color: hsl(var(--surface));
+    background-image: radial-gradient(
+        24px 24px at 12px 12px,
+        hsl(var(--primary-50) / 0.7) 0 12px,
+        transparent 13px
+      ),
+      radial-gradient(
+        22px 22px at calc(100% - 12px) 12px,
+        hsl(var(--secondary-50) / 0.6) 0 11px,
+        transparent 12px
+      ),
+      radial-gradient(
+        26px 26px at 12px calc(100% - 12px),
+        hsl(var(--info-50) / 0.6) 0 13px,
+        transparent 14px
+      ),
+      radial-gradient(
+        20px 20px at calc(100% - 12px) calc(100% - 12px),
+        hsl(var(--success-50) / 0.6) 0 10px,
+        transparent 11px
+      );
+    background-repeat: no-repeat;
+    background-size: auto;
+  }
+
+  /* Soft noise/grain effect (very light, theme-agnostic) */
+  .ui-vibrant .playful-surface--noise {
+    background-color: hsl(var(--surface));
+    background-image: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.018) 0 2px,
+        rgba(0, 0, 0, 0) 2px 4px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(0, 0, 0, 0.012) 0 2px,
+        rgba(0, 0, 0, 0) 2px 4px
+      );
+    background-blend-mode: multiply;
+  }
 }
 
-/* ========== Default Theme Enhancements (Compact & Professional) ========== */
-/* The default theme applies when .ui-vibrant is NOT present. */
-/* We can enforce specific overrides for the 'default' state here if needed, 
-   but it's better to rely on base utility classes. 
-   However, we can force some 'compactness' globally if root is NOT vibrant. */
-
-@layer components {
-
-  :root:not(.ui-vibrant) .card,
-  :root:not(.ui-vibrant) .Card {
-    /* More squared, professional look */
-    border-radius: 6px;
-    border: 1px solid hsl(var(--border) / 0.8);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-    /* Very subtle shadow */
-  }
-
-  :root:not(.ui-vibrant) .stat-card-inner {
-    padding: 1rem !important;
-    /* Force compact padding */
-  }
-
-  :root:not(.ui-vibrant) .sidebar-content {
-    font-size: 0.875rem;
-    /* Compact text */
-  }
-
-  :root:not(.ui-vibrant) h1,
-  :root:not(.ui-vibrant) h2,
-  :root:not(.ui-vibrant) h3 {
-    letter-spacing: -0.015em;
-    /* Tight, professional tracking */
-  }
+/* Ensure dark text on pastel stat cards (override white mapping) */
+.ui-vibrant
+  .dashboard-container
+  [class*="stat-card--"]
+  .stat-card-inner
+  .text-gray-900,
+.ui-vibrant
+  .dashboard-container
+  [class*="stat-card--"]
+  .stat-card-inner
+  .text-gray-800,
+.ui-vibrant
+  .dashboard-container
+  [class*="stat-card--"]
+  .stat-card-inner
+  .text-gray-700,
+.ui-vibrant
+  .dashboard-container
+  [class*="stat-card--"]
+  .stat-card-inner
+  .text-gray-600,
+.ui-vibrant
+  .dashboard-container
+  [class*="stat-card--"]
+  .stat-card-inner
+  .text-primary-600 {
+  color: #0f172a !important;
+}
+.ui-vibrant
+  .dashboard-container
+  [class*="stat-card--"]
+  .stat-card-inner
+  .group:hover
+  [class*="group-hover:text-primary-"] {
+  color: #0f172a !important;
+}
+.ui-vibrant
+  .dashboard-container
+  [class*="stat-card--"]
+  .stat-card-inner
+  .group:hover
+  .lucide-chevron-right {
+  color: #0f172a !important;
 }

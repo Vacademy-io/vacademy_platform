@@ -85,6 +85,10 @@ export interface QuestionSlide {
   source_type: string;
 }
 
+export interface QuizSlide {
+  questions: (Omit<QuestionSlide, "text_data"> & { text: TextData })[];
+}
+
 // Assignment slide interface
 export interface AssignmentSlide {
   id: string;
@@ -109,6 +113,7 @@ export interface Slide {
   video_slide?: VideoSlide;
   document_slide?: DocumentSlide;
   question_slide?: QuestionSlide;
+  quiz_slide?: QuizSlide;
   assignment_slide?: AssignmentSlide;
   is_loaded: boolean;
   new_slide: boolean;

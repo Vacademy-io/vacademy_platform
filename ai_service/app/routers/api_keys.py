@@ -336,5 +336,77 @@ async def deactivate_user_keys(
     return {"message": "Keys deactivated successfully"}
 
 
+@router.delete(
+    "/v1/institute/{institute_id}/delete",
+    summary="Permanently delete institute-level API keys",
+)
+async def delete_institute_keys(
+    institute_id: str,
+    db: Session = Depends(db_dependency),
+) -> dict:
+    """
+    Permanently delete institute-level API keys from the database.
+    
+    This is a hard delete - the keys will be completely removed.
+    No key value needs to be provided, only the institute_id.
+    """
+    try:
+        institute_uuid = UUID(institute_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid institute_id format")
+    
+    repository = AiApiKeysRepository(db)
+    
+    try:
+        deleted = repository.delete_institute_keys(institute_uuid)
+        
+        if not deleted:
+            raise HTTPException(status_code=404, detail="No keys found for this institute")
+        
+        logger.info(f"Deleted API keys for institute {institute_id}")
+        return {"message": "Keys deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete institute keys: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete keys")
+
+
+@router.delete(
+    "/v1/user/{user_id}/delete",
+    summary="Permanently delete user-level API keys",
+)
+async def delete_user_keys(
+    user_id: str,
+    db: Session = Depends(db_dependency),
+) -> dict:
+    """
+    Permanently delete user-level API keys from the database.
+    
+    This is a hard delete - the keys will be completely removed.
+    No key value needs to be provided, only the user_id.
+    """
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user_id format")
+    
+    repository = AiApiKeysRepository(db)
+    
+    try:
+        deleted = repository.delete_user_keys(user_uuid)
+        
+        if not deleted:
+            raise HTTPException(status_code=404, detail="No keys found for this user")
+        
+        logger.info(f"Deleted API keys for user {user_id}")
+        return {"message": "Keys deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete user keys: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete keys")
+
+
 __all__ = ["router"]
 

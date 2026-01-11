@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - 'notification_service/**'
+      - "notification_service/**"
 
 jobs:
   build-and-deploy:
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -28,7 +28,6 @@ jobs:
           echo "${JAVA_TOKEN}" | docker login ghcr.io -u ${ACCESS_GITHUB_USERNAME} --password-stdin
           mkdir -p ~/.m2
           echo "<settings><servers><server><id>github</id><username>${ACCESS_GITHUB_USERNAME}</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
-
 
       - name: Build Project
         working-directory: ./notification_service
@@ -114,6 +113,8 @@ jobs:
             AWS_MAIL_PASSWORD=${{ secrets.AWS_MAIL_PASSWORD }} \
             SES_SENDER_EMAIL=${{ secrets.SES_SENDER_EMAIL }} \
             WHATSAPP_ACCESS_TOKEN=${{ secrets.WHATSAPP_ACCESS_TOKEN }} \
+            WHATSAPP_ACCESS_TOKEN_VIDYAYATAN=${{ secrets.WHATSAPP_ACCESS_TOKEN_VIDYAYATAN }} \
+            WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN=${{ secrets.WHATSAPP_PHONE_NUMBER_ID_VIDYAYATAN }} \
             SES_CONFIGURATION_SET=${{ secrets.SES_CONFIGURATION_SET }} \
             SES_EVENTS_SQS_URL=${{ secrets.SES_EVENTS_SQS_URL }} \
             SQS_AWS_ACCESS_KEY=${{ secrets.SQS_AWS_ACCESS_KEY }} \

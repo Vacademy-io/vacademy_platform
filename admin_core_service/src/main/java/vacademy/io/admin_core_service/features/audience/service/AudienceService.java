@@ -1107,6 +1107,40 @@ public class AudienceService {
             logger.info("Multiple users found ({}), selected latest: {}", userIds.size(), selectedUserId);
         }
         
+        return buildUserWithCustomFields(selectedUserId);
+    }
+
+    /**
+     * Get users by multiple phone numbers
+     * Reuses the same logic as getUserByPhoneNumber but in batch
+     * 
+     * @param phoneNumbers List of phone numbers to search
+     * @return List of UserWithCustomFieldsDTO (only includes found users)
+     */
+    public List<UserWithCustomFieldsDTO> getUsersByPhoneNumbers(List<String> phoneNumbers) {
+        logger.info("Batch searching for {} phone numbers", phoneNumbers.size());
+        
+        List<UserWithCustomFieldsDTO> results = new ArrayList<>();
+        
+        for (String phoneNumber : phoneNumbers) {
+            try {
+                UserWithCustomFieldsDTO userDTO = getUserByPhoneNumber(phoneNumber);
+                results.add(userDTO);
+            } catch (VacademyException e) {
+                // User not found - log and continue
+                logger.warn("User not found for phone: {} - {}", phoneNumber, e.getMessage());
+            }
+        }
+        
+        logger.info("Found {} users out of {} phone numbers", results.size(), phoneNumbers.size());
+        return results;
+    }
+
+    /**
+     * Helper method to build UserWithCustomFieldsDTO from userId
+     * Extracted for reuse in single and batch methods
+     */
+    private UserWithCustomFieldsDTO buildUserWithCustomFields(String selectedUserId) {
         // Step 4: Fetch complete user details from auth service
         UserDTO userDTO;
         try {

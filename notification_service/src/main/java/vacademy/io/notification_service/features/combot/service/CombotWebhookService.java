@@ -337,69 +337,6 @@ public class CombotWebhookService {
         }
     }
 
-
-
-
-//    @Transactional
-//    public void processIncomingMessageFromWebhook(Map<String, Object> value, Map<String, Object> entry) {
-//        try {
-//            // 1. Identify Institute from Webhook Metadata
-//            String receivingPhoneId = extractPhoneNumberId(value);
-//            if (receivingPhoneId == null) {
-//                log.warn("Received webhook without phone_number_id in metadata");
-//                return;
-//            }
-//
-//            Optional<ChannelToInstituteMapping> mappingOpt = mappingRepository.findById(receivingPhoneId);
-//            if (mappingOpt.isEmpty()) {
-//                log.warn("No institute mapped for Channel ID: {}", receivingPhoneId);
-//                return;
-//            }
-//
-//            ChannelToInstituteMapping mapping = mappingOpt.get();
-//            String instituteId = mapping.getInstituteId();
-//            String channelType = mapping.getChannelType(); // e.g., "WHATSAPP_COMBOT"
-//
-//            // 2. Process User Messages
-//            List<Map<String, Object>> messages = (List<Map<String, Object>>) value.get(CombotWebhookKeys.MESSAGES);
-//            if (messages == null) return;
-//
-//            for (Map<String, Object> message : messages) {
-//                String userPhone = (String) message.get(CombotWebhookKeys.FROM);
-//                String userText = extractMessageText(message);
-//                String messageId = (String) message.get(CombotWebhookKeys.MESSAGE_ID);
-//
-//                // Log Incoming
-//                logIncomingMessage(messageId, userPhone, userText, receivingPhoneId);
-//
-//                // 3. Find Context (Last Template Sent)
-//                Optional<NotificationLog> lastLogOpt = notificationLogRepository
-//                        .findTopByChannelIdAndSenderBusinessChannelIdAndNotificationTypeOrderByNotificationDateDesc(
-//                                userPhone, receivingPhoneId, CombotNotificationType.WHATSAPP_OUTGOING.getType()
-//                        );
-//
-//                String lastTemplate = CombotConstants.DEFAULT_TEMPLATE;
-//                if (lastLogOpt.isPresent()) {
-//                    lastTemplate = extractTemplateNameFromPayload(lastLogOpt.get().getMessagePayload());
-//                }
-//
-//                log.info("Processing Reply: User={} Text='{}' Context='{}'", userPhone, userText, lastTemplate);
-//
-//                // 4. Check Flow Configuration
-//                Optional<ChannelFlowConfig> flowConfigOpt = flowConfigRepository
-//                        .findByInstituteIdAndCurrentTemplateNameAndChannelTypeAndIsActiveTrue(
-//                                instituteId, lastTemplate, channelType
-//                        );
-//
-//                if (flowConfigOpt.isPresent()) {
-//                    executeFlowRule(flowConfigOpt.get(), userText, userPhone, instituteId);
-//                }
-//            }
-//        } catch (Exception e) {
-//            log.error("Error processing incoming webhook", e);
-//        }
-//    }
-
     // ========================================================================
     // 6️⃣ FLOW LOGIC EXECUTION
     // ========================================================================
@@ -430,18 +367,24 @@ public class CombotWebhookService {
 
             // C. Send Each Template in Sequence
             Map<String, List<String>> varConfigMap = parseJsonMap(config.getVariableConfig());
+            
+            // D. Parse Fixed Variables Config (if present)
+            Map<String, Map<String, String>> fixedVarsMap = parseFixedVariablesConfig(config.getFixedVariablesConfig());
 
             for (String templateName : nextTemplates) {
                 // Get required variables for this template
                 List<String> requiredVars = varConfigMap.getOrDefault(templateName, Collections.emptyList());
+                
+                // Get fixed variables for this template (if any)
+                Map<String, String> fixedVarsForTemplate = fixedVarsMap.getOrDefault(templateName, Collections.emptyMap());
 
-                // Map Data to Variables
-                List<String> paramValues = resolveVariables(requiredVars, userDetails, userPhone);
+                // Map Data to Variables (supports both dynamic and fixed)
+                List<String> paramValues = resolveVariables(requiredVars, userDetails, userPhone, fixedVarsForTemplate);
 
                 log.info("Triggering Auto-Reply: Template={} Params={} for userId={}", templateName, paramValues, userId);
 
-                // Send Message
-                sendAutoReply(instituteId, userPhone, templateName, paramValues, userId);
+                // Send Message (pass variable names for media detection)
+                sendAutoReply(instituteId, userPhone, templateName, requiredVars, paramValues, userId);
 
                 Thread.sleep(CombotConstants.DELAY_BETWEEN_AUTO_REPLIES);
             }
@@ -481,8 +424,10 @@ public class CombotWebhookService {
 
     /**
      * Send Auto Reply via Messaging Service
+     * Supports both text-only templates and media templates (document, image, video)
      */
-    private void sendAutoReply(String instituteId, String toPhone, String templateName, List<String> params,String userId) {
+    private void sendAutoReply(String instituteId, String toPhone, String templateName, 
+                              List<String> variableNames, List<String> paramValues, String userId) {
         try {
             WhatsAppTemplateRequest request = new WhatsAppTemplateRequest();
             request.setInstituteId(instituteId);
@@ -499,17 +444,8 @@ public class CombotWebhookService {
             template.put("name", templateName);
             template.put("language", Map.of("code", "en"));
 
-            if (!params.isEmpty()) {
-                List<Map<String, Object>> components = new ArrayList<>();
-                Map<String, Object> bodyComponent = new HashMap<>();
-                bodyComponent.put(CombotWebhookKeys.TYPE, CombotWebhookKeys.BODY);
-
-                List<Map<String, String>> parameters = new ArrayList<>();
-                for (String paramVal : params) {
-                    parameters.add(Map.of(CombotWebhookKeys.TYPE, WhatsAppMessageType.TEXT.getType(), CombotWebhookKeys.TEXT, paramVal));
-                }
-                bodyComponent.put(CombotWebhookKeys.PARAMETERS, parameters);
-                components.add(bodyComponent);
+            if (!paramValues.isEmpty()) {
+                List<Map<String, Object>> components = buildTemplateComponents(variableNames, paramValues);
                 template.put("components", components);
             }
 
@@ -517,6 +453,7 @@ public class CombotWebhookService {
             msg.setPayload(payload);
             request.setMessages(List.of(msg));
 
+            log.debug("Sending WhatsApp template: {}", templateName);
             // Calls messaging service
             messagingService.sendTemplateMessages(request);
 
@@ -525,23 +462,234 @@ public class CombotWebhookService {
         }
     }
 
+    /**
+     * Build template components based on variable types
+     * Detects document/image/video templates and formats accordingly
+     */
+    private List<Map<String, Object>> buildTemplateComponents(List<String> variableNames, List<String> paramValues) {
+        List<Map<String, Object>> components = new ArrayList<>();
+        
+        // Detect if this is a media template
+        MediaTemplateType mediaType = detectMediaTemplateType(variableNames);
+        
+        if (mediaType != MediaTemplateType.NONE) {
+            // Build header component for media (document/image/video)
+            Map<String, Object> headerComponent = buildMediaHeaderComponent(variableNames, paramValues, mediaType);
+            if (headerComponent != null) {
+                components.add(headerComponent);
+            }
+            
+            // Add any remaining text parameters to body (if present)
+            List<String> remainingTextParams = extractRemainingTextParams(variableNames, paramValues, mediaType);
+            if (!remainingTextParams.isEmpty()) {
+                components.add(buildBodyComponent(remainingTextParams));
+            }
+        } else {
+            // Standard text-only template - backward compatible
+            components.add(buildBodyComponent(paramValues));
+        }
+        
+        return components;
+    }
+
+    /**
+     * Detect media template type based on variable name patterns
+     */
+    private MediaTemplateType detectMediaTemplateType(List<String> variableNames) {
+        boolean hasLink = false;
+        boolean hasFilename = false;
+        
+        for (String varName : variableNames) {
+            String lowerName = varName.toLowerCase().trim();
+            
+            // Document: requires both 'link' and 'filename'
+            if (lowerName.equals("link") || lowerName.equals("document_link")) {
+                hasLink = true;
+            }
+            if (lowerName.equals("filename") || lowerName.equals("document_filename")) {
+                hasFilename = true;
+            }
+            
+            // Image: 'image_link' or 'image_url'
+            if (lowerName.equals("image_link") || lowerName.equals("image_url") || lowerName.equals("image")) {
+                return MediaTemplateType.IMAGE;
+            }
+            
+            // Video: 'video_link' or 'video_url'
+            if (lowerName.equals("video_link") || lowerName.equals("video_url") || lowerName.equals("video")) {
+                return MediaTemplateType.VIDEO;
+            }
+        }
+        
+        // Document detected if both link and filename present
+        if (hasLink && hasFilename) {
+            return MediaTemplateType.DOCUMENT;
+        }
+        
+        return MediaTemplateType.NONE;
+    }
+
+    /**
+     * Build header component for media templates
+     */
+    private Map<String, Object> buildMediaHeaderComponent(List<String> variableNames, 
+                                                          List<String> paramValues, 
+                                                          MediaTemplateType mediaType) {
+        Map<String, Object> headerComponent = new HashMap<>();
+        headerComponent.put(CombotWebhookKeys.TYPE, "header");
+        
+        List<Map<String, Object>> parameters = new ArrayList<>();
+        Map<String, Object> mediaParam = new HashMap<>();
+        
+        switch (mediaType) {
+            case DOCUMENT:
+                mediaParam.put(CombotWebhookKeys.TYPE, "document");
+                Map<String, Object> documentObj = new HashMap<>();
+                
+                // Extract link and filename from paramValues
+                for (int i = 0; i < variableNames.size(); i++) {
+                    String varName = variableNames.get(i).toLowerCase().trim();
+                    if (varName.equals("link") || varName.equals("document_link")) {
+                        documentObj.put("link", paramValues.get(i));
+                    } else if (varName.equals("filename") || varName.equals("document_filename")) {
+                        documentObj.put("filename", paramValues.get(i));
+                    }
+                }
+                
+                mediaParam.put("document", documentObj);
+                break;
+                
+            case IMAGE:
+                mediaParam.put(CombotWebhookKeys.TYPE, "image");
+                Map<String, Object> imageObj = new HashMap<>();
+                
+                // Find image link
+                for (int i = 0; i < variableNames.size(); i++) {
+                    String varName = variableNames.get(i).toLowerCase().trim();
+                    if (varName.equals("image_link") || varName.equals("image_url") || varName.equals("image")) {
+                        imageObj.put("link", paramValues.get(i));
+                        break;
+                    }
+                }
+                
+                mediaParam.put("image", imageObj);
+                break;
+                
+            case VIDEO:
+                mediaParam.put(CombotWebhookKeys.TYPE, "video");
+                Map<String, Object> videoObj = new HashMap<>();
+                
+                // Find video link
+                for (int i = 0; i < variableNames.size(); i++) {
+                    String varName = variableNames.get(i).toLowerCase().trim();
+                    if (varName.equals("video_link") || varName.equals("video_url") || varName.equals("video")) {
+                        videoObj.put("link", paramValues.get(i));
+                        break;
+                    }
+                }
+                
+                mediaParam.put("video", videoObj);
+                break;
+                
+            default:
+                return null;
+        }
+        
+        parameters.add(mediaParam);
+        headerComponent.put(CombotWebhookKeys.PARAMETERS, parameters);
+        
+        return headerComponent;
+    }
+
+    /**
+     * Build standard body component for text parameters
+     */
+    private Map<String, Object> buildBodyComponent(List<String> textParams) {
+        Map<String, Object> bodyComponent = new HashMap<>();
+        bodyComponent.put(CombotWebhookKeys.TYPE, CombotWebhookKeys.BODY);
+        
+        List<Map<String, String>> parameters = new ArrayList<>();
+        for (String paramVal : textParams) {
+            parameters.add(Map.of(
+                CombotWebhookKeys.TYPE, WhatsAppMessageType.TEXT.getType(), 
+                CombotWebhookKeys.TEXT, paramVal
+            ));
+        }
+        
+        bodyComponent.put(CombotWebhookKeys.PARAMETERS, parameters);
+        return bodyComponent;
+    }
+
+    /**
+     * Extract text parameters that are not part of media component
+     */
+    private List<String> extractRemainingTextParams(List<String> variableNames, 
+                                                    List<String> paramValues, 
+                                                    MediaTemplateType mediaType) {
+        List<String> remainingParams = new ArrayList<>();
+        
+        for (int i = 0; i < variableNames.size(); i++) {
+            String varName = variableNames.get(i).toLowerCase().trim();
+            
+            // Skip media-specific variables
+            boolean isMediaVar = false;
+            switch (mediaType) {
+                case DOCUMENT:
+                    isMediaVar = varName.equals("link") || varName.equals("filename") ||
+                                varName.equals("document_link") || varName.equals("document_filename");
+                    break;
+                case IMAGE:
+                    isMediaVar = varName.equals("image_link") || varName.equals("image_url") || varName.equals("image");
+                    break;
+                case VIDEO:
+                    isMediaVar = varName.equals("video_link") || varName.equals("video_url") || varName.equals("video");
+                    break;
+            }
+            
+            if (!isMediaVar) {
+                remainingParams.add(paramValues.get(i));
+            }
+        }
+        
+        return remainingParams;
+    }
+
+    /**
+     * Enum for media template types
+     */
+    private enum MediaTemplateType {
+        NONE,      // Text-only template
+        DOCUMENT,  // Document template (requires link + filename)
+        IMAGE,     // Image template (requires image_link)
+        VIDEO      // Video template (requires video_link)
+    }
+
     // --- Data Resolvers ---
 
-    private List<String> resolveVariables(List<String> keys, Map<String, Object> userData, String fallbackPhone) {
+    /**
+     * Resolve variables with support for both dynamic (user data) and fixed (DB stored) values
+     * Priority: 1) User Direct Fields, 2) User Custom Fields, 3) Fixed Variables, 4) System Defaults
+     */
+    private List<String> resolveVariables(List<String> keys, Map<String, Object> userData, String fallbackPhone, Map<String, String> fixedVariables) {
         List<String> values = new ArrayList<>();
         for (String key : keys) {
-            // 1. Direct Field Match
+            // 1. Direct Field Match from User Data
             if (userData.containsKey(key)) {
                 values.add(String.valueOf(userData.get(key)));
                 continue;
             }
-            // 2. Custom Field Match
+            // 2. Custom Field Match from User Data
             Map<String, Object> customFields = (Map<String, Object>) userData.get(CombotConstants.FIELD_CUSTOM_FIELDS);
             if (customFields != null && customFields.containsKey(key)) {
                 values.add(String.valueOf(customFields.get(key)));
                 continue;
             }
-            // 3. System Defaults
+            // 3. Fixed Variables from Database (NEW)
+            if (fixedVariables.containsKey(key)) {
+                values.add(fixedVariables.get(key));
+                continue;
+            }
+            // 4. System Defaults
             switch (key.toLowerCase()) {
                 case CombotConstants.FIELD_MOBILE_NUMBER:
                 case CombotConstants.FIELD_PHONE:
@@ -587,6 +735,19 @@ public class CombotWebhookService {
             logEntry.setBody(text);
             logEntry.setSenderBusinessChannelId(receivingChannelId);
             logEntry.setNotificationDate(LocalDateTime.now());
+            
+            // Find last outgoing message to this user to get userId
+            Optional<NotificationLog> lastOutgoingOpt = notificationLogRepository
+                    .findTopByChannelIdAndSenderBusinessChannelIdAndNotificationTypeOrderByNotificationDateDesc(
+                            fromPhone, receivingChannelId, CombotNotificationType.WHATSAPP_OUTGOING.getType()
+                    );
+            
+            // Set userId if found from previous outgoing message
+            lastOutgoingOpt.ifPresent(outgoing -> {
+                logEntry.setUserId(outgoing.getUserId());
+                log.debug("Associated incoming message with userId: {}", outgoing.getUserId());
+            });
+            
             notificationLogRepository.save(logEntry);
         } catch (Exception e) {
             log.error("Failed to log incoming message from {}", fromPhone, e);
@@ -633,6 +794,21 @@ public class CombotWebhookService {
         try {
             return objectMapper.readValue(json, new TypeReference<>() {});
         } catch (Exception e) {
+            return Collections.emptyMap();
+        }
+    }
+
+    /**
+     * Parse fixed variables config JSON
+     * Expected format: {"template_name": {"var_name": "value", "var_name2": "value2"}}
+     * Returns empty map if null/invalid for backward compatibility
+     */
+    private Map<String, Map<String, String>> parseFixedVariablesConfig(String json) {
+        if (json == null || json.trim().isEmpty()) return Collections.emptyMap();
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (Exception e) {
+            log.warn("Failed to parse fixed_variables_config, using empty map", e);
             return Collections.emptyMap();
         }
     }

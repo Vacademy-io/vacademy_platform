@@ -12,7 +12,8 @@ from typing import Optional
 from ..schemas.video_generation import (
     VideoGenerationRequest,
     VideoGenerationResumeRequest,
-    VideoStatusResponse
+    VideoStatusResponse,
+    VideoUrlsResponse,
 )
 from ..services.video_generation_service import VideoGenerationService
 from ..repositories.ai_video_repository import AiVideoRepository
@@ -347,6 +348,42 @@ async def get_video_status(
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
     
     return VideoStatusResponse(**status)
+
+
+@router.get(
+    "/urls/{video_id}",
+    response_model=VideoUrlsResponse,
+    summary="Get HTML timeline and audio URLs for a video"
+)
+async def get_video_urls(
+    video_id: str,
+    service: VideoGenerationService = Depends(get_video_service)
+) -> VideoUrlsResponse:
+    """
+    Get HTML timeline and audio URLs for a video by video_id.
+    
+    Returns:
+    - html_url: URL to the HTML timeline file (time_based_frame.json)
+    - audio_url: URL to the audio file (narration.mp3)
+    - status: Current video generation status
+    - current_stage: Current generation stage
+    
+    These URLs can be used directly in frontend video players.
+    """
+    status = service.get_video_status(video_id)
+    
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    
+    s3_urls = status.get("s3_urls", {})
+    
+    return VideoUrlsResponse(
+        video_id=video_id,
+        html_url=s3_urls.get("timeline"),  # HTML timeline file
+        audio_url=s3_urls.get("audio"),     # Audio file
+        status=status.get("status", "UNKNOWN"),
+        current_stage=status.get("current_stage", "UNKNOWN")
+    )
 
 
 __all__ = ["router"]

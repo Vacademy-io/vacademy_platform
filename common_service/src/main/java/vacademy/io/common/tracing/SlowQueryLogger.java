@@ -37,9 +37,10 @@ public class SlowQueryLogger {
     private TracingProperties tracingProperties;
 
     /**
-     * Intercept all Repository methods (Spring Data JPA)
+     * Intercept all Repository methods (Spring Data JPA) in vacademy.io packages
+     * only
      */
-    @Around("execution(* org.springframework.data.repository.Repository+.*(..))")
+    @Around("execution(* vacademy.io..*..*Repository.*(..))")
     public Object logRepositoryMethods(ProceedingJoinPoint joinPoint) throws Throwable {
         if (!tracingProperties.isSlowQueryLoggerEffectivelyEnabled()) {
             return joinPoint.proceed();
@@ -48,21 +49,10 @@ public class SlowQueryLogger {
     }
 
     /**
-     * Intercept all methods in classes ending with "Repository"
-     * This catches custom repositories that might not extend Repository interface
+     * Intercept all methods in Service classes in vacademy.io packages only
+     * Excludes Spring framework services to prevent conflicts
      */
-    @Around("execution(* *..*..*Repository.*(..))")
-    public Object logCustomRepositoryMethods(ProceedingJoinPoint joinPoint) throws Throwable {
-        if (!tracingProperties.isSlowQueryLoggerEffectivelyEnabled()) {
-            return joinPoint.proceed();
-        }
-        return logMethodExecution(joinPoint, "repository");
-    }
-
-    /**
-     * Intercept all methods in Service classes
-     */
-    @Around("execution(* *..*..*Service.*(..))")
+    @Around("execution(* vacademy.io..*..*Service.*(..))")
     public Object logServiceMethods(ProceedingJoinPoint joinPoint) throws Throwable {
         if (!tracingProperties.isSlowQueryLoggerEffectivelyEnabled()) {
             return joinPoint.proceed();
@@ -71,9 +61,11 @@ public class SlowQueryLogger {
     }
 
     /**
-     * Intercept all methods in Manager classes
+     * Intercept all methods in Manager classes in vacademy.io packages only
+     * Excludes Spring framework managers (like AuthorizationManager) to prevent
+     * conflicts
      */
-    @Around("execution(* *..*..*Manager.*(..))")
+    @Around("execution(* vacademy.io..*..*Manager.*(..))")
     public Object logManagerMethods(ProceedingJoinPoint joinPoint) throws Throwable {
         if (!tracingProperties.isSlowQueryLoggerEffectivelyEnabled()) {
             return joinPoint.proceed();

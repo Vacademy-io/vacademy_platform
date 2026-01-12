@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { MyButton } from "@/components/design-system/button";
 import { SelectedPayment } from "./types";
 import { PaymentVendor } from "../-utils/payment-vendor-helper";
@@ -83,7 +83,7 @@ const NavigationButtons = ({
         className="w-full sm:w-auto flex items-center gap-2 bg-gradient-to-r from-primary-500 to-primary-500 text-white font-medium py-3 px-6 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
       >
         {loading
-          ? "Loading"
+          ? "Processing"
           : currentStep === 3 || (currentStep === 2 && paymentType === "FREE")
           ? currentStep === 3 && !isPaymentDataReady
             ? paymentVendor === "EWAY"
@@ -91,7 +91,11 @@ const NavigationButtons = ({
               : "Waiting for Payment..."
             : "Complete Enrollment"
           : "Next"}
-        <ArrowRight className="w-4 h-4" />
+        {loading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <ArrowRight className="w-4 h-4" />
+        )}
       </MyButton>
     </div>
   );

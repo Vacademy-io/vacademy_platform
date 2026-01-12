@@ -77,6 +77,7 @@ const ReferralCodeComponent = ({
   setReferRequest,
   refCode,
   onUnappliedCodeChange,
+  onReferralApplied,
 }: {
   referralOptionId: string;
   setCouponVerified: (value: boolean) => void;
@@ -84,27 +85,29 @@ const ReferralCodeComponent = ({
   setReferRequest: (referRequest: ReferRequest | null) => void;
   refCode: string | null;
   onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
+  onReferralApplied?: () => void;
 }) => {
   const [referralCode, setReferralCode] = useState(refCode || "");
   const [isApplying, setIsApplying] = useState(false);
   const [isApplied, setIsApplied] = useState(false);
-  const [appliedReferral, setAppliedReferral] = useState<{
-    code: string;
-    discount: number;
-    type: "percentage" | "fixed";
-  } | null>(null);
   const [error, setError] = useState("");
+  const [hasAutoApplied, setHasAutoApplied] = useState(false);
 
-    useEffect(() => {
-      if (refCode && refCode.trim().length > 0 && !isApplied) {
-        if (onUnappliedCodeChange) {
-          onUnappliedCodeChange(true);
-        }
+  // Auto-apply referral code when provided via URL
+  useEffect(() => {
+    if (refCode && refCode.trim().length > 0 && !isApplied && !hasAutoApplied && !isApplying) {
+      if (onUnappliedCodeChange) {
+        onUnappliedCodeChange(true);
       }
-    }, []);
+      // Auto-apply the referral code
+      setHasAutoApplied(true);
+      applyReferralCodeInternal(refCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refCode, isApplied, hasAutoApplied, isApplying]);
 
-  const applyReferralCode = async () => {
-    if (!referralCode.trim()) {
+  const applyReferralCodeInternal = async (codeToApply: string) => {
+    if (!codeToApply.trim()) {
       setError("Please enter a referral code");
       return;
     }
@@ -113,8 +116,6 @@ const ReferralCodeComponent = ({
     setError("");
 
     try {
-      // Simulate API call - Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
       const response: AxiosResponse<{
         verified: boolean;
         source_type: string;
@@ -124,7 +125,7 @@ const ReferralCodeComponent = ({
         method: "POST",
         url: VERIFY_COUPON_URL,
         params: {
-          couponCode: referralCode,
+          couponCode: codeToApply,
           referralOptionId: referralOptionId,
         },
         data: {
@@ -132,20 +133,23 @@ const ReferralCodeComponent = ({
         },
       });
 
-        if (response.data.verified) {
-          setCouponVerified(true);
-          setIsApplied(true);
-          if (onUnappliedCodeChange) onUnappliedCodeChange(false);
+      if (response.data.verified) {
+        setCouponVerified(true);
+        setIsApplied(true);
+        if (onUnappliedCodeChange) onUnappliedCodeChange(false);
 
         // Create and set the ReferRequest when coupon is verified
         const referRequest: ReferRequest = {
           referrer_user_id: response.data.source_id,
-          referral_code: referralCode,
+          referral_code: codeToApply,
           referral_option_id: referralOptionId,
         };
         setReferRequest(referRequest);
 
-        // setReferralCode("");
+        // Notify parent that referral was successfully applied
+        if (onReferralApplied) {
+          onReferralApplied();
+        }
       } else {
         setError("Invalid referral code");
         setCouponVerified(false);
@@ -162,6 +166,10 @@ const ReferralCodeComponent = ({
     } finally {
       setIsApplying(false);
     }
+  };
+
+  const applyReferralCode = async () => {
+    applyReferralCodeInternal(referralCode);
   };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

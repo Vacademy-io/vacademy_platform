@@ -24,6 +24,7 @@ import {
   LOGIN_USING_USERNAME,
   LOGIN_USING_OTP,
   REQUEST_OTP,
+  LOGIN_BY_USERNAME_TRUSTED,
 } from "@/constants/urls";
 import {
   setTokenInStorage,
@@ -34,6 +35,7 @@ import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstitute
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { identifyUser } from "@/lib/analytics";
+import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
 
 // Schemas for form validation
 const usernameSchema = z.object({
@@ -94,7 +96,71 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
     onSuccess: async (data: UserDetails) => {
       setUserDetails(data);
 
-      // Step 2: Request OTP for the user's email
+      // If email OTP verification is disabled, use trusted login
+      if (!EMAIL_OTP_VERIFICATION_ENABLED) {
+        try {
+          toast.info("Logging in...");
+          const response = await axios.post(LOGIN_BY_USERNAME_TRUSTED, {
+            username: data.username,
+            institute_id: instituteId,
+          });
+
+          if (response.data.accessToken) {
+            // Store tokens
+            await setTokenInStorage(
+              TokenKey.accessToken,
+              response.data.accessToken
+            );
+            await setTokenInStorage(
+              TokenKey.refreshToken,
+              response.data.refreshToken
+            );
+
+            // Decode token to get user data
+            const tokenData = getTokenDecodedData(response.data.accessToken);
+            const userId = tokenData?.user;
+
+            if (instituteId && userId) {
+              identifyUser(userId, {
+                username: tokenData?.username,
+                email: tokenData?.email,
+              });
+
+              try {
+                await fetchAndStoreInstituteDetails(instituteId, userId);
+                getStudentDisplaySettings(true);
+              } catch (error) {
+                console.error("Error fetching institute details:", error);
+              }
+
+              try {
+                await fetchAndStoreStudentDetails(instituteId, userId);
+              } catch {
+                toast.error("Failed to fetch student details");
+              }
+
+              toast.success("Login successful! Redirecting...", {
+                description: "Welcome to your live session",
+              });
+
+              navigate({
+                to: "/study-library/live-class/$username",
+                params: { username: urlUsername },
+              });
+
+              onLoginSuccess();
+            }
+          }
+        } catch (error) {
+          console.error("Trusted login failed:", error);
+          toast.error("Login failed. Please try again later.", {
+            description: "Email service is temporarily unavailable.",
+          });
+        }
+        return;
+      }
+
+      // Step 2: Request OTP for the user's email (normal flow)
       try {
         await axios.post(REQUEST_OTP, {
           email: data.email,
@@ -281,6 +347,27 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
             : ``}
         </p>
       </div>
+
+      {/* Show info when email service is disabled - using direct login */}
+      {!EMAIL_OTP_VERIFICATION_ENABLED && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 bg-blue-50 border border-blue-200 rounded-lg"
+        >
+          <div className="flex items-start gap-3">
+            <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-medium text-blue-800 text-sm">
+                Quick Login Mode
+              </h4>
+              <p className="text-blue-700 text-sm mt-1">
+                You'll be logged in directly without email verification.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {getUserDetailsMutation.isPending && !userDetails ? (
         <motion.div

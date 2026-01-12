@@ -18,7 +18,7 @@ import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { MyInput } from "@/components/design-system/input";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, ArrowLeft, RefreshCw, Shield, CheckCircle2 } from "lucide-react";
+import { Mail, ArrowLeft, RefreshCw, Shield, CheckCircle2, AlertTriangle } from "lucide-react";
 
 import { TokenKey } from "@/constants/auth/tokens";
 import {
@@ -29,6 +29,7 @@ import { LOGIN_OTP, REQUEST_OTP } from "@/constants/urls";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
 
 const emailSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -370,6 +371,26 @@ export function EmailLogin({
             exit={{ opacity: 0, x: -30 }}
             transition={{ duration: 0.2 }}
           >
+            {/* Email Service Unavailable Warning */}
+            {!EMAIL_OTP_VERIFICATION_ENABLED && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg"
+              >
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-amber-800 text-sm">
+                      Email Login Temporarily Unavailable
+                    </h4>
+                    <p className="text-amber-700 text-sm mt-1">
+                      Please use username and password to login. We apologize for the inconvenience.
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
             <Form {...emailForm}>
               <form
                 onSubmit={emailForm.handleSubmit(onEmailSubmit)}
@@ -399,6 +420,7 @@ export function EmailLogin({
                               className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                               input={field.value}
                               onChangeFunction={field.onChange}
+                              disabled={!EMAIL_OTP_VERIFICATION_ENABLED}
                             />
                             <Mail className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
                           </div>
@@ -416,7 +438,7 @@ export function EmailLogin({
                 >
                   <motion.button
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || !EMAIL_OTP_VERIFICATION_ENABLED}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                     className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"

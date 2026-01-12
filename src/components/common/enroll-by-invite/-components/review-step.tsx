@@ -18,6 +18,7 @@ interface ReviewStepProps {
   setReferRequest: (referRequest: ReferRequest | null) => void;
   refCode: string | null;
   onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
+  onReferralApplied?: () => void;
 }
 
 const ReviewStep = ({
@@ -28,6 +29,7 @@ const ReviewStep = ({
   setReferRequest,
   refCode,
   onUnappliedCodeChange,
+  onReferralApplied,
 }: ReviewStepProps) => {
   return (
     <div className="space-y-6">
@@ -74,6 +76,7 @@ const ReviewStep = ({
                 setReferRequest={setReferRequest}
                 refCode={refCode}
                 onUnappliedCodeChange={onUnappliedCodeChange}
+                onReferralApplied={onReferralApplied}
               />
             ) : (
               <FreePlanReview
@@ -82,6 +85,7 @@ const ReviewStep = ({
                 setReferRequest={setReferRequest}
                 refCode={refCode}
                 onUnappliedCodeChange={onUnappliedCodeChange}
+                onReferralApplied={onReferralApplied}
               />
             )}
           </div>
@@ -172,12 +176,14 @@ const PaidPlanReview = ({
   setReferRequest,
   refCode,
   onUnappliedCodeChange,
+  onReferralApplied,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
   refCode: string | null;
   onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
+  onReferralApplied?: () => void;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
@@ -283,6 +289,7 @@ const PaidPlanReview = ({
           setReferRequest={setReferRequest}
           refCode={refCode}
           onUnappliedCodeChange={onUnappliedCodeChange}
+          onReferralApplied={onReferralApplied}
         />
       )}
 
@@ -390,12 +397,14 @@ const FreePlanReview = ({
   setReferRequest,
   refCode,
   onUnappliedCodeChange,
+  onReferralApplied,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
   setReferRequest: (referRequest: ReferRequest | null) => void;
   refCode: string | null;
   onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
+  onReferralApplied?: () => void;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   if (!plan) return null;
@@ -481,6 +490,7 @@ const FreePlanReview = ({
           setReferRequest={setReferRequest}
           refCode={refCode}
           onUnappliedCodeChange={onUnappliedCodeChange}
+          onReferralApplied={onReferralApplied}
         />
       )}
 

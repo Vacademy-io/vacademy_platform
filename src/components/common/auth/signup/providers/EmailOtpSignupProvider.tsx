@@ -15,6 +15,7 @@ import { Preferences } from "@capacitor/preferences";
 import axios from "axios";
 import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP } from "@/constants/urls";
 import { checkUserEnrollment } from "@/services/signup-api";
+import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
 
 interface EmailOtpSignupProviderProps {
   instituteId: string;
@@ -111,6 +112,21 @@ export function EmailOtpSignupProvider({
   const handleOtpSubmit = async (data: OtpFormData) => {
     try {
       setIsSubmitting(true);
+      
+      // If email OTP verification is disabled, skip directly to final step
+      if (!EMAIL_OTP_VERIFICATION_ENABLED) {
+        // Check enrollment before proceeding
+        const isEnrolled = await checkEnrollment(initialEmail);
+        if (isEnrolled) {
+          toast.error("User already enrolled. Please sign in instead.");
+          onBackToProviders?.();
+          return;
+        }
+        
+        setVerifiedEmail(initialEmail);
+        setCurrentStep("final");
+        return;
+      }
       
       // Get OTP from individual digits
       const otp = otpDigits.join("");

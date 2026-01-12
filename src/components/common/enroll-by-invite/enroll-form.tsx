@@ -1259,7 +1259,8 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     void loadPolicyLinks();
   }, [instituteId]);
 
-  if (isLoading || isInstituteLoading) return <DashboardLoader />;
+  if (isLoading || isInstituteLoading || (loading && paymentType === "FREE"))
+    return <DashboardLoader />;
 
   // Helper to extract YouTube video ID from URL
   const getYouTubeVideoId = (url: string): string | null => {

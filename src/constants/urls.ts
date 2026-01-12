@@ -34,6 +34,8 @@ export const LOGIN_USING_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp-te
 export const REQUEST_OTP = `${BASE_URL}/auth-service/learner/v1/request-otp`;
 export const LOGIN_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp`;
 export const FORGOT_PASSWORD = `${BASE_URL}/auth-service/v1/send-password`;
+// Temporary endpoint for login without OTP when email service is down
+export const LOGIN_BY_USERNAME_TRUSTED = `${BASE_URL}/auth-service/learner/v1/login-by-username-trusted`;
 
 export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/learner/v1/refresh-token`;
 export const INSTITUTE_DETAIL = `${BASE_URL}/admin-core-service/learner/v1/details`;

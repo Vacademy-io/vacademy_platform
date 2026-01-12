@@ -13,6 +13,7 @@ import {
 } from "@/constants/urls";
 import { toast } from "sonner";
 import { ApiError } from "../-types/type";
+import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
 
 const verifyEmailSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -270,11 +271,24 @@ export default function EmailVerificationDialog({
                 if (!emailResult.success) {
                   toast.error(emailResult.error.errors[0].message);
                 } else {
-                  sendEmailOtp(email);
+                  // If OTP verification is disabled, skip directly to verified state
+                  if (!EMAIL_OTP_VERIFICATION_ENABLED) {
+                    // Save email to localStorage
+                    const existingEmails = JSON.parse(
+                      localStorage.getItem("verifiedEmail") || "[]"
+                    );
+                    if (!existingEmails.includes(email)) {
+                      existingEmails.push(email);
+                      localStorage.setItem("verifiedEmail", JSON.stringify(existingEmails));
+                    }
+                    onEmailVerified(email);
+                  } else {
+                    sendEmailOtp(email);
+                  }
                 }
               }}
             >
-              Send OTP
+              {EMAIL_OTP_VERIFICATION_ENABLED ? "Send OTP" : "Continue"}
             </MyButton>
           )}
           {isOtpSent && (

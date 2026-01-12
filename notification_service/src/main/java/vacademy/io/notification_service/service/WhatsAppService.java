@@ -30,6 +30,13 @@ public class WhatsAppService {
     private final ExternalCommunicationLogService externalCommunicationLogService;
     private final NotificationLogRepository notificationLogRepository;
 
+    // Global WhatsApp credentials (fallback when institute doesn't have them)
+    @org.springframework.beans.factory.annotation.Value("${whatsapp.meta.app-id:}")
+    private String globalAppId;
+
+    @org.springframework.beans.factory.annotation.Value("${whatsapp.meta.access-token:}")
+    private String globalAccessToken;
+
     String appId = null;
     String accessToken = null;
 
@@ -88,55 +95,61 @@ public class WhatsAppService {
 
     public List<Map<String, Boolean>> sendWhatsappMessages(String templateName,
             List<Map<String, Map<String, String>>> bodyParams,
-            Map<String, Map<String, String>> headerParams, String languageCode, String headerType, String instituteId) {
+            Map<String, Map<String, String>> headerParams, String languageCode, String headerType, String instituteId,
+            Map<String, Map<String, String>> buttonParams) {
 
-        if (instituteId == null) {
-            log.error("Missing instituteId for WhatsApp message sending");
-            return null;
-        }
+        // Initialize with empty settings (will fall back to global credentials)
+        JsonNode whatsappSettings = objectMapper.createObjectNode();
 
         try {
-            InstituteInfoDTO instituteDTO = internalService.getInstituteByInstituteId(instituteId);
-            String jsonString = instituteDTO.getSetting();
-            log.info("Retrieved institute settings for: {}", instituteId);
+            // Try to fetch institute-specific WhatsApp settings
+            if (org.springframework.util.StringUtils.hasText(instituteId)) {
+                try {
+                    InstituteInfoDTO institute = internalService.getInstituteByInstituteId(instituteId);
+                    if (institute != null && institute.getSetting() != null) {
+                        JsonNode settings = objectMapper.readTree(institute.getSetting());
 
-            JsonNode root = objectMapper.readTree(jsonString);
-            // Navigate to WhatsApp Utility Setting
-            JsonNode whatsappSetting = root.path(NotificationConstants.SETTING)
-                    .path(NotificationConstants.WHATSAPP_SETTING)
-                    .path(NotificationConstants.DATA)
-                    .path(NotificationConstants.UTILITY_WHATSAPP);
+                        // Navigate to whatsapp_setting.data
+                        JsonNode whatsappSettingData = settings
+                                .path(NotificationConstants.SETTING)
+                                .path("whatsapp_setting")
+                                .path(NotificationConstants.DATA);
 
-            // Apply optional testing allowlist filter
-            bodyParams = filterRecipientsByTestAllowListIfEnabled(root, bodyParams);
-            if (bodyParams.isEmpty()) {
-                log.info("TEST allowlist active and no recipients matched; skipping sends");
-                return List.of();
-            }
-
-            // Check provider type (defaults to META for backward compatibility)
-            String provider = whatsappSetting.path(NotificationConstants.PROVIDER).asText("META").toUpperCase();
-            log.info("WhatsApp provider for institute {}: {}", instituteId, provider);
-
-            // Route to appropriate provider
-            if ("WATI".equals(provider)) {
-                return sendViaWati(templateName, bodyParams, languageCode, whatsappSetting);
+                        if (!whatsappSettingData.isMissingNode()) {
+                            whatsappSettings = whatsappSettingData;
+                            log.info("Found WhatsApp settings for institute: {}", instituteId);
+                        } else {
+                            log.info("No WhatsApp settings found for institute: {}, using global credentials",
+                                    instituteId);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Error fetching WhatsApp settings for institute {}, using global credentials: {}",
+                            instituteId, e.getMessage());
+                }
             } else {
-                return sendViaMeta(templateName, bodyParams, headerParams, languageCode, headerType, whatsappSetting);
+                log.info("No instituteId provided, using global WhatsApp credentials");
             }
+
+            // Send via Meta with institute-specific or global credentials
+            String provider = "META";
+            log.info("WhatsApp provider: {}", provider);
+
+            return sendViaMeta(templateName, bodyParams, headerParams, languageCode, headerType,
+                    whatsappSettings, buttonParams);
 
         } catch (Exception e) {
             log.error("Exception occurred while sending WhatsApp messages for institute {}: {}", instituteId,
                     e.getMessage(), e);
             SentryLogger.SentryEventBuilder.error(e)
-                .withMessage("Failed to send WhatsApp messages")
-                .withTag("notification.type", "WHATSAPP")
-                .withTag("template.name", templateName)
-                .withTag("institute.id", instituteId)
-                .withTag("user.count", String.valueOf(bodyParams != null ? bodyParams.size() : 0))
-                .withTag("language.code", languageCode != null ? languageCode : "unknown")
-                .withTag("operation", "sendWhatsappMessages")
-                .send();
+                    .withMessage("Failed to send WhatsApp messages")
+                    .withTag("notification.type", "WHATSAPP")
+                    .withTag("template.name", templateName)
+                    .withTag("institute.id", instituteId)
+                    .withTag("user.count", String.valueOf(bodyParams != null ? bodyParams.size() : 0))
+                    .withTag("language.code", languageCode != null ? languageCode : "unknown")
+                    .withTag("operation", "sendWhatsappMessages")
+                    .send();
             return null;
         }
     }
@@ -258,9 +271,10 @@ public class WhatsAppService {
             Map<String, Map<String, String>> headerParams,
             String languageCode,
             String headerType,
-            JsonNode whatsappSetting) {
+            JsonNode whatsappSetting,
+            Map<String, Map<String, String>> buttonParams) {
 
-        // Extract Meta credentials
+        // Extract Meta credentials from institute settings
         JsonNode metaConfig = whatsappSetting.path(NotificationConstants.META);
 
         // Fallback to root level for backward compatibility
@@ -272,11 +286,35 @@ public class WhatsAppService {
             accessToken = metaConfig.path(NotificationConstants.ACCESS_TOKEN).asText();
         }
 
+        // Track whether we're using institute-specific or global credentials
+        boolean usingInstituteCredentials = false;
+        if (appId != null && !appId.isBlank() && accessToken != null && !accessToken.isBlank()) {
+            usingInstituteCredentials = true;
+            log.info("Using institute-specific WhatsApp credentials (app_id: {}...)",
+                    appId.substring(0, Math.min(8, appId.length())));
+        }
+
+        // Use global credentials as fallback (like email does)
+        if (appId == null || appId.isBlank()) {
+            appId = globalAppId;
+            log.info("Institute app_id not found, using global WhatsApp app_id from environment");
+        }
+        if (accessToken == null || accessToken.isBlank()) {
+            accessToken = globalAccessToken;
+            log.info("Institute access_token not found, using global WhatsApp access_token from environment");
+        }
+
+        // Final validation
         if (appId == null || appId.isBlank() || accessToken == null || accessToken.isBlank()) {
-            log.error("Meta WhatsApp credentials not configured");
+            log.error("Meta WhatsApp credentials not configured (neither in institute settings nor in properties)");
             return bodyParams.stream()
                     .map(detail -> Map.of(detail.keySet().iterator().next(), false))
                     .collect(Collectors.toList());
+        }
+
+        // Log final credential source
+        if (!usingInstituteCredentials) {
+            log.info("Using global WhatsApp credentials from environment variables");
         }
 
         // Deduplicate based on phone number, retaining the first occurrence
@@ -319,12 +357,34 @@ public class WhatsAppService {
                         if (!headerParameters.isEmpty())
                             headerComponent = createHeaderComponent(headerParameters);
 
+                        // Build button component if button params provided
+                        Component buttonComponent = null;
+                        if (buttonParams != null && buttonParams.get(phoneNumber) != null) {
+                            Map<String, String> btnParams = buttonParams.get(phoneNumber);
+                            List<Parameter> buttonParameters = btnParams.entrySet().stream()
+                                    .sorted(Comparator.comparingInt(e -> Integer.parseInt(e.getKey())))
+                                    .map(e -> createTextParameter(e.getValue()))
+                                    .collect(Collectors.toList());
+
+                            // Create button component with sub_type "url" and index "0"
+                            buttonComponent = new Component("button", "url", "0", buttonParameters);
+                        }
+
+                        // Build components list: body, header (if exists), button (if exists)
+                        List<Component> components = new ArrayList<>();
+                        components.add(bodyComponent);
+                        if (headerComponent != null) {
+                            components.add(headerComponent);
+                        }
+                        if (buttonComponent != null) {
+                            components.add(buttonComponent);
+                        }
+
                         ResponseEntity<String> response = sendTemplateMessage(
                                 phoneNumber,
                                 templateName,
                                 languageCode,
-                                (headerComponent == null) ? List.of(bodyComponent)
-                                        : List.of(bodyComponent, headerComponent),
+                                components,
                                 accessToken, appId);
 
                         log.info("Whatsapp Response: " + response.getBody());
@@ -369,11 +429,7 @@ public class WhatsAppService {
             jsonRequest = "{\"error\":\"failed to serialize request\"}";
         }
         String logId = externalCommunicationLogService.start(ExternalCommunicationSource.WHATSAPP, null, request);
-        // Right now bypass the whatsapp; log success and return
-        if (true) {
-            externalCommunicationLogService.markSuccess(logId, "Whatsapp Send Successfully");
-            return ResponseEntity.ok("Whatsapp Send Successfully");
-        }
+        // API bypass removed - now making actual calls to Meta WhatsApp API
 
         try {
             // Create headers
@@ -426,7 +482,14 @@ public class WhatsAppService {
 
     public record Component(
             String type,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String sub_type,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String index,
             List<Parameter> parameters) {
+
+        // Constructor for components without sub_type and index (body, header)
+        public Component(String type, List<Parameter> parameters) {
+            this(type, null, null, parameters);
+        }
     }
 
     public record Parameter(
@@ -466,29 +529,29 @@ public class WhatsAppService {
      * Log WhatsApp messages to notification_log table
      */
     private void logWhatsAppMessages(String templateName,
-                                    List<Map<String, Map<String, String>>> bodyParams,
-                                    Map<String, Map<String, String>> headerParams,
-                                    String languageCode,
-                                    String headerType,
-                                    String provider,
-                                    List<Map<String, Boolean>> results) {
+            List<Map<String, Map<String, String>>> bodyParams,
+            Map<String, Map<String, String>> headerParams,
+            String languageCode,
+            String headerType,
+            String provider,
+            List<Map<String, Boolean>> results) {
         try {
             List<NotificationLog> logs = new ArrayList<>();
-            
+
             for (int i = 0; i < bodyParams.size() && i < results.size(); i++) {
                 Map<String, Map<String, String>> userDetail = bodyParams.get(i);
                 Map<String, Boolean> result = results.get(i);
-                
+
                 // Extract phone number (first key in the map)
                 String phoneNumber = userDetail.keySet().iterator().next();
                 Map<String, String> params = userDetail.get(phoneNumber);
-                
+
                 // Extract userId if present in params
                 String userId = params.getOrDefault("userId", params.getOrDefault("user_id", null));
-                
+
                 // Get send status
                 Boolean sendSuccess = result.get(phoneNumber);
-                
+
                 // Build payload JSON
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("templateName", templateName);
@@ -500,18 +563,18 @@ public class WhatsAppService {
                 if (headerParams != null && headerParams.containsKey(phoneNumber)) {
                     payload.put("headerParams", headerParams.get(phoneNumber));
                 }
-                
+
                 String payloadJson;
                 try {
                     payloadJson = objectMapper.writeValueAsString(payload);
                 } catch (Exception e) {
                     payloadJson = payload.toString();
                 }
-                
+
                 // Build body message for display
                 String bodyMessage = String.format("WhatsApp Template: %s | Provider: %s | Status: %s | Params: %s",
                         templateName, provider, sendSuccess ? "SUCCESS" : "FAILED", params);
-                
+
                 // Create notification log
                 NotificationLog log = new NotificationLog();
                 log.setNotificationType("WHATSAPP");
@@ -522,16 +585,16 @@ public class WhatsAppService {
                 log.setUserId(userId);
                 log.setNotificationDate(LocalDateTime.now());
                 log.setMessagePayload(payloadJson);
-                
+
                 logs.add(log);
             }
-            
+
             // Batch save all logs
             if (!logs.isEmpty()) {
                 notificationLogRepository.saveAll(logs);
                 log.info("Logged {} WhatsApp messages to notification_log table", logs.size());
             }
-            
+
         } catch (Exception e) {
             log.error("Failed to log WhatsApp messages to notification_log: {}", e.getMessage(), e);
             // Don't throw - logging failure shouldn't break the flow

@@ -1,6 +1,5 @@
 package vacademy.io.common.notification.dto;
 
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Builder;
 import lombok.Data;
@@ -14,4 +13,6 @@ public class EmailOTPRequest {
     private String service;
     private String name;
     private String otp;
+    private String type; // EMAIL or WHATSAPP
+    private String phoneNumber; // For WhatsApp OTP
 }

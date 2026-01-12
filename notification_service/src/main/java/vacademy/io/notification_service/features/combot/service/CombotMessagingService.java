@@ -15,6 +15,7 @@ import vacademy.io.notification_service.features.announcements.service.UserAnnou
 import vacademy.io.notification_service.features.combot.constants.CombotWebhookKeys;
 import vacademy.io.notification_service.features.combot.dto.InactiveUsersRequest;
 import vacademy.io.notification_service.features.combot.dto.LogSequenceRequest;
+import vacademy.io.notification_service.features.combot.dto.UsersByMessagesRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateResponse;
 import vacademy.io.notification_service.features.combot.enums.WhatsAppProvider;
@@ -272,7 +273,7 @@ public class CombotMessagingService {
     /**
      * Find inactive users who received a template but didn't respond within X days
      * @param request Contains messageType, senderBusinessChannelId, days, templateName
-     * @return List of mobile numbers (channel_id) who didn't respond
+     * @return List of user IDs who didn't respond
      */
     public List<String> findInactiveUsers(InactiveUsersRequest request) {
         log.info("Finding inactive users for template: {} within {} days on channel: {}",
@@ -296,7 +297,7 @@ public class CombotMessagingService {
             return Collections.emptyList();
         }
 
-        List<String> inactiveUsers = notificationLogRepository.findInactiveUsers(
+        List<String> inactiveUserIds = notificationLogRepository.findInactiveUsers(
                 request.getMessageType(),
                 request.getSenderBusinessChannelId(),
                 request.getTemplateName(),
@@ -304,9 +305,49 @@ public class CombotMessagingService {
         );
 
         log.info("Found {} inactive users for template: {}",
-                inactiveUsers.size(), request.getTemplateName());
+                inactiveUserIds.size(), request.getTemplateName());
 
-        return inactiveUsers;
+        return inactiveUserIds;
+    }
+
+    /**
+     * Find users who have sent ALL messages from the given list
+     * Returns userId from the most recent OUTGOING message
+     * @param request Contains messageList, messageType, senderBusinessChannelId
+     * @return List of user IDs who sent all messages
+     */
+    public List<String> findUsersByAllMessages(UsersByMessagesRequest request) {
+        log.info("Finding users who sent all messages: {} of type: {} on channel: {}",
+                request.getMessageList(), request.getMessageType(), request.getSenderBusinessChannelId());
+
+        // Validate request
+        if (request.getMessageList() == null || request.getMessageList().isEmpty()) {
+            log.warn("Invalid request: messageList is required and cannot be empty");
+            return Collections.emptyList();
+        }
+        if (request.getMessageType() == null || request.getMessageType().isEmpty()) {
+            log.warn("Invalid request: messageType is required");
+            return Collections.emptyList();
+        }
+        if (request.getSenderBusinessChannelId() == null || request.getSenderBusinessChannelId().isEmpty()) {
+            log.warn("Invalid request: senderBusinessChannelId is required");
+            return Collections.emptyList();
+        }
+
+        String[] messageArray = request.getMessageList().toArray(new String[0]);
+        Integer messageCount = request.getMessageList().size();
+
+        List<String> userIds = notificationLogRepository.findUsersByAllMessages(
+                request.getMessageType(),
+                request.getSenderBusinessChannelId(),
+                messageArray,
+                messageCount
+        );
+
+        log.info("Found {} users who sent all {} messages",
+                userIds.size(), messageCount);
+
+        return userIds;
     }
 
     /**

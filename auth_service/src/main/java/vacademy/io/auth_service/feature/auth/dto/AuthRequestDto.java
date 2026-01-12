@@ -21,4 +21,5 @@ public class AuthRequestDto {
     private String instituteId;
     private String email;
     private String otp;
+    private String phoneNumber; // For WhatsApp OTP authentication
 }

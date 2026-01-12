@@ -18,4 +18,9 @@ public interface OtpRepository extends JpaRepository<EmailOtp, String> {
 
     Optional<EmailOtp> findTopByEmailOrderByCreatedAtDesc(String email);
 
+    // WhatsApp OTP queries
+    Optional<EmailOtp> findTopByPhoneNumberAndTypeOrderByCreatedAtDesc(String phoneNumber, String type);
+
+    Optional<EmailOtp> findByPhoneNumberAndServiceAndType(String phoneNumber, String service, String type);
+
 }

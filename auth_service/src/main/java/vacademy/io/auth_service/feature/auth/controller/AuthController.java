@@ -1,6 +1,5 @@
 package vacademy.io.auth_service.feature.auth.controller;
 
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -14,7 +13,6 @@ import vacademy.io.common.auth.dto.RefreshTokenRequestDTO;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
-
 
 @RestController
 @RequestMapping("/auth-service/v1")
@@ -51,15 +49,15 @@ public class AuthController {
         return authManager.loginUser(authRequestDTO);
     }
 
-
     @PostMapping("/refresh-token")
     public JwtResponseDto refreshToken(@RequestBody RefreshTokenRequestDTO refreshTokenRequestDTO) {
         return authManager.refreshToken(refreshTokenRequestDTO);
     }
 
     @PostMapping("/send-password")
-    public ResponseEntity<String> sendPassword(@RequestParam String email,@RequestParam(required = false) String clientName) {
-        String response = passwordResetManager.sendPasswordToUser(email,clientName);
+    public ResponseEntity<String> sendPassword(@RequestParam String email,
+            @RequestParam(required = false) String clientName) {
+        String response = passwordResetManager.sendPasswordToUser(email, clientName);
         return ResponseEntity.ok(response);
     }
 
@@ -72,8 +70,24 @@ public class AuthController {
     public JwtResponseDto loginViaOtp(@RequestBody AuthRequestDto authRequestDTO) {
         return authManager.loginViaOtp(authRequestDTO);
     }
+
+    /**
+     * Request WhatsApp OTP
+     * Endpoint: POST /auth-service/v1/request-whatsapp-otp
+     * Body: { "phone_number": "+919876543210" }
+     */
+    @PostMapping("/request-whatsapp-otp")
+    public String requestWhatsAppOtp(@RequestBody AuthRequestDto authRequestDTO) {
+        return authManager.requestWhatsAppOtp(authRequestDTO);
+    }
+
+    /**
+     * Login via WhatsApp OTP
+     * Endpoint: POST /auth-service/v1/login-whatsapp-otp
+     * Body: { "phone_number": "+919876543210", "otp": "123456" }
+     */
+    @PostMapping("/login-whatsapp-otp")
+    public JwtResponseDto loginViaWhatsAppOtp(@RequestBody AuthRequestDto authRequestDTO) {
+        return authManager.loginViaWhatsAppOtp(authRequestDTO);
+    }
 }
-
-
-
-

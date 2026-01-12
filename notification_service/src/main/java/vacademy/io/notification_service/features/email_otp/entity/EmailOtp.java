@@ -1,6 +1,5 @@
 package vacademy.io.notification_service.features.email_otp.entity;
 
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -35,6 +34,12 @@ public class EmailOtp {
 
     @Column(name = "is_verified")
     private String isVerified = "false";
+
+    @Column(name = "type")
+    private String type = "EMAIL"; // EMAIL or WHATSAPP
+
+    @Column(name = "phone_number")
+    private String phoneNumber; // For WhatsApp OTP
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

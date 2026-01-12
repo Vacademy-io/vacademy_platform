@@ -28,23 +28,24 @@ public class NotificationService {
     @Value("${notification.server.baseurl}")
     private String notificationServerBaseUrl;
 
-    public String sendOtp(EmailOTPRequest emailOTPRequest,String instituteId) {
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
-        instituteId=instituteId!=null?instituteId:"";
-        String url=NotificationConstant.SEND_EMAIL_OTP+"?instituteId="+instituteId;
+    public String sendOtp(EmailOTPRequest emailOTPRequest, String instituteId) {
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
+        instituteId = instituteId != null ? instituteId : "";
+        String url = NotificationConstant.SEND_EMAIL_OTP + "?instituteId=" + instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.POST.name(),
                 notificationServerBaseUrl,
                 url,
-                emailOTPRequest
-        );
+                emailOTPRequest);
         return response.getBody();
     }
 
     public Boolean verifyOTP(EmailOTPRequest request) {
 
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.VERIFY_EMAIL_OTP, request);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
+                notificationServerBaseUrl, NotificationConstant.VERIFY_EMAIL_OTP, request);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
@@ -57,13 +58,13 @@ public class NotificationService {
         }
     }
 
-
     public Boolean sendGenericHtmlMail(GenericEmailRequest request, String instituteId) {
         String endpoint = NotificationConstant.SEND_HTML_EMAIL;
         if (StringUtils.hasText(instituteId)) {
             endpoint += "?instituteId=" + instituteId;
         }
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, endpoint, request);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
+                notificationServerBaseUrl, endpoint, request);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
@@ -77,15 +78,72 @@ public class NotificationService {
     }
 
     public String sendEmailToUsers(NotificationDTO notificationDTO) {
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.POST.name(),
                 notificationServerBaseUrl,
                 NotificationConstant.EMAIL_TO_USERS,
-                notificationDTO
-        );
+                notificationDTO);
         return response.getBody();
 
+    }
+
+    /**
+     * Send WhatsApp OTP
+     * 
+     * @param phoneNumber Phone number with country code
+     * @param instituteId Institute ID
+     * @return Response message
+     */
+    public String sendWhatsAppOtp(String phoneNumber, String instituteId) {
+        instituteId = instituteId != null ? instituteId : "";
+        String url = NotificationConstant.SEND_OTP + "?instituteId=" + instituteId;
+
+        EmailOTPRequest request = EmailOTPRequest.builder()
+                .phoneNumber(phoneNumber)
+                .type("WHATSAPP")
+                .service("auth-service")
+                .build();
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                url,
+                request);
+        return response.getBody();
+    }
+
+    /**
+     * Verify WhatsApp OTP
+     * 
+     * @param otp         OTP code
+     * @param phoneNumber Phone number
+     * @return true if OTP is valid
+     */
+    public Boolean verifyWhatsAppOTP(String otp, String phoneNumber) {
+        EmailOTPRequest request = EmailOTPRequest.builder()
+                .otp(otp)
+                .phoneNumber(phoneNumber)
+                .type("WHATSAPP")
+                .build();
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                NotificationConstant.VERIFY_OTP,
+                request);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            Boolean isOtpValid = objectMapper.readValue(response.getBody(), new TypeReference<Boolean>() {
+            });
+            return isOtpValid;
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(e.getMessage());
+        }
     }
 }

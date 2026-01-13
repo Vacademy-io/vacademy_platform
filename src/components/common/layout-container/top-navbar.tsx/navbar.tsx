@@ -18,7 +18,6 @@ import { Student } from "@phosphor-icons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchUserRoleDetails } from "@/routes/study-library/courses/-services/institute-details";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { getTokenFromCookie } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { SystemAlertsBar } from "@/components/announcements";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
@@ -63,11 +62,11 @@ export function Navbar() {
   const router = useRouter();
   const [canGoBack, setCanGoBack] = useState(false);
 
-  const handleNavigateToAdmin = () => {
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const refreshToken = getTokenFromCookie(TokenKey.refreshToken);
-    window.location.href = `https://${instituteDetails.teacher_portal_base_url}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
-  };
+    const handleNavigateToAdmin = () => {
+        const accessToken = localStorage.getItem(TokenKey.accessToken);
+        const refreshToken = localStorage.getItem(TokenKey.refreshToken);
+        window.location.href = `https://${instituteDetails.teacher_portal_base_url}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
+    };
 
   async function fetch() {
     try {

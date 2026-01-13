@@ -34,14 +34,7 @@ const getTokenFromStorage = async (
   const { value } = await Storage.get({ key: tokenKey });
   if (value) return value;
 
-  // Fallback to cookies if not in storage
-  const cookieValue = Cookies.get(tokenKey);
-  if (cookieValue) {
-    console.log(`[SessionUtility] Token ${tokenKey} recovered from cookies`);
-    return cookieValue;
-  }
-
-  // Final fallback to localStorage
+  // Fallback to localStorage only (cookies removed as per requirement)
   try {
     const localStorageValue = localStorage.getItem(tokenKey);
     if (localStorageValue) {

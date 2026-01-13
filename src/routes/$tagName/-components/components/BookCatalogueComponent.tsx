@@ -11,8 +11,6 @@ import {
   ChevronUp,
   ChevronDown,
   X,
-  ChevronLeft,
-  ChevronRight,
   Plus,
   Minus,
 } from "lucide-react";
@@ -200,9 +198,11 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
     };
   }, []);
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  // Infinite scroll state
+  const [displayedCount, setDisplayedCount] = useState(20); // Initial load
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const ITEMS_PER_LOAD = 20; // Load 20 items at a time
 
   // --- SEARCH SYNC WITH HEADER & OTHER TABS ---
   // We listen for:
@@ -374,27 +374,47 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
     return result;
   }, [courses, searchTerm, selectedGenres]);
 
-  // Reset to page 1 when filters change
+  // Reset displayed count when filters change
   useEffect(() => {
-    setCurrentPage(1);
+    setDisplayedCount(20);
   }, [searchTerm, selectedGenres, priceRange]);
 
-  // Calculate pagination
-  const totalPages = Math.max(1, Math.ceil(filteredCourses.length / itemsPerPage));
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedCourses = filteredCourses.slice(startIndex, endIndex);
+  // Calculate displayed courses for infinite scroll
+  const displayedCourses = filteredCourses.slice(0, displayedCount);
+  const hasMore = displayedCount < filteredCourses.length;
 
-  // Pagination handlers
-  const goToPage = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0];
+        if (target.isIntersecting && hasMore && !isLoadingMore) {
+          setIsLoadingMore(true);
+          // Simulate loading delay for better UX
+          setTimeout(() => {
+            setDisplayedCount((prev) => Math.min(prev + ITEMS_PER_LOAD, filteredCourses.length));
+            setIsLoadingMore(false);
+          }, 300);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '200px', // Start loading 200px before reaching the bottom
+        threshold: 0.1,
+      }
+    );
+
+    const currentRef = loadMoreRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
     }
-  };
 
-  const goToNextPage = () => goToPage(Math.min(currentPage + 1, totalPages));
-  const goToPrevPage = () => goToPage(Math.max(currentPage - 1, 1));
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, [hasMore, isLoadingMore, filteredCourses.length, ITEMS_PER_LOAD]);
 
   const toggleGenre = (genre: string) => {
     setSelectedGenres((prev) => (prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]));
@@ -541,7 +561,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
         ) : (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-y-4 gap-x-4">
-              {paginatedCourses.map((book) => {
+              {displayedCourses.map((book) => {
 
                 return (
                   <div
@@ -688,63 +708,25 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
               })}
             </div>
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  {/* Previous button */}
-                  <button
-                    onClick={goToPrevPage}
-                    disabled={currentPage === 1}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === 1 ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 active:scale-95"}`}
-                    style={{ touchAction: "manipulation" }}
-                    aria-label="Previous page"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-
-                  {/* Page numbers */}
-                  <div className="flex items-center gap-1 ">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                      const showPage = page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1);
-
-                      if (!showPage) {
-                        if (page === currentPage - 2 || page === currentPage + 2) {
-                          return (
-                            <span key={page} className="px-2 ">...</span>
-                          );
-                        }
-                        return null;
-                      }
-
-                      return (
-                        <button
-                          key={page}
-                          onClick={() => goToPage(page)}
-                          className={`min-w-[40px] px-3 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === page ? "bg-primary-600 text-gray-400 shadow-md" : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 active:scale-95"}`}
-                          style={{ touchAction: "manipulation" }}
-                          aria-label={`Go to page ${page}`}
-                          aria-current={currentPage === page ? "page" : undefined}
-                        >
-                          {page}
-                        </button>
-                      );
-                    })}
+            {/* Infinite Scroll Loading Indicator */}
+            <div ref={loadMoreRef} className="mt-8 flex justify-center items-center min-h-[100px]">
+              {isLoadingMore && (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="flex gap-2">
+                    <div className="w-3 h-3 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-3 h-3 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-3 h-3 bg-primary-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
-
-                  {/* Next button */}
-                  <button
-                    onClick={goToNextPage}
-                    disabled={currentPage === totalPages}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${currentPage === totalPages ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 active:scale-95"}`}
-                    style={{ touchAction: "manipulation" }}
-                    aria-label="Next page"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
+                  <p className="text-sm text-gray-500 font-medium">Loading more books...</p>
                 </div>
-              </div>
-            )}
+              )}
+              {!hasMore && filteredCourses.length > 20 && (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 font-medium">You've reached the end of the catalogue</p>
+                  <p className="text-sm text-gray-400 mt-1">Showing all {filteredCourses.length} books</p>
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>

@@ -22,6 +22,7 @@ export interface DomainRoutingState {
   redirectPath: string;
   error: string | null;
   homeIconClickRoute: string | null;
+  convertUsernamePasswordToLowercase: boolean | null;
 }
 
 // Global state to prevent multiple simultaneous domain routing calls
@@ -42,6 +43,7 @@ export const useDomainRouting = () => {
     redirectPath: "/login",
     error: null,
     homeIconClickRoute: null,
+    convertUsernamePasswordToLowercase: null,
   });
 
   const applyInstituteTheme = (themeCode: string | null) => {
@@ -109,6 +111,10 @@ export const useDomainRouting = () => {
         allowUsernamePasswordAuth:
           typeof data.allowUsernamePasswordAuth === "boolean"
             ? data.allowUsernamePasswordAuth
+            : null,
+        convertUsernamePasswordToLowercase:
+          typeof data.convertUsernamePasswordToLowercase === "boolean"
+            ? data.convertUsernamePasswordToLowercase
             : null,
       } as const;
       await Preferences.set({
@@ -225,6 +231,7 @@ export const useDomainRouting = () => {
           redirectPath: apiResult.redirect || "/login",
           error: null,
           homeIconClickRoute: apiResult.homeIconClickRoute ?? null,
+          convertUsernamePasswordToLowercase: apiResult.convertUsernamePasswordToLowercase ?? null,
         };
 
         // Cache the result globally
@@ -249,6 +256,7 @@ export const useDomainRouting = () => {
           redirectPath: "/login",
           error: null,
           homeIconClickRoute: null,
+          convertUsernamePasswordToLowercase: null,
         };
 
         globalDomainRoutingState = newState;
@@ -269,6 +277,7 @@ export const useDomainRouting = () => {
         redirectPath: isInvitationRoute ? "" : "/login",
         error: null,
         homeIconClickRoute: null,
+        convertUsernamePasswordToLowercase: null,
       };
 
       globalDomainRoutingState = newState;
@@ -292,6 +301,7 @@ export const useDomainRouting = () => {
             redirectPath: "/login",
             error: null,
             homeIconClickRoute: null,
+            convertUsernamePasswordToLowercase: null,
           };
 
           globalDomainRoutingState = newState;
@@ -315,6 +325,7 @@ export const useDomainRouting = () => {
         redirectPath: isInvitationRoute ? "" : "/login",
         error: error instanceof Error ? error.message : "Unknown error",
         homeIconClickRoute: null,
+        convertUsernamePasswordToLowercase: null,
       };
 
       globalDomainRoutingState = newState;

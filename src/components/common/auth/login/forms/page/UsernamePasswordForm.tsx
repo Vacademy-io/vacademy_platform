@@ -25,6 +25,7 @@ import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 type FormValues = z.infer<typeof loginSchema>;
 
 interface UsernameLoginProps {
@@ -48,7 +49,7 @@ export function UsernameLogin({
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const { setInstituteId } = useInstituteFeatureStore();
-     
+    const domainRouting = useDomainRouting();
 
     const redirect = useRouterState({
         select: (s) =>
@@ -67,7 +68,11 @@ export function UsernameLogin({
 
     const mutation = useMutation({
         mutationFn: (values: FormValues) =>
-            loginUser(values.username, values.password),
+            loginUser(
+                values.username,
+                values.password,
+                domainRouting.convertUsernamePasswordToLowercase
+            ),
         onMutate: () => {
             setIsLoading(true);
         },

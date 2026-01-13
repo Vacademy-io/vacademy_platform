@@ -27,4 +27,5 @@ public class DomainRoutingUpsertRequest {
     private String appStoreAppLink;
     private String windowsAppLink;
     private String macAppLink;
+    private Boolean convertUsernamePasswordToLowercase;
 }

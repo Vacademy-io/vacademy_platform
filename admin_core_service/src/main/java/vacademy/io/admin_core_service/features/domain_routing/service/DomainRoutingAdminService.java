@@ -44,6 +44,7 @@ public class DomainRoutingAdminService {
                 .appStoreAppLink(request.getAppStoreAppLink() == null ? null : request.getAppStoreAppLink().trim())
                 .windowsAppLink(request.getWindowsAppLink() == null ? null : request.getWindowsAppLink().trim())
                 .macAppLink(request.getMacAppLink() == null ? null : request.getMacAppLink().trim())
+                .convertUsernamePasswordToLowercase(request.getConvertUsernamePasswordToLowercase() != null ? request.getConvertUsernamePasswordToLowercase() : false)
                 .build();
         return repository.save(entity);
     }
@@ -85,6 +86,7 @@ public class DomainRoutingAdminService {
                     request.getAppStoreAppLink() == null ? null : request.getAppStoreAppLink().trim());
             existing.setWindowsAppLink(request.getWindowsAppLink() == null ? null : request.getWindowsAppLink().trim());
             existing.setMacAppLink(request.getMacAppLink() == null ? null : request.getMacAppLink().trim());
+            existing.setConvertUsernamePasswordToLowercase(request.getConvertUsernamePasswordToLowercase() != null ? request.getConvertUsernamePasswordToLowercase() : false);
             return repository.save(existing);
         });
     }

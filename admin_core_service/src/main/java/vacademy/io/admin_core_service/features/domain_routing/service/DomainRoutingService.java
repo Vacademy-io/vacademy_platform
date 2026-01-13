@@ -62,6 +62,7 @@ public class DomainRoutingService {
                 .macAppLink(mapping.getMacAppLink())
                 .learnerPortalUrl(institute.getLearnerPortalBaseUrl())
                 .instructorPortalUrl(institute.getAdminPortalBaseUrl())
+                .convertUsernamePasswordToLowercase(mapping.isConvertUsernamePasswordToLowercase())
                 .build();
         return Optional.of(response);
     }

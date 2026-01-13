@@ -34,6 +34,8 @@ export interface DomainRoutingResponse {
   macAppLink?: string | null;
   learnerPortalUrl?: string | null;
   instructorPortalUrl?: string | null;
+  // Optional flag to convert username and password to lowercase during login
+  convertUsernamePasswordToLowercase?: boolean | null;
 }
 
 export interface DomainRoutingError {

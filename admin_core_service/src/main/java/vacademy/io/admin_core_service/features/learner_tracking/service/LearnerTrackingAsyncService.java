@@ -242,6 +242,7 @@ public class LearnerTrackingAsyncService {
                 // STEP 2: Fetch all start-end time intervals for this slide + user
                 List<Object[]> trackedTimes = activityLogRepository.getVideoTrackedIntervals(slideId, userId);
                 List<VideoInterval> intervals = trackedTimes.stream()
+                                .filter(row -> row[0] != null && row[1] != null) // Skip rows with null timestamps
                                 .map(row -> new VideoInterval(((Timestamp) row[0]).toInstant(),
                                                 ((Timestamp) row[1]).toInstant()))
                                 .collect(Collectors.toCollection(ArrayList::new));
@@ -292,6 +293,7 @@ public class LearnerTrackingAsyncService {
                 // STEP 2: Fetch all start-end time intervals for this slide + user
                 List<Object[]> trackedTimes = activityLogRepository.getVideoTrackedIntervals(slideId, userId);
                 List<VideoInterval> intervals = trackedTimes.stream()
+                                .filter(row -> row[0] != null && row[1] != null) // Skip rows with null timestamps
                                 .map(row -> new VideoInterval(((Timestamp) row[0]).toInstant(),
                                                 ((Timestamp) row[1]).toInstant()))
                                 .collect(Collectors.toCollection(ArrayList::new));

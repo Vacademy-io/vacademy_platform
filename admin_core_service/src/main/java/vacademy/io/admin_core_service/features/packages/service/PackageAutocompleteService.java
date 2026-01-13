@@ -40,33 +40,48 @@ public class PackageAutocompleteService {
                 }
 
                 long startTime = System.currentTimeMillis();
-
-                // Sanitize query (remove special characters for safety)
                 String sanitizedQuery = query.trim();
 
-                // Execute optimized query with LIMIT 10
-                List<PackageAutocompleteProjection> results = packageSessionRepository.autocompletePackages(
-                                sanitizedQuery,
-                                instituteId,
-                                sessionId,
-                                levelId,
-                                10 // Always limit to 10 results
-                );
+                try {
+                        // Execute optimized query with LIMIT 10
+                        List<PackageAutocompleteProjection> results = packageSessionRepository.autocompletePackages(
+                                        sanitizedQuery,
+                                        instituteId,
+                                        sessionId,
+                                        levelId,
+                                        10 // Always limit to 10 results
+                        );
 
-                // Map projections to DTOs
-                List<PackageSuggestionDTO> suggestions = results.stream()
-                                .map(p -> new PackageSuggestionDTO(
-                                                p.getPackageId(),
-                                                p.getPackageName(),
-                                                p.getPackageSessionId(),
-                                                p.getMatchScore()))
-                                .collect(Collectors.toList());
+                        // Map projections to DTOs
+                        List<PackageSuggestionDTO> suggestions = results.stream()
+                                        .map(p -> new PackageSuggestionDTO(
+                                                        p.getPackageId(),
+                                                        p.getPackageName(),
+                                                        p.getPackageSessionId(),
+                                                        p.getMatchScore()))
+                                        .collect(Collectors.toList());
 
-                long queryTime = System.currentTimeMillis() - startTime;
+                        long queryTime = System.currentTimeMillis() - startTime;
 
-                log.info("Autocomplete query='{}' returned {} results in {}ms",
-                                sanitizedQuery, suggestions.size(), queryTime);
+                        log.info("Autocomplete query='{}' returned {} results in {}ms",
+                                        sanitizedQuery, suggestions.size(), queryTime);
 
-                return new AutocompleteResponseDTO(suggestions, results.size(), queryTime);
+                        return new AutocompleteResponseDTO(suggestions, results.size(), queryTime);
+                } catch (Exception e) {
+                        log.error("Error during autocomplete for query: {}", sanitizedQuery, e);
+
+                        // Capture error in Sentry with manual tags for easier debugging
+                        io.sentry.Sentry.withScope(scope -> {
+                                scope.setTag("feature", "package-autocomplete");
+                                scope.setTag("institute_id", instituteId);
+                                scope.setTag("query", sanitizedQuery);
+                                scope.setExtra("session_id", sessionId);
+                                scope.setExtra("level_id", levelId);
+                                io.sentry.Sentry.captureException(e);
+                        });
+
+                        // Re-throw to allow global exception handler to return 500
+                        throw e;
+                }
         }
 }

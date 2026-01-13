@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
 import vacademy.io.admin_core_service.features.study_library.dto.SessionDTOWithDetails;
+import vacademy.io.common.institute.dto.PackageSessionDTO;
 
 import java.util.List;
 
@@ -14,9 +15,17 @@ import java.util.List;
 public class CourseDTOWithDetails {
     private CourseDTO course;
     private List<SessionDTOWithDetails> sessions;
+    private List<PackageSessionDTO> packageSessions;
 
     public CourseDTOWithDetails(CourseDTO course, List<SessionDTOWithDetails> sessions) {
         this.course = course;
         this.sessions = sessions;
+    }
+
+    public CourseDTOWithDetails(CourseDTO course, List<SessionDTOWithDetails> sessions,
+            List<PackageSessionDTO> packageSessions) {
+        this.course = course;
+        this.sessions = sessions;
+        this.packageSessions = packageSessions;
     }
 }

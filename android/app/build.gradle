@@ -52,8 +52,8 @@ android {
 		fivesep {
 			dimension "client"
 			applicationId "com.fivesep.app"
-			versionCode 2
-			versionName "1.0.1"
+			versionCode 3
+			versionName "1.0.2"
 			// Change app name for Fivesep
 			resValue "string", "app_name", "iThinkers by Fivesep"
 			// Set the deep link host for Fivesep (adjust to your domain)

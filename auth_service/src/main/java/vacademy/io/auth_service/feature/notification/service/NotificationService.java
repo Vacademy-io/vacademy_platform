@@ -104,7 +104,7 @@ public class NotificationService {
         EmailOTPRequest request = EmailOTPRequest.builder()
                 .phoneNumber(phoneNumber)
                 .type("WHATSAPP")
-                .service("auth-service")
+                .service(instituteId) // ← FIXED: Pass institute ID instead of "auth-service"
                 .build();
 
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(

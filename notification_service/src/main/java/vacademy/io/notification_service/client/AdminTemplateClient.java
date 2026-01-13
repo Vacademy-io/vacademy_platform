@@ -21,7 +21,7 @@ public class AdminTemplateClient {
     @Value("${spring.application.name}")
     private String clientName;
 
-    @Value("${admin.service.base-url:http://localhost:8070}")
+    @Value("${admin.service.base-url:http://localhost:8072}")
     private String adminServiceBaseUrl;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -35,7 +35,8 @@ public class AdminTemplateClient {
      */
     public WhatsAppTemplateConfigDTO getWhatsAppTemplate(String eventName, String instituteId) {
         try {
-            String url = "/api/v1/templates/internal/whatsapp-template?eventName=" + eventName + "&instituteId="
+            String url = "/admin-core-service/institute/template/v1/internal/whatsapp-template?eventName=" + eventName
+                    + "&instituteId="
                     + instituteId;
 
             log.info("Fetching WhatsApp template from admin service: event={}, institute={}", eventName, instituteId);
@@ -61,6 +62,9 @@ public class AdminTemplateClient {
 
         } catch (Exception e) {
             log.error("Error fetching WhatsApp template from admin service: {}", e.getMessage(), e);
+            log.error("Full error details - URL: {}, Base URL: {}, Event: {}, Institute: {}",
+                    "/admin-core-service/institute/template/v1/internal/whatsapp-template",
+                    adminServiceBaseUrl, eventName, instituteId);
             return null;
         }
     }

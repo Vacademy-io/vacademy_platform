@@ -54,8 +54,8 @@ public class NotificationEventConfig {
     private String createdBy;
 
     // Constructor for creating new configs
-    public NotificationEventConfig(NotificationEventType eventName, NotificationSourceType sourceType, String sourceId, 
-                                 NotificationTemplateType templateType, String templateId) {
+    public NotificationEventConfig(NotificationEventType eventName, NotificationSourceType sourceType, String sourceId,
+            NotificationTemplateType templateType, String templateId) {
         this.eventName = eventName;
         this.sourceType = sourceType;
         this.sourceId = sourceId;

@@ -74,7 +74,9 @@ public class ApplicationSecurityConfig {
             // Agent SSE stream - EventSource doesn't support auth headers, session is
             // validated internally
             "/admin-core-service/v1/agent/stream/**",
-            "/admin-core-service/api/v1/audience/webhook/**"
+            "/admin-core-service/api/v1/audience/webhook/**",
+            // WhatsApp template endpoint for notification-service (HMAC authenticated)
+            "/admin-core-service/institute/template/v1/internal/whatsapp-template"
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;
@@ -105,7 +107,7 @@ public class ApplicationSecurityConfig {
                 })
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                        .anonymous(anonymous -> anonymous.disable())
+                .anonymous(anonymous -> anonymous.disable())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

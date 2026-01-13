@@ -12,9 +12,17 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute.dto.template.*;
 import vacademy.io.admin_core_service.features.institute.entity.Template;
 import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
+import vacademy.io.admin_core_service.features.notification.entity.NotificationEventConfig;
+import vacademy.io.admin_core_service.features.notification.repository.NotificationEventConfigRepository;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationTemplateType;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,6 +31,7 @@ import java.util.stream.Collectors;
 public class TemplateService {
 
     private final TemplateRepository templateRepository;
+    private final NotificationEventConfigRepository eventConfigRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -34,7 +43,8 @@ public class TemplateService {
 
         // Check if template name already exists for the institute
         if (templateRepository.existsByInstituteIdAndName(request.getInstituteId(), request.getName())) {
-            throw new IllegalArgumentException("Template with name '" + request.getName() + "' already exists for this institute");
+            throw new IllegalArgumentException(
+                    "Template with name '" + request.getName() + "' already exists for this institute");
         }
 
         // Handle dynamic parameters based on contentType
@@ -42,7 +52,8 @@ public class TemplateService {
         if (request.getDynamicParameters() != null) {
             try {
                 dynamicParametersJson = objectMapper.writeValueAsString(request.getDynamicParameters());
-                log.info("Converted dynamic parameters to JSON for type {}: {}", request.getType(), dynamicParametersJson);
+                log.info("Converted dynamic parameters to JSON for type {}: {}", request.getType(),
+                        dynamicParametersJson);
             } catch (JsonProcessingException e) {
                 log.error("Error converting dynamic parameters to JSON: {}", e.getMessage());
                 throw new IllegalArgumentException("Invalid dynamic parameters format");
@@ -94,10 +105,13 @@ public class TemplateService {
         Template existingTemplate = templateRepository.findById(request.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Template not found with ID: " + request.getId()));
 
-        // Check if template name already exists for the institute (excluding current template)
+        // Check if template name already exists for the institute (excluding current
+        // template)
         if (request.getName() != null && !request.getName().equals(existingTemplate.getName())) {
-            if (templateRepository.existsByInstituteIdAndNameAndIdNot(existingTemplate.getInstituteId(), request.getName(), request.getId())) {
-                throw new IllegalArgumentException("Template with name '" + request.getName() + "' already exists for this institute");
+            if (templateRepository.existsByInstituteIdAndNameAndIdNot(existingTemplate.getInstituteId(),
+                    request.getName(), request.getId())) {
+                throw new IllegalArgumentException(
+                        "Template with name '" + request.getName() + "' already exists for this institute");
             }
         }
 
@@ -125,27 +139,28 @@ public class TemplateService {
             try {
                 String settingJsonString = objectMapper.writeValueAsString(request.getSettingJson());
                 existingTemplate.setSettingJson(settingJsonString);
-                log.info("Updated settings to JSON for type {}: {}", 
+                log.info("Updated settings to JSON for type {}: {}",
                         request.getType() != null ? request.getType() : existingTemplate.getType(), settingJsonString);
             } catch (JsonProcessingException e) {
                 log.error("Error converting settings to JSON: {}", e.getMessage());
                 throw new IllegalArgumentException("Invalid settings format");
             }
         }
-        
+
         // Handle dynamic parameters update
         if (request.getDynamicParameters() != null) {
             try {
                 String dynamicParametersJson = objectMapper.writeValueAsString(request.getDynamicParameters());
                 existingTemplate.setDynamicParameters(dynamicParametersJson);
-                log.info("Updated dynamic parameters to JSON for type {}: {}", 
-                        request.getType() != null ? request.getType() : existingTemplate.getType(), dynamicParametersJson);
+                log.info("Updated dynamic parameters to JSON for type {}: {}",
+                        request.getType() != null ? request.getType() : existingTemplate.getType(),
+                        dynamicParametersJson);
             } catch (JsonProcessingException e) {
                 log.error("Error converting dynamic parameters to JSON: {}", e.getMessage());
                 throw new IllegalArgumentException("Invalid dynamic parameters format");
             }
         }
-        
+
         if (request.getCanDelete() != null) {
             existingTemplate.setCanDelete(request.getCanDelete());
         }
@@ -179,7 +194,9 @@ public class TemplateService {
 
     /**
      * Get all templates for an institute
-     * @deprecated Use getTemplatesByInstitutePaginated instead to avoid memory issues
+     * 
+     * @deprecated Use getTemplatesByInstitutePaginated instead to avoid memory
+     *             issues
      */
     @Deprecated
     public List<TemplateResponse> getTemplatesByInstitute(String instituteId) {
@@ -198,17 +215,19 @@ public class TemplateService {
     public PagedTemplateResponse getTemplatesByInstitutePaginated(String instituteId, int pageNo, int pageSize) {
         log.info("Getting paginated templates for institute: {}, page: {}, size: {}", instituteId, pageNo, pageSize);
 
-        // Convert pageNo from 1-based to 0-based (if needed) or use as-is if already 0-based
+        // Convert pageNo from 1-based to 0-based (if needed) or use as-is if already
+        // 0-based
         // Based on PageConstants, DEFAULT_PAGE_NUMBER is "0", so we'll use it as-is
         Pageable pageable = PageRequest.of(pageNo, pageSize);
-        Page<Template> templatePage = templateRepository.findByInstituteIdOrderByCreatedAtDescPageable(instituteId, pageable);
+        Page<Template> templatePage = templateRepository.findByInstituteIdOrderByCreatedAtDescPageable(instituteId,
+                pageable);
 
         List<TemplateSummaryResponse> summaryList = templatePage.getContent().stream()
                 .map(this::convertToSummaryResponse)
                 .collect(Collectors.toList());
 
         int totalPages = templatePage.getTotalPages();
-        
+
         return PagedTemplateResponse.builder()
                 .content(summaryList)
                 .pageNumber(pageNo)
@@ -235,7 +254,8 @@ public class TemplateService {
     /**
      * Get templates by institute, type, and vendor
      */
-    public List<TemplateResponse> getTemplatesByInstituteTypeAndVendor(String instituteId, String type, String vendorId) {
+    public List<TemplateResponse> getTemplatesByInstituteTypeAndVendor(String instituteId, String type,
+            String vendorId) {
         log.info("Getting templates for institute: {}, type: {}, vendor: {}", instituteId, type, vendorId);
 
         List<Template> templates = templateRepository.findByInstituteIdAndTypeAndVendorId(instituteId, type, vendorId);
@@ -254,10 +274,13 @@ public class TemplateService {
 
         if (request.getSearchText() != null && !request.getSearchText().trim().isEmpty()) {
             // Search by name, subject, or content
-            List<Template> nameResults = templateRepository.findByNameContainingIgnoreCase(request.getInstituteId(), request.getSearchText());
-            List<Template> subjectResults = templateRepository.findBySubjectContainingIgnoreCase(request.getInstituteId(), request.getSearchText());
-            List<Template> contentResults = templateRepository.findByContentContainingIgnoreCase(request.getInstituteId(), request.getSearchText());
-            
+            List<Template> nameResults = templateRepository.findByNameContainingIgnoreCase(request.getInstituteId(),
+                    request.getSearchText());
+            List<Template> subjectResults = templateRepository
+                    .findBySubjectContainingIgnoreCase(request.getInstituteId(), request.getSearchText());
+            List<Template> contentResults = templateRepository
+                    .findByContentContainingIgnoreCase(request.getInstituteId(), request.getSearchText());
+
             // Combine and deduplicate
             templates = nameResults.stream()
                     .distinct()
@@ -280,7 +303,8 @@ public class TemplateService {
                 .filter(t -> request.getCanDelete() == null || t.getCanDelete().equals(request.getCanDelete()))
                 .filter(t -> request.getContentType() == null || request.getContentType().equals(t.getContentType()))
                 .filter(t -> request.getStatus() == null || request.getStatus().equals(t.getStatus()))
-                .filter(t -> request.getTemplateCategory() == null || request.getTemplateCategory().equals(t.getTemplateCategory()))
+                .filter(t -> request.getTemplateCategory() == null
+                        || request.getTemplateCategory().equals(t.getTemplateCategory()))
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
     }
@@ -322,6 +346,82 @@ public class TemplateService {
      */
     public boolean templateExistsByName(String instituteId, String name) {
         return templateRepository.existsByInstituteIdAndName(instituteId, name);
+    }
+
+    /**
+     * Get WhatsApp template for a specific event and institute
+     * Used by notification-service for WhatsApp OTP
+     * Falls back to DEFAULT institute if no custom template found
+     * 
+     * @param eventName   Event name (e.g., "OTP_REQUEST")
+     * @param instituteId Institute ID
+     * @return Map containing template configuration
+     */
+    public Map<String, Object> getTemplateForEvent(String eventName, String instituteId) {
+        log.info("Fetching WhatsApp template for event: {}, institute: {}", eventName, instituteId);
+
+        try {
+            // Step 1: Try to find institute-specific event configuration
+            Optional<NotificationEventConfig> eventConfig = eventConfigRepository
+                    .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                            NotificationEventType.valueOf(eventName),
+                            NotificationSourceType.INSTITUTE,
+                            instituteId,
+                            NotificationTemplateType.WHATSAPP);
+
+            // Step 2: Fallback to default event configuration
+            if (eventConfig.isEmpty()) {
+                log.info("No custom event config found for institute: {}, using DEFAULT", instituteId);
+                eventConfig = eventConfigRepository
+                        .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                                NotificationEventType.valueOf(eventName),
+                                NotificationSourceType.INSTITUTE,
+                                "DEFAULT",
+                                NotificationTemplateType.WHATSAPP);
+            }
+
+            if (eventConfig.isEmpty()) {
+                log.error("No event configuration found for event: {}", eventName);
+                throw new RuntimeException("No template configuration found for event: " + eventName);
+            }
+
+            // Step 3: Fetch template by template_id
+            String templateId = eventConfig.get().getTemplateId();
+            Template template = templateRepository.findById(templateId)
+                    .orElseThrow(() -> new RuntimeException("Template not found: " + templateId));
+
+            // Step 4: Parse setting_json and return as Map
+            Map<String, Object> result = new HashMap<>();
+            result.put("templateName", template.getName());
+
+            // Parse setting_json
+            if (template.getSettingJson() != null && !template.getSettingJson().isBlank()) {
+                JsonNode settingJson = objectMapper.readTree(template.getSettingJson());
+
+                // Extract language code
+                String languageCode = settingJson.path("language_code").asText("en");
+                result.put("languageCode", languageCode);
+
+                // Extract parameters - convert JsonNode to Map for proper JSON serialization
+                if (settingJson.has("parameters")) {
+                    // Convert JsonNode to Map so it can be properly serialized/deserialized
+                    Map<String, Object> parameters = objectMapper.convertValue(
+                            settingJson.get("parameters"),
+                            new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                            });
+                    result.put("parameterConfig", parameters);
+                }
+            } else {
+                result.put("languageCode", "en");
+            }
+
+            log.info("Successfully fetched template: {} for event: {}", template.getName(), eventName);
+            return result;
+
+        } catch (Exception e) {
+            log.error("Error fetching template for event {}: {}", eventName, e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch template configuration", e);
+        }
     }
 
     /**
@@ -374,7 +474,8 @@ public class TemplateService {
     }
 
     /**
-     * Convert Template entity to TemplateSummaryResponse DTO (excludes large fields)
+     * Convert Template entity to TemplateSummaryResponse DTO (excludes large
+     * fields)
      */
     private TemplateSummaryResponse convertToSummaryResponse(Template template) {
         return TemplateSummaryResponse.builder()

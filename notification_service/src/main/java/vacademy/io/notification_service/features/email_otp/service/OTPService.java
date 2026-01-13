@@ -84,8 +84,8 @@ public class OTPService {
         EmailOtp otp = createNewWhatsAppOTP(phoneNumber, service);
         try {
             // Default template configuration (fallback if database lookup fails)
-            String templateName = "";
-            String languageCode = "";
+            String templateName = "otp_ll";
+            String languageCode = "en";
             WhatsAppTemplateConfigDTO templateConfig = null;
 
             // Try to fetch institute-specific template if institute ID is provided

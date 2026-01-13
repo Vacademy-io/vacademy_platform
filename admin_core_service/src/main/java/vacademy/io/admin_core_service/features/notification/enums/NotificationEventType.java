@@ -10,7 +10,8 @@ public enum NotificationEventType {
     LIVE_SESSION_REMINDER("LIVE_SESSION_REMINDER"),
     CERTIFICATE_GENERATED("CERTIFICATE_GENERATED"),
     REFERRAL_INVITATION("REFERRAL_INVITATION"),
-    AUDIENCE_FORM_SUBMISSION("AUDIENCE_FORM_SUBMISSION");
+    AUDIENCE_FORM_SUBMISSION("AUDIENCE_FORM_SUBMISSION"),
+    OTP_REQUEST("OTP_REQUEST"); // ← Added for WhatsApp OTP
 
     private final String value;
 
@@ -27,5 +28,3 @@ public enum NotificationEventType {
         return value;
     }
 }
-
-

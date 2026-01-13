@@ -31,15 +31,15 @@ public class TemplateController {
     public ResponseEntity<TemplateResponse> createTemplate(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @Valid @RequestBody TemplateRequest request) {
-        
-        log.info("Creating template: {} for institute: {} by user: {}", 
+
+        log.info("Creating template: {} for institute: {} by user: {}",
                 request.getName(), request.getInstituteId(), userDetails.getUserId());
-        
+
         try {
             // Set user information
             request.setCreatedBy(userDetails.getUserId());
             request.setUpdatedBy(userDetails.getUserId());
-            
+
             TemplateResponse response = templateService.createTemplate(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (Exception e) {
@@ -55,13 +55,13 @@ public class TemplateController {
     public ResponseEntity<TemplateResponse> updateTemplate(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @Valid @RequestBody TemplateUpdateRequest request) {
-        
+
         log.info("Updating template: {} by user: {}", request.getId(), userDetails.getUserId());
-        
+
         try {
             // Set user information
             request.setUpdatedBy(userDetails.getUserId());
-            
+
             TemplateResponse response = templateService.updateTemplate(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -77,9 +77,9 @@ public class TemplateController {
     public ResponseEntity<TemplateResponse> getTemplateById(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable String id) {
-        
+
         log.info("Getting template by ID: {} for user: {}", id, userDetails.getUserId());
-        
+
         try {
             TemplateResponse response = templateService.getTemplateById(id);
             return ResponseEntity.ok(response);
@@ -91,7 +91,8 @@ public class TemplateController {
 
     /**
      * Get all templates for an institute (paginated)
-     * Returns lightweight template summaries without content to prevent memory issues
+     * Returns lightweight template summaries without content to prevent memory
+     * issues
      */
     @GetMapping("/institute/{instituteId}")
     public ResponseEntity<PagedTemplateResponse> getTemplatesByInstitute(
@@ -99,12 +100,13 @@ public class TemplateController {
             @PathVariable String instituteId,
             @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
             @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
-        
-        log.info("Getting paginated templates for institute: {} by user: {}, page: {}, size: {}", 
+
+        log.info("Getting paginated templates for institute: {} by user: {}, page: {}, size: {}",
                 instituteId, userDetails.getUserId(), pageNo, pageSize);
-        
+
         try {
-            PagedTemplateResponse response = templateService.getTemplatesByInstitutePaginated(instituteId, pageNo, pageSize);
+            PagedTemplateResponse response = templateService.getTemplatesByInstitutePaginated(instituteId, pageNo,
+                    pageSize);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error getting templates for institute: {}", e.getMessage());
@@ -120,10 +122,10 @@ public class TemplateController {
             @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable String instituteId,
             @PathVariable String type) {
-        
-        log.info("Getting templates for institute: {} and type: {} by user: {}", 
+
+        log.info("Getting templates for institute: {} and type: {} by user: {}",
                 instituteId, type, userDetails.getUserId());
-        
+
         try {
             List<TemplateResponse> response = templateService.getTemplatesByInstituteAndType(instituteId, type);
             return ResponseEntity.ok(response);
@@ -142,12 +144,13 @@ public class TemplateController {
             @PathVariable String instituteId,
             @PathVariable String type,
             @PathVariable String vendorId) {
-        
-        log.info("Getting templates for institute: {}, type: {}, vendor: {} by user: {}", 
+
+        log.info("Getting templates for institute: {}, type: {}, vendor: {} by user: {}",
                 instituteId, type, vendorId, userDetails.getUserId());
-        
+
         try {
-            List<TemplateResponse> response = templateService.getTemplatesByInstituteTypeAndVendor(instituteId, type, vendorId);
+            List<TemplateResponse> response = templateService.getTemplatesByInstituteTypeAndVendor(instituteId, type,
+                    vendorId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error getting templates by institute, type, and vendor: {}", e.getMessage());
@@ -162,9 +165,9 @@ public class TemplateController {
     public ResponseEntity<List<TemplateResponse>> searchTemplates(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestBody TemplateSearchRequest request) {
-        
+
         log.info("Searching templates with filters: {} by user: {}", request, userDetails.getUserId());
-        
+
         try {
             List<TemplateResponse> response = templateService.searchTemplates(request);
             return ResponseEntity.ok(response);
@@ -181,9 +184,9 @@ public class TemplateController {
     public ResponseEntity<Map<String, String>> deleteTemplate(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable String id) {
-        
+
         log.info("Deleting template: {} by user: {}", id, userDetails.getUserId());
-        
+
         try {
             templateService.deleteTemplate(id);
             return ResponseEntity.ok(Map.of("message", "Template deleted successfully", "id", id));
@@ -202,10 +205,10 @@ public class TemplateController {
             @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable String instituteId,
             @PathVariable String type) {
-        
-        log.info("Getting template count for institute: {} and type: {} by user: {}", 
+
+        log.info("Getting template count for institute: {} and type: {} by user: {}",
                 instituteId, type, userDetails.getUserId());
-        
+
         try {
             long count = templateService.getTemplateCountByInstituteAndType(instituteId, type);
             return ResponseEntity.ok(Map.of("count", count));
@@ -223,9 +226,9 @@ public class TemplateController {
     public ResponseEntity<Map<String, Long>> getTemplateCountByInstitute(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable String instituteId) {
-        
+
         log.info("Getting template count for institute: {} by user: {}", instituteId, userDetails.getUserId());
-        
+
         try {
             long count = templateService.getTemplateCountByInstitute(instituteId);
             return ResponseEntity.ok(Map.of("count", count));
@@ -244,10 +247,10 @@ public class TemplateController {
             @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable String instituteId,
             @PathVariable String name) {
-        
-        log.info("Checking if template exists by name: {} for institute: {} by user: {}", 
+
+        log.info("Checking if template exists by name: {} for institute: {} by user: {}",
                 name, instituteId, userDetails.getUserId());
-        
+
         try {
             boolean exists = templateService.templateExistsByName(instituteId, name);
             return ResponseEntity.ok(Map.of("exists", exists));
@@ -255,6 +258,32 @@ public class TemplateController {
             log.error("Error checking template existence: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("exists", false));
+        }
+    }
+
+    /**
+     * Get WhatsApp template for event (internal endpoint for notification-service)
+     * This endpoint is called by notification-service to fetch WhatsApp templates
+     * for specific events like OTP_REQUEST
+     * 
+     * @param eventName   Event name (e.g., "OTP_REQUEST")
+     * @param instituteId Institute ID
+     * @return WhatsApp template configuration
+     */
+    @GetMapping("/internal/whatsapp-template")
+    public ResponseEntity<Map<String, Object>> getWhatsAppTemplate(
+            @RequestParam String eventName,
+            @RequestParam String instituteId) {
+
+        log.info("Internal request for WhatsApp template: event={}, institute={}", eventName, instituteId);
+
+        try {
+            Map<String, Object> template = templateService.getTemplateForEvent(eventName, instituteId);
+            return ResponseEntity.ok(template);
+        } catch (Exception e) {
+            log.error("Error fetching WhatsApp template for event {}: {}", eventName, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 }

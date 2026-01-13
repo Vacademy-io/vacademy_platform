@@ -63,6 +63,40 @@ export const useVideoSync = () => {
 
         activity = calculateAndUpdateTimestamps(activity);
 
+        // Helper function to validate video timestamp entry
+        const isValidVideoTimestamp = (timestamp: { id: string; start: number; end: number }) => {
+          return (
+            timestamp.start != null &&
+            timestamp.end != null &&
+            typeof timestamp.start === 'number' &&
+            typeof timestamp.end === 'number' &&
+            !isNaN(timestamp.start) &&
+            !isNaN(timestamp.end) &&
+            timestamp.start >= 0 &&
+            timestamp.end >= 0 &&
+            timestamp.end >= timestamp.start
+          );
+        };
+
+        // Filter out invalid timestamps before creating payload
+        const validTimestamps = activity.timestamps.filter(isValidVideoTimestamp);
+        const invalidTimestamps = activity.timestamps.filter(t => !isValidVideoTimestamp(t));
+
+        // Log invalid entries for debugging
+        if (invalidTimestamps.length > 0) {
+          console.warn('🚨 [useVideoSync] Invalid video tracking timestamps detected and filtered out:', {
+            activityId: activity.activity_id,
+            slideId: activity.id,
+            invalidTimestamps: invalidTimestamps.map(t => ({
+              id: t.id,
+              start: t.start,
+              end: t.end,
+              startType: typeof t.start,
+              endType: typeof t.end,
+            })),
+          });
+        }
+
         const apiPayload: TrackingDataType = {
           id: activity.activity_id,
           source_id: '',
@@ -72,7 +106,7 @@ export const useVideoSync = () => {
           start_time_in_millis: activity.start_time,
           end_time_in_millis: activity.end_time,
           percentage_watched: parseFloat(activity.percentage_watched),
-          videos: activity.timestamps.map((timestamp) => ({
+          videos: validTimestamps.map((timestamp) => ({
             id: timestamp.id,
             start_time_in_millis: timestamp.start,
             end_time_in_millis: timestamp.end,

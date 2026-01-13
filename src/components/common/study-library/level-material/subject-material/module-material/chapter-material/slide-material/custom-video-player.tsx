@@ -1055,15 +1055,34 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                         timestampDurationRef.current;
                     const endTimeStamp = formatVideoTime(endTimeInSeconds);
 
-                    currentTimestamps.current.push({
-                        id: uuidv4(),
-                        start_time: currentStartTimeRef.current,
-                        end_time: endTimeStamp,
-                        start:
-                            convertTimeToSeconds(currentStartTimeRef.current) *
-                            1000,
-                        end: convertTimeToSeconds(endTimeStamp) * 1000,
-                    });
+                    // Only create timestamp if we have a valid start time
+                    // This prevents creating timestamps when pause event fires before any play event
+                    const startTimeInMillis = convertTimeToSeconds(currentStartTimeRef.current) * 1000;
+                    const endTimeInMillis = convertTimeToSeconds(endTimeStamp) * 1000;
+                    
+                    if (
+                        currentStartTimeRef.current !== "" &&
+                        !isNaN(startTimeInMillis) &&
+                        !isNaN(endTimeInMillis) &&
+                        endTimeInMillis >= startTimeInMillis &&
+                        timestampDurationRef.current > 0 // Only add if there was actual playback duration
+                    ) {
+                        currentTimestamps.current.push({
+                            id: uuidv4(),
+                            start_time: currentStartTimeRef.current,
+                            end_time: endTimeStamp,
+                            start: startTimeInMillis,
+                            end: endTimeInMillis,
+                        });
+                    } else {
+                        console.warn('⚠️ [CustomVideoPlayer] Skipped creating invalid timestamp:', {
+                            startTime: currentStartTimeRef.current,
+                            endTime: endTimeStamp,
+                            startTimeInMillis,
+                            endTimeInMillis,
+                            timestampDuration: timestampDurationRef.current,
+                        });
+                    }
 
                     currentStartTimeRef.current = formatVideoTime(currentTime);
                     timestampDurationRef.current = 0;

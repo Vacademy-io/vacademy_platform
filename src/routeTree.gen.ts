@@ -31,6 +31,7 @@ import { Route as CoursesIndexRouteImport } from './routes/courses/index'
 import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
 import { Route as AudienceResponseIndexRouteImport } from './routes/audience-response/index'
 import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
+import { Route as AiSettingsIndexRouteImport } from './routes/ai-settings/index'
 import { Route as TagNameIndexRouteImport } from './routes/$tagName/index'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
@@ -178,6 +179,11 @@ const AudienceResponseIndexRoute = AudienceResponseIndexRouteImport.update({
 const AssessmentIndexRoute = AssessmentIndexRouteImport.update({
   id: '/assessment/',
   path: '/assessment/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AiSettingsIndexRoute = AiSettingsIndexRouteImport.update({
+  id: '/ai-settings/',
+  path: '/ai-settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TagNameIndexRoute = TagNameIndexRouteImport.update({
@@ -398,6 +404,7 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
 
 export interface FileRoutesByFullPath {
   '/$tagName': typeof TagNameIndexRoute
+  '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
@@ -459,6 +466,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/$tagName': typeof TagNameIndexRoute
+  '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
@@ -521,6 +529,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/$tagName/': typeof TagNameIndexRoute
+  '/ai-settings/': typeof AiSettingsIndexRoute
   '/assessment/': typeof AssessmentIndexRoute
   '/audience-response/': typeof AudienceResponseIndexRoute
   '/change-password/': typeof ChangePasswordIndexRoute
@@ -584,6 +593,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/$tagName'
+    | '/ai-settings'
     | '/assessment'
     | '/audience-response'
     | '/change-password'
@@ -645,6 +655,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$tagName'
+    | '/ai-settings'
     | '/assessment'
     | '/audience-response'
     | '/change-password'
@@ -706,6 +717,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/$tagName/'
+    | '/ai-settings/'
     | '/assessment/'
     | '/audience-response/'
     | '/change-password/'
@@ -768,6 +780,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   TagNameIndexRoute: typeof TagNameIndexRoute
+  AiSettingsIndexRoute: typeof AiSettingsIndexRoute
   AssessmentIndexRoute: typeof AssessmentIndexRoute
   AudienceResponseIndexRoute: typeof AudienceResponseIndexRoute
   ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
@@ -982,6 +995,13 @@ declare module '@tanstack/react-router' {
       path: '/assessment'
       fullPath: '/assessment'
       preLoaderRoute: typeof AssessmentIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ai-settings/': {
+      id: '/ai-settings/'
+      path: '/ai-settings'
+      fullPath: '/ai-settings'
+      preLoaderRoute: typeof AiSettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$tagName/': {
@@ -1248,6 +1268,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   TagNameIndexRoute: TagNameIndexRoute,
+  AiSettingsIndexRoute: AiSettingsIndexRoute,
   AssessmentIndexRoute: AssessmentIndexRoute,
   AudienceResponseIndexRoute: AudienceResponseIndexRoute,
   ChangePasswordIndexRoute: ChangePasswordIndexRoute,

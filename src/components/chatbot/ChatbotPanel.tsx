@@ -8,7 +8,10 @@ import {
   Maximize2,
   Minimize2,
   Copy,
+  Check,
+  Settings,
 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,7 +27,6 @@ import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import { Check } from "phosphor-react";
 import { avatarUrl } from "@/services/chatbot-settings";
 
 interface ChatbotPanelProps {
@@ -198,6 +200,16 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
+                  <Link to="/ai-settings">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                      title="AI Settings"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </Link>
                   <Button
                     variant="ghost"
                     size="icon"

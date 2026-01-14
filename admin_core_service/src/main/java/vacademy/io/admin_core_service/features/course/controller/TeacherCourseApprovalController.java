@@ -2,16 +2,19 @@ package vacademy.io.admin_core_service.features.course.controller;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.course.dto.TeacherCourseDetailDTO;
 import vacademy.io.admin_core_service.features.course.service.CourseApprovalService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.PackageEntity;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/admin-core-service/teacher/course-approval/v1")
@@ -43,6 +46,28 @@ public class TeacherCourseApprovalController {
         } catch (Exception e) {
             log.error("Error getting teacher courses with details for {}: {}", teacher.getUserId(), e.getMessage());
             return ResponseEntity.ok(new ArrayList<>()); // Return empty list on error
+        }
+    }
+
+    /**
+     * V2: Enhanced endpoint that provides detailed information about teacher's relationship to each course
+     * Returns structured data with relationship metadata like whether teacher is creator or faculty-assigned, 
+     * number of assignments, and assigned subjects
+     * Includes DELETED filter and pagination support
+     */
+    @GetMapping("/my-courses/detailed/v2")
+    public ResponseEntity<Page<TeacherCourseDetailDTO>> getTeacherCoursesWithDetailsV2(
+            @RequestAttribute("user") CustomUserDetails teacher,
+            Pageable pageable) {
+        try {
+            Page<TeacherCourseDetailDTO> coursesWithDetails = courseApprovalService.getTeacherCoursesAsDTOV2(teacher.getUserId(), pageable);
+            return ResponseEntity.ok(coursesWithDetails);
+        } catch (VacademyException e) {
+            log.error("Validation error getting teacher courses with details for {}: {}", teacher.getUserId(), e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Unexpected error getting teacher courses with details for {}: {}", teacher.getUserId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 

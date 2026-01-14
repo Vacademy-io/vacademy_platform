@@ -54,4 +54,10 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
         List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteIdAndStatusWithPackageSession(
                         @Param("enrollInviteId") String enrollInviteId,
                         @Param("statusList") List<String> statusList);
+
+        @Modifying
+        @Query("UPDATE PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "SET psl.status = :status " +
+                        "WHERE psl.packageSession.id IN :packageSessionIds")
+        void updateStatusByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds, @Param("status") String status);
 }

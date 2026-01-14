@@ -38,7 +38,13 @@ public class UserInstituteController {
 
     @GetMapping("/setup/{instituteId}")
     public ResponseEntity<InstituteSetupDTO> getInstituteSetupDetails(@PathVariable String instituteId) {
-        InstituteSetupDTO instituteSetupDTO = instituteInitManager.getInstituteSetupDetails(instituteId);
+        InstituteSetupDTO instituteSetupDTO = instituteInitManager.getInstituteSetupDetails(instituteId, true);
+        return ResponseEntity.ok(instituteSetupDTO);
+    }
+
+    @GetMapping("/setup-without-batches/{instituteId}")
+    public ResponseEntity<InstituteSetupDTO> getInstituteSetupDetailsWithoutBatches(@PathVariable String instituteId) {
+        InstituteSetupDTO instituteSetupDTO = instituteInitManager.getInstituteSetupDetails(instituteId, false);
         return ResponseEntity.ok(instituteSetupDTO);
     }
 

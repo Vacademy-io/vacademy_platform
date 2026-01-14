@@ -37,6 +37,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/institute/open_learner/v1/**",
             "/admin-core-service/institute/v1/internal/create",
             "/admin-core-service/learner/v1/details/**",
+            "/admin-core-service/learner/info/v1/details/**",
             "/admin-core-service/actuator/**",
             "/admin-core-service/swagger-ui.html",
             "/admin-core-service/v1/report/alert/**",
@@ -105,7 +106,7 @@ public class ApplicationSecurityConfig {
                 })
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                        .anonymous(anonymous -> anonymous.disable())
+                .anonymous(anonymous -> anonymous.disable())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

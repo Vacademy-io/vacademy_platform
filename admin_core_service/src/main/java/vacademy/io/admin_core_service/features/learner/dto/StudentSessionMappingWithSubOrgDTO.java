@@ -47,4 +47,5 @@ public class StudentSessionMappingWithSubOrgDTO {
     
     // Sub-org details (nested institute object)
     private InstituteBasicDTO subOrgDetails;
+    private String inviteCode;
 }

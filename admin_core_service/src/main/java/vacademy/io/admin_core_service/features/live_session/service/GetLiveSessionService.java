@@ -275,34 +275,12 @@ public class GetLiveSessionService {
     }
 
     public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(String batchId, String userId, CustomUserDetails user) {
-        // Get sessions for batch
-        List<LiveSessionRepository.LiveSessionListProjection> batchProjections =
-                new ArrayList<>();
-        if (StringUtils.hasText(batchId)){
-            batchProjections = sessionRepository.findUpcomingSessionsForBatch(batchId);
-        }
-        
-        // Get sessions for user
-        System.out.println("userid is:"+userId);
-        List<LiveSessionRepository.LiveSessionListProjection> userProjections =
-                sessionRepository.findUpcomingSessionsForUser(userId);
+        // Optimized: Single query that fetches both batch and user sessions with database-level deduplication
+        List<LiveSessionRepository.LiveSessionListProjection> projections = 
+                sessionRepository.findUpcomingSessionsForUserAndBatch(batchId, userId);
 
-        // Combine both lists and remove duplicates based on sessionId and scheduleId
-        Map<String, LiveSessionRepository.LiveSessionListProjection> uniqueSessions = new LinkedHashMap<>();
-        
-        // Add batch sessions
-        for (LiveSessionRepository.LiveSessionListProjection p : batchProjections) {
-            String key = p.getSessionId() + "_" + p.getScheduleId();
-            uniqueSessions.put(key, p);
-        }
-        
-        // Add user sessions (will override batch sessions if same key exists)
-        for (LiveSessionRepository.LiveSessionListProjection p : userProjections) {
-            String key = p.getSessionId() + "_" + p.getScheduleId();
-            uniqueSessions.put(key, p);
-        }
-
-        List<LiveSessionListDTO> flatList = uniqueSessions.values().stream().map(p -> new LiveSessionListDTO(
+        // Map projections to DTOs
+        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),

@@ -77,7 +77,7 @@ export const useInstituteDetailsStore = create<InstituteDetailsStore>(
 
         getLevelsFromPackage: (params) => {
             const { instituteDetails } = get();
-            if (!instituteDetails) return [];
+            if (!instituteDetails || !instituteDetails.batches_for_sessions) return [];
 
             const levels = instituteDetails.batches_for_sessions
                 .filter((batch) => {
@@ -114,7 +114,7 @@ export const useInstituteDetailsStore = create<InstituteDetailsStore>(
 
         getLevelsFromPackage2: (params) => {
             const { instituteDetails } = get();
-            if (!instituteDetails) return [];
+            if (!instituteDetails || !instituteDetails.batches_for_sessions) return [];
 
             const levels = instituteDetails.batches_for_sessions
                 .filter((batch) => {
@@ -148,7 +148,7 @@ export const useInstituteDetailsStore = create<InstituteDetailsStore>(
 
         getCourseFromPackage: (params) => {
             const { instituteDetails } = get();
-            if (!instituteDetails) return [];
+            if (!instituteDetails || !instituteDetails.batches_for_sessions) return [];
 
             const courses = instituteDetails.batches_for_sessions
                 .filter((batch) => {
@@ -185,7 +185,7 @@ export const useInstituteDetailsStore = create<InstituteDetailsStore>(
 
         getSessionFromPackage: (params) => {
             const { instituteDetails } = get();
-            if (!instituteDetails) return [];
+            if (!instituteDetails || !instituteDetails.batches_for_sessions) return [];
 
             const sessions = instituteDetails.batches_for_sessions
                 .filter((batch) => {
@@ -222,7 +222,7 @@ export const useInstituteDetailsStore = create<InstituteDetailsStore>(
 
         getPackageSessionId: (params) => {
             const { instituteDetails } = get();
-            if (!instituteDetails) return null;
+            if (!instituteDetails || !instituteDetails.batches_for_sessions) return null;
 
             const matchingBatch = instituteDetails.batches_for_sessions.find(
                 (batch) =>
@@ -236,7 +236,7 @@ export const useInstituteDetailsStore = create<InstituteDetailsStore>(
 
         getPackageWiseLevels: (params?: { sessionId?: string }) => {
             const { instituteDetails } = get();
-            if (!instituteDetails) return [];
+            if (!instituteDetails || !instituteDetails.batches_for_sessions) return [];
 
             // Filter batches based on optional parameters
             const filteredBatches =
@@ -320,8 +320,9 @@ export const useInstituteDetailsStore = create<InstituteDetailsStore>(
             packageSessionId: string;
         }) => {
             const { instituteDetails } = get();
+            if (!instituteDetails || !instituteDetails.batches_for_sessions) return null;
 
-            const matchingBatch = instituteDetails?.batches_for_sessions.find(
+            const matchingBatch = instituteDetails.batches_for_sessions.find(
                 (batch) => batch.id === params.packageSessionId
             );
 

@@ -158,15 +158,38 @@ const storeSessionMappings = async (
   students: Student[],
   institute: Institute
 ): Promise<void> => {
-  if (!institute.batches_for_sessions || institute.batches_for_sessions.length === 0) {
-    console.warn("⚠️ No batches found in institute details, skipping session mapping");
-    return;
-  }
+  let matchedSessions: any[] = [];
 
-  const packageSessionIds = students.map((s) => s.package_session_id);
-  const matchedSessions = institute.batches_for_sessions.filter(
-    (batch: Batch) => packageSessionIds.includes(batch.id)
-  );
+  if (institute.batches_for_sessions && institute.batches_for_sessions.length > 0) {
+     const packageSessionIds = students.map((s) => s.package_session_id);
+     matchedSessions = institute.batches_for_sessions.filter(
+       (batch: Batch) => packageSessionIds.includes(batch.id)
+     );
+  } else {
+     // Fallback: Construct session objects from student details if standard batches list is missing
+     matchedSessions = students.map(student => ({
+        id: student.package_session_id,
+        status: student.status,
+        package_dto: {
+            id: "", // ID not available in student details fallback
+            package_name: student.package_name || "",
+            thumbnail_file_id: null
+        },
+        level: {
+            id: "", // ID not available
+            level_name: student.level_name || "",
+            thumbnail_id: null,
+            duration_in_days: null
+        },
+        session: {
+            id: "", // ID not available
+            session_name: student.session_name || "",
+            start_date: "", // Date not available
+            status: "ACTIVE"
+        },
+        start_time: null
+     })).filter(s => s.id);
+  }
 
   // Store matched sessions
   await Preferences.set({
@@ -177,7 +200,7 @@ const storeSessionMappings = async (
   // Store institute batches as fallback
   await Preferences.set({
     key: "instituteBatchesForSessions",
-    value: JSON.stringify(institute.batches_for_sessions),
+    value: JSON.stringify(institute.batches_for_sessions || []),
   });
 
   await storeMappedSessions();

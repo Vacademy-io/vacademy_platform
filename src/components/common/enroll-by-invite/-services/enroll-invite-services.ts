@@ -428,7 +428,7 @@ export const getPublicInstituteDetails = async ({
 }) => {
   const response = await axios({
     method: "GET",
-    url: `${BASE_URL}/admin-core-service/public/institute/v1/details/${instituteId}`,
+    url: `${BASE_URL}/admin-core-service/public/institute/v1/details-non-batches/${instituteId}`,
   });
   return response?.data;
 };

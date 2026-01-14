@@ -314,6 +314,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                                     ? course.instructors
                                                     : []
                                             }
+                                            packageSessionId={course.package_session_id || undefined}
                                             description={
                                                 course.course_html_description_html ||
                                                 fallbackDescription

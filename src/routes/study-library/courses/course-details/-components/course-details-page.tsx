@@ -1,7 +1,7 @@
 import { useRouter } from "@tanstack/react-router";
 import { CaretLeft } from "@phosphor-icons/react";
 import { toTitleCase } from "@/lib/utils";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import {
@@ -21,7 +21,7 @@ import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import { transformApiDataToCourseData } from "../-utils/helper";
 
 import {
-  handleGetAllCourseDetails,
+  handleGetCourseInit,
   handleGetCourseDetails,
 } from "../-services/get-course-details";
 import axios from "axios";
@@ -30,7 +30,7 @@ import { getInstituteId } from "@/constants/helper";
 import { Preferences } from "@capacitor/preferences";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { CourseStructureDetails } from "./course-structure-details";
-import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
+// CourseStructureResponse no longer needed - using single course fetch
 import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
 import { DonationDialog } from "@/components/common/donation/DonationDialog";
 import { EnrollmentPaymentDialog } from "./payment-dialogs/EnrollmentPaymentDialog";
@@ -59,6 +59,8 @@ import { CourseContentSections } from "./course-content-sections";
 import { CourseSidebar } from "./course-sidebar";
 import { Button } from "@/components/ui/button";
 import { extractTextFromHTML } from "@/components/common/helper";
+import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
+import { BatchForSessionType } from "@/stores/study-library/institute-schema";
 
 type SlideType = {
   id: string;
@@ -202,6 +204,9 @@ export const CourseDetailsPage = () => {
     pathname: string,
     searchParamsObj: Record<string, string | undefined>
   ) => router.navigate({ to: pathname, search: searchParamsObj });
+
+  // Access the store setter
+  const { setInstituteDetails } = useInstituteDetailsStore();
 
   // Separate handlers for enrollment and navigation
   const handleEnrollmentSuccess = async () => {
@@ -527,101 +532,155 @@ export const CourseDetailsPage = () => {
     number | null
   >(null);
 
+  // Store fetched batches to avoid re-fetching on session/level changes
+  const [fetchedBatches, setFetchedBatches] = useState<BatchForSessionType[]>([]);
+  const hasFetchedRef = useRef(false);
+
+  // Effect 1: Fetch institute details and batches ONCE when instituteId is available
   useEffect(() => {
-    const fetchInstituteDetails = async () => {
+    // Skip if already fetched for this courseId
+    if (hasFetchedRef.current) return;
+
+    const fetchInstituteAndBatches = async () => {
       updateLoadingState("instituteDetails", true);
-      const fetchedInstituteId = await getInstituteId();
+      const fetchedInstituteId = instituteId || await getInstituteId();
+      
+      if (!fetchedInstituteId) {
+          updateLoadingState("instituteDetails", false);
+          return;
+      }
+
       try {
-        const response = await axios.get(
+        // Prepare promises for parallel execution
+        const instituteDetailsPromise = axios.get(
           `${urlInstituteDetails}/${fetchedInstituteId}`
         );
-        const packageSessionId = getIdByLevelAndSession(
-          response.data.batches_for_sessions,
-          selectedSession,
-          selectedLevel,
-          searchParams.courseId || ""
-        );
-        setPackageSessionIdForCurrentLevel(packageSessionId);
+
+        const batchesPromise = searchParams.courseId 
+            ? (async () => {
+                const { fetchBatchesForCourse } = await import("@/services/courseBatches");
+                return fetchBatchesForCourse(searchParams.courseId!);
+              })()
+            : Promise.resolve([]);
+
+        // Execute in parallel
+        const [instituteResponse, batches] = await Promise.all([
+            instituteDetailsPromise,
+            batchesPromise
+        ]);
+
+        const instituteData = instituteResponse.data;
+        
+        // Update institute details store
+        setInstituteDetails(instituteData);
+        // Store batches for mapping
+        setFetchedBatches(batches);
+        hasFetchedRef.current = true;
+
         if (import.meta.env.MODE !== "production") {
-          console.info("[CourseDetailsPage] mapping result", {
-            selectedSession,
-            selectedLevel,
+          console.info("[CourseDetailsPage] Data fetched", {
+            batchesCount: batches.length,
             courseId: searchParams.courseId,
-            packageSessionIdForCurrentLevel: packageSessionId,
           });
         }
-
-        // Fallback mapping: when exact session+level mapping is missing, try to select a batch for this course
-        if (!packageSessionId) {
-          const batches = (response.data.batches_for_sessions || []) as Array<{
-            id?: string;
-            level?: { id?: string };
-            session?: { id?: string };
-            package_dto?: { id?: string };
-            read_time_in_minutes?: number;
-          }>;
-
-          // Prefer same course + same session
-          const byCourseAndSession = batches.find(
-            (b) =>
-              b.package_dto?.id === (searchParams.courseId || "") &&
-              b.session?.id === selectedSession
-          );
-          // Else, any batch for the same course
-          const byCourseOnly = batches.find(
-            (b) => b.package_dto?.id === (searchParams.courseId || "")
-          );
-
-          const chosen = byCourseAndSession || byCourseOnly;
-
-          if (chosen?.id) {
-            setPackageSessionIdForCurrentLevel(chosen.id);
-            // Align UI selection to a valid mapping to avoid empty outline
-            if (chosen.session?.id && chosen.session.id !== selectedSession) {
-              setSelectedSession(chosen.session.id);
-            }
-            if (chosen.level?.id && chosen.level.id !== selectedLevel) {
-              setSelectedLevel(chosen.level.id);
-            }
-
-            if (import.meta.env.MODE !== "production") {
-              console.info("[CourseDetailsPage] fallback mapping applied", {
-                chosenPackageSessionId: chosen.id,
-                chosenSession: chosen.session?.id,
-                chosenLevel: chosen.level?.id,
-                strategy: byCourseAndSession ? "course+session" : "course-only",
-              });
-            }
-          } else if (import.meta.env.MODE !== "production") {
-            console.info(
-              "[CourseDetailsPage] fallback mapping not found for course",
-              {
-                courseId: searchParams.courseId,
-                batchesCount: batches.length,
-              }
-            );
-          }
-        }
-
-        // Note: read_time_in_minutes is now extracted from package detail API (singleCourseQuery)
-        // The batches API value is NOT used as it may be incorrect
-      } catch {
-        // Error handling
+      } catch (error) {
+        console.error("Failed to fetch institute details or batches", error);
       } finally {
         updateLoadingState("instituteDetails", false);
       }
     };
 
-    // Only fetch when we have the required dependencies
-    if (instituteId && selectedSession && selectedLevel) {
-      fetchInstituteDetails();
+    if (instituteId) {
+        fetchInstituteAndBatches();
+    }
+  }, [instituteId, searchParams.courseId, updateLoadingState, setInstituteDetails]);
+
+  // Effect 2: Map session/level to packageSessionId when batches or selections change
+  // This does NOT re-fetch data, only re-calculates the mapping
+  useEffect(() => {
+    if (fetchedBatches.length === 0) return;
+
+    // Fix: Prioritize packageSessionId from URL if available
+    if (searchParams.packageSessionId) {
+        const targetBatch = fetchedBatches.find(b => b.id === searchParams.packageSessionId);
+        
+        if (targetBatch?.session?.id && targetBatch?.level?.id) {
+             setPackageSessionIdForCurrentLevel(targetBatch.id);
+             
+             // Ensure level options are populated for the selected session
+             const sessions = form.getValues("courseData")?.sessions || [];
+             const selectedSessionData = sessions.find(s => s.sessionDetails.id === targetBatch.session.id);
+             if (selectedSessionData) {
+                  const newLevelOptions = selectedSessionData.levelDetails.map(level => ({
+                      _id: level.id,
+                      value: level.id,
+                      label: level.name,
+                  }));
+                  setLevelOptions(newLevelOptions);
+             }
+
+             // Check if we need to update session/level (avoid loops)
+             if (selectedSession !== targetBatch.session.id) {
+                setSelectedSession(targetBatch.session.id);
+                // Also set level immediately since we know exactly which combination it is
+                if (selectedLevel !== targetBatch.level.id) {
+                     setSelectedLevel(targetBatch.level.id);
+                }
+             } else if (selectedLevel !== targetBatch.level.id) {
+                 setSelectedLevel(targetBatch.level.id);
+             }
+             return; 
+        }
+    }
+
+    const packageSessionId = getIdByLevelAndSession(
+      fetchedBatches,
+      selectedSession,
+      selectedLevel,
+      searchParams.courseId || ""
+    );
+
+    if (packageSessionId) {
+      setPackageSessionIdForCurrentLevel(packageSessionId);
+      if (import.meta.env.MODE !== "production") {
+        console.info("[CourseDetailsPage] mapping result", {
+          selectedSession,
+          selectedLevel,
+          courseId: searchParams.courseId,
+          packageSessionIdForCurrentLevel: packageSessionId,
+        });
+      }
+      return; // Found a direct match, done
+    }
+
+    // Fallback mapping: when exact session+level mapping is missing
+    const byCourseAndSession = fetchedBatches.find(
+      (b) =>
+        b.package_dto?.id === (searchParams.courseId || "") &&
+        b.session?.id === selectedSession
+    );
+    const byCourseOnly = fetchedBatches.find(
+      (b) => b.package_dto?.id === (searchParams.courseId || "")
+    );
+
+    const chosen = byCourseAndSession || byCourseOnly;
+
+    if (chosen?.id) {
+      setPackageSessionIdForCurrentLevel(chosen.id);
+      // Only set session/level if they are currently empty to avoid loops
+      if (!selectedSession && chosen.session?.id) {
+        setSelectedSession(chosen.session.id);
+      }
+      if (!selectedLevel && chosen.level?.id) {
+        setSelectedLevel(chosen.level.id);
+      }
     }
   }, [
-    instituteId,
+    fetchedBatches,
     selectedSession,
     selectedLevel,
     searchParams.courseId,
-    updateLoadingState,
+    searchParams.packageSessionId,
   ]);
 
   // Fetch payment type when institute ID is available
@@ -643,13 +702,15 @@ export const CourseDetailsPage = () => {
       }
     };
 
+
     fetchPaymentType();
   }, [instituteId]);
 
-  // Only run the query if instituteId is available
-  const { data: studyLibraryData, isLoading: isCourseDetailsLoading } =
+  // Fetch single course details using the new scalable endpoint
+  const { data: courseDetailsData, isLoading: isCourseDetailsLoading } =
     useSuspenseQuery(
-      handleGetAllCourseDetails({
+      handleGetCourseInit({
+        courseId: searchParams.courseId || "",
         instituteId: instituteId || "",
       })
     );
@@ -659,13 +720,6 @@ export const CourseDetailsPage = () => {
     updateLoadingState("courseDetails", isCourseDetailsLoading);
   }, [isCourseDetailsLoading, updateLoadingState]);
 
-  const courseDetailsData = useMemo(() => {
-    const found = studyLibraryData?.find(
-      (item: CourseStructureResponse) =>
-        item.course.id === searchParams.courseId
-    );
-    return found;
-  }, [studyLibraryData, searchParams.courseId]);
 
   // Update completion percentage when course details data changes
   useEffect(() => {
@@ -932,6 +986,19 @@ export const CourseDetailsPage = () => {
 
   // Watch sessions so memo recomputes when form.reset updates course data
   const watchedSessions = form.watch("courseData.sessions") || [];
+
+  // Watch entire courseData to get stable reference for child components
+  const watchedCourseData = form.watch();
+  
+  // Create a stable key based on session IDs to detect when data actually changes
+  const sessionIdsKey = useMemo(() => 
+    JSON.stringify((watchedSessions || []).map((s: { sessionDetails?: { id?: string } }) => s.sessionDetails?.id)),
+    [watchedSessions]
+  );
+  
+  // Memoize the courseData to prevent new object reference on every render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableCourseData = useMemo(() => watchedCourseData, [sessionIdsKey]);
 
   // Convert sessions to select options format - filter based on selectedTab
   const sessionOptions = useMemo(() => {
@@ -1622,7 +1689,7 @@ export const CourseDetailsPage = () => {
 
   // Show loading until essential data is ready; defer packageSessionId-dependent UI below
 
-  if (isLoading || !instituteId || !studyLibraryData) {
+  if (isLoading || !instituteId || !courseDetailsData) {
     return <DashboardLoader />;
   }
 
@@ -1758,8 +1825,8 @@ export const CourseDetailsPage = () => {
                 <CourseStructureDetails
                   selectedSession={selectedSession}
                   selectedLevel={selectedLevel}
-                  courseStructure={form.getValues("courseData.courseStructure")}
-                  courseData={form.getValues()}
+                  courseStructure={stableCourseData?.courseData?.courseStructure || 5}
+                  courseData={stableCourseData}
                   packageSessionId={packageSessionIdForCurrentLevel || ""}
                   selectedTab={selectedTab}
                   updateModuleStats={updateModuleStats}

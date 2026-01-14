@@ -26,6 +26,9 @@ interface Student {
   created_at: string;
   updated_at: string;
   country: string;
+  package_name?: string;
+  level_name?: string;
+  session_name?: string;
   // Additional fields from the image
   course?: string;
   session?: string;

@@ -73,7 +73,7 @@ export const InstituteSchema = z.object({
     founded_date: z.string().nullable(),
     sub_modules: z.array(SubModuleSchema),
     sessions: z.array(SessionSchema),
-    batches_for_sessions: z.array(BatchForSessionSchema),
+    batches_for_sessions: z.array(BatchForSessionSchema).optional().nullable(),
     levels: z.array(LevelSchema),
     genders: z.array(z.enum(["MALE", "FEMALE", "OTHER"])),
     student_statuses: z.array(z.enum(["ACTIVE", "INACTIVE"])),

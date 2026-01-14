@@ -481,25 +481,37 @@ function Slides() {
           }
 
           // Try to find course info in institute batches_for_sessions
+          let batches = institute.batches_for_sessions || [];
+
+          // If no batches in cache, try fetching from API
+          if ((!batches || batches.length === 0) && courseId) {
+             try {
+                const { fetchBatchesForCourse } = await import("@/services/courseBatches");
+                batches = await fetchBatchesForCourse(courseId);
+             } catch (e) {
+                console.error("Failed to fetch batches dynamically", e);
+             }
+          }
+
           if (
-            institute.batches_for_sessions &&
-            Array.isArray(institute.batches_for_sessions)
+            batches &&
+            Array.isArray(batches)
           ) {
             // Try multiple matching strategies
-            let matchingBatch = institute.batches_for_sessions.find(
+            let matchingBatch = batches.find(
               (batch: BatchForSessionType) => batch.id === sessionId
             );
 
             if (!matchingBatch) {
-              matchingBatch = institute.batches_for_sessions.find(
+              matchingBatch = batches.find(
                 (batch: BatchForSessionType) =>
                   batch.package_dto?.id === courseId
               );
             }
 
             // If still no match, use the first available batch
-            if (!matchingBatch && institute.batches_for_sessions.length > 0) {
-              matchingBatch = institute.batches_for_sessions[0];
+            if (!matchingBatch && batches.length > 0) {
+              matchingBatch = batches[0];
             }
 
             if (matchingBatch) {

@@ -6,7 +6,7 @@ export const getPublicInstituteDetails = async () => {
   const instituteId = await getInstituteIdSync();
   try {
     const response = await axios.get(
-      `${BASE_URL}/admin-core-service/public/institute/v1/details/${instituteId}`
+      `${BASE_URL}/admin-core-service/public/institute/v1/details-non-batches/${instituteId}`
     );
     return response.data;
   } catch (error) {

@@ -13,7 +13,9 @@ import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSour
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -55,6 +57,7 @@ public class SubOrgLearnerService {
     private final InstituteCustomFieldRepository instituteCustomFieldRepository;
     private final WorkflowTriggerService workflowTriggerService;
     private final UserPlanRepository userPlanRepository;
+    private final EnrollInviteRepository enrollInviteRepository;
 
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
@@ -583,6 +586,7 @@ public class SubOrgLearnerService {
                 .userId(mapping.getUserId())
                 .instituteEnrolledNumber(mapping.getInstituteEnrolledNumber())
                 .enrolledDate(mapping.getEnrolledDate())
+                .inviteCode(getUserPlanId(mapping.getUserPlanId()))
                 .expiryDate(mapping.getExpiryDate())
                 .status(mapping.getStatus())
                 .createdAt(mapping.getCreatedAt())
@@ -614,6 +618,13 @@ public class SubOrgLearnerService {
                         ? mapping.getPackageSession().getSession().getSessionName()
                         : null)
                 .build();
+    }
+
+    private String getUserPlanId(String userPlanId){
+        if (userPlanId == null) {
+            return null;
+        }
+        return userPlanRepository.findInviteCodeByUserPlanId(userPlanId).orElse(null);
     }
 
     @Async

@@ -14,6 +14,10 @@ import java.util.Optional;
 import java.time.LocalDateTime;
 
 public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
+
+    @Query("SELECT ei.inviteCode FROM UserPlan up JOIN up.enrollInvite ei WHERE up.id = :userPlanId")
+    Optional<String> findInviteCodeByUserPlanId(@Param("userPlanId") String userPlanId);
+
     @Query(value = """
                 SELECT DISTINCT up FROM UserPlan up
                 JOIN FETCH up.enrollInvite ei

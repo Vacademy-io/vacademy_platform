@@ -23,7 +23,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
-            "WHERE pi.institute_id = :instituteId AND ps.status IN (:statuses)", nativeQuery = true)
+            "WHERE pi.institute_id = :instituteId AND ps.status IN (:statuses)",
+            nativeQuery = true)
     List<PackageSession> findPackageSessionsByInstituteId(
             @Param("instituteId") String instituteId,
             @Param("statuses") List<String> statuses);
@@ -33,7 +34,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             "FROM package_session ps " +
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
-            "WHERE pi.institute_id = :instituteId AND ps.session_id = :sessionId", nativeQuery = true)
+            "WHERE pi.institute_id = :instituteId AND ps.session_id = :sessionId",
+            nativeQuery = true)
     List<PackageSession> findPackageSessionsByInstituteIdAndSessionId(
             @Param("instituteId") String instituteId, @Param("sessionId") String sessionId);
 
@@ -48,7 +50,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             "JOIN package p ON ps.package_id = p.id " +
             "JOIN package_institute pi ON p.id = pi.package_id " +
             "WHERE pi.institute_id = :instituteId " +
-            "AND ps.status IN (:statusList)", nativeQuery = true)
+            "AND ps.status IN (:statusList)",
+            nativeQuery = true)
     Long findCountPackageSessionsByInstituteIdAndStatusIn(
             @Param("instituteId") String instituteId,
             @Param("statusList") List<String> statusList);
@@ -85,7 +88,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     List<PackageEntity> findPackagesBySessionIdAndStatuses(
             @Param("sessionId") String sessionId,
             @Param("instituteId") String instituteId,
-            @Param("statuses") List<String> statuses);
+            @Param("statuses") List<String> statuses
+    );
 
     @Query(value = """
             SELECT
@@ -116,7 +120,10 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     List<BatchProjection> findBatchDetailsWithLatestInviteCode(
             @Param("packageId") String packageId,
             @Param("packageSessionStatuses") List<String> packageSessionStatuses,
-            @Param("studentSessionStatuses") List<String> studentSessionStatuses);
+            @Param("studentSessionStatuses") List<String> studentSessionStatuses
+    );
+
+
 
     @Query("""
                 SELECT
@@ -129,8 +136,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                 JOIN pi.instituteEntity i
                 WHERE ps.id = :packageSessionId
             """)
-    Optional<BatchInstituteProjection> findBatchAndInstituteByPackageSessionId(
-            @Param("packageSessionId") String packageSessionId);
+    Optional<BatchInstituteProjection> findBatchAndInstituteByPackageSessionId(@Param("packageSessionId") String packageSessionId);
 
     @Query("SELECT ps FROM PackageSession ps WHERE ps.packageEntity.id IN :packageIds")
     List<PackageSession> findAllByPackageIds(@Param("packageIds") List<String> packageIds);
@@ -154,7 +160,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("levelId") String levelId,
             @Param("sessionId") String sessionId,
             @Param("packageEntityId") String packageEntityId,
-            @Param("statuses") List<String> statuses);
+            @Param("statuses") List<String> statuses
+    );
 
     Optional<PackageSession> findByPackageEntityIdAndSessionIdAndLevelId(String packageId, String sessionId,
             String levelId);
@@ -194,7 +201,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("sessionId") String sessionId,
             @Param("invitedPackageSessionStatuses") List<String> invitedPackageSessionStatuses,
             @Param("packageSessionStatuses") List<String> packageSessionStatuses,
-            @Param("packageStatuses") List<String> packageStatuses);
+            @Param("packageStatuses") List<String> packageStatuses
+    );
 
     @Query("SELECT ps FROM PackageSession ps " +
             "WHERE ps.packageEntity.id = :packageId " +
@@ -205,13 +213,15 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("packageId") String packageId,
             @Param("sessionId") String sessionId,
             @Param("levelId") String levelId,
-            @Param("statuses") List<String> statuses);
+            @Param("statuses") List<String> statuses
+    );
 
     Optional<PackageSession> findByPackageEntity_IdAndLevel_IdAndSession_IdAndStatusIn(
             String packageId,
             String levelId,
             String sessionId,
-            List<String> status);
+            List<String> status
+    );
 
     @Query("""
                 SELECT ps
@@ -220,6 +230,39 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                   AND ps.status = 'INVITED'
             """)
     List<PackageSession> findAllInvitedByPackageIds(@Param("packageIds") Set<String> packageIds);
+
+    /**
+     * Autocomplete search for packages by name with relevance scoring
+     * Optimized for 20,000+ packages with database indexing and LIMIT 10
+     */
+    @Query(value = """
+            SELECT
+                ps.id AS packageSessionId,
+                p.id AS packageId,
+                p.package_name AS packageName,
+                CASE
+                    WHEN LOWER(p.package_name) = LOWER(:query) THEN 100
+                    WHEN LOWER(p.package_name) LIKE LOWER(CONCAT(:query, '%')) THEN 90
+                    ELSE 50
+                END AS matchScore
+            FROM package_session ps
+            JOIN package p ON ps.package_id = p.id
+            JOIN package_institute pi ON p.id = pi.package_id
+            WHERE
+                pi.institute_id = :instituteId
+                AND LOWER(p.package_name) LIKE LOWER(CONCAT(:query, '%'))
+                AND ps.session_id = :sessionId
+                AND ps.level_id = :levelId
+                AND ps.status IN ('ACTIVE', 'HIDDEN','DRAFT')
+            ORDER BY matchScore DESC, p.package_name ASC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<vacademy.io.admin_core_service.features.packages.dto.PackageAutocompleteProjection> autocompletePackages(
+            @Param("query") String query,
+            @Param("instituteId") String instituteId,
+            @Param("sessionId") String sessionId,
+            @Param("levelId") String levelId,
+            @Param("limit") int limit);
 
     List<PackageSession> findByPackageEntity_IdAndStatus(String packageId, String status);
 

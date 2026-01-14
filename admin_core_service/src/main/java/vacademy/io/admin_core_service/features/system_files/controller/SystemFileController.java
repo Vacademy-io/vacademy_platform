@@ -15,6 +15,9 @@ import vacademy.io.admin_core_service.features.system_files.dto.SystemFileReques
 import vacademy.io.admin_core_service.features.system_files.dto.SystemFileUpdateAccessRequestDTO;
 import vacademy.io.admin_core_service.features.system_files.dto.SystemFileUpdateAccessResponseDTO;
 import vacademy.io.admin_core_service.features.system_files.dto.MyFilesRequestDTO;
+import vacademy.io.admin_core_service.features.system_files.dto.EmailAssetRequestDTO;
+import vacademy.io.admin_core_service.features.system_files.dto.EmailAssetResponseDTO;
+import vacademy.io.admin_core_service.features.system_files.dto.EmailAssetListResponseDTO;
 import vacademy.io.admin_core_service.features.system_files.service.SystemFileService;
 import vacademy.io.admin_core_service.config.cache.ClientCacheable;
 import vacademy.io.admin_core_service.config.cache.CacheScope;
@@ -104,6 +107,43 @@ public class SystemFileController {
                                 user.getUserId(), instituteId, request.getUserRoles());
 
                 SystemFileListResponseDTO response = systemFileService.getMyFiles(request, instituteId, user);
+
+                return ResponseEntity.ok(response);
+        }
+
+        /**
+         * Add an email asset (image/gif) for an institute
+         * Email assets are automatically granted institute-level access
+         */
+        @PostMapping("/email-assets/add")
+        @CacheEvict(value = "systemFileList", allEntries = true)
+        public ResponseEntity<EmailAssetResponseDTO> addEmailAsset(
+                        @Valid @RequestBody EmailAssetRequestDTO request,
+                        @RequestParam String instituteId,
+                        @RequestAttribute("user") CustomUserDetails user) {
+
+                log.info("POST /admin-core-service/system-files/v1/email-assets/add - User: {}, Institute: {}, Asset: {}",
+                                user.getUserId(), instituteId, request.getName());
+
+                EmailAssetResponseDTO response = systemFileService.addEmailAsset(request, instituteId, user);
+
+                return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        }
+
+        /**
+         * Get all email assets for an institute
+         * Returns all images/gifs stored as email assets with institute-level access
+         */
+        @GetMapping("/email-assets")
+        @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PRIVATE, varyHeaders = { "X-Institute-Id" })
+        public ResponseEntity<EmailAssetListResponseDTO> getEmailAssets(
+                        @RequestParam String instituteId,
+                        @RequestAttribute("user") CustomUserDetails user) {
+
+                log.info("GET /admin-core-service/system-files/v1/email-assets - User: {}, Institute: {}",
+                                user.getUserId(), instituteId);
+
+                EmailAssetListResponseDTO response = systemFileService.getEmailAssetsByInstitute(instituteId, user);
 
                 return ResponseEntity.ok(response);
         }

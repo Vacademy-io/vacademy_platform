@@ -275,11 +275,15 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-    @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId")
-    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(String batchId, String userId, CustomUserDetails user) {
+    @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId + '_' + #page + '_' + #size + '_' + #startDate + '_' + #endDate")
+    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(
+            String batchId, String userId, int page, int size, String startDate, String endDate, CustomUserDetails user) {
+        // Calculate offset for pagination
+        int offset = page * size;
+        
         // Optimized: Single query that fetches both batch and user sessions with database-level deduplication
         List<LiveSessionRepository.LiveSessionListProjection> projections = 
-                sessionRepository.findUpcomingSessionsForUserAndBatch(batchId, userId);
+                sessionRepository.findUpcomingSessionsForUserAndBatchWithFilters(batchId, userId, startDate, endDate, offset, size);
 
         // Map projections to DTOs
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(

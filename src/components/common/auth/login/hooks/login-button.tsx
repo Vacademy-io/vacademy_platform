@@ -22,15 +22,20 @@ const loginResponseSchema = z.object({
 async function loginUser(
     username: string,
     password: string,
+    convertToLowercase?: boolean | null,
 ): Promise<z.infer<typeof loginResponseSchema>> {
+    // Convert username and password to lowercase if flag is true
+    const finalUsername = convertToLowercase === true ? username.toLowerCase() : username;
+    const finalPassword = convertToLowercase === true ? password.toLowerCase() : password;
+    
     const response = await fetch(LOGIN_URL, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            user_name: username,
-            password: password,
+            user_name: finalUsername,
+            password: finalPassword,
             client_name: "ADMIN_PORTAL",
             // institute_id: INSTITUTE_ID,
         }),

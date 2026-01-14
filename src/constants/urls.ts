@@ -1,4 +1,4 @@
-export const BASE_URL = 
+export const BASE_URL =
   import.meta.env.VITE_BACKEND_URL ||
   // Backward compatibility with older env var name used in Docker/docs
   import.meta.env.VITE_API_BASE_URL ||
@@ -7,6 +7,8 @@ export const BASE_URL_LEARNER_DASHBOARD =
   import.meta.env.VITE_LEARNER_DASHBOARD_URL || "https://learner.vacademy.io";
 export const BASE_URL_TEACHER_DASHBOARD =
   import.meta.env.VITE_TEACHER_DASHBOARD_URL || "https://dash.vacademy.io";
+export const AI_SERVICE_BASE_URL =
+  "https://backend-stage.vacademy.io/ai-service";
 //urls
 export const INSTITUTE_ID =
   import.meta.env.VITE_INSTITUTE_ID || "c70f40a5-e4d3-4b6c-a498-e612d0d4b133";
@@ -101,7 +103,7 @@ export const GET_USERID_URL = `${BASE_URL}/admin-core-service/institute/open_lea
 export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/learner/v1/daily-time-spent`;
 
 // Live session
-export const LIVE_SESSION_REQUEST_OTP =`${BASE_URL}/notification-service/v1/send-email-otp`;
+export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/send-email-otp`;
 export const LIVE_SESSION_VERIFY_OTP = `${BASE_URL}/notification-service/v1/verify-email-otp`;
 export const LEAD_COLLECTION_ENROLL_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll/detail`;
 export const LIVE_SESSION_GET_REGISTRATION_DATA = `${BASE_URL}/admin-core-service/live-session/get-registration-data`;
@@ -185,3 +187,6 @@ export const GET_PUBLIC_MEDIA_DETAILS = `${BASE_URL}/media-service/public/get-de
 export const GET_AI_PROCESSED_LOGS = `${BASE_URL}/admin-core-service/llm-analytics/processed-logs`;
 
 export const USER_LINKED_DATA = `${BASE_URL}/admin-core-service/v1/student-analysis/user-linked-data`;
+
+export const USER_AI_KEY = `${BASE_URL}/ai-service/api-keys/v1/user`;
+export const USER_TOKEN_USAGE = `${BASE_URL}/ai-service/token-usage/v1/user`;

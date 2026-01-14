@@ -22,6 +22,7 @@ import {
 import { loginUser } from "@/components/common/auth/login/hooks/login-button";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import { useDomainRouting } from "@/hooks/use-domain-routing";
 
 const loginSchema = z.object({
     username: z.string().min(1, "Username is required"),
@@ -59,6 +60,7 @@ export function ModalUsernameLogin({
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const domainRouting = useDomainRouting();
 
     const form = useForm<FormValues>({
         resolver: zodResolver(loginSchema),
@@ -70,7 +72,11 @@ export function ModalUsernameLogin({
 
     const mutation = useMutation({
         mutationFn: (data: FormValues) =>
-            loginUser(data.username, data.password),
+            loginUser(
+                data.username,
+                data.password,
+                domainRouting.convertUsernamePasswordToLowercase
+            ),
         onMutate: () => {
             setIsLoading(true);
         },

@@ -98,8 +98,15 @@ public class StudyLibraryService {
 
     @Transactional
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
-        validateInstituteId(instituteId);
-        return new ArrayList<>();
+           
+        // Step 1: Fetch all packages for the institute
+        List<PackageEntity> packages = packageRepository.findDistinctPackagesByInstituteIdAndStatuses(
+                instituteId, 
+                List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name(), PackageStatusEnum.IN_REVIEW.name()), 
+                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name())
+        );
+
+        return buildCourseDTOWithDetailsForPackages(packages, instituteId);
     }
 
     /**

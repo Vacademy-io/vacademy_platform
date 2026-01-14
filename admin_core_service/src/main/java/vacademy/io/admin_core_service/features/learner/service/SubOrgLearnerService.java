@@ -186,23 +186,32 @@ public class SubOrgLearnerService {
 
         log.info("Found {} active custom fields configured for institute", instituteCustomFieldsData.size());
 
-        // Build template list of all custom fields with null values
-        List<CustomFieldDTO> instituteCustomFieldsTemplate = new ArrayList<>();
+        // Build template map of all custom fields with null values, deduplicated by field_key
+        // Using LinkedHashMap to preserve form order while ensuring uniqueness
+        Map<String, CustomFieldDTO> instituteCustomFieldsTemplateMap = new LinkedHashMap<>();
         for (Object[] row : instituteCustomFieldsData) {
             InstituteCustomField icf = (InstituteCustomField) row[0];
             CustomFields cf = (CustomFields) row[1];
 
-            CustomFieldDTO template = CustomFieldDTO.builder()
-                    .customFieldId(cf.getId())
-                    .fieldKey(cf.getFieldKey())
-                    .fieldName(cf.getFieldName())
-                    .fieldType(cf.getFieldType())
-                    .fieldValue(null) // Default to null
-                    .sourceType(CustomFieldValueSourceTypeEnum.USER.name())
-                    .build();
+            String fieldKey = cf.getFieldKey();
+            
+            // Only add if we haven't seen this field_key before (deduplication)
+            if (!instituteCustomFieldsTemplateMap.containsKey(fieldKey)) {
+                CustomFieldDTO template = CustomFieldDTO.builder()
+                        .customFieldId(cf.getId())
+                        .fieldKey(fieldKey)
+                        .fieldName(cf.getFieldName())
+                        .fieldType(cf.getFieldType())
+                        .fieldValue(null) // Default to null
+                        .sourceType(CustomFieldValueSourceTypeEnum.USER.name())
+                        .build();
 
-            instituteCustomFieldsTemplate.add(template);
+                instituteCustomFieldsTemplateMap.put(fieldKey, template);
+            }
         }
+        
+        // Convert map to list for iteration
+        List<CustomFieldDTO> instituteCustomFieldsTemplate = new ArrayList<>(instituteCustomFieldsTemplateMap.values());
 
         // Step 2: Fetch user-specific custom field values
         List<Object[]> customFieldData = customFieldValuesRepository.findCustomFieldsWithKeysByUserIdsAndInstitute(
@@ -213,17 +222,19 @@ public class SubOrgLearnerService {
 
         log.info("Found {} custom field value records", customFieldData.size());
 
-        // Group custom field values by user ID and custom field ID
+        // Group custom field values by user ID and field_key (instead of customFieldId)
+        // This allows matching even if values are stored under different duplicate custom_field_ids
         Map<String, Map<String, String>> userCustomFieldValuesMap = new HashMap<>();
 
         for (Object[] row : customFieldData) {
             String userId = (String) row[0];
-            String customFieldId = (String) row[1];
+            String fieldKey = (String) row[2];  // Using field_key instead of custom_field_id
             String fieldValue = (String) row[5];
 
+            // Use putIfAbsent to keep the first value (most recent due to ORDER BY created_at DESC)
             userCustomFieldValuesMap
                     .computeIfAbsent(userId, k -> new HashMap<>())
-                    .put(customFieldId, fieldValue);
+                    .putIfAbsent(fieldKey, fieldValue);
         }
 
         // Step 3: Enrich each student mapping with ALL institute custom fields
@@ -231,7 +242,7 @@ public class SubOrgLearnerService {
             String userId = mapping.getUserId();
             Map<String, String> userValues = userCustomFieldValuesMap.getOrDefault(userId, new HashMap<>());
 
-            // Clone template and fill in user values
+            // Clone template and fill in user values using field_key for lookup
             List<CustomFieldDTO> userCustomFields = new ArrayList<>();
             for (CustomFieldDTO template : instituteCustomFieldsTemplate) {
                 CustomFieldDTO userField = CustomFieldDTO.builder()
@@ -239,7 +250,7 @@ public class SubOrgLearnerService {
                         .fieldKey(template.getFieldKey())
                         .fieldName(template.getFieldName())
                         .fieldType(template.getFieldType())
-                        .fieldValue(userValues.get(template.getCustomFieldId())) // Will be null if not filled
+                        .fieldValue(userValues.get(template.getFieldKey())) // Lookup by field_key instead of custom_field_id
                         .sourceType(template.getSourceType())
                         .build();
 

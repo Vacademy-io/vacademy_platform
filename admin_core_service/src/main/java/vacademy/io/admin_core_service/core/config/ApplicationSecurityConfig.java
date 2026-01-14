@@ -37,7 +37,6 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/institute/open_learner/v1/**",
             "/admin-core-service/institute/v1/internal/create",
             "/admin-core-service/learner/v1/details/**",
-            "/admin-core-service/learner/info/v1/details/**",
             "/admin-core-service/actuator/**",
             "/admin-core-service/swagger-ui.html",
             "/admin-core-service/v1/report/alert/**",

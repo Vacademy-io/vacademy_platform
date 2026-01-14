@@ -2382,6 +2382,106 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("packageStatuses") List<String> packageStatuses,
             @Param("facultyMappingStatuses") List<String> facultyMappingStatuses);
 
+    /**
+     * V2: Get detailed package information where teacher is either creator or assigned as faculty
+     * Includes DELETED filter and pagination support
+     */
+    @Query(value = """
+            SELECT DISTINCT
+                p.*,
+                CASE
+                    WHEN p.created_by_user_id = :teacherId AND COALESCE(faculty_assignments.assignment_count, 0) > 0 THEN 'BOTH'
+                    WHEN p.created_by_user_id = :teacherId THEN 'CREATOR'
+                    ELSE 'FACULTY_ASSIGNED'
+                END as teacher_relationship_type,
+                COALESCE(faculty_assignments.assignment_count, 0) as faculty_assignment_count,
+                faculty_assignments.assigned_subjects,
+                -- Session details
+                s.id as session_id,
+                s.session_name,
+                s.status as session_status,
+                s.start_date as session_start_date,
+                -- Level details
+                l.id as level_id,
+                l.level_name,
+                l.duration_in_days,
+                l.status as level_status,
+                l.thumbnail_file_id as level_thumbnail_file_id,
+                l.created_at as level_created_at,
+                l.updated_at as level_updated_at,
+                -- Package Session details
+                ps_info.package_session_ids,
+                ps_info.package_session_count,
+                ps_info.package_session_statuses
+            FROM package p
+            LEFT JOIN (
+                SELECT
+                    ps.package_id,
+                    COUNT(DISTINCT fspsm.id) as assignment_count,
+                    STRING_AGG(DISTINCT s.subject_name, ', ') as assigned_subjects
+                FROM package_session ps
+                JOIN faculty_subject_package_session_mapping fspsm ON fspsm.package_session_id = ps.id
+                LEFT JOIN subject s ON s.id = fspsm.subject_id
+                WHERE fspsm.user_id = :teacherId
+                AND (:#{#facultyMappingStatuses == null || #facultyMappingStatuses.isEmpty()} = true
+                     OR fspsm.status IN (:facultyMappingStatuses))
+                AND ps.status != 'DELETED'
+                GROUP BY ps.package_id
+            ) faculty_assignments ON faculty_assignments.package_id = p.id
+            LEFT JOIN (
+                SELECT
+                    ps.package_id,
+                    STRING_AGG(DISTINCT ps.id, ', ') as package_session_ids,
+                    COUNT(DISTINCT ps.id) as package_session_count,
+                    STRING_AGG(DISTINCT ps.status, ', ') as package_session_statuses
+                FROM package_session ps
+                WHERE ps.status != 'DELETED'
+                GROUP BY ps.package_id
+            ) ps_info ON ps_info.package_id = p.id
+            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED'
+            LEFT JOIN session s ON s.id = ps_first.session_id
+            LEFT JOIN level l ON l.id = ps_first.level_id
+            WHERE (
+                -- Teacher created the package
+                p.created_by_user_id = :teacherId
+                OR
+                -- Teacher is assigned as faculty to any package session
+                faculty_assignments.package_id IS NOT NULL
+            )
+            AND p.status != 'DELETED'
+            AND (:#{#packageStatuses == null || #packageStatuses.isEmpty()} = true
+                 OR p.status IN (:packageStatuses))
+            ORDER BY p.created_at DESC
+            """, countQuery = """
+            SELECT COUNT(DISTINCT p.id)
+            FROM package p
+            LEFT JOIN (
+                SELECT
+                    ps.package_id,
+                    COUNT(DISTINCT fspsm.id) as assignment_count
+                FROM package_session ps
+                JOIN faculty_subject_package_session_mapping fspsm ON fspsm.package_session_id = ps.id
+                WHERE fspsm.user_id = :teacherId
+                AND (:#{#facultyMappingStatuses == null || #facultyMappingStatuses.isEmpty()} = true
+                     OR fspsm.status IN (:facultyMappingStatuses))
+                AND ps.status != 'DELETED'
+                GROUP BY ps.package_id
+            ) faculty_assignments ON faculty_assignments.package_id = p.id
+            WHERE (
+                p.created_by_user_id = :teacherId
+                OR
+                faculty_assignments.package_id IS NOT NULL
+            )
+            AND p.status != 'DELETED'
+            AND (:#{#packageStatuses == null || #packageStatuses.isEmpty()} = true
+                 OR p.status IN (:packageStatuses))
+            """, nativeQuery = true)
+    Page<Map<String, Object>> findTeacherPackagesWithRelationshipDetailsV2(
+            @Param("teacherId") String teacherId,
+            @Param("packageStatuses") List<String> packageStatuses,
+            @Param("facultyMappingStatuses") List<String> facultyMappingStatuses,
+            Pageable pageable);
+
     @Query(value = """
                 -- CTE to find the cheapest payment plan for each session, respecting the 'DEFAULT' tag
                 WITH payment_info AS (

@@ -2733,67 +2733,104 @@ export const CourseStructureDetails = ({
     ),
   };
 
-  // Trigger module loading when session or level changes
+
+  // Ref to track the last fetched key to avoid redundant fetches
+  const lastFetchedKeyRef = useRef<string | null>(null);
+
+  // Refs to hold unstable function references
+  const fetchModulesRef = useRef(fetchModules);
+  const getSlidesWithChapterIdRef = useRef(getSlidesWithChapterId);
+  const handleLoadingChangeRef = useRef(handleLoadingChange);
+  const updateModuleStatsRef = useRef(updateModuleStats);
+
+  // Keep refs up to date
   useEffect(() => {
-    if (packageSessionId) {
-      const loadModules = async () => {
-        handleLoadingChange(true);
-        setIsModulesLoading(true);
-        try {
-          const modulesMap = await fetchModules({
-            subjects: getSubjectDetails(
-              courseData,
-              selectedSession,
-              selectedLevel
-            ),
-          });
-          setSubjectModulesMap(modulesMap);
+    fetchModulesRef.current = fetchModules;
+  }, [fetchModules]);
 
-          // Auto-expand only the first item in each level
-          const subjects = getSubjectDetails(
-            courseData,
-            selectedSession,
-            selectedLevel
-          );
-          const firstSubjectId = subjects[0]?.id;
+  useEffect(() => {
+    getSlidesWithChapterIdRef.current = getSlidesWithChapterId;
+  }, [getSlidesWithChapterId]);
 
-          if (firstSubjectId) {
-            const firstSubjectModules = modulesMap[firstSubjectId] || [];
-            const firstModuleId = firstSubjectModules[0]?.module.id;
-            const firstChapterId = firstSubjectModules[0]?.chapters[0]?.id;
+  useEffect(() => {
+    handleLoadingChangeRef.current = handleLoadingChange;
+  }, [handleLoadingChange]);
 
-            const openSubjectsSet = new Set<string>([firstSubjectId]);
-            const openModulesSet = new Set<string>();
-            const openChaptersSet = new Set<string>();
+  useEffect(() => {
+    updateModuleStatsRef.current = updateModuleStats;
+  }, [updateModuleStats]);
 
-            if (firstModuleId) {
-              openModulesSet.add(firstModuleId);
-            }
-            if (firstChapterId) {
-              openChaptersSet.add(firstChapterId);
-              // Automatically load slides for the first opened chapter
-              getSlidesWithChapterId(firstChapterId);
-            }
+  // Ref to hold current courseData without triggering re-renders
+  const courseDataRef = useRef(courseData);
+  useEffect(() => {
+    courseDataRef.current = courseData;
+  }, [courseData]);
 
-            setOpenSubjects(openSubjectsSet);
-            setOpenModules(openModulesSet);
-            setOpenChapters(openChaptersSet);
-          }
+  // Trigger module loading when session or level changes
+  // Use an additional ref to prevent running while already loading
+  const isLoadingModulesRef = useRef(false);
+  
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Create a composite key that captures all relevant data
+    // Use courseDataRef.current to avoid courseData being a dependency
+    const subjects = getSubjectDetails(courseDataRef.current, selectedSession, selectedLevel);
+    const fetchKey = `${packageSessionId}:${subjects.map(s => s.id).join(",")}`;
 
-          // Update module stats for parent component
-          if (updateModuleStats) {
-            updateModuleStats(modulesMap);
-          }
-        } catch {
-          setSubjectModulesMap({});
-        } finally {
-          handleLoadingChange(false);
-          setIsModulesLoading(false);
-        }
-      };
-      loadModules();
+    // Skip if we've already fetched for this exact combination OR if currently loading
+    if (!packageSessionId || !subjects.length || fetchKey === lastFetchedKeyRef.current || isLoadingModulesRef.current) {
+      return;
     }
-  }, [selectedSession, selectedLevel, packageSessionId, handleLoadingChange]);
+
+    const loadModules = async () => {
+      isLoadingModulesRef.current = true;
+      handleLoadingChangeRef.current(true);
+      setIsModulesLoading(true);
+      try {
+        const modulesMap = await fetchModulesRef.current({ subjects });
+        setSubjectModulesMap(modulesMap);
+        lastFetchedKeyRef.current = fetchKey;
+
+        // Auto-expand only the first item in each level
+        const firstSubjectId = subjects[0]?.id;
+
+        if (firstSubjectId) {
+          const firstSubjectModules = modulesMap[firstSubjectId] || [];
+          const firstModuleId = firstSubjectModules[0]?.module.id;
+          const firstChapterId = firstSubjectModules[0]?.chapters[0]?.id;
+
+          const openSubjectsSet = new Set<string>([firstSubjectId]);
+          const openModulesSet = new Set<string>();
+          const openChaptersSet = new Set<string>();
+
+          if (firstModuleId) {
+            openModulesSet.add(firstModuleId);
+          }
+          if (firstChapterId) {
+            openChaptersSet.add(firstChapterId);
+            // Automatically load slides for the first opened chapter
+            getSlidesWithChapterIdRef.current(firstChapterId);
+          }
+
+          setOpenSubjects(openSubjectsSet);
+          setOpenModules(openModulesSet);
+          setOpenChapters(openChaptersSet);
+        }
+
+        // Update module stats for parent component
+        if (updateModuleStatsRef.current) {
+          updateModuleStatsRef.current(modulesMap);
+        }
+      } catch {
+        setSubjectModulesMap({});
+      } finally {
+        isLoadingModulesRef.current = false;
+        handleLoadingChangeRef.current(false);
+        setIsModulesLoading(false);
+      }
+    };
+    loadModules();
+  }, [packageSessionId, selectedSession, selectedLevel]);
 
   useEffect(() => {
     const studyLibraryData = getSubjectDetails(

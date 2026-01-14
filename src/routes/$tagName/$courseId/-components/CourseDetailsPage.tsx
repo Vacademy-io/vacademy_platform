@@ -204,25 +204,25 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         setIsLoading(true);
         console.log("[CourseDetailsPage] Fetching course details for:", { courseId, tagName, instituteId });
 
-        // First, fetch course details from /init API to get full course information
-        const initApiResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/v1/learner-study-library/init`, {
+        // Fetch course details from /course-init API (scalable single course endpoint)
+        const initApiResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/v1/learner-study-library/course-init`, {
           params: {
             instituteId: instituteId,
-            packageId: courseId,
+            courseId: courseId,
           },
           headers: {
             "Content-Type": "application/json",
           },
         });
 
-        console.log("[CourseDetailsPage] Init API response:", initApiResponse.data);
+        console.log("[CourseDetailsPage] Course Init API response:", initApiResponse.data);
 
-        // Find the course in the init response
+        // Extract the first (and only) course from the response
         const initData = initApiResponse.data;
-        const courseResponse = initData.find((item: any) => item.course.id === courseId);
+        const courseResponse = Array.isArray(initData) && initData.length > 0 ? initData[0] : null;
 
         if (!courseResponse) {
-          console.log("[CourseDetailsPage] Course not found in init response");
+          console.log("[CourseDetailsPage] Course not found in response");
           setError("Course not found.");
           return;
         }

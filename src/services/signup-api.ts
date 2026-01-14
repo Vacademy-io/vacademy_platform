@@ -71,7 +71,7 @@ export const searchInstitute = async (searchName: string): Promise<InstituteSear
 // Get institute details function
 export const getInstituteDetails = async (instituteId: string): Promise<InstituteDetails> => {
   try {
-    const response = await axios.get(`${BASE_URL}/admin-core-service/public/institute/v1/details/${instituteId}`, {
+    const response = await axios.get(`${BASE_URL}/admin-core-service/public/institute/v1/details-non-batches/${instituteId}`, {
       headers: {
         accept: "*/*",
       },
@@ -236,7 +236,7 @@ export const useInstituteQuery = ({ instituteId }: { instituteId: string }) => {
         }
         
         // If not in localStorage or different institute, fetch from API
-        const response = await axios.get(`${BASE_URL}/admin-core-service/public/institute/v1/details/${instituteId}`);
+        const response = await axios.get(`${BASE_URL}/admin-core-service/public/institute/v1/details-non-batches/${instituteId}`);
         return response.data;
               } catch (error) {
           throw error;

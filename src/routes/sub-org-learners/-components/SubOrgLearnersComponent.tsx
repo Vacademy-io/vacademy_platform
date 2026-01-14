@@ -226,6 +226,19 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
 
   // Get package session name from package session ID
   const getPackageSessionName = (packageSessionId: string): string => {
+    // First try to get it from adminMappings if available
+    const mapping = adminMappings.find(m => m.package_session_id === packageSessionId);
+    
+    if (mapping && mapping.package_name) {
+       const parts = [
+         mapping.package_name, 
+         (mapping.level_name && mapping.level_name.toUpperCase() !== 'DEFAULT') ? mapping.level_name : null,
+         (mapping.session_name && mapping.session_name.toUpperCase() !== 'DEFAULT') ? mapping.session_name : null
+       ].filter(Boolean);
+       
+       return parts.length > 0 ? parts.join(' - ') : packageSessionId;
+    }
+
     if (!instituteDetails?.batches_for_sessions) {
       return packageSessionId;
     }

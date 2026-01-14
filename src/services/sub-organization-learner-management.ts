@@ -12,6 +12,9 @@ export interface AdminMappings {
   package_session_id: string;
   institute_id: string;
   sub_org_id: string;
+  package_name?: string;
+  level_name?: string;
+  session_name?: string;
   [key: string]: any;
 }
 

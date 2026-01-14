@@ -20,7 +20,10 @@ export const SUBMIT_RATING_URL = `${BASE_URL}/admin-core-service/rating`;
 export const GET_ALL_USER_RATINGS = `${BASE_URL}/admin-core-service/open/rating/get-source-ratings`;
 export const GET_ALL_RATING_SUMMARY = `${BASE_URL}/admin-core-service/open/rating/summary`;
 export const GET_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/packages/v1/package-detail`;
+/** @deprecated Use GET_COURSE_INIT instead - this fetches ALL courses */
 export const GET_ALL_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/init`;
+/** New scalable endpoint - fetches single course by courseId */
+export const GET_COURSE_INIT = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/course-init`;
 export const HOLISTIC_INSTITUTE_ID =
   import.meta.env.VITE_HOLISTIC_INSTITUTE_ID ||
   "bd9f2362-84d1-4e01-9762-a5196f9bac80";
@@ -38,7 +41,7 @@ export const FORGOT_PASSWORD = `${BASE_URL}/auth-service/v1/send-password`;
 export const LOGIN_BY_USERNAME_TRUSTED = `${BASE_URL}/auth-service/learner/v1/login-by-username-trusted`;
 
 export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/learner/v1/refresh-token`;
-export const INSTITUTE_DETAIL = `${BASE_URL}/admin-core-service/learner/v1/details`;
+export const INSTITUTE_DETAIL = `${BASE_URL}/admin-core-service/learner/v1/details-without-batches`;
 export const STUDENT_DETAIL = `${BASE_URL}/admin-core-service/learner/info/v1/details`;
 
 export const Assessment_List_Filter = `${BASE_URL}/assessment-service/assessment/learner/assessment-list-filter`;
@@ -122,7 +125,7 @@ export const GET_USER_DETAILS_BY_EMAIL = `${BASE_URL}/auth-service/open/user-det
 // New signup API endpoint
 export const REGISTER_USER = `${BASE_URL}/auth-service/learner/v1/register`;
 
-export const urlInstituteDetails = `${BASE_URL}/admin-core-service/public/institute/v1/details`;
+export const urlInstituteDetails = `${BASE_URL}/admin-core-service/public/institute/v1/details-non-batches`;
 export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v2/search`;
 export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/learner-packages/v1/search`;
 // export const urlInstructor = `${BASE_URL}/auth-service/public/v1/users-of-status`;
@@ -134,6 +137,8 @@ export const LIVE_SESSION_ATTENDANCE_REPORT_BY_BATCH = `${BASE_URL}/admin-core-s
 export const LIVE_SESSION_ATTENDANCE_REPORT_BY_STUDENT = `${BASE_URL}/admin-core-service/live-session-report/student-report`;
 
 export const GET_BATCH_LIST = `${BASE_URL}/admin-core-service/batch/v1/batches-by-session`;
+export const GET_COURSE_BATCHES = `${BASE_URL}/admin-core-service/course/v1`;
+
 
 // Push notifications
 export const PUSH_REGISTER_URL = `${BASE_URL}/notification-service/push-notifications/register`;

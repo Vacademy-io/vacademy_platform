@@ -30,7 +30,7 @@ import {
     transformApiDataToCourseData,
 } from "../-utils/helper";
 import { VideoPlayer } from "./course-details-video-player";
-import { handleGetAllCourseDetails } from "../-services/get-course-details";
+import { handleGetCourseInit } from "../-services/get-course-details";
 import axios from "axios";
 import { urlInstituteDetails } from "@/constants/urls";
 import CourseListHeader from "../../-component/CourseListHeader";
@@ -41,7 +41,7 @@ import {
     BatchForSessionType,
     InstituteDetailsType,
 } from "@/types/institute-details/institute-details-interface";
-import { CourseStructureResponse } from "@/types/institute-details/course-details-interface";
+// CourseStructureResponse no longer needed - using single course fetch
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { AuthModal } from "@/components/common/auth/modal/AuthModal";
@@ -259,34 +259,45 @@ export const CourseDetailsPage = () => {
         const fetchInstituteDetails = async () => {
             updateLoadingState("instituteDetails", true);
             try {
+                // Fetch institute details
                 const response = await axios.get(
                     `${urlInstituteDetails}/${instituteId}`
                 );
-                setPackageSessionIds(
-                    findIdByPackageId(response.data.batches_for_sessions)
-                );
                 setInstituteDetails(response?.data);
-                setPackageSessionIdForCurrentLevel(
-                    getIdByLevelAndSession(
-                        response?.data?.batches_for_sessions,
-                        selectedSession,
-                        selectedLevel,
-                        searchParams?.courseId || ""
-                    )
-                );
-                
-                // NEW: Extract backend read_time_in_minutes from matching batch
-                const matchingBatch = response?.data?.batches_for_sessions?.find((batch: unknown) => {
-                    const typedBatch = batch as { level?: { id?: string }; session?: { id?: string }; package_dto?: { id?: string }; read_time_in_minutes?: number };
-                    return typedBatch.level?.id === selectedLevel &&
-                           typedBatch.session?.id === selectedSession &&
-                           typedBatch.package_dto?.id === (searchParams?.courseId || "");
-                });
-                const typedMatchingBatch = matchingBatch as { read_time_in_minutes?: number } | undefined;
-                if (typedMatchingBatch?.read_time_in_minutes) {
-                    setBackendReadTimeMinutes(typedMatchingBatch.read_time_in_minutes);
-                } else {
-                    setBackendReadTimeMinutes(null); // Reset if no backend data
+
+                // Fetch batches for specific course
+                if (searchParams?.courseId) {
+                    const { fetchBatchesForCourse } = await import("@/services/courseBatches");
+                    const batches = await fetchBatchesForCourse(searchParams.courseId);
+                    
+                    if (batches && batches.length > 0) {
+                        setPackageSessionIds(
+                            findIdByPackageId(batches)
+                        );
+                        
+                        setPackageSessionIdForCurrentLevel(
+                            getIdByLevelAndSession(
+                                batches,
+                                selectedSession,
+                                selectedLevel,
+                                searchParams?.courseId || ""
+                            )
+                        );
+
+                        // NEW: Extract backend read_time_in_minutes from matching batch
+                        const matchingBatch = batches.find((batch: unknown) => {
+                            const typedBatch = batch as { level?: { id?: string }; session?: { id?: string }; package_dto?: { id?: string }; read_time_in_minutes?: number };
+                            return typedBatch.level?.id === selectedLevel &&
+                                   typedBatch.session?.id === selectedSession &&
+                                   typedBatch.package_dto?.id === (searchParams?.courseId || "");
+                        });
+                        const typedMatchingBatch = matchingBatch as { read_time_in_minutes?: number } | undefined;
+                        if (typedMatchingBatch?.read_time_in_minutes) {
+                            setBackendReadTimeMinutes(typedMatchingBatch.read_time_in_minutes);
+                        } else {
+                            setBackendReadTimeMinutes(null); // Reset if no backend data
+                        }
+                    }
                 }
             } catch (error) {
                 console.log(error);
@@ -298,26 +309,19 @@ export const CourseDetailsPage = () => {
         fetchInstituteDetails();
     }, [instituteId, selectedSession, selectedLevel, searchParams?.courseId, updateLoadingState, findIdByPackageId]);
 
-    // Only run the query if instituteId is available
-    const { data: studyLibraryData, isLoading: isCourseDetailsLoading } =
+    // Fetch single course details using scalable endpoint
+    const { data: courseDetailsData, isLoading: isCourseDetailsLoading } =
         useQuery({
-            ...handleGetAllCourseDetails({
+            ...handleGetCourseInit({
+                courseId: searchParams?.courseId || "",
                 instituteId: instituteId || "",
             }),
-            enabled: !!instituteId, // Only run query when instituteId is available
         });
 
     // Update course details loading state
     useEffect(() => {
         updateLoadingState("courseDetails", isCourseDetailsLoading);
     }, [isCourseDetailsLoading, updateLoadingState]);
-
-    const courseDetailsData = useMemo(() => {
-        return studyLibraryData?.find(
-            (item: CourseStructureResponse) =>
-                item.course.id === searchParams.courseId
-        );
-    }, [studyLibraryData, searchParams.courseId]);
 
     const form = useForm<CourseDetailsFormValues>({
         resolver: zodResolver(courseDetailsSchema),
@@ -520,7 +524,7 @@ export const CourseDetailsPage = () => {
 
     // Show loading until essential APIs are complete
     // Note: packageSessionIdForCurrentLevel is not required for initial render
-    if (isLoading || isLoadingInstituteId || !instituteId || !studyLibraryData) {
+    if (isLoading || isLoadingInstituteId || !instituteId || !courseDetailsData) {
         return <DashboardLoader />;
     }
 

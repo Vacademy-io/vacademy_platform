@@ -759,4 +759,165 @@ public class SystemFileService {
                 log.info("Returning {} files for user", fileItems.size());
                 return new SystemFileListResponseDTO(fileItems);
         }
+
+        /**
+         * Add an email asset (image/gif) for an institute
+         * Email assets are stored with folder_name = "email-assets" and media_type = "image"
+         * Access is granted at institute level for view and edit
+         */
+        @Transactional
+        @CacheEvict(value = "systemFileList", allEntries = true)
+        public EmailAssetResponseDTO addEmailAsset(EmailAssetRequestDTO request, String instituteId,
+                        CustomUserDetails user) {
+                log.info("Adding email asset: {} for institute: {} by user: {}", request.getName(), instituteId,
+                                user.getUserId());
+
+                // Determine media type from S3 URL extension (image or gif)
+                String mediaType = determineMediaTypeFromUrl(request.getS3Url());
+
+                // Create SystemFile entity for email asset
+                SystemFile systemFile = new SystemFile();
+                systemFile.setFileType(FileTypeEnum.File.name());
+                systemFile.setMediaType(mediaType);
+                systemFile.setData(request.getS3Url()); // Store S3 URL in data field
+                systemFile.setName(request.getName());
+                systemFile.setFolderName("email-assets"); // Special folder for email assets
+                systemFile.setDescription(request.getDescription());
+                systemFile.setInstituteId(instituteId);
+                systemFile.setCreatedByUserId(user.getUserId());
+                systemFile.setStatus(StatusEnum.ACTIVE.name());
+
+                // Save system file
+                SystemFile savedSystemFile = systemFileRepository.save(systemFile);
+                log.info("Email asset saved with ID: {}", savedSystemFile.getId());
+
+                // Create access records - institute level access for view and edit
+                List<EntityAccess> accessList = new ArrayList<>();
+
+                // Auto-grant view and edit access to creator (user level)
+                accessList.add(createEntityAccess(savedSystemFile.getId(), AccessTypeEnum.view.name(),
+                                AccessLevelEnum.user.name(), user.getUserId()));
+                accessList.add(createEntityAccess(savedSystemFile.getId(), AccessTypeEnum.edit.name(),
+                                AccessLevelEnum.user.name(), user.getUserId()));
+
+                // Grant institute-level view and edit access
+                accessList.add(createEntityAccess(savedSystemFile.getId(), AccessTypeEnum.view.name(),
+                                AccessLevelEnum.institute.name(), instituteId));
+                accessList.add(createEntityAccess(savedSystemFile.getId(), AccessTypeEnum.edit.name(),
+                                AccessLevelEnum.institute.name(), instituteId));
+
+                // Save all access records
+                entityAccessRepository.saveAll(accessList);
+                log.info("Created {} access records for email asset: {}", accessList.size(), savedSystemFile.getId());
+
+                // Get creator name
+                String createdByName = "Unknown";
+                try {
+                        List<UserDTO> users = authService
+                                        .getUsersFromAuthServiceByUserIds(List.of(user.getUserId()));
+                        if (!users.isEmpty() && users.get(0).getFullName() != null) {
+                                createdByName = users.get(0).getFullName();
+                        }
+                } catch (Exception e) {
+                        log.error("Error fetching creator details from auth service: {}", e.getMessage());
+                }
+
+                // Build response
+                EmailAssetResponseDTO response = new EmailAssetResponseDTO();
+                response.setId(savedSystemFile.getId());
+                response.setS3Url(savedSystemFile.getData());
+                response.setName(savedSystemFile.getName());
+                response.setDescription(savedSystemFile.getDescription());
+                response.setMediaType(savedSystemFile.getMediaType());
+                response.setCreatedAtIso(savedSystemFile.getCreatedAt());
+                response.setUpdatedAtIso(savedSystemFile.getUpdatedAt());
+                response.setCreatedBy(createdByName);
+
+                return response;
+        }
+
+        /**
+         * Get all email assets for an institute
+         * Returns all files with folder_name = "email-assets" and media_type = "image"
+         */
+        @Transactional(readOnly = true)
+        public EmailAssetListResponseDTO getEmailAssetsByInstitute(String instituteId, CustomUserDetails user) {
+                log.info("Getting email assets for institute: {} by user: {}", instituteId, user.getUserId());
+
+                // Query email assets (folder_name = "email-assets", media_type = "image", status = "ACTIVE")
+                List<SystemFile> emailAssets = systemFileRepository
+                                .findByInstituteIdAndFolderNameAndMediaTypeAndStatus(instituteId, "email-assets",
+                                                MediaTypeEnum.image.name(), StatusEnum.ACTIVE.name());
+
+                log.info("Found {} email assets for institute: {}", emailAssets.size(), instituteId);
+
+                // Get unique user IDs from created_by_user_id
+                List<String> userIds = emailAssets.stream()
+                                .map(SystemFile::getCreatedByUserId)
+                                .distinct()
+                                .collect(Collectors.toList());
+
+                // Fetch user details from auth service
+                Map<String, String> userIdToNameMap = new HashMap<>();
+                if (!userIds.isEmpty()) {
+                        try {
+                                List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(userIds);
+                                userIdToNameMap = users.stream()
+                                                .collect(Collectors.toMap(
+                                                                UserDTO::getId,
+                                                                userDto -> userDto.getFullName() != null
+                                                                                ? userDto.getFullName()
+                                                                                : "Unknown",
+                                                                (existing, replacement) -> existing));
+                        } catch (Exception e) {
+                                log.error("Error fetching user details from auth service: {}", e.getMessage());
+                        }
+                }
+
+                // Final map for use in lambda
+                final Map<String, String> userNameMap = userIdToNameMap;
+
+                // Map to response DTO
+                List<EmailAssetResponseDTO> assetResponses = emailAssets.stream()
+                                .map(asset -> {
+                                        EmailAssetResponseDTO response = new EmailAssetResponseDTO();
+                                        response.setId(asset.getId());
+                                        response.setS3Url(asset.getData());
+                                        response.setName(asset.getName());
+                                        response.setDescription(asset.getDescription());
+                                        response.setMediaType(asset.getMediaType());
+                                        response.setCreatedAtIso(asset.getCreatedAt());
+                                        response.setUpdatedAtIso(asset.getUpdatedAt());
+                                        response.setCreatedBy(
+                                                        userNameMap.getOrDefault(asset.getCreatedByUserId(), "Unknown"));
+                                        return response;
+                                })
+                                .collect(Collectors.toList());
+
+                return new EmailAssetListResponseDTO(assetResponses);
+        }
+
+        /**
+         * Determine media type from URL extension
+         * Returns "image" for .jpg, .jpeg, .png, .webp, etc.
+         * Returns "gif" for .gif files (we'll use image type but detect gif for metadata)
+         */
+        private String determineMediaTypeFromUrl(String url) {
+                if (url == null || url.isEmpty()) {
+                        return MediaTypeEnum.image.name();
+                }
+
+                String lowerUrl = url.toLowerCase();
+                if (lowerUrl.endsWith(".gif")) {
+                        // For GIFs, we'll still use "image" media type but could add logic later
+                        // if we add gif to MediaTypeEnum
+                        return MediaTypeEnum.image.name();
+                } else if (lowerUrl.endsWith(".jpg") || lowerUrl.endsWith(".jpeg") || lowerUrl.endsWith(".png")
+                                || lowerUrl.endsWith(".webp") || lowerUrl.endsWith(".svg") || lowerUrl.endsWith(".bmp")) {
+                        return MediaTypeEnum.image.name();
+                }
+
+                // Default to image
+                return MediaTypeEnum.image.name();
+        }
 }

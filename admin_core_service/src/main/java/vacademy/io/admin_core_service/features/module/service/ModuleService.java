@@ -46,12 +46,11 @@ public class ModuleService {
 
     // Add module to subject
     @Transactional
-    public ModuleDTO addModule(String subjectId,String packageSessionId, ModuleDTO moduleDTO, CustomUserDetails user) {
+    public ModuleDTO addModule(String subjectId, String packageSessionId, ModuleDTO moduleDTO, CustomUserDetails user) {
         // Validate subject ID
         if (subjectId == null) {
             throw new VacademyException("Subject ID cannot be null");
         }
-
 
         // Validate module details
         validateModule(moduleDTO);
@@ -67,7 +66,8 @@ public class ModuleService {
 
         // Set ID in DTO and return
         moduleDTO.setId(module.getId());
-        learnerTrackingAsyncService.updateLearnerOperationsForBatch("MODULE",null,null,null,module.getId(),subjectId,packageSessionId);
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("MODULE", null, null, null, module.getId(),
+                subjectId, packageSessionId);
         return moduleDTO;
     }
 
@@ -99,7 +99,9 @@ public class ModuleService {
     }
 
     private void saveMapping(Subject subject, Module module) {
-        subjectModuleMappingRepository.save(new SubjectModuleMapping(subject, module));
+        Integer maxOrder = subjectModuleMappingRepository.findMaxModuleOrderBySubjectId(subject.getId());
+        Integer newOrder = (maxOrder == null) ? 1 : maxOrder + 1;
+        subjectModuleMappingRepository.save(new SubjectModuleMapping(subject, module, newOrder));
     }
 
     public ModuleDTO updateModule(String moduleId, ModuleDTO moduleDTO, CustomUserDetails user) {
@@ -125,7 +127,8 @@ public class ModuleService {
     }
 
     @Transactional
-    public String deleteModule(List<String> moduleIds,String subjectId,String packageSessionId, CustomUserDetails user) {
+    public String deleteModule(List<String> moduleIds, String subjectId, String packageSessionId,
+            CustomUserDetails user) {
         if (moduleIds == null || moduleIds.isEmpty()) {
             throw new VacademyException("Module IDs cannot be null or empty");
         }
@@ -139,8 +142,9 @@ public class ModuleService {
         modules.forEach(module -> module.setStatus(ModuleStatusEnum.DELETED.name()));
         moduleRepository.saveAll(modules);
         chapterPackageSessionMappingRepository.softDeleteChapterMappingsWithoutActiveModules(moduleIds);
-        for (String moduleId:moduleIds){
-            learnerTrackingAsyncService.updateLearnerOperationsForBatch("MODULE",null,null,null,moduleId,subjectId,packageSessionId);
+        for (String moduleId : moduleIds) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("MODULE", null, null, null, moduleId, subjectId,
+                    packageSessionId);
         }
         return "Modules deleted successfully";
     }
@@ -192,8 +196,7 @@ public class ModuleService {
         Map<String, UpdateModuleOrderDTO> dtoMap = updateModuleOrderDTOS.stream()
                 .collect(Collectors.toMap(
                         dto -> dto.getSubjectId() + ":" + dto.getModuleId(),
-                        dto -> dto
-                ));
+                        dto -> dto));
 
         // Update the module orders
         for (SubjectModuleMapping mapping : existingMappings) {
@@ -210,13 +213,16 @@ public class ModuleService {
         return "Module order updated successfully.";
     }
 
-    public Optional<Module> getModuleBySlideIdAndPackageSessionIdWithStatusFilters(String slideId, String packageSessionId){
-        return moduleRepository.findModuleBySlideIdAndPackageSessionIdWithStatusFilters(slideId,packageSessionId,List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+    public Optional<Module> getModuleBySlideIdAndPackageSessionIdWithStatusFilters(String slideId,
+            String packageSessionId) {
+        return moduleRepository.findModuleBySlideIdAndPackageSessionIdWithStatusFilters(slideId, packageSessionId,
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                 List.of(ChapterStatus.ACTIVE.name()), List.of(ModuleStatusEnum.ACTIVE.name()));
     }
 
     @Transactional
-    public String addRequestModule(String subjectId,String commaSeparatedPackageSessionIds, ModuleDTO moduleDTO, CustomUserDetails user) {
+    public String addRequestModule(String subjectId, String commaSeparatedPackageSessionIds, ModuleDTO moduleDTO,
+            CustomUserDetails user) {
         // Validate subject ID
         if (subjectId == null) {
             throw new VacademyException("Subject ID cannot be null");
@@ -225,7 +231,6 @@ public class ModuleService {
         if (subjectId.equalsIgnoreCase("DEFAULT")) {
             subjectService.addDefaultSubject(commaSeparatedPackageSessionIds);
         }
-
 
         // Validate module details
         validateModule(moduleDTO);
@@ -236,7 +241,7 @@ public class ModuleService {
         Module module = new Module();
         createModule(moduleDTO, module);
         module.setStatus(ModuleStatusEnum.PENDING_APPROVAL.name());
-         module =moduleRepository.save(module);
+        module = moduleRepository.save(module);
         // Save mapping between subject and module
         saveMapping(subject, module);
 

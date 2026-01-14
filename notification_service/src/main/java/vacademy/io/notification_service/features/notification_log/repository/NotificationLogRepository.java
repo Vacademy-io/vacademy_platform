@@ -218,14 +218,17 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
                 nl.channel_id,
                 COUNT(CASE WHEN nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING' THEN 1 END) as outgoing_count,
                 COUNT(CASE WHEN nl.notification_type = 'WHATSAPP_MESSAGE_INCOMING' THEN 1 END) as incoming_count,
-                COUNT(*) as total_messages
+                COUNT(*) as total_messages,
+                (COUNT(CASE WHEN nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING' THEN 1 END) + 
+                 (COUNT(CASE WHEN nl.notification_type = 'WHATSAPP_MESSAGE_INCOMING' THEN 1 END) * 2)) as engagement_score
             FROM notification_log nl
             WHERE nl.sender_business_channel_id = :channelId
                 AND nl.created_at BETWEEN CAST(:startDate AS TIMESTAMP) AND CAST(:endDate AS TIMESTAMP)
+                AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
                 AND nl.user_id IS NOT NULL
                 AND nl.channel_id IS NOT NULL
             GROUP BY nl.channel_id
-            ORDER BY total_messages DESC
+            ORDER BY engagement_score DESC
             LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
     List<Object[]> getEngagementLeaderboard(
@@ -245,6 +248,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             FROM notification_log nl
             WHERE nl.sender_business_channel_id = :channelId
                 AND nl.created_at BETWEEN CAST(:startDate AS TIMESTAMP) AND CAST(:endDate AS TIMESTAMP)
+                AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
                 AND nl.user_id IS NOT NULL
                 AND nl.channel_id IS NOT NULL
             """, nativeQuery = true)

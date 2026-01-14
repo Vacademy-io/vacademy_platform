@@ -267,6 +267,7 @@ public class DailyParticipationService {
             Long outgoingCount = ((Number) row[2]).longValue();
             Long incomingCount = ((Number) row[3]).longValue();
             Long totalMessages = ((Number) row[4]).longValue();
+            Long engagementScore = ((Number) row[5]).longValue(); // Weighted: outgoing + (incoming * 2)
 
             LeaderboardEntryDTO entry = LeaderboardEntryDTO.builder()
                     .rank(rank++)
@@ -275,7 +276,7 @@ public class DailyParticipationService {
                             .totalMessages(totalMessages)
                             .outgoingMessages(outgoingCount)
                             .incomingMessages(incomingCount)
-                            .engagementScore(totalMessages) // Can be customized
+                            .engagementScore(engagementScore) // Weighted engagement score
                             .build())
                     .userDetails(userDetailsMap.get(phoneNumber))
                     .build();

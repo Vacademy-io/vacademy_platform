@@ -78,7 +78,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             "JOIN student_session_institute_group_mapping ssgm ON ssgm.package_session_id = ps.id " +
             "WHERE ssgm.institute_id = :instituteId " +
             "AND ssgm.user_id = :userId " +
-            "AND p.status != 'DELETED'", nativeQuery = true)
+            "AND p.status != 'DELETED' " +
+            "AND ps.status != 'DELETED' " +
+            "AND ssgm.status != 'DELETED'", nativeQuery = true)
     List<PackageEntity> findDistinctPackagesByUserIdAndInstituteId(
             @Param("userId") String userId,
             @Param("instituteId") String instituteId);
@@ -88,7 +90,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             "JOIN student_session_institute_group_mapping ssgm ON ssgm.package_session_id = ps.id " +
             "WHERE ssgm.institute_id = :instituteId " +
             "AND ssgm.user_id = :userId " +
-            "AND p.status != 'DELETED'", nativeQuery = true)
+            "AND p.status != 'DELETED' " +
+            "AND ps.status != 'DELETED' " +
+            "AND ssgm.status != 'DELETED'", nativeQuery = true)
     Integer countDistinctPackagesByUserIdAndInstituteId(
             @Param("userId") String userId,
             @Param("instituteId") String instituteId);

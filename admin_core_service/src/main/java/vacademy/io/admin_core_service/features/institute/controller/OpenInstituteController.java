@@ -34,7 +34,17 @@ public class OpenInstituteController {
     @Cacheable(value = "openInstituteDetails", key = "#instituteId")
     public ResponseEntity<InstituteInfoDTO> getInstituteDetails(@PathVariable String instituteId) {
 
-        InstituteInfoDTO instituteInfoDTO = instituteInitManager.getPublicInstituteDetails(instituteId);
+        InstituteInfoDTO instituteInfoDTO = instituteInitManager.getPublicInstituteDetails(instituteId, true);
+        return ResponseEntity.ok(instituteInfoDTO);
+    }
+
+
+    @GetMapping("/details-non-batches/{instituteId}")
+    @ClientCacheable(maxAgeSeconds = 600, scope = CacheScope.PUBLIC)
+    @Cacheable(value = "openInstituteDetails", key = "#instituteId")
+    public ResponseEntity<InstituteInfoDTO> getInstituteDetailsNonBatches(@PathVariable String instituteId) {
+
+        InstituteInfoDTO instituteInfoDTO = instituteInitManager.getPublicInstituteDetails(instituteId, false);
         return ResponseEntity.ok(instituteInfoDTO);
     }
 

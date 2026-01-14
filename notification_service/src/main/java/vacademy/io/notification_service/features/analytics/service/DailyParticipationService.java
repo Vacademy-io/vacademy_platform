@@ -55,6 +55,30 @@ public class DailyParticipationService {
         List<Object[]> incomingResults = templateDayMapRepository.getIncomingMessageMetrics(
                 instituteId, startDateStr, endDateStr);
 
+        // Fetch unique users per day (to avoid double-counting users who received multiple templates)
+        List<Object[]> uniqueUsersOutgoing = templateDayMapRepository.getUniqueUsersPerDayOutgoing(
+                instituteId, startDateStr, endDateStr);
+        List<Object[]> uniqueUsersIncoming = templateDayMapRepository.getUniqueUsersPerDayIncoming(
+                instituteId, startDateStr, endDateStr);
+
+        // Get unique users who said "YES" on Day 2 (engagement confirmation metric)
+        // This is configurable - change day number (2) and template ("YES") as needed
+        Long totalUniqueResponders = templateDayMapRepository.getUniqueRespondersForDayAndTemplate(
+                instituteId, startDateStr, endDateStr, 2, "YES");
+
+        // Create maps for quick lookup: day_number -> unique_users_count
+        Map<Integer, Long> uniqueUsersOutgoingMap = uniqueUsersOutgoing.stream()
+                .collect(Collectors.toMap(
+                        row -> (Integer) row[0],
+                        row -> ((Number) row[1]).longValue()
+                ));
+        
+        Map<Integer, Long> uniqueUsersIncomingMap = uniqueUsersIncoming.stream()
+                .collect(Collectors.toMap(
+                        row -> (Integer) row[0],
+                        row -> ((Number) row[1]).longValue()
+                ));
+
         log.info("Outgoing results: {}, Incoming results: {}", outgoingResults.size(), incomingResults.size());
 
         // Group outgoing and incoming separately by day_number
@@ -81,7 +105,6 @@ public class DailyParticipationService {
             
             // Process OUTGOING templates
             List<TemplateDataDTO> outgoingTemplates = new ArrayList<>();
-            long dayOutgoingUsers = 0;
             long dayOutgoingMessages = 0;
             
             for (Object[] row : dayOutgoingRows) {
@@ -98,13 +121,15 @@ public class DailyParticipationService {
                         .totalMessages(totalMessages)
                         .build());
                 
-                dayOutgoingUsers += uniqueUsers;
+                // Sum total messages only - unique users come from separate query
                 dayOutgoingMessages += totalMessages;
             }
 
+            // Get correct unique users count for this day (not summed from templates)
+            long dayOutgoingUsers = uniqueUsersOutgoingMap.getOrDefault(dayNumber, 0L);
+
             // Process INCOMING templates (user responses)
             List<TemplateDataDTO> incomingTemplates = new ArrayList<>();
-            long dayIncomingUsers = 0;
             long dayIncomingMessages = 0;
             
             for (Object[] row : dayIncomingRows) {
@@ -123,9 +148,12 @@ public class DailyParticipationService {
                         .totalMessages(totalMessages)
                         .build());
                 
-                dayIncomingUsers += uniqueUsers;
+                // Sum total messages only - unique users come from separate query
                 dayIncomingMessages += totalMessages;
             }
+
+            // Get correct unique users count for this day (not summed from templates)
+            long dayIncomingUsers = uniqueUsersIncomingMap.getOrDefault(dayNumber, 0L);
 
             // Calculate day response rate
             Double dayResponseRate = dayOutgoingUsers > 0 
@@ -156,14 +184,12 @@ public class DailyParticipationService {
             totalMessagesReceived += dayIncomingMessages;
         }
 
-        // Calculate overall unique users (across all days)
-        long totalUniqueUsersReached = outgoingResults.stream()
-                .map(row -> ((Number) row[4]).longValue())
-                .reduce(0L, Long::sum);
+        // Calculate overall unique users
+        // Total reached = Unique users from Day 0 (entry point of the challenge)
+        long totalUniqueUsersReached = uniqueUsersOutgoingMap.getOrDefault(0, 0L);
         
-        long totalUniqueUsersResponded = incomingResults.stream()
-                .map(row -> ((Number) row[4]).longValue())
-                .reduce(0L, Long::sum);
+        // Total responded = Distinct users who responded at least once across ALL days
+        long totalUniqueUsersResponded = totalUniqueResponders != null ? totalUniqueResponders : 0L;
 
         Double overallResponseRate = totalUniqueUsersReached > 0 
                 ? (totalUniqueUsersResponded * 100.0) / totalUniqueUsersReached 
@@ -241,6 +267,7 @@ public class DailyParticipationService {
             Long outgoingCount = ((Number) row[2]).longValue();
             Long incomingCount = ((Number) row[3]).longValue();
             Long totalMessages = ((Number) row[4]).longValue();
+            Long engagementScore = ((Number) row[5]).longValue(); // Weighted: outgoing + (incoming * 2)
 
             LeaderboardEntryDTO entry = LeaderboardEntryDTO.builder()
                     .rank(rank++)
@@ -249,7 +276,7 @@ public class DailyParticipationService {
                             .totalMessages(totalMessages)
                             .outgoingMessages(outgoingCount)
                             .incomingMessages(incomingCount)
-                            .engagementScore(totalMessages) // Can be customized
+                            .engagementScore(engagementScore) // Weighted engagement score
                             .build())
                     .userDetails(userDetailsMap.get(phoneNumber))
                     .build();

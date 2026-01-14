@@ -6,6 +6,7 @@ import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.course.service.CourseService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.PackageDTO;
+import vacademy.io.admin_core_service.features.course.dto.CourseBatchDTO;
 
 import java.util.List;
 
@@ -16,23 +17,31 @@ public class CourseController {
     private final CourseService courseService;
 
     @PostMapping("/add-course/{instituteId}")
-    public String addCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId, @RequestAttribute("user") CustomUserDetails userDetails) {
+    public String addCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
         return courseService.addCourse(addCourseDTO, userDetails, instituteId);
     }
 
     @PutMapping("/update-course/{courseId}")
-    public String updateCourse(@RequestBody PackageDTO packageDTO, @PathVariable("courseId") String packageId, @RequestAttribute("user") CustomUserDetails userDetails) {
+    public String updateCourse(@RequestBody PackageDTO packageDTO, @PathVariable("courseId") String packageId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
         return courseService.updateCourse(packageDTO, userDetails, packageId);
     }
 
     @DeleteMapping("/delete-courses")
-    public String deleteCourse(@RequestBody List<String> courseIds, @RequestAttribute("user") CustomUserDetails userDetails) {
+    public String deleteCourse(@RequestBody List<String> courseIds,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
         return courseService.deleteCourses(courseIds, userDetails);
     }
 
     @PostMapping("/update-course-details/{instituteId}")
-    public String updateCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId, @RequestAttribute("user") CustomUserDetails userDetails) {
-        return courseService.addOrUpdateCourse(addCourseDTO,instituteId,userDetails);
+    public String updateCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return courseService.addOrUpdateCourse(addCourseDTO, instituteId, userDetails);
+    }
+
+    @GetMapping("/{courseId}/batches")
+    public List<CourseBatchDTO> getBatchesForCourse(@PathVariable("courseId") String courseId) {
+        return courseService.getBatchesForCourse(courseId);
     }
 }
-

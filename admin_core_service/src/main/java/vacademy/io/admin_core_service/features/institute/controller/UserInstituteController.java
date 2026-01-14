@@ -32,13 +32,25 @@ public class UserInstituteController {
 
     @GetMapping("/details/{instituteId}")
     public ResponseEntity<InstituteInfoDTO> getInstituteDetails(@PathVariable String instituteId) {
-        InstituteInfoDTO instituteInfoDTO = instituteInitManager.getInstituteDetails(instituteId);
+        InstituteInfoDTO instituteInfoDTO = instituteInitManager.getInstituteDetails(instituteId, true);
+        return ResponseEntity.ok(instituteInfoDTO);
+    }
+
+    @GetMapping("/details-non-batches/{instituteId}")
+    public ResponseEntity<InstituteInfoDTO> getInstituteDetailsNonBatches(@PathVariable String instituteId) {
+        InstituteInfoDTO instituteInfoDTO = instituteInitManager.getInstituteDetails(instituteId, false);
         return ResponseEntity.ok(instituteInfoDTO);
     }
 
     @GetMapping("/setup/{instituteId}")
     public ResponseEntity<InstituteSetupDTO> getInstituteSetupDetails(@PathVariable String instituteId) {
-        InstituteSetupDTO instituteSetupDTO = instituteInitManager.getInstituteSetupDetails(instituteId);
+        InstituteSetupDTO instituteSetupDTO = instituteInitManager.getInstituteSetupDetails(instituteId, true);
+        return ResponseEntity.ok(instituteSetupDTO);
+    }
+
+    @GetMapping("/setup-without-batches/{instituteId}")
+    public ResponseEntity<InstituteSetupDTO> getInstituteSetupDetailsWithoutBatches(@PathVariable String instituteId) {
+        InstituteSetupDTO instituteSetupDTO = instituteInitManager.getInstituteSetupDetails(instituteId, false);
         return ResponseEntity.ok(instituteSetupDTO);
     }
 

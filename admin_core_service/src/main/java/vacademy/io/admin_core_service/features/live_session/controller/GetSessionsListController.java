@@ -50,8 +50,16 @@ public class GetSessionsListController {
 
     @GetMapping("/learner/live-and-upcoming")
     @ClientCacheable(maxAgeSeconds = 30, scope = CacheScope.PRIVATE, varyHeaders = {"X-User-Id"})
-    ResponseEntity<List<GroupedSessionsByDateDTO>> getLiveAndUpcomingSessions(@RequestParam(required = false,name = "batchId") String batchId,@RequestParam(value = "userId",required = false) String userId,@RequestAttribute("user") CustomUserDetails user) {
-            return ResponseEntity.ok(getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(batchId, userId, user));
+    ResponseEntity<List<GroupedSessionsByDateDTO>> getLiveAndUpcomingSessions(
+            @RequestParam(required = false, name = "batchId") String batchId,
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "page", required = false, defaultValue = "0") int page,
+            @RequestParam(value = "size", required = false, defaultValue = "50") int size,
+            @RequestParam(value = "startDate", required = false) String startDate,
+            @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
+                batchId, userId, page, size, startDate, endDate, user));
     }
 
     @GetMapping("/by-user-id")

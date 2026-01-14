@@ -58,13 +58,13 @@ public class InstituteInitManager {
         private InstituteCustomFiledService instituteCustomFiledService;
 
         @Transactional
-        public InstituteInfoDTO getInstituteDetails(String instituteId) {
-                return buildInstituteInfoDTO(instituteId, true);
+        public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches) {
+                return buildInstituteInfoDTO(instituteId, true, includeBatches);
         }
 
         @Transactional
-        public InstituteInfoDTO getPublicInstituteDetails(String instituteId) {
-                return buildInstituteInfoDTO(instituteId, false);
+        public InstituteInfoDTO getPublicInstituteDetails(String instituteId, boolean includeBatches) {
+                return buildInstituteInfoDTO(instituteId, false, includeBatches);
         }
 
         /**
@@ -75,7 +75,7 @@ public class InstituteInitManager {
          *                             subjects, etc.)
          * @return Populated InstituteInfoDTO
          */
-        private InstituteInfoDTO buildInstituteInfoDTO(String instituteId, boolean includePrivateFields) {
+        private InstituteInfoDTO buildInstituteInfoDTO(String instituteId, boolean includePrivateFields, boolean includeBatches) {
                 // Trace the main database lookup
                 Institute institute = PerformanceTracer.traceDbQuery(
                                 "instituteRepository.findById",
@@ -155,7 +155,8 @@ public class InstituteInitManager {
                                 () -> packageGroupMappingRepository.findAllByInstituteId(instId)
                                                 .stream().map(obj -> obj.mapToDTO()).toList()));
 
-                // OPTIMIZATION: Fetch all package sessions first, then batch query read times
+                if(includeBatches){
+                         // OPTIMIZATION: Fetch all package sessions first, then batch query read times
                 List<PackageSession> packageSessions = PerformanceTracer.traceDbQuery(
                                 "packageSessionRepository.findPackageSessionsByInstituteId",
                                 () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
@@ -176,6 +177,12 @@ public class InstituteInitManager {
                                                 readTimeMap.getOrDefault(obj.getId(), 0.0).doubleValue()))
                                 .toList());
 
+                }
+                else{
+                        dto.setBatchesForSessions(List.of());
+                }
+
+               
                 // Private fields that require additional queries
                 if (includePrivateFields) {
                         dto.setGenders(Stream.of(Gender.values()).map(Enum::name).toList());
@@ -193,7 +200,7 @@ public class InstituteInitManager {
         }
 
         private InstituteInfoDTOForTableSetup buildInstituteInfoDTOForTableSetup(String instituteId,
-                        boolean includePrivateFields) {
+                        boolean includePrivateFields, boolean includeBatches) {
                 Institute institute = instituteRepository.findById(instituteId)
                                 .orElseThrow(() -> new VacademyException("Invalid Institute Id"));
                 InstituteInfoDTOForTableSetup idto = new InstituteInfoDTOForTableSetup();
@@ -206,20 +213,25 @@ public class InstituteInitManager {
                                 .stream().map(LevelDTO::new).toList());
                 idto.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(instId)
                                 .stream().map(obj -> obj.mapToDTO()).toList());
+                if (includeBatches) {
 
-                // OPTIMIZATION: Fetch all package sessions first, then batch query read times
-                List<PackageSession> packageSessions = packageSessionRepository.findPackageSessionsByInstituteId(instId,
-                                activeStatuses);
+                        // OPTIMIZATION: Fetch all package sessions first, then batch query read times
+                        List<PackageSession> packageSessions = packageSessionRepository
+                                        .findPackageSessionsByInstituteId(instId,
+                                                        activeStatuses);
 
-                // Batch query to get all read times at once (eliminates N+1 query problem)
-                List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
-                Map<String, Double> readTimeMap = slideService.calculateReadTimesForPackageSessions(sessionIds);
+                        // Batch query to get all read times at once (eliminates N+1 query problem)
+                        List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
+                        Map<String, Double> readTimeMap = slideService.calculateReadTimesForPackageSessions(sessionIds);
 
-                // Map package sessions to DTOs with read times from the batch result
-                idto.setBatchesForSessions(packageSessions.stream()
-                                .map(obj -> new PackageSessionDTO(obj,
-                                                readTimeMap.getOrDefault(obj.getId(), 0.0).doubleValue()))
-                                .toList());
+                        // Map package sessions to DTOs with read times from the batch result
+                        idto.setBatchesForSessions(packageSessions.stream()
+                                        .map(obj -> new PackageSessionDTO(obj,
+                                                        readTimeMap.getOrDefault(obj.getId(), 0.0).doubleValue()))
+                                        .toList());
+                } else {
+                        idto.setBatchesForSessions(List.of());
+                }
 
                 // Private fields that require additional queries
                 if (includePrivateFields) {
@@ -232,10 +244,10 @@ public class InstituteInitManager {
         }
 
         @Transactional
-        public InstituteSetupDTO getInstituteSetupDetails(String instituteId) {
+        public InstituteSetupDTO getInstituteSetupDetails(String instituteId, boolean includeBatches) {
 
                 InstituteInfoDTOForTableSetup instituteInfoDTOForTableSetup = buildInstituteInfoDTOForTableSetup(
-                                instituteId, true);
+                                instituteId, true, includeBatches);
 
                 // Get active dropdown custom fields
                 List<CustomFieldDTO> dropdownCustomFields = instituteCustomFiledService

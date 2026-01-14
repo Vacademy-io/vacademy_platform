@@ -155,6 +155,28 @@ public class InstituteInitManager {
                                 () -> packageGroupMappingRepository.findAllByInstituteId(instId)
                                                 .stream().map(obj -> obj.mapToDTO()).toList()));
 
+                                                  // OPTIMIZATION: Fetch all package sessions first, then batch query read times
+                List<PackageSession> packageSessions = PerformanceTracer.traceDbQuery(
+                                "packageSessionRepository.findPackageSessionsByInstituteId",
+                                () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
+                                                activeStatuses));
+
+                // Batch query to get all read times at once (eliminates N+1 query problem)
+                List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
+
+                // This is likely the SLOWEST operation - trace it carefully
+                Map<String, Double> readTimeMap = PerformanceTracer.trace(
+                                "compute.heavy",
+                                "slideService.calculateReadTimesForPackageSessions",
+                                () -> slideService.calculateReadTimesForPackageSessions(sessionIds));
+
+                // Map package sessions to DTOs with read times from the batch result
+                dto.setBatchesForSessions(packageSessions.stream()
+                                .map(obj -> new PackageSessionDTO(obj,
+                                                readTimeMap.getOrDefault(obj.getId(), 0.0).doubleValue()))
+                                .toList());
+
+
                 // Private fields that require additional queries
                 if (includePrivateFields) {
                         dto.setGenders(Stream.of(Gender.values()).map(Enum::name).toList());
@@ -185,6 +207,21 @@ public class InstituteInitManager {
                                 .stream().map(LevelDTO::new).toList());
                 idto.setPackageGroups(packageGroupMappingRepository.findAllByInstituteId(instId)
                                 .stream().map(obj -> obj.mapToDTO()).toList());
+
+                                                // OPTIMIZATION: Fetch all package sessions first, then batch query read times
+                List<PackageSession> packageSessions = packageSessionRepository.findPackageSessionsByInstituteId(instId,
+                                activeStatuses);
+
+                // Batch query to get all read times at once (eliminates N+1 query problem)
+                List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
+                Map<String, Double> readTimeMap = slideService.calculateReadTimesForPackageSessions(sessionIds);
+
+                // Map package sessions to DTOs with read times from the batch result
+                idto.setBatchesForSessions(packageSessions.stream()
+                                .map(obj -> new PackageSessionDTO(obj,
+                                                readTimeMap.getOrDefault(obj.getId(), 0.0).doubleValue()))
+                                .toList());
+
 
                 // Private fields that require additional queries
                 if (includePrivateFields) {

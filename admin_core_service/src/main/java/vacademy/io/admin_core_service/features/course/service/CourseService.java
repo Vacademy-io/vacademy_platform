@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
@@ -46,6 +47,7 @@ public class CourseService {
     private final LearnerInvitationService learnerInvitationService;
     private final FacultyService facultyService;
     private final PackageService packageService;
+    private final PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationToPaymentOptionRepository;
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
@@ -299,8 +301,16 @@ public class CourseService {
         }
 
         packageSessionRepository.saveAll(packageSessions);
+        
+        // Delete learner invitations for these package sessions
         learnerInvitationService.deleteLearnerInvitationBySourceAndSourceId(
                 LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), packageSessionIds);
+
+        // Also mark the enroll invite junction table entries as deleted
+        if (!packageSessionIds.isEmpty()) {
+            packageSessionLearnerInvitationToPaymentOptionRepository.updateStatusByPackageSessionIds(
+                    packageSessionIds, PackageStatusEnum.DELETED.name());
+        }
 
         return "Course deleted successfully";
     }

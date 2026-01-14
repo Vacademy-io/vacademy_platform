@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.live_session.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -274,6 +275,7 @@ public class GetLiveSessionService {
                 .toList();
     }
 
+    @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId")
     public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(String batchId, String userId, CustomUserDetails user) {
         // Optimized: Single query that fetches both batch and user sessions with database-level deduplication
         List<LiveSessionRepository.LiveSessionListProjection> projections = 

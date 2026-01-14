@@ -600,6 +600,39 @@ export const CourseDetailsPage = () => {
   useEffect(() => {
     if (fetchedBatches.length === 0) return;
 
+    // Fix: Prioritize packageSessionId from URL if available
+    if (searchParams.packageSessionId) {
+        const targetBatch = fetchedBatches.find(b => b.id === searchParams.packageSessionId);
+        
+        if (targetBatch?.session?.id && targetBatch?.level?.id) {
+             setPackageSessionIdForCurrentLevel(targetBatch.id);
+             
+             // Ensure level options are populated for the selected session
+             const sessions = form.getValues("courseData")?.sessions || [];
+             const selectedSessionData = sessions.find(s => s.sessionDetails.id === targetBatch.session.id);
+             if (selectedSessionData) {
+                  const newLevelOptions = selectedSessionData.levelDetails.map(level => ({
+                      _id: level.id,
+                      value: level.id,
+                      label: level.name,
+                  }));
+                  setLevelOptions(newLevelOptions);
+             }
+
+             // Check if we need to update session/level (avoid loops)
+             if (selectedSession !== targetBatch.session.id) {
+                setSelectedSession(targetBatch.session.id);
+                // Also set level immediately since we know exactly which combination it is
+                if (selectedLevel !== targetBatch.level.id) {
+                     setSelectedLevel(targetBatch.level.id);
+                }
+             } else if (selectedLevel !== targetBatch.level.id) {
+                 setSelectedLevel(targetBatch.level.id);
+             }
+             return; 
+        }
+    }
+
     const packageSessionId = getIdByLevelAndSession(
       fetchedBatches,
       selectedSession,
@@ -642,7 +675,13 @@ export const CourseDetailsPage = () => {
         setSelectedLevel(chosen.level.id);
       }
     }
-  }, [fetchedBatches, selectedSession, selectedLevel, searchParams.courseId]);
+  }, [
+    fetchedBatches,
+    selectedSession,
+    selectedLevel,
+    searchParams.courseId,
+    searchParams.packageSessionId,
+  ]);
 
   // Fetch payment type when institute ID is available
   useEffect(() => {

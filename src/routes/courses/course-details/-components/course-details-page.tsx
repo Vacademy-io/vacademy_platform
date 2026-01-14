@@ -248,6 +248,7 @@ export const CourseDetailsPage = () => {
     const [packageSessionIds, setPackageSessionIds] = useState<string | null>(
         null
     );
+    const [fetchedBatches, setFetchedBatches] = useState<BatchForSessionType[]>([]);
 
     const [instituteDetails, setInstituteDetails] =
         useState<InstituteDetailsType | null>(null);
@@ -271,6 +272,7 @@ export const CourseDetailsPage = () => {
                     const batches = await fetchBatchesForCourse(searchParams.courseId);
                     
                     if (batches && batches.length > 0) {
+                        setFetchedBatches(batches);
                         setPackageSessionIds(
                             findIdByPackageId(batches)
                         );
@@ -438,16 +440,45 @@ export const CourseDetailsPage = () => {
     };
 
     // Set initial session and its levels
+    // Set initial session and its levels
     useEffect(() => {
+
+        // Validation: Verify if the requested packageSessionId exists in the fetched batches
+        if (searchParams.packageSessionId && fetchedBatches.length > 0) {
+            const targetBatch = fetchedBatches.find(b => b.id === searchParams.packageSessionId);
+            
+            // If found, attempt to set it
+            if (targetBatch?.session?.id && targetBatch?.level?.id) {
+                 // Ensure form data is loaded so handleSessionChange (which relies on it) works
+                 const sessions = form.getValues("courseData")?.sessions;
+                 if (sessions && sessions.length > 0) {
+                     if (selectedSession !== targetBatch.session.id) {
+                        handleSessionChange(targetBatch.session.id);
+                        // We must set level AFTER simple logic in handleSessionChange might have set a default
+                        setTimeout(() => {
+                            setSelectedLevel(targetBatch.level.id);
+                        }, 0);
+                     } else if (selectedLevel !== targetBatch.level.id) {
+                        setSelectedLevel(targetBatch.level.id);
+                     }
+                     return; 
+                 }
+            }
+        }
+
+        // Fallback: Default logic (only if we are NOT trying to resolve a specific ID, or if we gave up?)
+        const conversionFailed = searchParams.packageSessionId && fetchedBatches.length > 0 && !fetchedBatches.find(b => b.id === searchParams.packageSessionId);
+        
         if (
             sessionOptions.length > 0 &&
             !selectedSession &&
-            sessionOptions[0]?.value
+            sessionOptions[0]?.value &&
+            (!searchParams.packageSessionId || conversionFailed)
         ) {
             const initialSessionId = sessionOptions[0].value;
             handleSessionChange(initialSessionId);
         }
-    }, [sessionOptions, handleSessionChange, selectedSession]);
+    }, [sessionOptions, handleSessionChange, selectedSession, selectedLevel, searchParams.packageSessionId, fetchedBatches, form]);
 
     useEffect(() => {
         const loadCourseData = async () => {

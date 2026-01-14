@@ -22,6 +22,7 @@ interface Instructor {
 
 interface CourseCardProps {
     courseId: string;
+    packageSessionId?: string;
     package_name: string;
     level_name: string;
 
@@ -41,6 +42,7 @@ const fallbackInstructorImage =
 
 const CourseCard: React.FC<CourseCardProps> = ({
     courseId,
+    packageSessionId,
     package_name,
     level_name,
     instructors,
@@ -88,6 +90,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
             to: "/study-library/courses/course-details",
             search: {
                 courseId: id,
+                packageSessionId: packageSessionId,
                 selectedTab: selectedTab,
                 percentageCompleted: cappedPercentageCompleted,
             },

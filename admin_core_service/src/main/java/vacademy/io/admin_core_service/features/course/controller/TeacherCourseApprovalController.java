@@ -7,6 +7,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.config.cache.ClientCacheable;
+import vacademy.io.admin_core_service.config.cache.CacheScope;
 import vacademy.io.admin_core_service.features.course.dto.TeacherCourseDetailDTO;
 import vacademy.io.admin_core_service.features.course.service.CourseApprovalService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -56,6 +58,7 @@ public class TeacherCourseApprovalController {
      * Includes DELETED filter and pagination support
      */
     @GetMapping("/my-courses/detailed/v2")
+    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PRIVATE, varyHeaders = {"X-User-Id"})
     public ResponseEntity<Page<TeacherCourseDetailDTO>> getTeacherCoursesWithDetailsV2(
             @RequestAttribute("user") CustomUserDetails teacher,
             Pageable pageable) {

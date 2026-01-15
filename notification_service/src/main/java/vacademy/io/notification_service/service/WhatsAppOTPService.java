@@ -17,6 +17,7 @@ import vacademy.io.notification_service.features.email_otp.entity.EmailOtp;
 import vacademy.io.notification_service.features.email_otp.repository.OtpRepository;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
+import vacademy.io.notification_service.constants.NotificationConstants;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,8 +57,8 @@ public class WhatsAppOTPService {
             EmailOtp emailOtp = EmailOtp.builder()
                     .phoneNumber(request.getPhoneNumber())
                     .otp(otp)
-                    .service("WHATSAPP_AUTH")
-                    .type("WHATSAPP")
+                    .service(NotificationConstants.OTP_SERVICE_WHATSAPP_AUTH)
+                    .type(NotificationConstants.OTP_TYPE_WHATSAPP)
                     .build();
             otpRepository.save(emailOtp);
             log.info("OTP stored in database for phone: {}", request.getPhoneNumber());
@@ -178,7 +179,7 @@ public class WhatsAppOTPService {
             log.info("Verifying WhatsApp OTP for phone: {}", phoneNumber);
 
             Optional<EmailOtp> otpOptional = otpRepository.findTopByPhoneNumberAndTypeOrderByCreatedAtDesc(phoneNumber,
-                    "WHATSAPP");
+                    NotificationConstants.OTP_TYPE_WHATSAPP);
 
             if (otpOptional.isEmpty()) {
                 log.warn("No OTP found for phone: {}", phoneNumber);

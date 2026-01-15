@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.notification.constants.NotificationConstant;
 import vacademy.io.auth_service.feature.notification.dto.NotificationDTO;
+import vacademy.io.auth_service.feature.auth.dto.NotificationTemplateConfigDTO;
+import vacademy.io.auth_service.feature.auth.dto.WhatsAppOTPRequest;
+import vacademy.io.auth_service.feature.auth.dto.WhatsAppOTPVerifyRequest;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
@@ -31,7 +34,7 @@ public class NotificationService {
     @Value("${admin.core.service.base_url}")
     private String adminCoreServiceBaseUrl;
 
-    public vacademy.io.auth_service.feature.auth.dto.NotificationTemplateConfigDTO getTemplateConfig(
+    public NotificationTemplateConfigDTO getTemplateConfig(
             String eventName, String instituteId, String templateType) {
 
         String url = "/admin-core-service/internal/v1/notification-config/by-event" +
@@ -49,7 +52,7 @@ public class NotificationService {
         ObjectMapper objectMapper = new ObjectMapper();
         try {
             return objectMapper.readValue(response.getBody(),
-                    new TypeReference<vacademy.io.auth_service.feature.auth.dto.NotificationTemplateConfigDTO>() {
+                    new TypeReference<NotificationTemplateConfigDTO>() {
                     });
         } catch (JsonProcessingException e) {
             throw new VacademyException("Failed to parse template config: " + e.getMessage());
@@ -118,7 +121,7 @@ public class NotificationService {
 
     }
 
-    public String sendWhatsAppOtp(vacademy.io.auth_service.feature.auth.dto.WhatsAppOTPRequest whatsAppOTPRequest) {
+    public String sendWhatsAppOtp(WhatsAppOTPRequest whatsAppOTPRequest) {
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.POST.name(),
@@ -128,7 +131,7 @@ public class NotificationService {
         return response.getBody();
     }
 
-    public Boolean verifyWhatsAppOTP(vacademy.io.auth_service.feature.auth.dto.WhatsAppOTPVerifyRequest request) {
+    public Boolean verifyWhatsAppOTP(WhatsAppOTPVerifyRequest request) {
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,
                 HttpMethod.POST.name(),

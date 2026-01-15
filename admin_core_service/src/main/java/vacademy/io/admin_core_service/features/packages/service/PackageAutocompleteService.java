@@ -58,7 +58,10 @@ public class PackageAutocompleteService {
                                                         p.getPackageId(),
                                                         p.getPackageName(),
                                                         p.getPackageSessionId(),
-                                                        p.getMatchScore()))
+                                                        p.getLevelId(),
+                                                        p.getLevelName(),
+                                                        p.getSessionId(),
+                                                        p.getSessionName()))
                                         .collect(Collectors.toList());
 
                         long queryTime = System.currentTimeMillis() - startTime;

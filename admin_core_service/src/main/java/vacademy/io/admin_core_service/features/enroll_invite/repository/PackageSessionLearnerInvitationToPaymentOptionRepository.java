@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 
@@ -56,8 +57,20 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                         @Param("statusList") List<String> statusList);
 
         @Modifying
+        @Transactional
         @Query("UPDATE PackageSessionLearnerInvitationToPaymentOption psl " +
                         "SET psl.status = :status " +
                         "WHERE psl.packageSession.id IN :packageSessionIds")
         void updateStatusByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds, @Param("status") String status);
+
+        @Query("SELECT DISTINCT psl.enrollInvite.id FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.packageSession.id IN :packageSessionIds")
+        List<String> findDistinctEnrollInviteIdsByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds);
+
+        @Query("SELECT psl.enrollInvite.id, COUNT(psl) " +
+                        "FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.enrollInvite.id IN :enrollInviteIds " +
+                        "AND psl.status != 'DELETED' " +
+                        "GROUP BY psl.enrollInvite.id")
+        List<Object[]> countActiveByEnrollInviteIds(@Param("enrollInviteIds") List<String> enrollInviteIds);
 }

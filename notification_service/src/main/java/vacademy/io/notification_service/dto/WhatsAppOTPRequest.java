@@ -1,4 +1,4 @@
-package vacademy.io.auth_service.feature.auth.dto;
+package vacademy.io.notification_service.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -9,17 +9,15 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@AllArgsConstructor
-@NoArgsConstructor
 @Builder
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+@NoArgsConstructor
+@AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class AuthRequestDto {
-    private String userName;
-    private String password;
-    private String clientName;
-    private String instituteId;
-    private String email;
-    private String otp;
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+public class WhatsAppOTPRequest {
     private String phoneNumber;
+    private String instituteId;
+    private String templateName;
+    private String languageCode;
+    private String settingJson; // Template configuration JSON with parameters
 }

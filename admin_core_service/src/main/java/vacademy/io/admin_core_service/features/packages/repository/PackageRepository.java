@@ -2430,6 +2430,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND (:#{#facultyMappingStatuses == null || #facultyMappingStatuses.isEmpty()} = true
                      OR fspsm.status IN (:facultyMappingStatuses))
                 AND ps.status != 'DELETED'
+                AND ps.status != 'INVITED'
                 GROUP BY ps.package_id
             ) faculty_assignments ON faculty_assignments.package_id = p.id
             LEFT JOIN (
@@ -2440,9 +2441,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     STRING_AGG(DISTINCT ps.status, ', ') as package_session_statuses
                 FROM package_session ps
                 WHERE ps.status != 'DELETED'
+                AND ps.status != 'INVITED'
                 GROUP BY ps.package_id
             ) ps_info ON ps_info.package_id = p.id
-            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED'
+            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED' AND ps_first.status != 'INVITED'
             LEFT JOIN session s ON s.id = ps_first.session_id
             LEFT JOIN level l ON l.id = ps_first.level_id
             WHERE (
@@ -2457,28 +2459,54 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                  OR p.status IN (:packageStatuses))
             ORDER BY p.created_at DESC
             """, countQuery = """
-            SELECT COUNT(DISTINCT p.id)
-            FROM package p
-            LEFT JOIN (
-                SELECT
-                    ps.package_id,
-                    COUNT(DISTINCT fspsm.id) as assignment_count
+            SELECT COUNT(*)
+            FROM (
+                SELECT DISTINCT
+                    p.id,
+                    CASE
+                        WHEN p.created_by_user_id = :teacherId AND COALESCE(faculty_assignments.assignment_count, 0) > 0 THEN 'BOTH'
+                        WHEN p.created_by_user_id = :teacherId THEN 'CREATOR'
+                        ELSE 'FACULTY_ASSIGNED'
+                    END as teacher_relationship_type,
+                    s.id as session_id,
+                    l.id as level_id
+                FROM package p
+                LEFT JOIN (
+                    SELECT
+                        ps.package_id,
+                        COUNT(DISTINCT fspsm.id) as assignment_count
                 FROM package_session ps
                 JOIN faculty_subject_package_session_mapping fspsm ON fspsm.package_session_id = ps.id
                 WHERE fspsm.user_id = :teacherId
                 AND (:#{#facultyMappingStatuses == null || #facultyMappingStatuses.isEmpty()} = true
                      OR fspsm.status IN (:facultyMappingStatuses))
                 AND ps.status != 'DELETED'
+                AND ps.status != 'INVITED'
                 GROUP BY ps.package_id
             ) faculty_assignments ON faculty_assignments.package_id = p.id
-            WHERE (
-                p.created_by_user_id = :teacherId
-                OR
-                faculty_assignments.package_id IS NOT NULL
-            )
-            AND p.status != 'DELETED'
-            AND (:#{#packageStatuses == null || #packageStatuses.isEmpty()} = true
-                 OR p.status IN (:packageStatuses))
+            LEFT JOIN (
+                SELECT
+                    ps.package_id,
+                    STRING_AGG(DISTINCT ps.id, ', ') as package_session_ids,
+                    COUNT(DISTINCT ps.id) as package_session_count,
+                    STRING_AGG(DISTINCT ps.status, ', ') as package_session_statuses
+                FROM package_session ps
+                WHERE ps.status != 'DELETED'
+                AND ps.status != 'INVITED'
+                GROUP BY ps.package_id
+            ) ps_info ON ps_info.package_id = p.id
+            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED' AND ps_first.status != 'INVITED'
+                LEFT JOIN session s ON s.id = ps_first.session_id
+                LEFT JOIN level l ON l.id = ps_first.level_id
+                WHERE (
+                    p.created_by_user_id = :teacherId
+                    OR
+                    faculty_assignments.package_id IS NOT NULL
+                )
+                AND p.status != 'DELETED'
+                AND (:#{#packageStatuses == null || #packageStatuses.isEmpty()} = true
+                     OR p.status IN (:packageStatuses))
+            ) distinct_rows
             """, nativeQuery = true)
     Page<Map<String, Object>> findTeacherPackagesWithRelationshipDetailsV2(
             @Param("teacherId") String teacherId,

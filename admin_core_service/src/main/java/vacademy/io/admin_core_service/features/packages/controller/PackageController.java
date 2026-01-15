@@ -64,8 +64,8 @@ public class PackageController {
     public ResponseEntity<vacademy.io.admin_core_service.features.packages.dto.AutocompleteResponseDTO> autocomplete(
             @RequestParam("q") String query,
             @RequestParam("instituteId") String instituteId,
-            @RequestParam("session_id") String sessionId,
-            @RequestParam("level_id") String levelId) {
+            @RequestParam(value = "session_id", required = false) String sessionId,
+            @RequestParam(value = "level_id", required = false) String levelId) {
         return ResponseEntity.ok(
                 packageAutocompleteService.autocomplete(query, instituteId, sessionId, levelId));
     }

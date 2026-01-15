@@ -29,12 +29,24 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useChatbotContext } from "./useChatbotContext";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { avatarUrl } from "@/services/chatbot-settings";
+import { QuizComponent } from "./QuizComponent";
+import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 
 // Sound notification for new messages
 const playNotificationSound = () => {
@@ -69,39 +81,43 @@ const triggerHapticFeedback = () => {
   }
 };
 
+import { MessageIntent } from "@/services/chatbot-api";
+
+// ... existing imports
+
 // Context-aware quick action suggestions
-const getQuickActions = (pathname: string) => {
+const getQuickActions = (pathname: string): { label: string; icon: React.ElementType; prompt: string; intent?: MessageIntent }[] => {
   // Slide/content pages
   if (pathname.includes("/slides") || pathname.includes("/content")) {
     return [
-      { label: "Explain this", icon: Lightbulb, prompt: "Explain what's on this slide in simple terms" },
-      { label: "Quiz me", icon: FileQuestion, prompt: "Create a quick quiz question based on this content" },
-      { label: "Summarize", icon: BookOpen, prompt: "Give me a brief summary of this slide" },
+      { label: "Explain this", icon: Lightbulb, prompt: "Explain what's on this slide in simple terms", intent: "doubt" },
+      { label: "Quiz me", icon: FileQuestion, prompt: "Create a quick quiz based on this content", intent: "practice" },
+      { label: "Summarize", icon: BookOpen, prompt: "Give me a brief summary of this slide", intent: "general" },
     ];
   }
   
   // Course details page
-  if (pathname.includes("/course-details")) {
+  if (pathname.includes("/courses/") || pathname.includes("/course-details")) {
     return [
-      { label: "Course overview", icon: BookOpen, prompt: "Give me an overview of this course" },
-      { label: "Learning path", icon: Repeat, prompt: "What's the recommended learning path for this course?" },
-      { label: "Prerequisites", icon: HelpCircle, prompt: "What are the prerequisites for this course?" },
+      { label: "Course overview", icon: BookOpen, prompt: "Give me an overview of this course", intent: "general" },
+      { label: "Learning path", icon: Repeat, prompt: "What's the recommended learning path for this course?", intent: "general" },
+      { label: "Prerequisites", icon: HelpCircle, prompt: "What are the prerequisites for this course?", intent: "doubt" },
     ];
   }
   
   // Assessment/quiz pages
   if (pathname.includes("/assessment") || pathname.includes("/quiz")) {
     return [
-      { label: "Hint", icon: Lightbulb, prompt: "Give me a hint for this question without revealing the answer" },
-      { label: "Explain concept", icon: MessageSquareQuote, prompt: "Explain the concept being tested in this question" },
+      { label: "Hint", icon: Lightbulb, prompt: "Give me a hint for this question without revealing the answer", intent: "doubt" },
+      { label: "Explain concept", icon: MessageSquareQuote, prompt: "Explain the concept being tested in this question", intent: "doubt" },
     ];
   }
   
   // Default/general suggestions
   return [
-    { label: "Help me learn", icon: Lightbulb, prompt: "What should I learn today?" },
-    { label: "Ask a doubt", icon: HelpCircle, prompt: "I have a question about " },
-    { label: "Practice", icon: FileQuestion, prompt: "Give me a practice question" },
+    { label: "Help me learn", icon: Lightbulb, prompt: "What should I learn today?", intent: "general" },
+    { label: "Ask a doubt", icon: HelpCircle, prompt: "I have a question about ", intent: "doubt" },
+    { label: "Practice", icon: FileQuestion, prompt: "I want to practice", intent: "practice" },
   ];
 };
 
@@ -125,6 +141,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     inputValue,
     setInputValue,
     sendMessage,
+    submitQuiz,
     startNewChat,
     closeSession,
     shouldShowChatbot,
@@ -167,6 +184,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0, panelX: 0, panelY: 0 });
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, panelX: 0, panelY: 0 });
+  
+  const [selectedIntent, setSelectedIntent] = useState<MessageIntent>("general");
 
   // Detect mobile viewport
   useEffect(() => {
@@ -333,7 +352,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(inputValue);
+      sendMessage(inputValue, selectedIntent);
     }
   };
 
@@ -514,7 +533,74 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                       </div>
                     )}
 
-                    {messages.map((msg) => (
+                    {messages.map((msg) => {
+                      if (msg.role === "quiz" && msg.metadata?.quiz_data) {
+                        return (
+                          <div key={msg.id} className="w-full max-w-[95%] mr-auto">
+                           {/* Add avatar for quiz messages too */}
+                            <div className="flex gap-2">
+                                <Avatar className="h-7 w-7 mt-1 shrink-0">
+                                  {avatarUrl ? (
+                                    <AvatarImage
+                                      src={avatarUrl}
+                                      alt={chatbotSettings.assistant_name}
+                                      className="object-cover"
+                                    />
+                                  ) : null}
+                                  <AvatarFallback className="text-primary font-bold text-xs">
+                                    {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                   {msg.content && (
+                                     <div className="bg-muted text-foreground rounded-lg px-3 py-2 text-sm mb-2 w-fit">
+                                       <ReactMarkdown
+                                         remarkPlugins={[remarkGfm, remarkMath]}
+                                         rehypePlugins={[rehypeKatex]}
+                                       >
+                                         {msg.content}
+                                       </ReactMarkdown>
+                                     </div>
+                                   )}
+                                   <QuizComponent
+                                      quizData={msg.metadata.quiz_data}
+                                      onSubmit={submitQuiz}
+                                      disabled={isSessionClosed}
+                                   />
+                                </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (msg.role === "quiz_feedback" && msg.metadata?.feedback) {
+                        return (
+                          <div key={msg.id} className="w-full max-w-[95%] mr-auto">
+                             <div className="flex gap-2">
+                                <Avatar className="h-7 w-7 mt-1 shrink-0">
+                                  {avatarUrl ? (
+                                    <AvatarImage
+                                      src={avatarUrl}
+                                      alt={chatbotSettings.assistant_name}
+                                      className="object-cover"
+                                    />
+                                  ) : null}
+                                  <AvatarFallback className="text-primary font-bold text-xs">
+                                    {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                   <QuizFeedbackComponent
+                                      feedback={msg.metadata.feedback}
+                                      content={msg.content}
+                                   />
+                                </div>
+                             </div>
+                          </div>
+                        );
+                      }
+
+                      return (
                       <div
                         key={msg.id}
                         className={cn(
@@ -543,10 +629,10 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                         <div className="flex items-end gap-2">
                           <div
                             className={cn(
-                              "rounded-lg px-3 py-2 text-sm break-words",
+                              "rounded-2xl px-4 py-2.5 text-sm shadow-sm break-words",
                               msg.role === "user"
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted text-foreground"
+                                ? "bg-primary text-primary-foreground rounded-br-sm ml-2"
+                                : "bg-muted/80 backdrop-blur-sm text-foreground rounded-bl-sm mr-2"
                             )}
                           >
                             {msg.role === "user" ? (
@@ -647,8 +733,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                       />
                                     ),
                                   }}
-                                  rehypePlugins={[remarkGfm]}
-                                  remarkPlugins={[remarkBreaks]}
+                                  rehypePlugins={[rehypeKatex]}
+                                  remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
                                 >
                                   {msg.content}
                                 </ReactMarkdown>
@@ -657,9 +743,10 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
 
-                    {(isLoading || aiStatus === "thinking") && (
+                    {(isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz") && (
                       <div className="mr-auto flex max-w-[80%] items-end space-x-2">
                         <Avatar className="h-7 w-7 mr-2 shrink-0">
                           {avatarUrl ? (
@@ -676,16 +763,22 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                           </AvatarFallback>
                         </Avatar>
                         <div className="rounded-lg bg-muted px-4 py-3 text-sm text-foreground">
-                          <div className="flex space-x-1 items-center h-4">
-                            <div className="h-2 w-2 rounded-full bg-primary animate-bounce" />
-                            <div
-                              className="h-2 w-2 rounded-full bg-primary animate-bounce"
-                              style={{ animationDelay: "0.1s" }}
-                            />
-                            <div
-                              className="h-2 w-2 rounded-full bg-primary animate-bounce"
-                              style={{ animationDelay: "0.2s" }}
-                            />
+                          <div className="flex space-x-2 items-center h-4">
+                            {aiStatus === "generating_quiz" ? (
+                              <span className="text-xs text-muted-foreground animate-pulse">Generating quiz...</span>
+                            ) : (
+                              <>
+                                <div className="h-2 w-2 rounded-full bg-primary animate-bounce" />
+                                <div
+                                  className="h-2 w-2 rounded-full bg-primary animate-bounce"
+                                  style={{ animationDelay: "0.15s" }}
+                                />
+                                <div
+                                  className="h-2 w-2 rounded-full bg-primary animate-bounce"
+                                  style={{ animationDelay: "0.3s" }}
+                                />
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -714,35 +807,52 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 {messages.length === 0 && !inputValue.trim() && (
                   <div className="w-full flex flex-wrap gap-1.5 pb-1">
                     {quickActions.map((action, index) => (
-                      <button
+                      <Button
                         key={index}
-                        onClick={() => sendMessage(action.prompt)}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                           if (action.prompt.endsWith(" ")) {
+                             setInputValue(action.prompt);
+                           } else {
+                             sendMessage(action.prompt, action.intent);
+                           }
+                        }}
                         disabled={isLoading || !sessionId}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium",
-                          "bg-primary/10 text-primary hover:bg-primary/20 transition-colors",
-                          "disabled:opacity-50 disabled:cursor-not-allowed"
-                        )}
+                        className="h-7 rounded-full text-xs px-3 bg-primary/5 text-primary hover:bg-primary/15 hover:text-primary transition-colors border border-primary/10"
                       >
-                        <action.icon className="h-3 w-3" />
+                        <action.icon className="h-3 w-3 mr-1.5" />
                         {action.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 )}
                 
                 {/* Input Row */}
                 <div className="w-full flex gap-2">
+                  <Select
+                    value={selectedIntent}
+                    onValueChange={(value) => setSelectedIntent(value as MessageIntent)}
+                  >
+                    <SelectTrigger className="w-[100px] h-9 text-xs">
+                      <SelectValue placeholder="Intent" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[10006]">
+                      <SelectItem value="general">General</SelectItem>
+                      <SelectItem value="doubt">Doubt</SelectItem>
+                      <SelectItem value="practice">Practice</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Input
                     placeholder="Type your message..."
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     disabled={!sessionId || isLoading}
-                    className="text-sm h-9"
+                    className="text-sm h-9 flex-1"
                   />
                   <Button
-                    onClick={() => sendMessage(inputValue)}
+                    onClick={() => sendMessage(inputValue, selectedIntent)}
                     disabled={!inputValue.trim() || isLoading}
                     size="icon"
                     className="h-9 w-9 shrink-0"

@@ -1,6 +1,6 @@
 import React, { createContext } from "react";
-import { ChatMessage } from "./types";
-import { AIStatus } from "@/services/chatbot-api";
+import { ChatMessage, QuizSubmission } from "./types";
+import { AIStatus, MessageIntent } from "@/services/chatbot-api";
 import { ChatbotSettingsData } from "@/services/chatbot-settings";
 
 export interface ChatbotContextType {
@@ -11,7 +11,8 @@ export interface ChatbotContextType {
   aiStatus: AIStatus;
   inputValue: string;
   setInputValue: (value: string) => void;
-  sendMessage: (message: string) => void;
+  sendMessage: (message: string, intent?: MessageIntent) => void;
+  submitQuiz: (submission: QuizSubmission) => void;
   startNewChat: () => void;
   closeSession: () => void;
   shouldShowChatbot: () => boolean;

@@ -70,7 +70,14 @@ async def init_session(
     "/session/{session_id}/message",
     response_model=SendMessageResponse,
     summary="Send a message to a chat session",
-    description="Send a user message to an existing chat session. Processing happens asynchronously."
+    description="""Send a user message to an existing chat session. Processing happens asynchronously.
+    
+    Supports:
+    - Regular messages (intent=general or auto-classified)
+    - Doubt clarification (intent=doubt) - AI provides detailed explanations
+    - Practice requests (intent=practice) - AI generates a quiz
+    - Quiz submissions (include quiz_submission field with answers)
+    """
 )
 async def send_message(
     session_id: str,
@@ -81,11 +88,23 @@ async def send_message(
     Send a message to an existing chat session.
     
     The message will be saved immediately and processed asynchronously by the AI.
+    
+    Message Intent:
+    - If intent is not provided, AI will automatically classify based on message content
+    - DOUBT: User has a question - AI provides detailed explanation
+    - PRACTICE: User wants to practice - AI generates a quiz
+    - GENERAL: Regular conversation
+    
+    Quiz Submission:
+    - Include quiz_submission when submitting answers to a quiz
+    - AI will evaluate and provide personalized feedback
     """
     try:
         message_id, ai_status = await service.send_message(
             session_id=session_id,
             message=request.message,
+            intent=request.intent,
+            quiz_submission=request.quiz_submission,
         )
         
         return SendMessageResponse(

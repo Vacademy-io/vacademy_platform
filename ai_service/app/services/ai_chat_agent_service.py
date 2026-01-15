@@ -17,7 +17,15 @@ from ..services.context_resolver_service import ContextResolverService
 from ..services.tool_manager_service import ToolManagerService
 from ..services.chat_llm_client import ChatLLMClient
 from ..services.institute_settings_service import InstituteSettingsService
+from ..services.quiz_service import QuizService
+from ..services.intent_classifier_service import IntentClassifierService
 from ..models.chat_message import ChatMessage
+from ..schemas.chat_agent import (
+    MessageIntent,
+    QuizData,
+    QuizSubmission,
+    QuizFeedback,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +51,13 @@ class AiChatAgentService:
         self.tool_manager = tool_manager
         self.llm_client = llm_client
         self.institute_settings = institute_settings
+        
+        # Initialize quiz and intent services
+        self.quiz_service = QuizService(llm_client)
+        self.intent_classifier = IntentClassifierService()
+        
+        # Store active quizzes for evaluation (session_id -> QuizData)
+        self._active_quizzes: Dict[str, QuizData] = {}
     
     async def create_session(
         self,
@@ -95,9 +110,17 @@ class AiChatAgentService:
         self,
         session_id: str,
         message: str,
+        intent: Optional[MessageIntent] = None,
+        quiz_submission: Optional[QuizSubmission] = None,
     ) -> tuple[int, str]:
         """
         Send a message to an existing session.
+        
+        Args:
+            session_id: The session to send the message to
+            message: The message content
+            intent: Optional explicit intent (DOUBT, PRACTICE, GENERAL)
+            quiz_submission: Optional quiz answers when submitting a quiz
         
         Returns:
             Tuple of (message_id, ai_status)
@@ -110,11 +133,19 @@ class AiChatAgentService:
         if session.status != "ACTIVE":
             raise ValueError(f"Session {session_id} is not active")
         
-        # Save user message
+        # Build metadata for the message
+        metadata = {}
+        if intent:
+            metadata["intent"] = intent.value
+        if quiz_submission:
+            metadata["quiz_submission"] = quiz_submission.model_dump()
+        
+        # Save user message with metadata
         msg = self.message_repo.create_message(
             session_id=session_id,
             message_type="user",
             content=message,
+            metadata=metadata if metadata else None,
         )
         
         # Update last_active
@@ -483,6 +514,11 @@ class AiChatAgentService:
         Main agentic processing loop with tool calling support.
         Streams events as they happen (tool calls, results, assistant responses).
         
+        Now also handles:
+        - Intent classification (DOUBT, PRACTICE, GENERAL)
+        - Quiz generation for PRACTICE intent
+        - Quiz evaluation for quiz submissions
+        
         Yields:
             SSE event dictionaries
         """
@@ -492,12 +528,12 @@ class AiChatAgentService:
             if not session:
                 return
             
-            # 2. Get conversation history (last 5 user messages = 10 total with responses)
-            history = self.message_repo.get_conversation_history(session_id, limit=10)
+            # 2. Get the latest user message to check for intent/quiz submission
+            latest_msg = self.message_repo.get_latest_message(session_id)
+            if not latest_msg or latest_msg.message_type != "user":
+                return
             
             # 3. Resolve passive context (includes user performance data and user details)
-            # NOTE: This reads fresh context_type and context_meta from session object,
-            # so it will use any updates made via the context update API
             context = await self.context_resolver.resolve_context(
                 session.context_type,
                 session.context_meta,
@@ -505,13 +541,59 @@ class AiChatAgentService:
                 institute_id,
             )
             
-            # 4. Fetch institute AI settings
+            # 4. Check for quiz submission first
+            msg_metadata = latest_msg.meta_data or {}
+            if msg_metadata.get("quiz_submission"):
+                logger.info(f"Processing quiz submission for session {session_id}")
+                async for event in self._handle_quiz_submission(
+                    session_id, 
+                    msg_metadata["quiz_submission"],
+                    context,
+                    institute_id,
+                    user_id,
+                ):
+                    yield event
+                return
+            
+            # 5. Classify message intent
+            explicit_intent = None
+            if msg_metadata.get("intent"):
+                explicit_intent = MessageIntent(msg_metadata["intent"])
+            
+            intent = self.intent_classifier.classify(
+                message=latest_msg.content,
+                explicit_intent=explicit_intent,
+            )
+            
+            logger.info(f"Message intent for session {session_id}: {intent}")
+            
+            # 6. Handle PRACTICE intent - generate quiz
+            if intent == MessageIntent.PRACTICE:
+                async for event in self._handle_practice_request(
+                    session_id,
+                    latest_msg.content,
+                    context,
+                    institute_id,
+                    user_id,
+                ):
+                    yield event
+                return
+            
+            # 7. For DOUBT and GENERAL intents, continue with normal agentic processing
+            # Get conversation history (last 5 user messages = 10 total with responses)
+            history = self.message_repo.get_conversation_history(session_id, limit=10)
+            
+            # Fetch institute AI settings
             ai_settings = self.institute_settings.get_ai_settings(institute_id)
             institute_rules = self.institute_settings.format_rules_for_prompt(ai_settings)
             temperature = self.institute_settings.get_temperature(ai_settings)
             
-            # 5. Build system prompt
-            system_prompt = self._build_system_prompt(institute_rules, context, user_id, institute_id, is_greeting=False)
+            # Build system prompt (with hint for DOUBT intent to be more explanatory)
+            system_prompt = self._build_system_prompt(
+                institute_rules, context, user_id, institute_id, 
+                is_greeting=False,
+                is_doubt=(intent == MessageIntent.DOUBT)
+            )
             
             # 6. Build messages for LLM
             messages = [{"role": "system", "content": system_prompt}]
@@ -722,12 +804,259 @@ class AiChatAgentService:
                 }
             }
     
-    def _build_system_prompt(self, institute_rules: str, context: Dict[str, Any], user_id: str, institute_id: str, is_greeting: bool = False) -> str:
+    async def _handle_practice_request(
+        self,
+        session_id: str,
+        user_message: str,
+        context: Dict[str, Any],
+        institute_id: str,
+        user_id: str,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Handle PRACTICE intent - generate and send a quiz.
+        
+        Yields:
+            SSE event dictionaries
+        """
+        try:
+            # Send status update
+            yield {
+                "event": "status",
+                "data": {"ai_status": "generating_quiz"}
+            }
+            
+            # Extract topic from message and context
+            topic = self.intent_classifier.get_practice_topic(user_message, context)
+            
+            # Send engaging message
+            prep_msg = self.message_repo.create_message(
+                session_id=session_id,
+                message_type="assistant",
+                content=f"Great choice! Let me prepare a quiz on **{topic}** for you... 📝",
+            )
+            yield {
+                "event": "message",
+                "data": {
+                    "id": prep_msg.id,
+                    "type": prep_msg.message_type,
+                    "content": prep_msg.content,
+                    "metadata": prep_msg.meta_data,
+                    "created_at": prep_msg.created_at.isoformat()
+                }
+            }
+            
+            # Generate quiz
+            quiz_data = await self.quiz_service.generate_quiz(
+                topic=topic,
+                context=context,
+                num_questions=5,
+                difficulty="medium",
+                institute_id=institute_id,
+                user_id=user_id,
+            )
+            
+            # Store quiz for later evaluation
+            self._active_quizzes[session_id] = quiz_data
+            
+            # Prepare quiz data for frontend (strip correct answers)
+            frontend_quiz_data = self.quiz_service.get_quiz_for_frontend(quiz_data)
+            
+            # Create quiz message
+            quiz_msg = self.message_repo.create_message(
+                session_id=session_id,
+                message_type="quiz",
+                content=f"Here's your quiz on **{topic}**! Answer all {quiz_data.total_questions} questions and submit when ready.",
+                metadata={"quiz_data": frontend_quiz_data}
+            )
+            
+            yield {
+                "event": "message",
+                "data": {
+                    "id": quiz_msg.id,
+                    "type": quiz_msg.message_type,
+                    "content": quiz_msg.content,
+                    "metadata": quiz_msg.meta_data,
+                    "created_at": quiz_msg.created_at.isoformat()
+                }
+            }
+            
+            logger.info(f"Quiz generated for session {session_id}: {quiz_data.quiz_id}")
+            
+        except Exception as e:
+            logger.error(f"Error generating quiz for session {session_id}: {e}")
+            error_msg = self.message_repo.create_message(
+                session_id=session_id,
+                message_type="assistant",
+                content="I had trouble generating the quiz. Let me help you understand the topic instead. What would you like to know?",
+            )
+            yield {
+                "event": "message",
+                "data": {
+                    "id": error_msg.id,
+                    "type": error_msg.message_type,
+                    "content": error_msg.content,
+                    "metadata": error_msg.meta_data,
+                    "created_at": error_msg.created_at.isoformat()
+                }
+            }
+    
+    async def _handle_quiz_submission(
+        self,
+        session_id: str,
+        submission_data: Dict[str, Any],
+        context: Dict[str, Any],
+        institute_id: str,
+        user_id: str,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Handle quiz submission and generate feedback.
+        
+        Yields:
+            SSE event dictionaries
+        """
+        try:
+            # Parse submission
+            submission = QuizSubmission(**submission_data)
+            
+            # Get the quiz data
+            quiz_data = self._active_quizzes.get(session_id)
+            
+            if not quiz_data or quiz_data.quiz_id != submission.quiz_id:
+                # Try to find quiz from message history
+                logger.warning(f"Quiz {submission.quiz_id} not found in active quizzes for session {session_id}")
+                error_msg = self.message_repo.create_message(
+                    session_id=session_id,
+                    message_type="assistant",
+                    content="I couldn't find that quiz. Would you like to try a new practice quiz?",
+                )
+                yield {
+                    "event": "message",
+                    "data": {
+                        "id": error_msg.id,
+                        "type": error_msg.message_type,
+                        "content": error_msg.content,
+                        "metadata": error_msg.meta_data,
+                        "created_at": error_msg.created_at.isoformat()
+                    }
+                }
+                return
+            
+            # Send processing status
+            yield {
+                "event": "status",
+                "data": {"ai_status": "thinking"}
+            }
+            
+            # Send acknowledgment
+            ack_msg = self.message_repo.create_message(
+                session_id=session_id,
+                message_type="assistant",
+                content="Evaluating your answers... 🔍",
+            )
+            yield {
+                "event": "message",
+                "data": {
+                    "id": ack_msg.id,
+                    "type": ack_msg.message_type,
+                    "content": ack_msg.content,
+                    "metadata": ack_msg.meta_data,
+                    "created_at": ack_msg.created_at.isoformat()
+                }
+            }
+            
+            # Evaluate quiz
+            feedback = await self.quiz_service.evaluate_quiz(
+                quiz_data=quiz_data,
+                submission=submission,
+                context=context,
+                institute_id=institute_id,
+                user_id=user_id,
+            )
+            
+            # Build result summary message
+            emoji = "🎉" if feedback.passed else "💪"
+            result_text = f"""
+## Quiz Results {emoji}
+
+**Score:** {feedback.score}/{feedback.total} ({feedback.percentage}%)
+
+**Status:** {"✅ Passed!" if feedback.passed else "Keep practicing!"}
+
+{feedback.overall_feedback}
+"""
+            
+            if feedback.recommendations:
+                result_text += "\n\n**Recommendations:**\n"
+                for rec in feedback.recommendations:
+                    result_text += f"- {rec}\n"
+            
+            # Create feedback message
+            feedback_msg = self.message_repo.create_message(
+                session_id=session_id,
+                message_type="quiz_feedback",
+                content=result_text.strip(),
+                metadata={"feedback": feedback.model_dump()}
+            )
+            
+            yield {
+                "event": "message",
+                "data": {
+                    "id": feedback_msg.id,
+                    "type": feedback_msg.message_type,
+                    "content": feedback_msg.content,
+                    "metadata": feedback_msg.meta_data,
+                    "created_at": feedback_msg.created_at.isoformat()
+                }
+            }
+            
+            # Clean up stored quiz
+            if session_id in self._active_quizzes:
+                del self._active_quizzes[session_id]
+            
+            # Send follow-up suggestion
+            followup_msg = self.message_repo.create_message(
+                session_id=session_id,
+                message_type="assistant",
+                content="Would you like to **practice more**, or do you have any **doubts** about the questions you got wrong?",
+            )
+            yield {
+                "event": "message",
+                "data": {
+                    "id": followup_msg.id,
+                    "type": followup_msg.message_type,
+                    "content": followup_msg.content,
+                    "metadata": followup_msg.meta_data,
+                    "created_at": followup_msg.created_at.isoformat()
+                }
+            }
+            
+            logger.info(f"Quiz feedback sent for session {session_id}: {feedback.score}/{feedback.total}")
+            
+        except Exception as e:
+            logger.error(f"Error processing quiz submission for session {session_id}: {e}")
+            error_msg = self.message_repo.create_message(
+                session_id=session_id,
+                message_type="assistant",
+                content="I had trouble evaluating your quiz. Would you like to try again?",
+            )
+            yield {
+                "event": "message",
+                "data": {
+                    "id": error_msg.id,
+                    "type": error_msg.message_type,
+                    "content": error_msg.content,
+                    "metadata": error_msg.meta_data,
+                    "created_at": error_msg.created_at.isoformat()
+                }
+            }
+    
+    def _build_system_prompt(self, institute_rules: str, context: Dict[str, Any], user_id: str, institute_id: str, is_greeting: bool = False, is_doubt: bool = False) -> str:
         """
         Build the system prompt combining institute rules and context.
         
         Args:
             is_greeting: If True, instructs AI to generate a personalized greeting
+            is_doubt: If True, the user has a specific doubt - be more explanatory
         """
         import json
         

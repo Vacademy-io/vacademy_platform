@@ -157,6 +157,9 @@ public class InfrastructureHealthResponse {
         @JsonProperty("health_endpoint")
         private String healthEndpoint;
 
+        @JsonProperty("public_health_endpoint")
+        private String publicHealthEndpoint;
+
         @JsonProperty("last_check")
         private Instant lastCheck;
     }

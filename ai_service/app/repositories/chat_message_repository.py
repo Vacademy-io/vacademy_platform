@@ -43,7 +43,7 @@ class ChatMessageRepository:
             session_id=session_id,
             message_type=message_type,
             content=content,
-            metadata=metadata or {},
+            meta_data=metadata or {},
         )
         
         self.db.add(message)

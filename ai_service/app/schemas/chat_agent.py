@@ -22,6 +22,15 @@ class MessageType(str, Enum):
     ASSISTANT = "assistant"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
+    QUIZ = "quiz"  # Contains quiz data for practice mode
+    QUIZ_FEEDBACK = "quiz_feedback"  # Contains quiz results and feedback
+
+
+class MessageIntent(str, Enum):
+    """Categorization of user message intent."""
+    DOUBT = "doubt"        # User has a question/doubt about content
+    PRACTICE = "practice"  # User wants to practice/take a quiz
+    GENERAL = "general"    # Regular conversation (default)
 
 
 class SessionStatus(str, Enum):
@@ -35,6 +44,115 @@ class AIStatus(str, Enum):
     IDLE = "idle"
     THINKING = "thinking"
     TOOL_EXECUTING = "tool_executing"
+    GENERATING_QUIZ = "generating_quiz"
+
+
+# Quiz Related Schemas
+
+class QuizQuestion(BaseModel):
+    """A single quiz question."""
+    id: str = Field(..., description="Unique question identifier")
+    question: str = Field(..., description="The question text")
+    options: List[str] = Field(..., description="List of answer options")
+    correct_answer_index: Optional[int] = Field(
+        None, 
+        description="Index of correct answer (only in backend, stripped for frontend)"
+    )
+    explanation: Optional[str] = Field(
+        None,
+        description="Explanation for the correct answer (shown in feedback)"
+    )
+
+
+class QuizData(BaseModel):
+    """Quiz data for PRACTICE mode."""
+    quiz_id: str = Field(..., description="Unique quiz identifier")
+    title: str = Field(..., description="Quiz title")
+    topic: str = Field(..., description="Topic being tested")
+    questions: List[QuizQuestion] = Field(..., description="List of quiz questions")
+    time_limit_seconds: Optional[int] = Field(None, description="Optional time limit")
+    total_questions: int = Field(..., description="Total number of questions")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "quiz_id": "quiz-uuid-123",
+                "title": "Photosynthesis Quiz",
+                "topic": "photosynthesis",
+                "total_questions": 5,
+                "questions": [
+                    {
+                        "id": "q1",
+                        "question": "What is the primary pigment in photosynthesis?",
+                        "options": ["Chlorophyll", "Carotenoid", "Xanthophyll", "Phycocyanin"]
+                    }
+                ]
+            }
+        }
+
+
+class QuizSubmission(BaseModel):
+    """User's quiz answers."""
+    quiz_id: str = Field(..., description="ID of the quiz being submitted")
+    answers: Dict[str, int] = Field(
+        ..., 
+        description="Map of question_id to selected option index"
+    )
+    time_taken_seconds: Optional[int] = Field(None, description="Time taken to complete")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "quiz_id": "quiz-uuid-123",
+                "answers": {"q1": 0, "q2": 2, "q3": 1},
+                "time_taken_seconds": 120
+            }
+        }
+
+
+class QuestionFeedback(BaseModel):
+    """Feedback for a single question."""
+    question_id: str
+    question_text: str
+    correct: bool
+    user_answer_index: Optional[int]
+    correct_answer_index: int
+    user_answer_text: Optional[str]
+    correct_answer_text: str
+    explanation: Optional[str]
+
+
+class QuizFeedback(BaseModel):
+    """Feedback after quiz completion."""
+    quiz_id: str = Field(..., description="ID of the completed quiz")
+    score: int = Field(..., description="Number of correct answers")
+    total: int = Field(..., description="Total number of questions")
+    percentage: float = Field(..., description="Score percentage")
+    passed: bool = Field(..., description="Whether the user passed (>=60%)")
+    question_feedback: List[QuestionFeedback] = Field(
+        ..., 
+        description="Per-question feedback"
+    )
+    overall_feedback: str = Field(..., description="AI-generated summary feedback")
+    recommendations: List[str] = Field(
+        default_factory=list,
+        description="Recommendations for improvement"
+    )
+    time_taken_seconds: Optional[int] = Field(None, description="Time taken")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "quiz_id": "quiz-uuid-123",
+                "score": 4,
+                "total": 5,
+                "percentage": 80.0,
+                "passed": True,
+                "overall_feedback": "Great job! You have a strong understanding of photosynthesis.",
+                "recommendations": ["Review the light-dependent reactions"],
+                "question_feedback": []
+            }
+        }
 
 
 # Request Schemas
@@ -89,11 +207,31 @@ class InitSessionRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     """Request to send a message in an existing session."""
     message: str = Field(..., description="The message content from the user", min_length=1)
+    intent: Optional[MessageIntent] = Field(
+        None,
+        description="Optional message intent (doubt/practice/general). If not provided, AI will classify automatically."
+    )
+    quiz_submission: Optional[QuizSubmission] = Field(
+        None,
+        description="Quiz answers when submitting a completed quiz"
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
                 "message": "Can you explain this in simple terms?"
+            },
+            "example_practice": {
+                "message": "I want to practice",
+                "intent": "practice"
+            },
+            "example_quiz_submit": {
+                "message": "Quiz completed",
+                "quiz_submission": {
+                    "quiz_id": "quiz-uuid-123",
+                    "answers": {"q1": 0, "q2": 2},
+                    "time_taken_seconds": 120
+                }
             }
         }
 
@@ -241,12 +379,20 @@ class CloseSessionResponse(BaseModel):
 __all__ = [
     "ContextType",
     "MessageType",
+    "MessageIntent",
     "SessionStatus",
     "AIStatus",
+    "QuizQuestion",
+    "QuizData",
+    "QuizSubmission",
+    "QuestionFeedback",
+    "QuizFeedback",
     "InitSessionRequest",
     "SendMessageRequest",
+    "UpdateContextRequest",
     "InitSessionResponse",
     "SendMessageResponse",
+    "UpdateContextResponse",
     "ChatMessageSchema",
     "GetUpdatesResponse",
     "CloseSessionResponse",

@@ -16,12 +16,19 @@ public class PackageSuggestionDTO {
     private String packageId;
     private String packageName;
     private String packageSessionId;
-    private Integer matchScore;
+    private String levelId;
+    private String levelName;
+    private String sessionId;
+    private String sessionName;
 
-    public PackageSuggestionDTO(String packageId, String packageName, String packageSessionId, Integer matchScore) {
+    public PackageSuggestionDTO(String packageId, String packageName, String packageSessionId, String levelId,
+            String levelName, String sessionId, String sessionName) {
         this.packageId = packageId;
         this.packageName = packageName;
         this.packageSessionId = packageSessionId;
-        this.matchScore = matchScore;
+        this.levelId = levelId;
+        this.levelName = levelName;
+        this.sessionId = sessionId;
+        this.sessionName = sessionName;
     }
 }

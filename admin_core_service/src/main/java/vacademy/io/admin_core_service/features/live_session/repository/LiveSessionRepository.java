@@ -296,15 +296,16 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         AND s.status IN ('DRAFT', 'LIVE')
         AND ss.status != 'DELETED'
         ORDER BY ss.meeting_date, ss.start_time
-        LIMIT :size OFFSET :offset
+        LIMIT CASE WHEN :size IS NULL THEN NULL ELSE :size END
+        OFFSET CASE WHEN :offset IS NULL THEN 0 ELSE :offset END
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessionsForUserAndBatchWithFilters(
         @Param("batchId") String batchId,
         @Param("userId") String userId,
         @Param("startDate") String startDate,
         @Param("endDate") String endDate,
-        @Param("offset") int offset,
-        @Param("size") int size
+        @Param("offset") Integer offset,
+        @Param("size") Integer size
     );
 
     @Modifying

@@ -1,0 +1,54 @@
+# Calico Node DaemonSet Resource Patch
+# Issue: 336-1065+ restarts across calico-node pods
+# Solution: Increase resource limits and tune settings
+#
+# Apply with: kubectl patch daemonset calico-node -n kube-system --patch-file 03-calico-resource-patch.yaml
+
+spec:
+  template:
+    spec:
+      containers:
+        - name: calico-node
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          # Improved liveness probe
+          livenessProbe:
+            exec:
+              command:
+                - /bin/calico-node
+                - -felix-live
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command:
+                - /bin/calico-node
+                - -felix-ready
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+---
+# Calico Typha Deployment Resource Patch (if used)
+# Apply with: kubectl patch deployment calico-typha -n kube-system --patch-file 03-calico-typha-patch.yaml
+#
+# spec:
+#   template:
+#     spec:
+#       containers:
+#       - name: calico-typha
+#         resources:
+#           requests:
+#             cpu: "100m"
+#             memory: "128Mi"
+#           limits:
+#             cpu: "500m"
+#             memory: "256Mi"

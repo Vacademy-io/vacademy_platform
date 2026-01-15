@@ -31,7 +31,9 @@ public class CommunityApplicationSecurityConfig {
             "/community-service/actuator/**", "/community-service/swagger-ui.html",
             "/community-service/presentation/**", "/community-service/v1/report/alert/**",
             "/community-service/v3/api-docs/**", "/community-service/swagger-ui/**",
-            "/community-service/webjars/swagger-ui/**", "/community-service/api-docs/**" };
+            "/community-service/webjars/swagger-ui/**", "/community-service/api-docs/**",
+            // Diagnostics endpoints - open for health dashboard
+            "/community-service/diagnostics/**" };
 
     @Autowired
     JwtAuthFilter jwtAuthFilter;

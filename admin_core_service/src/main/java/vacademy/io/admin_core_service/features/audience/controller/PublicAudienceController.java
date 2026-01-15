@@ -5,6 +5,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.AudienceDTO;
 import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadRequestDTO;
+import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadWithEnquiryRequestDTO;
+import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadWithEnquiryResponseDTO;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 
@@ -42,6 +44,13 @@ public class PublicAudienceController {
     public ResponseEntity<String> submitLeadV2(@RequestBody SubmitLeadRequestDTO requestDTO) {
         String responseId = audienceService.submitLeadV2(requestDTO);
         return ResponseEntity.ok(responseId);
+    }
+
+    @PostMapping("/lead/submit-with-enquiry")
+    public ResponseEntity<SubmitLeadWithEnquiryResponseDTO> submitLeadWithEnquiry(
+            @RequestBody SubmitLeadWithEnquiryRequestDTO requestDTO) {
+        SubmitLeadWithEnquiryResponseDTO response = audienceService.submitLeadWithEnquiry(requestDTO);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/campaign/{instituteId}/{audienceId}")

@@ -1005,6 +1005,40 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 WHERE s.source_type = 'QUIZ' AND c.id = :chapterId
                 AND s.status IN (:slideStatus)
                 AND cs.status IN (:chapterToSlidesStatus)
+
+                UNION ALL
+
+                -- HTML VIDEO SLIDES
+                SELECT DISTINCT ON (s.id)
+                    s.created_at,
+                    cs.slide_order,
+                    json_build_object(
+                        'id', s.id,
+                        'title', s.title,
+                        'status', s.status,
+                        'is_loaded', true,
+                        'new_slide', true,
+                        'source_id', s.source_id,
+                        'description', s.description,
+                        'slide_order', cs.slide_order,
+                        'source_type', s.source_type,
+                        'drip_condition', s.drip_condition_json,
+                        'progress_marker', NULL,
+                        'percentage_completed', NULL,
+                        'html_video_slide', json_build_object(
+                            'id', h.id,
+                            'url', h.url,
+                            'video_length_in_millis', h.video_length,
+                            'ai_gen_video_id', h.ai_gen_video_id
+                        )
+                    ) AS slide_data
+                FROM slide s
+                JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                JOIN chapter c ON c.id = cs.chapter_id
+                JOIN html_video_slide h ON h.id = s.source_id
+                WHERE s.source_type = 'HTML_VIDEO' AND c.id = :chapterId
+                AND s.status IN (:slideStatus)
+                AND cs.status IN (:chapterToSlidesStatus)
             ) AS slide_data
             """, nativeQuery = true)
     String getSlidesByChapterId(

@@ -3,10 +3,7 @@ package vacademy.io.admin_core_service.features.audience.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -25,6 +22,9 @@ import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepo
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
+import vacademy.io.admin_core_service.features.enquiry.dto.EnquiryDTO;
+import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
+import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
 import vacademy.io.admin_core_service.features.notification.entity.NotificationEventConfig;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
@@ -84,6 +84,10 @@ public class AudienceService {
 
     @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
+
+    @Autowired
+    private EnquiryRepository enquiryRepository;
+
 
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
@@ -188,6 +192,12 @@ public class AudienceService {
         if (audienceDTO.getEndDateLocal() != null) {
             audience.setEndDate(audienceDTO.getEndDateLocal());
         }
+        if (StringUtils.hasText(audienceDTO.getSessionId())) {
+            audience.setSessionId(audienceDTO.getSessionId());
+        }
+        if (StringUtils.hasText(audienceDTO.getSettingJson())) {
+            audience.setSettingJson(audienceDTO.getSettingJson());
+        }
 
         Audience updated = audienceRepository.save(audience);
 
@@ -235,6 +245,8 @@ public class AudienceService {
                 .jsonWebMetadata(audience.getJsonWebMetadata())
                 .toNotify(audience.getToNotify())
                 .sendRespondentEmail(audience.getSendRespondentEmail())
+                .sessionId(audience.getSessionId())
+                .settingJson(audience.getSettingJson())
                 .createdByUserId(audience.getCreatedByUserId())
                 .instituteCustomFields(customFields)
                 .build();
@@ -275,6 +287,8 @@ public class AudienceService {
                 .jsonWebMetadata(audience.getJsonWebMetadata())
                 .toNotify(audience.getToNotify())
                 .sendRespondentEmail(audience.getSendRespondentEmail())
+                .sessionId(audience.getSessionId())
+                .settingJson(audience.getSettingJson())
                 .createdByUserId(audience.getCreatedByUserId())
                 .build());
     }
@@ -637,6 +651,205 @@ public class AudienceService {
         }
         
         return "Error in submitting the response";
+    }
+
+    /**
+     * Submit a lead with enquiry information
+     * Creates enquiry entry first, then links it to audience response
+     */
+    @Transactional
+    public SubmitLeadWithEnquiryResponseDTO submitLeadWithEnquiry(SubmitLeadWithEnquiryRequestDTO requestDTO) {
+        logger.info("Submitting lead with enquiry for audience: {}", requestDTO.getAudienceId());
+
+        // STEP 1: Validate audience campaign
+        Audience audience = audienceRepository.findById(requestDTO.getAudienceId())
+                .orElseThrow(() -> new VacademyException("Audience not found"));
+
+        if (!"ACTIVE".equals(audience.getStatus())) {
+            throw new VacademyException("Audience campaign is not active");
+        }
+
+        String instituteId = audience.getInstituteId();
+
+        // STEP 2: Create/fetch user from auth_service
+        String userId = null;
+        UserDTO createdUser = null;
+        
+        UserDTO userDTO = requestDTO.getUserDTO();
+        if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
+            createdUser = authService.createUserFromAuthService(
+                    userDTO,
+                    audience.getInstituteId(),
+                    false  // Don't send credentials email
+            );
+            userId = createdUser.getId();
+            logger.info("Created/fetched user with ID: {}", userId);
+
+            // Duplicate submission guard
+            if (StringUtils.hasText(userId) &&
+                    audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), userId)) {
+                throw new VacademyException("You have already submitted your response for this campaign");
+            }
+        } else {
+            throw new VacademyException("User information is required");
+        }
+
+        // STEP 3: Create Enquiry Entry
+        UUID enquiryId = null;
+        if (requestDTO.getEnquiry() != null) {
+            EnquiryDTO enquiryDTO = requestDTO.getEnquiry();
+            Enquiry enquiry = Enquiry.builder()
+                    .checklist(enquiryDTO.getChecklist())
+                    .enquiryStatus(enquiryDTO.getEnquiryStatus())
+                    .convertionStatus(enquiryDTO.getConvertionStatus())
+                    .referenceSource(enquiryDTO.getReferenceSource())
+                    .assignedUserId(enquiryDTO.getAssignedUserId())
+                    .assignedVisitSessionId(enquiryDTO.getAssignedVisitSessionId())
+                    .feeRangeExpectation(enquiryDTO.getFeeRangeExpectation())
+                    .transportRequirement(enquiryDTO.getTransportRequirement())
+                    .mode(enquiryDTO.getMode())
+                    .enquiryTrackingId(enquiryDTO.getEnquiryTrackingId())
+                    .interestScore(enquiryDTO.getInterestScore())
+                    .notes(enquiryDTO.getNotes())
+                    .build();
+
+            Enquiry savedEnquiry = enquiryRepository.save(enquiry);
+            enquiryId = savedEnquiry.getId();
+            logger.info("Created enquiry with ID: {}", enquiryId);
+        }
+
+        // STEP 4: Create Audience Response Entry with new fields
+        AudienceResponse response = AudienceResponse.builder()
+                .audienceId(requestDTO.getAudienceId())
+                .sourceType(requestDTO.getSourceType())
+                .sourceId(requestDTO.getSourceId())
+                .userId(userId)
+                .enquiryId(enquiryId != null ? enquiryId.toString() : null)
+                .destinationPackageSessionId(requestDTO.getDestinationPackageSessionId())
+                .parentName(requestDTO.getParentName())
+                .parentEmail(requestDTO.getParentEmail())
+                .parentMobile(requestDTO.getParentMobile())
+                .build();
+
+        AudienceResponse savedResponse = audienceResponseRepository.save(response);
+        logger.info("Saved audience response with ID: {} linked to enquiry: {}", 
+                savedResponse.getId(), enquiryId);
+
+        // STEP 5: Save custom field values (same as existing submitLead)
+        if (!CollectionUtils.isEmpty(requestDTO.getCustomFieldValues())) {
+            saveCustomFieldValues(
+                    savedResponse.getId(),
+                    requestDTO.getCustomFieldValues(),
+                    audience.getInstituteId()
+            );
+        }
+
+        // STEP 6: Build custom field map for email
+        Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
+
+        // STEP 7: Send notification to respondent (same logic as submitLead)
+        final UserDTO userForNotification = createdUser;
+        final String instituteIdForNotification = instituteId;
+        final String audienceInstituteId = audience.getInstituteId();
+
+        if (audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail()) {
+            logger.info("Sending notification to respondent: {}", userForNotification.getEmail());
+
+            // Fetch notification template
+            Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
+                    .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                            NotificationEventType.AUDIENCE_FORM_SUBMISSION,
+                            NotificationSourceType.AUDIENCE,
+                            requestDTO.getAudienceId(),
+                            NotificationTemplateType.EMAIL
+                    );
+
+            if (configOpt.isPresent()) {
+                // Send templated email
+                java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+                java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a z");
+                String submissionTime = now.format(formatter);
+
+                NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
+                        .userFullName(userForNotification.getFullName())
+                        .userEmail(userForNotification.getEmail())
+                        .instituteId(audienceInstituteId)
+                        .campaignName(audience.getCampaignName())
+                        .customFields(customFieldsForEmail)
+                        .submissionTime(submissionTime)
+                        .build();
+
+                sendUniqueLinkService.sendUniqueLinkByEmailByEnrollInvite(
+                        instituteIdForNotification,
+                        userForNotification,
+                        configOpt.get().getTemplateId(),
+                        null,
+                        templateVars
+                );
+                logger.info("Sent templated email to respondent: {}", userForNotification.getEmail());
+            } else {
+                // Send default email
+                String defaultEmailBody = buildDefaultEmailBody(
+                        audience.getCampaignName(),
+                        userForNotification.getFullName(),
+                        userForNotification.getEmail(),
+                        customFieldsForEmail
+                );
+
+                GenericEmailRequest emailRequest = new GenericEmailRequest();
+                emailRequest.setTo(userForNotification.getEmail());
+                emailRequest.setSubject("Thank You for Submitting Your Response for Campaign - " + audience.getCampaignName());
+                emailRequest.setBody(defaultEmailBody);
+
+                try {
+                    notificationService.sendGenericHtmlMail(emailRequest, instituteIdForNotification);
+                    logger.info("Sent default email to respondent: {}", userForNotification.getEmail());
+                } catch (Exception ex) {
+                    logger.error("Failed to send default email to {}: {}", userForNotification.getEmail(), ex.getMessage());
+                }
+            }
+        }
+
+        // STEP 8: Send notifications to additional recipients (toNotify)
+        if (StringUtils.hasText(audience.getToNotify())) {
+            String[] additionalEmails = audience.getToNotify().split(",");
+            logger.info("Sending notifications to {} additional recipients", additionalEmails.length);
+
+            for (String email : additionalEmails) {
+                String trimmedEmail = email.trim();
+                if (!StringUtils.hasText(trimmedEmail)) {
+                    continue;
+                }
+
+                logger.info("Sending notification to additional recipient: {}", trimmedEmail);
+                String adminEmailBody = buildAdminNotificationBody(
+                        audience.getCampaignName(),
+                        userForNotification.getFullName(),
+                        userForNotification.getEmail(),
+                        customFieldsForEmail
+                );
+
+                GenericEmailRequest adminEmailRequest = new GenericEmailRequest();
+                adminEmailRequest.setTo(trimmedEmail);
+                adminEmailRequest.setSubject("New Lead Submitted - " + audience.getCampaignName());
+                adminEmailRequest.setBody(adminEmailBody);
+
+                try {
+                    notificationService.sendGenericHtmlMail(adminEmailRequest, instituteIdForNotification);
+                    logger.info("Sent default admin notification to: {}", trimmedEmail);
+                } catch (Exception ex) {
+                    logger.error("Failed to send admin notification to {}: {}", trimmedEmail, ex.getMessage());
+                }
+            }
+        }
+
+        // STEP 9: Build and return response
+        return SubmitLeadWithEnquiryResponseDTO.builder()
+                .enquiryId(enquiryId)
+                .audienceResponseId(savedResponse.getId())
+                .userId(userId)
+                .message("Lead and enquiry submitted successfully")
+                .build();
     }
 
     /**
@@ -1436,5 +1649,154 @@ public class AudienceService {
             logger.warn("No custom field values to save - all {} fields were unmapped for audienceId: {}", unmappedCount, audienceId);
         }
     }
+    
+    /**
+     * Get enquiries with audience responses, user details and custom fields
+     */
+    @Transactional(readOnly = true)
+    public Page<EnquiryWithResponseDTO> getEnquiriesWithResponses(EnquiryListFilterDTO filterDTO) {
+        logger.info("Fetching enquiries with filters: {}", filterDTO);
+        
+        // Set default pagination if not provided
+        int page = filterDTO.getPage() != null ? filterDTO.getPage() : 0;
+        int size = filterDTO.getSize() != null ? filterDTO.getSize() : 20;
+        Pageable pageable = PageRequest.of(page, size);
+        
+        // Fetch enquiries with filters
+        Page<Enquiry> enquiries = enquiryRepository.findEnquiriesWithFilters(
+                filterDTO.getAudienceId(),
+                filterDTO.getStatus(),
+                filterDTO.getSource(),
+                filterDTO.getDestinationPackageSessionId(),
+                filterDTO.getCreatedFrom(),
+                filterDTO.getCreatedTo(),
+                pageable
+        );
+        
+        logger.info("Found {} enquiries", enquiries.getTotalElements());
+        
+        // Fetch all audience responses for enquiries
+        List<String> enquiryIds = enquiries.getContent().stream()
+                .map(e -> e.getId().toString())
+                .collect(Collectors.toList());
+        
+        List<AudienceResponse> audienceResponses = audienceResponseRepository.findByEnquiryIdIn(enquiryIds);
+        Map<String, AudienceResponse> responseMap = audienceResponses.stream()
+                .collect(Collectors.toMap(AudienceResponse::getEnquiryId, ar -> ar));
+        
+        // Collect all user IDs for batch fetch
+        Set<String> userIds = audienceResponses.stream()
+                .map(AudienceResponse::getUserId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+        
+        // Batch fetch users (same as /leads API)
+        Map<String, UserDTO> userIdToUser = userIds.isEmpty() ? Collections.emptyMap() :
+                authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds))
+                        .stream()
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toMap(UserDTO::getId, u -> u, (a, b) -> a));
+        
+        logger.info("Fetched {} users for {} enquiries", userIdToUser.size(), enquiries.getContent().size());
+        
+        // Batch fetch custom field values for all audience responses (optimization)
+        List<String> responseIds = audienceResponses.stream()
+                .map(AudienceResponse::getId)
+                .collect(Collectors.toList());
+        
+        Map<String, Map<String, String>> customFieldsMap = new HashMap<>();
+        if (!responseIds.isEmpty()) {
+            List<CustomFieldValues> allCustomFields = customFieldValuesRepository
+                    .findBySourceTypeAndSourceIdIn("AUDIENCE_RESPONSE", responseIds);
+            
+            // Group by source_id (response_id)
+            for (CustomFieldValues cfv : allCustomFields) {
+                customFieldsMap
+                        .computeIfAbsent(cfv.getSourceId(), k -> new HashMap<>())
+                        .put(cfv.getCustomFieldId(), cfv.getValue());
+            }
+            logger.info("Fetched custom fields for {} responses", customFieldsMap.size());
+        }
+        
+        // Build DTOs (same pattern as /leads API)
+        List<EnquiryWithResponseDTO> dtos = enquiries.getContent().stream()
+                .map(enquiry -> {
+                    AudienceResponse audienceResponse = responseMap.get(enquiry.getId().toString());
+                    
+                    if (audienceResponse == null) {
+                        logger.warn("No audience response found for enquiry: {}", enquiry.getId());
+                        return buildEnquiryOnlyDTO(enquiry);
+                    }
+                    
+                    // Get user from map (same as /leads)
+                    UserDTO userDTO = StringUtils.hasText(audienceResponse.getUserId()) 
+                            ? userIdToUser.get(audienceResponse.getUserId()) 
+                            : null;
+                    
+                    // Get custom fields from map (same as /leads)
+                    Map<String, String> customFields = customFieldsMap.getOrDefault(
+                            audienceResponse.getId(), 
+                            Collections.emptyMap()
+                    );
+                    
+                    return EnquiryWithResponseDTO.builder()
+                            // Enquiry fields
+                            .enquiryId(enquiry.getId())
+                            .checklist(enquiry.getChecklist())
+                            .enquiryStatus(enquiry.getEnquiryStatus())
+                            .convertionStatus(enquiry.getConvertionStatus())
+                            .referenceSource(enquiry.getReferenceSource())
+                            .assignedUserId(enquiry.getAssignedUserId())
+                            .assignedVisitSessionId(enquiry.getAssignedVisitSessionId())
+                            .feeRangeExpectation(enquiry.getFeeRangeExpectation())
+                            .transportRequirement(enquiry.getTransportRequirement())
+                            .mode(enquiry.getMode())
+                            .enquiryTrackingId(enquiry.getEnquiryTrackingId())
+                            .interestScore(enquiry.getInterestScore())
+                            .notes(enquiry.getNotes())
+                            .enquiryCreatedAt(enquiry.getCreatedAt())
+                            // Audience Response fields
+                            .audienceResponseId(audienceResponse.getId())
+                            .audienceId(audienceResponse.getAudienceId())
+                            .sourceType(audienceResponse.getSourceType())
+                            .sourceId(audienceResponse.getSourceId())
+                            .destinationPackageSessionId(audienceResponse.getDestinationPackageSessionId())
+                            .parentName(audienceResponse.getParentName())
+                            .parentEmail(audienceResponse.getParentEmail())
+                            .parentMobile(audienceResponse.getParentMobile())
+                            .submittedAt(audienceResponse.getSubmittedAt())
+                            // User and custom fields
+                            .user(userDTO)
+                            .customFields(customFields)
+                            .build();
+                })
+                .collect(Collectors.toList());
+        
+        return new PageImpl<>(dtos, pageable, enquiries.getTotalElements());
+    }
+    
+    /**
+     * Build DTO when audience response is not found
+     */
+    private EnquiryWithResponseDTO buildEnquiryOnlyDTO(Enquiry enquiry) {
+        return EnquiryWithResponseDTO.builder()
+                .enquiryId(enquiry.getId())
+                .checklist(enquiry.getChecklist())
+                .enquiryStatus(enquiry.getEnquiryStatus())
+                .convertionStatus(enquiry.getConvertionStatus())
+                .referenceSource(enquiry.getReferenceSource())
+                .assignedUserId(enquiry.getAssignedUserId())
+                .assignedVisitSessionId(enquiry.getAssignedVisitSessionId())
+                .feeRangeExpectation(enquiry.getFeeRangeExpectation())
+                .transportRequirement(enquiry.getTransportRequirement())
+                .mode(enquiry.getMode())
+                .enquiryTrackingId(enquiry.getEnquiryTrackingId())
+                .interestScore(enquiry.getInterestScore())
+                .notes(enquiry.getNotes())
+                .enquiryCreatedAt(enquiry.getCreatedAt())
+                .customFields(new HashMap<>())
+                .build();
+    }
+
 }
 

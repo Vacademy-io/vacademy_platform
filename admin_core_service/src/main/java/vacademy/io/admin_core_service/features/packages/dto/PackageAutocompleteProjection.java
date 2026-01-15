@@ -5,7 +5,16 @@ package vacademy.io.admin_core_service.features.packages.dto;
  */
 public interface PackageAutocompleteProjection {
     String getPackageSessionId();
+
     String getPackageId();
+
     String getPackageName();
-    Integer getMatchScore();
+
+    String getLevelId();
+
+    String getLevelName();
+
+    String getSessionId();
+
+    String getSessionName();
 }

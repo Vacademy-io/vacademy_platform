@@ -277,9 +277,9 @@ public class GetLiveSessionService {
 
     @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId + '_' + #page + '_' + #size + '_' + #startDate + '_' + #endDate")
     public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(
-            String batchId, String userId, int page, int size, String startDate, String endDate, CustomUserDetails user) {
-        // Calculate offset for pagination
-        int offset = page * size;
+            String batchId, String userId, int page, Integer size, String startDate, String endDate, CustomUserDetails user) {
+        // Calculate offset for pagination (only if size is provided)
+        Integer offset = (size != null) ? page * size : null;
         
         // Optimized: Single query that fetches both batch and user sessions with database-level deduplication
         List<LiveSessionRepository.LiveSessionListProjection> projections = 

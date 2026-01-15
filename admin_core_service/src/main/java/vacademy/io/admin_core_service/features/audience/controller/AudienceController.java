@@ -94,5 +94,23 @@ public class AudienceController {
         LeadDetailDTO lead = audienceService.getLeadById(responseId);
         return ResponseEntity.ok(lead);
     }
+
+    @PostMapping("/enquiries")
+    public ResponseEntity<Page<EnquiryWithResponseDTO>> getEnquiries(
+            @RequestBody EnquiryListFilterDTO filterDTO,
+            @RequestParam(name = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
+            @RequestParam(name = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize) {
+        
+        // Set pagination from request params if not provided in body
+        if (filterDTO.getPage() == null) {
+            filterDTO.setPage(pageNo);
+        }
+        if (filterDTO.getSize() == null) {
+            filterDTO.setSize(pageSize);
+        }
+        
+        Page<EnquiryWithResponseDTO> enquiries = audienceService.getEnquiriesWithResponses(filterDTO);
+        return ResponseEntity.ok(enquiries);
+    }
 }
 

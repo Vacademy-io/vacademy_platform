@@ -18,6 +18,10 @@ class GenerationOptions(BaseModel):
         default=None,
         description="Target number of chapters to generate (only for depth >= 3)"
     )
+    course_timing: Optional[int] = Field(
+        default=None,
+        description="Total course duration in minutes. AI will determine optimal slide count based on timing and content type (e.g., video slides take more time)"
+    )
     generate_images: bool = Field(
         default=False,
         description="Whether to generate course_banner_image and course_preview_image (S3 URLs)"

@@ -1,159 +1,58 @@
-# Vacademy Platform - Critical Issues Remediation
+# LKE Network Stability Remediation
 
-This folder contains configuration files and scripts to fix the critical issues identified in the Vacademy Kubernetes cluster.
+This directory contains crucial patches and configurations to ensure stability of the Linode Kubernetes Engine (LKE) cluster, specifically addressing Calico CNI instability.
 
-## Issues Addressed
+## 🚨 Critical Network Fix (Calico Flapping)
 
-### P0 (Critical)
+**Issue Encountered:** Jan 2026
+**Symptoms:** intermittent 502 Bad Gateway errors, persistent BGP connection resets ("flapping"), random pod unreachability.
+**Root Cause:**
+Default Calico configuration on LKE uses `autodetect` method `can-reach=192.168.128.1`. This caused:
 
-1. **NGINX Ingress Controller Instability** - 173+ restarts
-2. **Calico Network Plugin Issues** - 336-1065+ restarts
-3. **cert-manager Webhook Issues** - 888+ restarts
+1.  Repeated re-evaluation of the node IP every minute.
+2.  Selection of the **Public IP** on `eth0` instead of the LKE Shared Private IP.
+3.  BGP peering failures due to firewalls blocking port 179 on the public interface.
 
-### P1 (High)
+### ✅ The Fix: 05-calico-ip-autodetection.yaml
 
-4. **Redis Without Persistence** - Data loss on restart
-5. **Admin-Core Pod Startup Issues**
-6. **Stale/Error Pods Cleanup**
+We forced Calico to strictly use the **Private IP Range** on `eth0`.
 
-### P2 (Medium)
+**Configuration Applied:**
 
-7. **Security Improvements** (Redis auth, password encoder)
-8. **Docker Image Tagging Strategy**
-9. **Disable Emergency Trusted Login**
+```yaml
+env:
+  - name: IP_AUTODETECTION_METHOD
+    value: "cidr=192.168.128.0/17"
+```
+
+### 🛠️ How to Re-Apply (After Cluster Upgrade)
+
+If Linode upgrades the cluster and resets the `calico-node` DaemonSet, network instability may return. To fix it:
+
+1.  **Navigate to this directory:**
+
+    ```bash
+    cd vacademy_devops/remediation
+    ```
+
+2.  **Apply the Patch:**
+
+    ```bash
+    kubectl patch daemonset calico-node -n kube-system --patch-file 05-calico-ip-autodetection.yaml
+    ```
+
+3.  **Force Restart Pods (to pick up change immediately):**
+
+    ```bash
+    kubectl delete pods -n kube-system -l k8s-app=calico-node
+    ```
+
+4.  **Verify:**
+    Check that pods are `1/1 Running` and logs show `Using autodetected IPv4 address 192.168.x.x`.
 
 ---
 
-## Quick Start
+## Other Remediation Resources
 
-```bash
-# 1. Set your kubeconfig (if not already set)
-export KUBECONFIG=~/.kube/config  # or your LKE kubeconfig
-
-# 2. Apply all P0 fixes
-./apply-p0-fixes.sh
-
-# 3. Apply P1 fixes
-./apply-p1-fixes.sh
-
-# 4. Verify the fixes
-./verify-fixes.sh
-```
-
----
-
-## Individual Fix Files
-
-| File                               | Description                      | Priority |
-| ---------------------------------- | -------------------------------- | -------- |
-| `01-ingress-resources.yaml`        | Increase NGINX Ingress resources | P0       |
-| `02-ingress-config-optimized.yaml` | Optimized NGINX configuration    | P0       |
-| `03-calico-resource-fix.yaml`      | Increase Calico node resources   | P0       |
-| `04-cert-manager-resources.yaml`   | Increase cert-manager resources  | P0       |
-| `05-redis-with-persistence.yaml`   | Redis with PVC for persistence   | P1       |
-| `06-cleanup-stale-pods.sh`         | Script to clean up error pods    | P1       |
-| `apply-p0-fixes.sh`                | Apply all P0 fixes               | -        |
-| `apply-p1-fixes.sh`                | Apply all P1 fixes               | -        |
-| `verify-fixes.sh`                  | Verify all fixes                 | -        |
-
----
-
-## Detailed Fix Instructions
-
-### Fix 1: NGINX Ingress Controller (P0)
-
-The ingress controller is restarting frequently, likely due to OOM kills.
-
-```bash
-# Check current resource usage
-kubectl top pod -n ingress-nginx
-
-# Check for OOM kills
-kubectl describe pod -n ingress-nginx <ingress-pod-name> | grep -A5 "Last State"
-
-# Apply fix
-kubectl apply -f 01-ingress-resources.yaml
-kubectl apply -f 02-ingress-config-optimized.yaml
-
-# Force restart to pick up new resources
-kubectl rollout restart deployment ingress-nginx-controller -n ingress-nginx
-```
-
-### Fix 2: Calico Network Issues (P0)
-
-Calico nodes are restarting excessively.
-
-```bash
-# Check calico node logs
-kubectl logs -n kube-system calico-node-<node-id> --tail=100
-
-# Increase resources for Calico
-kubectl apply -f 03-calico-resource-fix.yaml
-
-# Restart calico daemonset
-kubectl rollout restart daemonset calico-node -n kube-system
-```
-
-### Fix 3: cert-manager Webhook (P0)
-
-```bash
-# Check webhook logs
-kubectl logs -n cert-manager cert-manager-webhook-<pod-id> --tail=100
-
-# Apply resource increase
-kubectl apply -f 04-cert-manager-resources.yaml
-
-# Restart cert-manager
-kubectl rollout restart deployment cert-manager-webhook -n cert-manager
-```
-
-### Fix 4: Redis Persistence (P1)
-
-```bash
-# Apply Redis with persistence
-kubectl apply -f 05-redis-with-persistence.yaml
-
-# Restart Redis deployment
-kubectl rollout restart deployment redis
-```
-
-### Fix 5: Cleanup Stale Pods (P1)
-
-```bash
-# Run cleanup script
-./06-cleanup-stale-pods.sh
-```
-
----
-
-## Monitoring After Fixes
-
-After applying fixes, monitor the cluster:
-
-```bash
-# Watch pod restarts
-watch -n 5 'kubectl get pods --all-namespaces | grep -E "Error|CrashLoopBackOff|Completed|Unknown"'
-
-# Check resource usage
-kubectl top pods --all-namespaces | head -30
-
-# Check events for issues
-kubectl get events --all-namespaces --sort-by='.lastTimestamp' | tail -30
-```
-
----
-
-## Rollback
-
-If any fix causes issues:
-
-```bash
-# For ingress
-kubectl rollout undo deployment ingress-nginx-controller -n ingress-nginx
-
-# For calico
-kubectl rollout undo daemonset calico-node -n kube-system
-
-# For cert-manager
-kubectl rollout undo deployment cert-manager-webhook -n cert-manager
-```
+- `01-ingress-resources.yaml`: Ingress Controller tuning (timeouts, buffers).
+- `04-cert-manager-resources.yaml`: Cert-manager resource limit bumps.

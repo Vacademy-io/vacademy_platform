@@ -31,6 +31,37 @@ public interface UserRepository extends CrudRepository<User, String> {
                         @Param("roleStatus") List<String> roleStatus,
                         @Param("roleNames") List<String> roleNames);
 
+        @Query(value = """
+                        SELECT u.* FROM users u
+                        JOIN user_role ur ON u.id = ur.user_id
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE u.mobile = :mobile
+                          AND ur.status IN (:roleStatus)
+                          AND r.role_name IN (:roleNames)
+                        ORDER BY u.created_at DESC
+                        LIMIT 1
+                        """, nativeQuery = true)
+        Optional<User> findMostRecentUserByMobileAndRoleStatusAndRoleNames(
+                        @Param("mobile") String mobile,
+                        @Param("roleStatus") List<String> roleStatus,
+                        @Param("roleNames") List<String> roleNames);
+
+        // NEW METHOD: For WhatsApp OTP login - uses correct column name 'mobile_number'
+        @Query(value = """
+                        SELECT u.* FROM users u
+                        JOIN user_role ur ON u.id = ur.user_id
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE u.mobile_number = :mobileNumber
+                          AND ur.status IN (:roleStatus)
+                          AND r.role_name IN (:roleNames)
+                        ORDER BY u.created_at DESC
+                        LIMIT 1
+                        """, nativeQuery = true)
+        Optional<User> findUserByMobileNumberAndRoleStatusAndRoleNames(
+                        @Param("mobileNumber") String mobileNumber,
+                        @Param("roleStatus") List<String> roleStatus,
+                        @Param("roleNames") List<String> roleNames);
+
         List<User> findByIdIn(List<String> userIds);
 
         @Modifying

@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 from ..domain.course_metadata import CourseMetadata
 from ..schemas.course_outline import CourseOutlineRequest
+from ..services.institute_settings_service import InstituteSettingsService
 
 
 class CourseOutlinePromptBuilder:
@@ -15,10 +16,14 @@ class CourseOutlinePromptBuilder:
     orchestration and from HTTP concerns.
     """
 
+    def __init__(self, institute_settings_service: Optional[InstituteSettingsService] = None):
+        self._institute_settings_service = institute_settings_service
+
     def build_prompt(
         self,
         request: CourseOutlineRequest,
         metadata: Optional[CourseMetadata],
+        ai_course_prompt: Optional[str] = None,
     ) -> str:
         # Build context variables (match media-service pattern)
 
@@ -26,14 +31,19 @@ class CourseOutlinePromptBuilder:
         gen_options = request.generation_options or {}
         num_slides_spec = gen_options.num_slides if hasattr(gen_options, 'num_slides') and gen_options.num_slides else None
         num_chapters_spec = gen_options.num_chapters if hasattr(gen_options, 'num_chapters') and gen_options.num_chapters else None
+        course_timing = gen_options.course_timing if hasattr(gen_options, 'course_timing') and gen_options.course_timing else None
         generate_images = gen_options.generate_images if hasattr(gen_options, 'generate_images') else False
 
         # Build generation requirements string
         generation_requirements = ""
         if num_slides_spec:
             generation_requirements += f"\n- User specifies exact slide count: EXACTLY {num_slides_spec} slides"
+        elif course_timing:
+            generation_requirements += f"\n- Course timing specified: {course_timing} minutes total. YOU MUST determine optimal slide count based on content complexity, slide types (videos take more time), and institute AI settings context."
         if num_chapters_spec:
             generation_requirements += f"\n- User specifies exact chapter count: EXACTLY {num_chapters_spec} chapters"
+        if course_timing:
+            generation_requirements += f"\n- TIMING CONSIDERATIONS: Factor in slide type duration - VIDEO/AI_VIDEO slides typically take 5-8 minutes, DOCUMENT slides take 3-5 minutes, ASSESSMENT slides take 10-15 minutes."
         if generate_images:
             generation_requirements += f"\n- Generate course images: YES (will provide S3 URLs in response)"
         else:
@@ -45,7 +55,9 @@ class CourseOutlinePromptBuilder:
             "merkleMap": "",   # TODO: Implement merkle map logic if needed
             "existingCourse": request.existing_course_tree or "",
             "courseDepth": str(request.course_depth) if request.course_depth else "auto",
-            "generationRequirements": generation_requirements
+            "generationRequirements": generation_requirements,
+            "instituteAICoursePrompt": ai_course_prompt or "",
+            "courseTiming": str(course_timing) if course_timing else ""
         }
 
 
@@ -68,16 +80,26 @@ class CourseOutlinePromptBuilder:
             USER REQUEST ANALYSIS:
             - User prompt: "{userPrompt}"
             - Course depth: {courseDepth}
+            - Course timing: {courseTiming} minutes (if specified)
             - COUNT ANALYSIS: Extract any specific numbers mentioned
               * "3 slides" = exactly 3 slides total
               * "2 chapters with 4 slides each" = 2 chapters, 8 slides total
               * "5 modules" = exactly 5 modules
-              * If no specific counts mentioned, use reasonable defaults for depth {courseDepth}
+              * If course timing is specified ({courseTiming} minutes), YOU MUST determine optimal slide count based on:
+                - Content complexity and learning objectives
+                - Slide types and their typical duration:
+                  * DOCUMENT slides: 3-5 minutes each
+                  * VIDEO/AI_VIDEO slides: 5-8 minutes each
+                  * ASSESSMENT slides: 10-15 minutes each
+                  * VIDEO_CODE/AI_VIDEO_CODE slides: 8-12 minutes each
+                - Institute AI settings context for preferred teaching methodology
+              * If no specific counts mentioned AND no timing specified, use reasonable defaults for depth {courseDepth}
+            - TIMING-BASED SLIDE COUNT: When timing is provided, institute AI settings should guide your decision on slide distribution
             - DEPTH SPECIFIC: For depth {courseDepth}, follow the structure rules below
-            - CRITICAL: Respect user-specified counts, or use defaults if none specified
-            - AI VIDEO DETECTION: If user prompt mentions "AI video", "AI-generated video", "animated explainer", 
+            - CRITICAL: Respect user-specified counts, or use timing-based calculation, or use defaults if none specified
+            - AI VIDEO DETECTION: If user prompt mentions "AI video", "AI-generated video", "animated explainer",
               or "narrated video", use type `AI_VIDEO` for relevant slides instead of `VIDEO` or `DOCUMENT`
-            - VIDEO+CODE DETECTION: If user prompt mentions "video+code", "video with code", "video and code", 
+            - VIDEO+CODE DETECTION: If user prompt mentions "video+code", "video with code", "video and code",
               "include code editor", "split slide", "code video", "video code slide", "video code", or "code editor",
               use type `VIDEO_CODE` (for YouTube videos) or `AI_VIDEO_CODE` (for AI-generated videos) instead of `VIDEO` or `AI_VIDEO`
 
@@ -137,7 +159,12 @@ class CourseOutlinePromptBuilder:
             SLIDE COUNT ENFORCEMENT:
             - Analyze user prompt for specific slide count (e.g., "generate 2 slides only" = exactly 2 slides)
             - If user specifies exact count, create EXACTLY that many slides, no more, no less
-            - If no count specified, use reasonable default (typically 8-12 slides for comprehensive coverage)
+            - If course timing is specified ({courseTiming} minutes), calculate optimal slide count based on:
+              * DOCUMENT slides: ~4 minutes each
+              * VIDEO/AI_VIDEO slides: ~6 minutes each
+              * ASSESSMENT slides: ~12 minutes each
+              * Mix of slide types based on institute AI settings preferences
+            - If no count specified AND no timing specified, use reasonable default (typically 8-12 slides for comprehensive coverage)
             - Count SLIDES, not chapters/modules/subjects
 
             PRE-GENERATION CHECKLIST FOR DEPTH {courseDepth}:
@@ -339,8 +366,9 @@ class CourseOutlinePromptBuilder:
 
             SLIDE COUNT PRIORITIES (follow in this order):
             1. EXACT COUNT: If user specifies "7 slides only", create exactly 7 slides total
-            2. RANGE: If user specifies ranges, stay within those ranges
-            3. DEFAULT: If no count specified, use minimal defaults
+            2. TIMING-BASED: If course timing is specified ({courseTiming} minutes), calculate optimal slide count and distribution based on institute AI settings context
+            3. RANGE: If user specifies ranges, stay within those ranges
+            4. DEFAULT: If no count specified and no timing specified, use minimal defaults
 
             HOW TO ADJUST STRUCTURE FOR EXACT SLIDE COUNTS:
             - Don't use default hierarchies - adjust the number of chapters/modules to fit exact slide count
@@ -633,7 +661,7 @@ class CourseOutlinePromptBuilder:
                □ STRUCTURE VERIFICATION: Only allowed node types exist for depth {courseDepth}
                   - No chapters if depth=2, no modules if depth=3, no subjects if depth=4
 
-               □ SLIDE COUNT VERIFICATION: Match the number of slides specified in user prompt (or reasonable default if not specified)
+               □ SLIDE COUNT VERIFICATION: Match the number of slides specified in user prompt, or calculated from timing ({courseTiming} minutes) based on institute AI settings, or reasonable default if neither specified
 
                □ HIERARCHICAL NAMES VERIFICATION - CHECK EACH SLIDE INDIVIDUALLY (CRITICAL):
                   - DEPTH 2: Every slide must have subject_name=null, module_name=null, chapter_name=null
@@ -692,6 +720,12 @@ class CourseOutlinePromptBuilder:
             ------------------------------------------------------------
             🧾 USER PROMPT:
             {userPrompt}
+            ------------------------------------------------------------
+            🏫 INSTITUTE AI COURSE PROMPT:
+            ------------------------------------------------------------
+            {instituteAICoursePrompt}
+
+            TIMING CONTEXT: Course duration is {courseTiming} minutes. Use this timing information along with the institute's AI settings to determine optimal slide count and content pacing.
             ------------------------------------------------------------
             """
 

@@ -191,20 +191,35 @@ public class WhatsAppOTPService {
             // Check expiration (10 minutes = 600000 ms)
             long now = System.currentTimeMillis();
             long createdAt = emailOtp.getCreatedAt().getTime();
-            if (now - createdAt > 10 * 60 * 1000) {
-                log.warn("OTP expired for phone: {}", phoneNumber);
+            long differenceMs = now - createdAt;
+            long differenceMinutes = differenceMs / (60 * 1000);
+
+            log.info(
+                    "WHATSAPP OTP VERIFICATION - Phone: {}, Now: {} ({}), CreatedAt: {} ({}), Difference: {}ms ({}min), JVM Timezone: {}",
+                    phoneNumber,
+                    now,
+                    new java.util.Date(now),
+                    createdAt,
+                    emailOtp.getCreatedAt(),
+                    differenceMs,
+                    differenceMinutes,
+                    java.util.TimeZone.getDefault().getID());
+
+            if (differenceMs > 10 * 60 * 1000) {
+                log.warn("WHATSAPP OTP EXPIRED - Phone: {}, Age: {}min, Threshold: 10min", phoneNumber,
+                        differenceMinutes);
                 throw new VacademyException("OTP has expired. Please request a new one.");
             }
 
             // Validate OTP
             if (emailOtp.getOtp().equals(otp)) {
+                log.info("WHATSAPP OTP VERIFIED SUCCESSFULLY - Phone: {}", phoneNumber);
                 emailOtp.setIsVerified("true");
                 otpRepository.save(emailOtp);
-                log.info("WhatsApp OTP verified successfully for phone: {}", phoneNumber);
                 return true;
             }
 
-            log.warn("Invalid OTP for phone: {}", phoneNumber);
+            log.warn("WHATSAPP OTP MISMATCH - Phone: {}", phoneNumber);
             return false;
 
         } catch (VacademyException e) {

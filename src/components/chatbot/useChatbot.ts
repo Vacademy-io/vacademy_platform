@@ -74,7 +74,7 @@ export const useChatbot = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        getChatbotSettings().then((settings) => {
+        getChatbotSettings(true).then((settings) => {
           setChatbotSettings(settings);
           setInstituteName(settings.institute_name);
         });
@@ -186,18 +186,22 @@ export const useChatbot = () => {
         // Get course info from batches
         let courseName = "";
         if (context.courseId) {
-            let matches = instituteDetails?.batches_for_sessions || [];
-            if ((!matches || matches.length === 0)) {
-                try {
-                    const { fetchBatchesForCourse } = await import("@/services/courseBatches");
-                    matches = await fetchBatchesForCourse(context.courseId);
-                } catch (e) { console.error(e); }
+          let matches = instituteDetails?.batches_for_sessions || [];
+          if (!matches || matches.length === 0) {
+            try {
+              const { fetchBatchesForCourse } = await import(
+                "@/services/courseBatches"
+              );
+              matches = await fetchBatchesForCourse(context.courseId);
+            } catch (e) {
+              console.error(e);
             }
+          }
 
-            const batch = matches?.find(
-                (b) => b.package_dto.id === context.courseId
-            );
-            courseName = batch?.package_dto?.package_name || "";
+          const batch = matches?.find(
+            (b) => b.package_dto.id === context.courseId
+          );
+          courseName = batch?.package_dto?.package_name || "";
         }
 
         return {
@@ -243,13 +247,17 @@ export const useChatbot = () => {
 
         // Find batch info for basic metadata
         let matches = instituteDetails?.batches_for_sessions || [];
-        if ((!matches || matches.length === 0)) {
-             try {
-                const { fetchBatchesForCourse } = await import("@/services/courseBatches");
-                matches = await fetchBatchesForCourse(context.courseId);
-            } catch (e) { console.error(e); }
+        if (!matches || matches.length === 0) {
+          try {
+            const { fetchBatchesForCourse } = await import(
+              "@/services/courseBatches"
+            );
+            matches = await fetchBatchesForCourse(context.courseId);
+          } catch (e) {
+            console.error(e);
+          }
         }
-        
+
         const batch = matches?.find(
           (b) => b.package_dto.id === context.courseId
         );

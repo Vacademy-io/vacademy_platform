@@ -22,6 +22,7 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { StudentAllCoursesTabId } from "@/types/student-display-settings";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
 import { parseDripConditions } from "@/services/getIsDrippingEnable";
+import { getChatbotSettings } from "@/services/chatbot-settings.ts";
 
 const CourseCatalougePage: React.FC = () => {
   const [allowLeanersToCreateCourses, setAllowLeanersToCreateCourses] =
@@ -31,9 +32,15 @@ const CourseCatalougePage: React.FC = () => {
   const setInstituteData = useCatalogStore((state) => state.setInstituteData);
   const setInstructors = useCatalogStore((state) => state.setInstructors);
 
-  const setDripCondition = useDripConditionStore((state) => state.setDripCondition);
-  const clearDripCondition = useDripConditionStore((state) => state.clearDripCondition);
-  const setIsDrippingEnable = useDripConditionStore((state) => state.setIsDrippingEnable);
+  const setDripCondition = useDripConditionStore(
+    (state) => state.setDripCondition
+  );
+  const clearDripCondition = useDripConditionStore(
+    (state) => state.clearDripCondition
+  );
+  const setIsDrippingEnable = useDripConditionStore(
+    (state) => state.setIsDrippingEnable
+  );
 
   const [selectedTab, setSelectedTab] = useState("PROGRESS");
   const [visibleTabs, setVisibleTabs] = useState<
@@ -366,6 +373,7 @@ const CourseCatalougePage: React.FC = () => {
           params: { instituteId, userId },
         });
         setInstituteData(response.data);
+        await getChatbotSettings();
       } catch {
         // Error handling
       }
@@ -444,9 +452,13 @@ const CourseCatalougePage: React.FC = () => {
                     className={cn(
                       "flex-1 sm:flex-none px-1.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-neutral-800 data-[state=active]:shadow-sm",
                       // Vibrant Styles - Flat Pastel
-                      t.value === "COMPLETED" && "[.ui-vibrant_&]:data-[state=active]:bg-emerald-100/50 [.ui-vibrant_&]:data-[state=active]:text-emerald-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-emerald-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-emerald-300",
-                      t.value === "PROGRESS" && "[.ui-vibrant_&]:data-[state=active]:bg-indigo-100/50 [.ui-vibrant_&]:data-[state=active]:text-indigo-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-indigo-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-indigo-300",
-                      t.value !== "COMPLETED" && t.value !== "PROGRESS" && "[.ui-vibrant_&]:data-[state=active]:bg-slate-100/50 [.ui-vibrant_&]:data-[state=active]:text-slate-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-slate-800/50 dark:[.ui-vibrant_&]:data-[state=active]:text-slate-300"
+                      t.value === "COMPLETED" &&
+                        "[.ui-vibrant_&]:data-[state=active]:bg-emerald-100/50 [.ui-vibrant_&]:data-[state=active]:text-emerald-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-emerald-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-emerald-300",
+                      t.value === "PROGRESS" &&
+                        "[.ui-vibrant_&]:data-[state=active]:bg-indigo-100/50 [.ui-vibrant_&]:data-[state=active]:text-indigo-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-indigo-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-indigo-300",
+                      t.value !== "COMPLETED" &&
+                        t.value !== "PROGRESS" &&
+                        "[.ui-vibrant_&]:data-[state=active]:bg-slate-100/50 [.ui-vibrant_&]:data-[state=active]:text-slate-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-slate-800/50 dark:[.ui-vibrant_&]:data-[state=active]:text-slate-300"
                     )}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -459,12 +471,12 @@ const CourseCatalougePage: React.FC = () => {
                       {t.label ||
                         (t.value === "ALL"
                           ? `All ${getTerminology(
-                            ContentTerms.Course,
-                            SystemTerms.Course
-                          )}s`
+                              ContentTerms.Course,
+                              SystemTerms.Course
+                            )}s`
                           : t.value === "PROGRESS"
-                            ? "In Progress"
-                            : "Completed")}
+                          ? "In Progress"
+                          : "Completed")}
                     </span>
                   </TabsTrigger>
                 ))}

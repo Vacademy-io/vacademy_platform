@@ -30,6 +30,7 @@ import {
 } from "@/services/domain-routing";
 import { ChatbotPanel } from "@/components/chatbot/ChatbotPanel";
 import { ChatbotProvider } from "@/components/chatbot/ChatbotContext";
+import { getChatbotSettings } from "@/services/chatbot-settings";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -488,6 +489,7 @@ export const Route = createRootRouteWithContext<{
         const authenticated = await isAuthenticated();
         if (authenticated) {
           const settings = await getStudentDisplaySettings(true);
+          await getChatbotSettings(true);
           const route = settings?.postLoginRedirectRoute || "/dashboard";
           // Support external absolute URLs
           if (/^https?:\/\//.test(route)) {
@@ -550,6 +552,7 @@ export const Route = createRootRouteWithContext<{
       const authenticated = await isAuthenticated();
       if (authenticated && location.pathname === "/dashboard") {
         const settings = await getStudentDisplaySettings(false);
+        await getChatbotSettings(true);
         const route = settings?.postLoginRedirectRoute || "/dashboard";
         // On '/dashboard'. Settings route: ${route}
         if (route !== "/dashboard" && !/^https?:\/\//.test(route)) {

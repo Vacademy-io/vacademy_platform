@@ -17,7 +17,13 @@ import { PastLearningInsights } from "./-components/PastLearningInsights";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { useLiveSessions } from "../study-library/live-class/-hooks/useLiveSessions";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -33,7 +39,7 @@ import {
   CheckCircle,
   XCircle,
   Hourglass,
-  TrendUp
+  TrendUp,
 } from "@phosphor-icons/react";
 import { ChevronRight, Sparkles, Video } from "lucide-react";
 import { SessionDetails } from "../study-library/live-class/-types/types";
@@ -44,9 +50,7 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { useWeeklyAttendanceQuery } from "@/services/attendance/getWeeklyAttendance";
-import type {
-  StudentDashboardWidgetConfig,
-} from "@/types/student-display-settings";
+import type { StudentDashboardWidgetConfig } from "@/types/student-display-settings";
 import { DashboardPinsPanel } from "@/components/announcements";
 import { RecentSystemNotifications } from "./-components/RecentSystemNotifications";
 import { useServerTime } from "@/hooks/use-server-time";
@@ -57,6 +61,7 @@ import {
 import { StatCard } from "./-components/DashboardStatCard";
 import { ContinueLearningCard } from "./-components/DashboardContinueLearningCard";
 import { cn } from "@/lib/utils";
+import { getChatbotSettings } from "@/services/chatbot-settings";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -112,7 +117,7 @@ export function DashboardComponent() {
           navigate({ to: route as never, replace: true });
         }
       })
-      .catch(() => { });
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -160,7 +165,8 @@ export function DashboardComponent() {
 
   useEffect(() => {
     // Force-refresh Student Display Settings on dashboard mount to update local cache
-    getStudentDisplaySettings(true).catch(() => { });
+    getStudentDisplaySettings(true).catch(() => {});
+    getChatbotSettings(true).catch(() => {});
 
     const fetchBatchId = async () => {
       try {
@@ -293,7 +299,7 @@ export function DashboardComponent() {
           streamingType: session.session_streaming_service_type,
           joinMethod:
             session.session_streaming_service_type ===
-              SessionStreamingServiceType.EMBED
+            SessionStreamingServiceType.EMBED
               ? "embed"
               : "external_link",
         });
@@ -362,7 +368,10 @@ export function DashboardComponent() {
                   <Skeleton className="h-8 w-48" />
                 ) : (
                   <span>
-                    {`Welcome back, ${username}!`} <span className="hidden sm:inline-block origin-bottom-right rotate-12">👋</span>
+                    {`Welcome back, ${username}!`}{" "}
+                    <span className="hidden sm:inline-block origin-bottom-right rotate-12">
+                      👋
+                    </span>
                   </span>
                 )}
               </h1>
@@ -531,17 +540,21 @@ export function DashboardComponent() {
                   id: "custom" as const,
                   className: "",
                   render: customWidget ? (
-                    <Card className={cn(
-                      "shadow-sm hover:shadow-md transition-shadow",
-                      "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
-                      "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
-                    )}>
+                    <Card
+                      className={cn(
+                        "shadow-sm hover:shadow-md transition-shadow",
+                        "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
+                        "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
+                      )}
+                    >
                       <CardHeader className="pb-2">
                         <CardTitle className="text-lg">
                           {customWidget.title || "Custom Widget"}
                         </CardTitle>
                         {customWidget.subTitle && (
-                          <CardDescription>{customWidget.subTitle}</CardDescription>
+                          <CardDescription>
+                            {customWidget.subTitle}
+                          </CardDescription>
                         )}
                       </CardHeader>
                       <CardContent>
@@ -619,7 +632,11 @@ export function DashboardComponent() {
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between text-base">
                       <div className="flex items-center gap-2">
-                        <CheckCircle weight="duotone" size={18} className="text-primary" />
+                        <CheckCircle
+                          weight="duotone"
+                          size={18}
+                          className="text-primary"
+                        />
                         <span>This Week</span>
                       </div>
                       {weeklyAttendance?.weekRange && (
@@ -633,49 +650,59 @@ export function DashboardComponent() {
                     <div className="grid grid-cols-7 gap-1">
                       {isLoadingAttendance
                         ? [...Array(7)].map((_, i) => (
-                          <div key={i} className="flex flex-col items-center gap-1 p-2 border rounded-md">
-                            <Skeleton className="h-4 w-4 rounded-full" />
-                            <Skeleton className="h-3 w-8" />
-                          </div>
-                        ))
-                        : (weeklyAttendance?.days || []).map((dayData) => {
-                          let Icon = Hourglass;
-                          let colorClass = "text-muted-foreground";
-
-                          switch (dayData.status) {
-                            case "PRESENT":
-                              Icon = CheckCircle;
-                              colorClass = "text-green-500";
-                              break;
-                            case "ABSENT":
-                              Icon = XCircle;
-                              colorClass = "text-red-500";
-                              break;
-                            case "PENDING":
-                              Icon = Hourglass;
-                              colorClass = "text-yellow-500";
-                              break;
-                            case "NO_CLASS":
-                              Icon = Clock;
-                              colorClass = "text-muted-foreground";
-                              break;
-                          }
-
-                          return (
                             <div
-                              key={dayData.day}
-                              className={cn(
-                                "flex flex-col items-center gap-1 p-2 border rounded-md text-center transition-colors",
-                                dayData.status === "PENDING" || dayData.status === "NO_CLASS" ? "opacity-60" : "bg-muted/10"
-                              )}
+                              key={i}
+                              className="flex flex-col items-center gap-1 p-2 border rounded-md"
                             >
-                              <Icon size={16} className={colorClass} weight="duotone" />
-                              <span className="text-[10px] font-medium text-muted-foreground truncate w-full">
-                                {dayData.day}
-                              </span>
+                              <Skeleton className="h-4 w-4 rounded-full" />
+                              <Skeleton className="h-3 w-8" />
                             </div>
-                          );
-                        })}
+                          ))
+                        : (weeklyAttendance?.days || []).map((dayData) => {
+                            let Icon = Hourglass;
+                            let colorClass = "text-muted-foreground";
+
+                            switch (dayData.status) {
+                              case "PRESENT":
+                                Icon = CheckCircle;
+                                colorClass = "text-green-500";
+                                break;
+                              case "ABSENT":
+                                Icon = XCircle;
+                                colorClass = "text-red-500";
+                                break;
+                              case "PENDING":
+                                Icon = Hourglass;
+                                colorClass = "text-yellow-500";
+                                break;
+                              case "NO_CLASS":
+                                Icon = Clock;
+                                colorClass = "text-muted-foreground";
+                                break;
+                            }
+
+                            return (
+                              <div
+                                key={dayData.day}
+                                className={cn(
+                                  "flex flex-col items-center gap-1 p-2 border rounded-md text-center transition-colors",
+                                  dayData.status === "PENDING" ||
+                                    dayData.status === "NO_CLASS"
+                                    ? "opacity-60"
+                                    : "bg-muted/10"
+                                )}
+                              >
+                                <Icon
+                                  size={16}
+                                  className={colorClass}
+                                  weight="duotone"
+                                />
+                                <span className="text-[10px] font-medium text-muted-foreground truncate w-full">
+                                  {dayData.day}
+                                </span>
+                              </div>
+                            );
+                          })}
                     </div>
                   </CardContent>
                 </Card>
@@ -687,11 +714,17 @@ export function DashboardComponent() {
                         <Users weight="duotone" size={20} />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-sm">Refer A Friend</h3>
-                        <p className="text-xs text-muted-foreground">Share the journey</p>
+                        <h3 className="font-semibold text-sm">
+                          Refer A Friend
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Share the journey
+                        </p>
                       </div>
                     </div>
-                    <Button size="sm" variant="secondary">Invite</Button>
+                    <Button size="sm" variant="secondary">
+                      Invite
+                    </Button>
                   </CardContent>
                 </Card>
               </div>
@@ -706,18 +739,27 @@ export function DashboardComponent() {
                   </div>
                   <div className="space-y-0.5">
                     <CardTitle className="text-base">My Classes</CardTitle>
-                    <CardDescription className="text-xs">{getUserTimezone()}</CardDescription>
+                    <CardDescription className="text-xs">
+                      {getUserTimezone()}
+                    </CardDescription>
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/study-library/live-class" })}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate({ to: "/study-library/live-class" })}
+                >
                   View All <ChevronRight size={14} className="ml-1" />
                 </Button>
               </CardHeader>
               <CardContent>
                 {isLoadingLiveSessions ? (
                   <div className="space-y-3">
-                    {[1, 2].map(i => (
-                      <div key={i} className="flex items-center gap-4 p-4 border rounded-lg">
+                    {[1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-4 p-4 border rounded-lg"
+                      >
                         <Skeleton className="h-10 w-10 rounded-lg" />
                         <div className="space-y-2 flex-1">
                           <Skeleton className="h-4 w-1/3" />
@@ -730,54 +772,110 @@ export function DashboardComponent() {
                 ) : (
                   <div className="space-y-3">
                     {liveSessions?.live_sessions?.map((session, index) => (
-                      <div key={`live-${session.session_id}-${index}`} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-lg bg-green-50/50 dark:bg-green-900/10 border-green-200 dark:border-green-900/50">
+                      <div
+                        key={`live-${session.session_id}-${index}`}
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-lg bg-green-50/50 dark:bg-green-900/10 border-green-200 dark:border-green-900/50"
+                      >
                         <div className="flex items-center gap-3 overflow-hidden">
                           <div className="p-2 bg-green-100 rounded-lg text-green-700">
                             <Video size={16} />
                           </div>
                           <div>
-                            <h4 className="font-semibold text-sm truncate">{session.title}</h4>
+                            <h4 className="font-semibold text-sm truncate">
+                              {session.title}
+                            </h4>
                             <p className="text-xs text-muted-foreground">
-                              {formatSessionTimeInUserTimezone(session.meeting_date, session.start_time, session.timezone)}
+                              {formatSessionTimeInUserTimezone(
+                                session.meeting_date,
+                                session.start_time,
+                                session.timezone
+                              )}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
-                          <Badge variant="default" className="bg-green-600 hover:bg-green-700">Live</Badge>
-                          <Button size="sm" onClick={() => handleJoinSession(session)}>Join Now</Button>
+                          <Badge
+                            variant="default"
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            Live
+                          </Badge>
+                          <Button
+                            size="sm"
+                            onClick={() => handleJoinSession(session)}
+                          >
+                            Join Now
+                          </Button>
                         </div>
                       </div>
                     ))}
 
-                    {liveSessions?.upcoming_sessions?.slice(0, 2).map((session, index) => (
-                      <div key={`upcoming-${session.session_id}-${index}`} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-lg">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          <div className="p-2 bg-blue-100 rounded-lg text-blue-700">
-                            <Calendar weight="duotone" size={16} />
+                    {liveSessions?.upcoming_sessions
+                      ?.slice(0, 2)
+                      .map((session, index) => (
+                        <div
+                          key={`upcoming-${session.session_id}-${index}`}
+                          className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-lg"
+                        >
+                          <div className="flex items-center gap-3 overflow-hidden">
+                            <div className="p-2 bg-blue-100 rounded-lg text-blue-700">
+                              <Calendar weight="duotone" size={16} />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-sm truncate">
+                                {session.title}
+                              </h4>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(
+                                  `${session.meeting_date}T${session.start_time}`
+                                ).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                })}{" "}
+                                at{" "}
+                                {formatSessionTimeInUserTimezone(
+                                  session.meeting_date,
+                                  session.start_time,
+                                  session.timezone
+                                )}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="font-semibold text-sm truncate">{session.title}</h4>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(`${session.meeting_date}T${session.start_time}`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} at {formatSessionTimeInUserTimezone(session.meeting_date, session.start_time, session.timezone)}
-                            </p>
-                          </div>
+                          <Badge
+                            variant="secondary"
+                            className="bg-blue-100 text-blue-700 border-blue-200"
+                          >
+                            Upcoming
+                          </Badge>
                         </div>
-                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-200">Upcoming</Badge>
-                      </div>
-                    ))}
+                      ))}
 
-                    {!liveSessions?.live_sessions?.length && !liveSessions?.upcoming_sessions?.length && (
-                      <div className="text-center py-8">
-                        <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
-                          <Video size={20} className="text-muted-foreground" />
+                    {!liveSessions?.live_sessions?.length &&
+                      !liveSessions?.upcoming_sessions?.length && (
+                        <div className="text-center py-8">
+                          <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Video
+                              size={20}
+                              className="text-muted-foreground"
+                            />
+                          </div>
+                          <h3 className="font-semibold text-sm">
+                            No classes scheduled
+                          </h3>
+                          <p className="text-xs text-muted-foreground mt-1 mb-4">
+                            Check back later for upcoming live classes
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              navigate({ to: "/study-library/live-class" })
+                            }
+                          >
+                            View All Classes
+                          </Button>
                         </div>
-                        <h3 className="font-semibold text-sm">No classes scheduled</h3>
-                        <p className="text-xs text-muted-foreground mt-1 mb-4">Check back later for upcoming live classes</p>
-                        <Button variant="outline" size="sm" onClick={() => navigate({ to: "/study-library/live-class" })}>
-                          View All Classes
-                        </Button>
-                      </div>
-                    )}
+                      )}
                   </div>
                 )}
               </CardContent>

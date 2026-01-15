@@ -36,6 +36,21 @@ public class AudienceResponse {
     @Column(name = "source_id", length = 100)
     private String sourceId; // Landing page ID, Ad campaign ID, etc.
 
+    @Column(name = "destination_package_session_id")
+    private String destinationPackageSessionId;
+
+    @Column(name = "enquiry_id")
+    private String enquiryId;
+
+    @Column(name = "parent_name")
+    private String parentName;
+
+    @Column(name = "parent_email")
+    private String parentEmail;
+
+    @Column(name = "parent_mobile", length = 20)
+    private String parentMobile;
+
     @Column(name = "submitted_at", insertable = false, updatable = false)
     private Timestamp submittedAt;
 

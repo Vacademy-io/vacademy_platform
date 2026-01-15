@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
-import { AdminMappings, StudentMapping, getMembers, addMember, terminateMembers, AddMemberRequest } from '@/services/sub-organization-learner-management';
+import { useState, useEffect, useRef } from 'react';
+import { AdminMappings, StudentMapping, getMembers, addMember, terminateMembers, AddMemberRequest, getInstituteCustomFields, InstituteCustomField } from '@/services/sub-organization-learner-management';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Users, RefreshCw, X, Check, ChevronsUpDown } from 'lucide-react';
+import { Plus, Trash2, Users, RefreshCw, X, Check, ChevronsUpDown, Loader2 } from 'lucide-react';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -30,25 +31,72 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
   const [isAdding, setIsAdding] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [instituteCustomFields, setInstituteCustomFields] = useState<InstituteCustomField[]>([]);
+  const [loadingCustomFields, setLoadingCustomFields] = useState(false);
+  const lastFetchedInviteRef = useRef<string | null>(null);
+  const [isTerminateDialogOpen, setIsTerminateDialogOpen] = useState(false);
+  const [isTerminating, setIsTerminating] = useState(false);
 
   // Form states for add member
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<any>({
     email: '',
     mobile_number: '',
     full_name: '',
     username: '',
-    enrolled_date: format(new Date(), 'yyyy-MM-dd'),
-    expiry_date: format(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'), // 1 year from now
-    institute_enrollment_number: '',
-    status: 'ACTIVE' as const,
+    status: 'ACTIVE',
     comma_separated_org_roles: ''
   });
+
 
   useEffect(() => {
     if (adminMappings.length > 0 && !selectedPackageSession) {
       setSelectedPackageSession(adminMappings[0].package_session_id);
     }
   }, [adminMappings, selectedPackageSession]);
+
+  useEffect(() => {
+    const fetchCustomFields = async () => {
+      if (!selectedPackageSession) return;
+
+      const selectedMapping = adminMappings.find(m => m.package_session_id === selectedPackageSession);
+      if (selectedMapping && selectedMapping.invite_code) {
+        // Prevent duplicate calls
+        if (lastFetchedInviteRef.current === selectedMapping.invite_code) {
+          return;
+        }
+
+        setLoadingCustomFields(true);
+        try {
+          // Update the ref immediately to prevent race conditions or subsequent triggers
+          lastFetchedInviteRef.current = selectedMapping.invite_code;
+
+          const response = await getInstituteCustomFields(selectedMapping.institute_id, selectedMapping.invite_code);
+          const fields = response.institute_custom_fields || [];
+          setInstituteCustomFields(fields);
+
+          // Pre-fill Practice Name if it exists
+          const practiceNameField = fields.find(f => f.custom_field.fieldName === 'Practice Name');
+          if (practiceNameField && selectedMapping.sub_org_details?.institute_name) {
+            setFormData((prev: any) => ({
+              ...prev,
+              [practiceNameField.custom_field.fieldKey]: selectedMapping.sub_org_details.institute_name
+            }));
+          }
+        } catch (error) {
+          console.error("Failed to fetch custom fields", error);
+          toast.error("Failed to load registration form configuration");
+        } finally {
+          setLoadingCustomFields(false);
+        }
+      } else {
+        // Fallback or clear if no invite code
+        setInstituteCustomFields([]);
+        lastFetchedInviteRef.current = null;
+      }
+    };
+
+    fetchCustomFields();
+  }, [selectedPackageSession, adminMappings]);
 
   useEffect(() => {
     if (selectedPackageSession) {
@@ -65,7 +113,14 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       if (!selectedMapping) return;
 
       const response = await getMembers(selectedPackageSession, selectedMapping.sub_org_id);
-      setMembers(response.student_mappings || []);
+
+      // Filter out the admin user from the members list
+      const adminUserId = selectedMapping.user_id;
+      const filteredMembers = (response.student_mappings || []).filter(
+        member => member.user_id !== adminUserId
+      );
+
+      setMembers(filteredMembers);
     } catch (error) {
       console.error('Error loading members:', error);
       setMembers([]);
@@ -80,31 +135,55 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       return;
     }
 
-    if (!formData.email || !formData.full_name || !formData.mobile_number) {
-      toast.error('Email, full name, and mobile number are required');
-      return;
-    }
-
     if (!formData.comma_separated_org_roles) {
       toast.error('At least one organization role is required');
       return;
     }
 
+    // Extract core fields from dynamic form data
+    // We need to map custom fields to core fields: email, full_name, mobile_number, username
+    let email = '';
+    let full_name = '';
+    let mobile_number = '';
+    let username = '';
+
+    // Helper to find value by approximation if needed, or rely on specific keys if known. 
+    // Since keys are like 'email_inst_<id>', we search by fieldName.
+
+    // First Name + Last Name -> Full Name
+    const firstNameField = instituteCustomFields.find(f => f.custom_field.fieldName === 'First Name');
+    const lastNameField = instituteCustomFields.find(f => f.custom_field.fieldName === 'Last Name');
+    const firstName = firstNameField ? formData[firstNameField.custom_field.fieldKey] : '';
+    const lastName = lastNameField ? formData[lastNameField.custom_field.fieldKey] : '';
+    full_name = `${firstName || ''} ${lastName || ''}`.trim();
+
+    // Email
+    const emailField = instituteCustomFields.find(f => f.custom_field.fieldName === 'Email');
+    email = emailField ? formData[emailField.custom_field.fieldKey] : '';
+
+    // Phone
+    const phoneField = instituteCustomFields.find(f => f.custom_field.fieldName === 'Phone');
+    mobile_number = phoneField ? formData[phoneField.custom_field.fieldKey] : '';
+
+    // If standard fields form fallback (if custom fields didn't cover them or failed to load)
+    if (!email && formData.email) email = formData.email;
+    if (!full_name && formData.full_name) full_name = formData.full_name;
+    if (!mobile_number && formData.mobile_number) mobile_number = formData.mobile_number;
+
+    if (!email || !full_name) {
+      toast.error('Email and Name are required fields.');
+      return;
+    }
+
     // Email validation
-    if (!validateEmail(formData.email)) {
+    if (!validateEmail(email)) {
       toast.error('Please enter a valid email address');
       return;
     }
 
     // Phone number validation (if provided)
-    if (formData.mobile_number && !validatePhoneNumber(formData.mobile_number)) {
+    if (mobile_number && !validatePhoneNumber(mobile_number)) {
       toast.error('Please enter a valid phone number with country code (e.g., +1234567890)');
-      return;
-    }
-
-    // Username validation (if provided)
-    if (formData.username && !validateUsername(formData.username)) {
-      toast.error('Username must contain only lowercase letters, numbers, and underscores (no capital letters)');
       return;
     }
 
@@ -114,55 +193,58 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       return;
     }
 
+    // Construct custom_field_values
+    const customFieldValues = instituteCustomFields.map(field => ({
+      custom_field_id: field.custom_field.id,
+      value: formData[field.custom_field.fieldKey] || ''
+    })).filter(item => item.value !== '');
+
     setIsAdding(true);
     try {
       const memberData: AddMemberRequest = {
         user: {
-          email: formData.email,
-          mobile_number: formData.mobile_number || undefined,
-          full_name: formData.full_name,
-          username: formData.username || undefined,
+          email: email,
+          mobile_number: mobile_number || undefined,
+          full_name: full_name,
+          username: username || undefined,
         },
         package_session_id: selectedPackageSession,
         sub_org_id: selectedMapping.sub_org_id,
         institute_id: selectedMapping.institute_id,
-        enrolled_date: selectedMapping.enrolled_date ? String(selectedMapping.enrolled_date) : formData.enrolled_date,
-        expiry_date: selectedMapping.expiry_date ? String(selectedMapping.expiry_date) : formData.expiry_date,
-        institute_enrollment_number: formData.institute_enrollment_number || undefined,
         status: 'ACTIVE',
         comma_separated_org_roles: formData.comma_separated_org_roles,
+        custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined
       };
 
       await addMember(memberData);
 
       // Reset form
       setFormData({
-        email: '',
-        mobile_number: '',
-        full_name: '',
-        username: '',
-        enrolled_date: format(new Date(), 'yyyy-MM-dd'),
-        expiry_date: format(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
-        institute_enrollment_number: '',
         status: 'ACTIVE',
         comma_separated_org_roles: '',
       });
 
       setIsAddModalOpen(false);
       loadMembers(); // Refresh the list
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding member:', error);
+      // Extract error message from API response
+      const errorMessage = error?.response?.data?.ex || error?.response?.data?.message || 'Failed to add learner';
+      toast.error(errorMessage);
     } finally {
       setIsAdding(false);
     }
   };
 
-  const handleTerminateMembers = async () => {
+  const openTerminateDialog = () => {
     if (selectedMembers.length === 0) {
       toast.error('Please select members to terminate');
       return;
     }
+    setIsTerminateDialogOpen(true);
+  };
 
+  const handleTerminateMembers = async () => {
     if (!selectedPackageSession) {
       toast.error('Please select a package session');
       return;
@@ -174,6 +256,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       return;
     }
 
+    setIsTerminating(true);
     try {
       await terminateMembers({
         sub_org_id: selectedMapping.sub_org_id,
@@ -182,10 +265,15 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         user_ids: selectedMembers,
       });
 
+      toast.success(`Successfully terminated ${selectedMembers.length} learner(s)`);
       setSelectedMembers([]);
+      setIsTerminateDialogOpen(false);
       loadMembers(); // Refresh the list
     } catch (error) {
       console.error('Error terminating members:', error);
+      toast.error('Failed to terminate learners. Please try again.');
+    } finally {
+      setIsTerminating(false);
     }
   };
 
@@ -280,6 +368,146 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     }
   };
 
+  const renderField = (field: InstituteCustomField) => {
+    const { fieldKey, fieldName, fieldType, isMandatory, config } = field.custom_field;
+
+    // Check if field is "Practice Name" to disable it
+    if (fieldName === 'Practice Name') {
+      return (
+        <div key={field.id}>
+          <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+          <Input
+            id={fieldKey}
+            value={formData[fieldKey] || ''}
+            readOnly
+            disabled
+            className="bg-gray-100 text-gray-500 cursor-not-allowed"
+          />
+        </div>
+      );
+    }
+
+    // Check if it looks like phone to ensure we use PhoneInput even if backend says text/number
+    if ((fieldName.toLowerCase().includes('phone') || fieldKey.includes('phone')) && !fieldName.toLowerCase().includes('type')) {
+      return (
+        <div key={field.id}>
+          <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+          <div className={formData[fieldKey] && !validatePhoneNumber(formData[fieldKey]) ? "phone-input-error" : ""}>
+            <PhoneInput
+              country={'au'}
+              value={formData[fieldKey] || ''}
+              onChange={(phone) => setFormData((prev: any) => ({ ...prev, [fieldKey]: phone.startsWith('+') ? phone : `+${phone}` }))}
+              enableSearch={true}
+              inputClass="!w-full h-10 !rounded-md !border-input"
+              buttonClass="!rounded-l-md !border-input"
+              countryCodeEditable={false}
+              enableAreaCodes={true}
+              disableCountryGuess={false}
+              preferredCountries={["us", "gb", "in", "au"]}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    switch (fieldType) {
+      case 'text':
+      case 'textarea': // Render textarea as Input for now or use Textarea component if available
+        return (
+          <div key={field.id}>
+            <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+            <Input
+              id={fieldKey}
+              value={formData[fieldKey] || ''}
+              onChange={(e) => setFormData((prev: any) => ({ ...prev, [fieldKey]: e.target.value }))}
+              placeholder={`Enter ${fieldName}`}
+              required={isMandatory}
+            />
+          </div>
+        );
+      case 'dropdown':
+        let options = [];
+        try {
+          options = config ? JSON.parse(config) : [];
+        } catch (e) {
+          options = [];
+        }
+        return (
+          <div key={field.id}>
+            <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+            <Select
+              value={formData[fieldKey] || ''}
+              onValueChange={(value) => setFormData((prev: any) => ({ ...prev, [fieldKey]: value }))}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={`Select ${fieldName}`} />
+              </SelectTrigger>
+              <SelectContent className="max-h-60 z-[10000]">
+                {options.map((opt: any) => (
+                  <SelectItem key={opt.id} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      case 'number':
+        // Reuse Input type number? Or just text validation
+        return (
+          <div key={field.id}>
+            <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+            <Input
+              id={fieldKey}
+              type="text" // using text to allow control over validation if needed, or numeric
+              value={formData[fieldKey] || ''}
+              onChange={(e) => setFormData((prev: any) => ({ ...prev, [fieldKey]: e.target.value }))}
+              placeholder={`Enter ${fieldName}`}
+              required={isMandatory}
+            />
+          </div>
+        );
+      // Case for phone if it comes as specific type, otherwise default text
+      default:
+        // Check if it looks like phone
+        if (fieldName.toLowerCase().includes('phone') || fieldKey.includes('phone')) {
+          return (
+            <div key={field.id}>
+              <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+              <div className={formData[fieldKey] && !validatePhoneNumber(formData[fieldKey]) ? "phone-input-error" : ""}>
+                <PhoneInput
+                  country={'au'}
+                  value={formData[fieldKey] || ''}
+                  onChange={(phone) => setFormData((prev: any) => ({ ...prev, [fieldKey]: phone.startsWith('+') ? phone : `+${phone}` }))}
+                  enableSearch={true}
+                  placeholder="+1 234 567 8900"
+                  inputClass="!w-full h-10 !rounded-md !border-input"
+                  buttonClass="!rounded-l-md !border-input"
+                  countryCodeEditable={false}
+                  enableAreaCodes={true}
+                  disableCountryGuess={false}
+                  preferredCountries={["us", "gb", "in", "au"]}
+                />
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div key={field.id}>
+            <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+            <Input
+              id={fieldKey}
+              value={formData[fieldKey] || ''}
+              onChange={(e) => setFormData((prev: any) => ({ ...prev, [fieldKey]: e.target.value }))}
+              placeholder={`Enter ${fieldName}`}
+              required={isMandatory}
+            />
+          </div>
+        );
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -305,110 +533,53 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                 <DialogTitle>Add New Learner</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
-                <div>
-                  <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                    placeholder="learner@example.com"
-                    className={formData.email && !validateEmail(formData.email) ? "border-red-500" : ""}
-                  />
-                  {formData.email && !validateEmail(formData.email) && (
-                    <p className="text-xs text-red-600 mt-1">
-                      Please enter a valid email address
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="full_name">Full Name *</Label>
-                  <Input
-                    id="full_name"
-                    value={formData.full_name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
-                    placeholder="Enter full name"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="mobile_number">Mobile Number * <span className="text-xs text-gray-500">(with country code)</span></Label>
-                  <div className={formData.mobile_number && !validatePhoneNumber(formData.mobile_number) ? "phone-input-error" : ""}>
-                    <PhoneInput
-                      country={'au'}
-                      value={formData.mobile_number}
-                      onChange={(phone) => setFormData(prev => ({ ...prev, mobile_number: phone.startsWith('+') ? phone : `+${phone}` }))}
-                      enableSearch={true}
-                      placeholder="+1 234 567 8900"
-                      inputClass="!w-full h-10 !rounded-md !border-input"
-                      buttonClass="!rounded-l-md !border-input"
-                      countryCodeEditable={false}
-                      enableAreaCodes={true}
-                      disableCountryGuess={false}
-                      preferredCountries={["us", "gb", "in", "au"]}
-                    />
+                {loadingCustomFields ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
                   </div>
-                  {formData.mobile_number && !validatePhoneNumber(formData.mobile_number) && (
-                    <p className="text-xs text-red-600 mt-1">
-                      Please enter a valid phone number
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="username">Username <span className="text-xs text-gray-500">(lowercase only)</span></Label>
-                  <Input
-                    id="username"
-                    value={formData.username}
-                    onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') }))}
-                    placeholder="johndoe"
-                    className={formData.username && !validateUsername(formData.username) ? "border-red-500" : ""}
-                  />
-                  {formData.username && !validateUsername(formData.username) && (
-                    <p className="text-xs text-red-600 mt-1">
-                      Username must contain only lowercase letters, numbers, and underscores
-                    </p>
-                  )}
-                </div>
-                {/* <div>
-                  <Label htmlFor="enrolled_date">Enrolled Date</Label>
-                  <Input
-                    id="enrolled_date"
-                    type="date"
-                    value={formData.enrolled_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, enrolled_date: e.target.value }))}
-                  />
-                </div> */}
-                {/* <div>
-                  <Label htmlFor="expiry_date">Expiry Date</Label>
-                  <Input
-                    id="expiry_date"
-                    type="date"
-                    value={formData.expiry_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, expiry_date: e.target.value }))}
-                  />
-                </div> */}
-                <div>
-                  <Label htmlFor="enrollment_number">Enrollment Number</Label>
-                  <Input
-                    id="enrollment_number"
-                    value={formData.institute_enrollment_number}
-                    onChange={(e) => setFormData(prev => ({ ...prev, institute_enrollment_number: e.target.value }))}
-                    placeholder="Enter the enrollment number"
-                  />
-                </div>
-                {/* <div>
-                  <Label htmlFor="status">Status</Label>
-                  <Select value={formData.status} onValueChange={(value: any) => setFormData(prev => ({ ...prev, status: value }))}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-40">
-                      <SelectItem value="ACTIVE">Active</SelectItem>
-                      <SelectItem value="INACTIVE">Inactive</SelectItem>
-                      <SelectItem value="INVITED">Invited</SelectItem>
-                      <SelectItem value="PENDING_FOR_APPROVAL">Pending Approval</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div> */}
+                ) : instituteCustomFields.length > 0 ? (
+                  <>
+                    {instituteCustomFields
+                      .filter(field => field.custom_field.fieldName !== 'Practice Name')
+                      .map(field => renderField(field))}
+                  </>
+                ) : (
+                  // Fallback hardcoded fields if no custom fields loaded
+                  <>
+                    <div>
+                      <Label htmlFor="email">Email *</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData((prev: any) => ({ ...prev, email: e.target.value }))}
+                        placeholder="learner@example.com"
+                        className={formData.email && !validateEmail(formData.email) ? "border-red-500" : ""}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="full_name">Full Name *</Label>
+                      <Input
+                        id="full_name"
+                        value={formData.full_name}
+                        onChange={(e) => setFormData((prev: any) => ({ ...prev, full_name: e.target.value }))}
+                        placeholder="Enter full name"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="mobile_number">Mobile Number *</Label>
+                      <PhoneInput
+                        country={'au'}
+                        value={formData.mobile_number}
+                        onChange={(phone) => setFormData((prev: any) => ({ ...prev, mobile_number: phone.startsWith('+') ? phone : `+${phone}` }))}
+                        inputClass="!w-full h-10 !rounded-md !border-input"
+                        buttonClass="!rounded-l-md !border-input"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Organization Roles - Always shown */}
                 <div>
                   <Label htmlFor="roles">Organization Roles *</Label>
                   <Popover>
@@ -416,7 +587,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                       <div className="flex min-h-[40px] w-full flex-wrap items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">
                         <div className="flex flex-wrap gap-1">
                           {formData.comma_separated_org_roles.split(',').filter(Boolean).length > 0 ? (
-                            formData.comma_separated_org_roles.split(',').filter(Boolean).map((role) => (
+                            formData.comma_separated_org_roles.split(',').filter(Boolean).map((role: string) => (
                               <Badge key={role} variant="secondary" className="mr-1 mb-1">
                                 {role}
                                 <button
@@ -424,8 +595,8 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") {
                                       const currentRoles = formData.comma_separated_org_roles.split(',').filter(Boolean);
-                                      const newRoles = currentRoles.filter((r) => r !== role);
-                                      setFormData(prev => ({ ...prev, comma_separated_org_roles: newRoles.join(',') }));
+                                      const newRoles = currentRoles.filter((r: string) => r !== role);
+                                      setFormData((prev: any) => ({ ...prev, comma_separated_org_roles: newRoles.join(',') }));
                                     }
                                   }}
                                   onMouseDown={(e) => {
@@ -434,8 +605,8 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                                   }}
                                   onClick={() => {
                                     const currentRoles = formData.comma_separated_org_roles.split(',').filter(Boolean);
-                                    const newRoles = currentRoles.filter((r) => r !== role);
-                                    setFormData(prev => ({ ...prev, comma_separated_org_roles: newRoles.join(',') }));
+                                    const newRoles = currentRoles.filter((r: string) => r !== role);
+                                    setFormData((prev: any) => ({ ...prev, comma_separated_org_roles: newRoles.join(',') }));
                                   }}
                                 >
                                   <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
@@ -449,7 +620,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                       </div>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[10000]" align="start">
                       <Command>
                         <CommandList>
                           <CommandEmpty>No role found.</CommandEmpty>
@@ -461,18 +632,14 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                                 <CommandItem
                                   key={role}
                                   value={role}
-                                  onSelect={(currentValue) => {
-                                    const selectedRole = currentValue.toUpperCase(); // Command might lowercase values, ensure uppercase for consistency if needed, but 'value' prop handles matching too. standardizing on map value
-                                    // Actually command passes the value as lowercase usually to onSelect. Stick to using the map 'role' variable.
-                                    console.log(selectedRole); // using the variable to avoid lint error
-
+                                  onSelect={() => {
                                     let newRoles;
                                     if (isSelected) {
-                                      newRoles = currentRoles.filter((r) => r !== role);
+                                      newRoles = currentRoles.filter((r: string) => r !== role);
                                     } else {
                                       newRoles = [...currentRoles, role];
                                     }
-                                    setFormData(prev => ({ ...prev, comma_separated_org_roles: newRoles.join(',') }));
+                                    setFormData((prev: any) => ({ ...prev, comma_separated_org_roles: newRoles.join(',') }));
                                   }}
                                 >
                                   <Check
@@ -505,6 +672,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         </div>
       </div>
 
+
       {/* Package Session Selector */}
       {adminMappings.length > 1 ? (
         <Card>
@@ -529,7 +697,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       ) : adminMappings.length === 1 && selectedPackageSession ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Package Session</CardTitle>
+            <CardTitle className="text-lg">Practice Group </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-gray-700 font-medium">
@@ -560,10 +728,45 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               )}
             </div>
             {selectedMembers.length > 0 && (
-              <Button variant="destructive" size="sm" onClick={handleTerminateMembers}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                Terminate Selected ({selectedMembers.length})
-              </Button>
+              <>
+                <Button variant="destructive" size="sm" onClick={openTerminateDialog} className="text-white">
+                  <Trash2 className="w-4 h-4 mr-2 text-white" />
+                  Terminate Selected ({selectedMembers.length})
+                </Button>
+
+                <AlertDialog open={isTerminateDialogOpen} onOpenChange={setIsTerminateDialogOpen}>
+                  <AlertDialogContent className="max-w-md">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="text-xl font-semibold">
+                        Confirm Termination
+                      </AlertDialogTitle>
+                      <AlertDialogDescription className="text-gray-600">
+                        Are you sure you want to terminate <span className="font-semibold text-gray-900">{selectedMembers.length}</span> learner{selectedMembers.length > 1 ? 's' : ''}?
+                        This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="gap-2 sm:gap-0">
+                      <AlertDialogCancel disabled={isTerminating} className="mt-0">
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleTerminateMembers}
+                        disabled={isTerminating}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        {isTerminating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Terminating...
+                          </>
+                        ) : (
+                          'Confirm'
+                        )}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
             )}
           </div>
         </CardHeader>
@@ -580,54 +783,101 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               <p className="text-gray-600">Start by adding learners to this package session.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={selectedMembers.length === members.length && members.length > 0}
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Mobile</TableHead>
-                    <TableHead>Enrollment Number</TableHead>
-                    {/* <TableHead>Enrolled Date</TableHead> */}
-                    {/* <TableHead>Expiry Date</TableHead> */}
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {members.map((member) => (
-                    <TableRow key={member.id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedMembers.includes(member.user_id)}
-                          onCheckedChange={(checked) => handleSelectMember(member.user_id, checked as boolean)}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">{member.user.full_name}</TableCell>
-                      <TableCell>{member.user.email}</TableCell>
-                      <TableCell>{member.user.mobile_number || '-'}</TableCell>
-                      <TableCell>{member.institute_enrollment_number || '-'}</TableCell>
-                      {/* <TableCell>
-                        {member.enrolled_date ? format(new Date(member.enrolled_date), 'MMM dd, yyyy') : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {member.expiry_date ? format(new Date(member.expiry_date), 'MMM dd, yyyy') : '-'}
-                      </TableCell> */}
-                      <TableCell>
-                        <Badge className={getStatusColor(member.status)}>
-                          {member.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            (() => {
+              // Fields to hide from the table
+              const hiddenFields = new Set([
+                'Job Portal',
+                'Job Location',
+                'Moodle Username',
+                'Moodle Password',
+                'Practice Name'
+              ]);
+
+              // Extract unique custom field names from all members to build dynamic columns
+              const customFieldColumns: { field_name: string; field_key: string }[] = [];
+              const seenFieldKeys = new Set<string>();
+
+              members.forEach(member => {
+                if (member.custom_fields) {
+                  member.custom_fields.forEach(cf => {
+                    // Skip hidden fields
+                    if (hiddenFields.has(cf.field_name)) return;
+
+                    if (!seenFieldKeys.has(cf.field_key)) {
+                      seenFieldKeys.add(cf.field_key);
+                      customFieldColumns.push({
+                        field_name: cf.field_name,
+                        field_key: cf.field_key
+                      });
+                    }
+                  });
+                }
+              });
+
+              // Sort columns: First Name first, Last Name second, then others
+              customFieldColumns.sort((a, b) => {
+                const order: Record<string, number> = {
+                  'First Name': 0,
+                  'Last Name': 1,
+                };
+                const orderA = order[a.field_name] ?? 999;
+                const orderB = order[b.field_name] ?? 999;
+                return orderA - orderB;
+              });
+
+              // Helper function to get custom field value for a member
+              const getCustomFieldValue = (member: StudentMapping, fieldKey: string): string => {
+                const field = member.custom_fields?.find(cf => cf.field_key === fieldKey);
+                return field?.field_value || '-';
+              };
+
+              return (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12 sticky left-0 bg-white z-10">
+                          <Checkbox
+                            checked={selectedMembers.length === members.length && members.length > 0}
+                            onCheckedChange={handleSelectAll}
+                          />
+                        </TableHead>
+                        {/* Dynamic columns from custom fields */}
+                        {customFieldColumns.map((col) => (
+                          <TableHead key={col.field_key} className="whitespace-nowrap">
+                            {col.field_name}
+                          </TableHead>
+                        ))}
+                        <TableHead className="sticky right-0 bg-white z-10">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {members.map((member) => (
+                        <TableRow key={member.id}>
+                          <TableCell className="sticky left-0 bg-white z-10">
+                            <Checkbox
+                              checked={selectedMembers.includes(member.user_id)}
+                              onCheckedChange={(checked) => handleSelectMember(member.user_id, checked as boolean)}
+                            />
+                          </TableCell>
+                          {/* Dynamic cells from custom fields */}
+                          {customFieldColumns.map((col) => (
+                            <TableCell key={`${member.id}-${col.field_key}`} className="whitespace-nowrap">
+                              {getCustomFieldValue(member, col.field_key)}
+                            </TableCell>
+                          ))}
+                          <TableCell className="sticky right-0 bg-white z-10">
+                            <Badge className={getStatusColor(member.status)}>
+                              {member.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              );
+            })()
           )}
         </CardContent>
       </Card>

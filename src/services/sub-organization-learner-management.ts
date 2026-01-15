@@ -3,7 +3,8 @@ import {
   SUB_ORG_MEMBER_ADMIN_DETAILS,
   SUB_ORG_MEMBERS,
   SUB_ORG_ADD_MEMBER,
-  SUB_ORG_TERMINATE_MEMBER
+  SUB_ORG_TERMINATE_MEMBER,
+  ENROLLMENT_INVITE_URL
 } from '@/constants/urls';
 import { toast } from 'sonner';
 
@@ -15,11 +16,21 @@ export interface AdminMappings {
   package_name?: string;
   level_name?: string;
   session_name?: string;
+  invite_code?: string;
   [key: string]: any;
 }
 
 export interface AdminDetailsResponse {
   admin_mappings: AdminMappings[];
+}
+
+export interface MemberCustomField {
+  custom_field_id: string;
+  field_key: string;
+  field_name: string;
+  field_type: string;
+  field_value: string | null;
+  source_type: string;
 }
 
 export interface StudentMapping {
@@ -36,12 +47,14 @@ export interface StudentMapping {
   user_plan_id: string | null;
   destination_package_session_id: string | null;
   user: {
-    user_id: string;
+    id: string;
+    user_id?: string;
     full_name: string;
     email: string;
     mobile_number: string;
     username: string;
   };
+  custom_fields?: MemberCustomField[];
 }
 
 export interface MembersResponse {
@@ -94,6 +107,40 @@ export interface TerminateMemberRequest {
 export interface TerminateMemberResponse {
   terminated_count: number;
   message: string;
+}
+
+export interface CustomFieldConfig {
+  id: number;
+  value: string;
+  label: string;
+}
+
+export interface CustomField {
+  id: string;
+  fieldKey: string;
+  fieldName: string;
+  fieldType: 'text' | 'dropdown' | 'date' | 'number' | 'textarea';
+  defaultValue: any;
+  config: string | null; // JSON string of options for dropdown
+  isMandatory: boolean;
+  [key: string]: any;
+}
+
+export interface InstituteCustomField {
+  id: string;
+  institute_id: string;
+  type: string;
+  custom_field: CustomField;
+  status: 'ACTIVE' | 'INACTIVE';
+  [key: string]: any;
+}
+
+export interface EnrollInviteResponse {
+  id: string;
+  invite_code: string;
+  institute_id: string;
+  institute_custom_fields: InstituteCustomField[];
+  [key: string]: any;
 }
 
 // Helper function to get auth headers
@@ -187,14 +234,28 @@ export const terminateMembers = async (
       terminateData,
       { headers }
     );
-    toast.success(`Successfully terminated ${terminateData.user_ids.length} learner(s)`);
     return response.data;
   } catch (error) {
     console.error('Error terminating members:', error);
-    toast.error('Failed to terminate learners');
     throw error;
   }
 };
+
+// Get institute custom fields details using invite info
+export const getInstituteCustomFields = async (
+  instituteId: string,
+  inviteCode: string
+): Promise<EnrollInviteResponse> => {
+  try {
+    const url = `${ENROLLMENT_INVITE_URL}?instituteId=${instituteId}&inviteCode=${inviteCode}`;
+    const response = await axios.get<EnrollInviteResponse>(url);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching invite details:', error);
+    throw error;
+  }
+};
+
 
 // Export all functions
 export const subOrganizationLearnerManagementApi = {
@@ -202,4 +263,6 @@ export const subOrganizationLearnerManagementApi = {
   getMembers,
   addMember,
   terminateMembers,
+  getInstituteCustomFields,
 };
+

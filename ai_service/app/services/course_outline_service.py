@@ -15,6 +15,7 @@ from .image_service import ImageGenerationService
 from .content_generation_service import ContentGenerationService
 from .api_key_resolver import ApiKeyResolver
 from .token_usage_service import TokenUsageService
+from .institute_settings_service import InstituteSettingsService
 from ..models.ai_token_usage import ApiProvider, RequestType
 from sqlalchemy.orm import Session
 
@@ -43,6 +44,7 @@ class CourseOutlineGenerationService:
         image_service: Optional[ImageGenerationService] = None,
         content_generation_service: Optional[ContentGenerationService] = None,
         db_session: Optional[Session] = None,
+        institute_settings_service: Optional[InstituteSettingsService] = None,
     ) -> None:
         self._llm_client = llm_client
         self._metadata_port = metadata_port
@@ -51,6 +53,7 @@ class CourseOutlineGenerationService:
         self._image_service = image_service or ImageGenerationService()
         self._content_generation_service = content_generation_service
         self._db_session = db_session
+        self._institute_settings_service = institute_settings_service
         self._llm_client = llm_client  # Store for content generation service
         # Note: content_generation_service will be initialized later in generate_content_from_coursetree if needed
 
@@ -65,7 +68,20 @@ class CourseOutlineGenerationService:
                 institute_id=request.institute_id,
             )
 
-        prompt = self._prompt_builder.build_prompt(request=request, metadata=metadata)
+        # Get institute AI course prompt
+        ai_course_prompt = None
+        if self._institute_settings_service and self._db_session:
+            try:
+                ai_settings = self._institute_settings_service.get_ai_course_settings(request.institute_id)
+                ai_course_prompt = ai_settings.get("AI_COURSE_PROMPT")
+            except Exception as e:
+                logger.warning(f"Failed to fetch AI course prompt for institute {request.institute_id}: {str(e)}")
+
+        prompt = self._prompt_builder.build_prompt(
+            request=request,
+            metadata=metadata,
+            ai_course_prompt=ai_course_prompt
+        )
 
         # Resolve API keys (request -> database -> defaults)
         openai_key = None
@@ -191,7 +207,20 @@ class CourseOutlineGenerationService:
                 institute_id=request.institute_id,
             )
 
-        prompt = self._prompt_builder.build_prompt(request=request, metadata=metadata)
+        # Get institute AI course prompt
+        ai_course_prompt = None
+        if self._institute_settings_service and self._db_session:
+            try:
+                ai_settings = self._institute_settings_service.get_ai_course_settings(request.institute_id)
+                ai_course_prompt = ai_settings.get("AI_COURSE_PROMPT")
+            except Exception as e:
+                logger.warning(f"Failed to fetch AI course prompt for institute {request.institute_id}: {str(e)}")
+
+        prompt = self._prompt_builder.build_prompt(
+            request=request,
+            metadata=metadata,
+            ai_course_prompt=ai_course_prompt
+        )
 
         # Resolve API keys (request -> database -> defaults)
         openai_key = None

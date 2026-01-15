@@ -101,7 +101,8 @@ def get_course_outline_service(db: Session = Depends(db_dependency)) -> CourseOu
     """
     llm_client = get_llm_client()
     metadata_port = get_course_metadata_port()
-    prompt_builder = CourseOutlinePromptBuilder()
+    institute_settings_service = InstituteSettingsService(db)
+    prompt_builder = CourseOutlinePromptBuilder(institute_settings_service)
     parser = CourseOutlineParser()
     image_service = get_image_service()
     content_generation_service = get_content_generation_service()
@@ -113,6 +114,7 @@ def get_course_outline_service(db: Session = Depends(db_dependency)) -> CourseOu
         image_service=image_service,
         content_generation_service=content_generation_service,
         db_session=db,
+        institute_settings_service=institute_settings_service,
     )
 
 

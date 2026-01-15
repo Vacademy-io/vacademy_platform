@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 from ..domain.course_metadata import CourseMetadata
 from ..schemas.course_outline import CourseOutlineRequest
+from ..services.institute_settings_service import InstituteSettingsService
 
 
 class CourseOutlinePromptBuilder:
@@ -15,10 +16,14 @@ class CourseOutlinePromptBuilder:
     orchestration and from HTTP concerns.
     """
 
+    def __init__(self, institute_settings_service: Optional[InstituteSettingsService] = None):
+        self._institute_settings_service = institute_settings_service
+
     def build_prompt(
         self,
         request: CourseOutlineRequest,
         metadata: Optional[CourseMetadata],
+        ai_course_prompt: Optional[str] = None,
     ) -> str:
         # Build context variables (match media-service pattern)
 
@@ -45,7 +50,8 @@ class CourseOutlinePromptBuilder:
             "merkleMap": "",   # TODO: Implement merkle map logic if needed
             "existingCourse": request.existing_course_tree or "",
             "courseDepth": str(request.course_depth) if request.course_depth else "auto",
-            "generationRequirements": generation_requirements
+            "generationRequirements": generation_requirements,
+            "instituteAICoursePrompt": ai_course_prompt or ""
         }
 
 
@@ -692,6 +698,10 @@ class CourseOutlinePromptBuilder:
             ------------------------------------------------------------
             🧾 USER PROMPT:
             {userPrompt}
+            ------------------------------------------------------------
+            🏫 INSTITUTE AI COURSE PROMPT:
+            ------------------------------------------------------------
+            {instituteAICoursePrompt}
             ------------------------------------------------------------
             """
 

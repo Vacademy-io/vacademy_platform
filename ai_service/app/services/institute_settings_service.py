@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Optional, Dict, Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,105 @@ Follow these rules strictly at all times.
             Temperature value (default 0.3)
         """
         return ai_settings.get("adherence_settings", {}).get("temperature", 0.3)
+
+    def get_ai_course_settings(self, institute_id: str) -> Dict[str, Any]:
+        """
+        Get AI course settings for an institute, specifically for course outline generation.
+
+        Args:
+            institute_id: ID of the institute
+
+        Returns:
+            Dictionary containing AI course settings with AI_COURSE_PROMPT
+        """
+        try:
+            # Query the institutes table for AI_settings
+            stmt = text("""
+                SELECT setting_json
+                FROM institutes
+                WHERE id = :institute_id
+            """)
+
+            result = self.db.execute(stmt, {"institute_id": institute_id})
+            row = result.fetchone()
+
+            if not row or not row[0]:
+                return {"AI_COURSE_PROMPT": None}
+
+            setting_json = row[0]
+            settings = json.loads(setting_json) if isinstance(setting_json, str) else setting_json
+
+            # Extract AI_settings from the settings
+            ai_settings = settings.get("setting", {}).get("AI_settings", {})
+
+            return {
+                "AI_COURSE_PROMPT": ai_settings.get("AI_COURSE_PROMPT")
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching AI course settings for institute {institute_id}: {e}")
+            return {"AI_COURSE_PROMPT": None}
+
+    def update_ai_course_settings(self, institute_id: str, ai_course_prompt: Optional[str]) -> Dict[str, Any]:
+        """
+        Update AI course settings for an institute.
+
+        Args:
+            institute_id: ID of the institute
+            ai_course_prompt: The AI course prompt to set
+
+        Returns:
+            Updated AI course settings
+        """
+        try:
+            # First, get the current settings
+            stmt = text("""
+                SELECT setting_json
+                FROM institutes
+                WHERE id = :institute_id
+            """)
+
+            result = self.db.execute(stmt, {"institute_id": institute_id})
+            row = result.fetchone()
+
+            if not row:
+                raise ValueError(f"Institute {institute_id} not found")
+
+            current_settings = {}
+            if row[0]:
+                current_settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+
+            # Ensure the nested structure exists
+            if "setting" not in current_settings:
+                current_settings["setting"] = {}
+            if "AI_settings" not in current_settings["setting"]:
+                current_settings["setting"]["AI_settings"] = {}
+
+            # Update the AI_COURSE_PROMPT
+            current_settings["setting"]["AI_settings"]["AI_COURSE_PROMPT"] = ai_course_prompt
+
+            # Update the database
+            update_stmt = text("""
+                UPDATE institutes
+                SET setting_json = :setting_json
+                WHERE id = :institute_id
+            """)
+
+            self.db.execute(update_stmt, {
+                "setting_json": json.dumps(current_settings),
+                "institute_id": institute_id
+            })
+
+            self.db.commit()
+
+            return {
+                "AI_COURSE_PROMPT": ai_course_prompt
+            }
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating AI course settings for institute {institute_id}: {e}")
+            raise
 
 
 __all__ = ["InstituteSettingsService"]

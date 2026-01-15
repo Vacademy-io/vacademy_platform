@@ -21,6 +21,7 @@ public class LearnerSlidesDetailDTO {
     private QuestionSlideDTO questionSlide;
     private AssignmentSlideDTO assignmentSlide;
     private QuizSlideDTO quizSlide;
+    private HtmlVideoSlideDTO htmlVideoSlide;
     private Double percentageCompleted;
     private Long progressMarker;
     private Object dripCondition;

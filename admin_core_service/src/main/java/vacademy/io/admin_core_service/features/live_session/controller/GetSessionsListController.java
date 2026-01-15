@@ -54,7 +54,7 @@ public class GetSessionsListController {
             @RequestParam(required = false, name = "batchId") String batchId,
             @RequestParam(value = "userId", required = false) String userId,
             @RequestParam(value = "page", required = false, defaultValue = "0") int page,
-            @RequestParam(value = "size", required = false, defaultValue = "50") int size,
+            @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "startDate", required = false) String startDate,
             @RequestParam(value = "endDate", required = false) String endDate,
             @RequestAttribute("user") CustomUserDetails user) {

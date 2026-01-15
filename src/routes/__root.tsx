@@ -30,6 +30,7 @@ import {
 } from "@/services/domain-routing";
 import { ChatbotPanel } from "@/components/chatbot/ChatbotPanel";
 import { ChatbotProvider } from "@/components/chatbot/ChatbotContext";
+import { ChatbotFloatingButton } from "@/components/chatbot/ChatbotFloatingButton";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -418,6 +419,7 @@ const RootComponent = () => {
     <ChatbotProvider>
       <Outlet />
       <ChatbotPanel />
+      <ChatbotFloatingButton />
     </ChatbotProvider>
   );
 };

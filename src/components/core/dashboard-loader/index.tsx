@@ -1,17 +1,10 @@
-import {
-  Component,
-  ErrorInfo,
-  ReactNode,
-  useEffect,
-  useState,
-} from "react";
+import { Component, ErrorInfo, ReactNode, useEffect, useState } from "react";
 import { Warning, ArrowClockwise } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { useTheme } from "@/providers/theme/theme-provider";
-import {
-  getCachedInstituteBranding,
-  getPublicUrl,
-} from "@/services/domain-routing";
+import { getCachedInstituteBranding } from "@/services/domain-routing";
+import { useQuery } from "@tanstack/react-query";
+import { getInstituteLogoQuery } from "@/services/institute-logo";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -31,9 +24,7 @@ export class ErrorBoundary extends Component<
     error: null,
   };
 
-  public static getDerivedStateFromError(
-    error: Error
-  ): ErrorBoundaryState {
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
@@ -82,17 +73,16 @@ export class ErrorBoundary extends Component<
             </MyButton>
           </div>
 
-          {process.env.NODE_ENV === "development" &&
-            this.state.error && (
-              <details className="mt-6 max-w-full overflow-auto rounded-lg bg-red-100 p-4 text-left">
-                <summary className="mb-2 cursor-pointer text-sm font-medium text-red-800">
-                  Error Details (Development)
-                </summary>
-                <pre className="whitespace-pre-wrap break-words text-xs text-red-700">
-                  {this.state.error.stack}
-                </pre>
-              </details>
-            )}
+          {process.env.NODE_ENV === "development" && this.state.error && (
+            <details className="mt-6 max-w-full overflow-auto rounded-lg bg-red-100 p-4 text-left">
+              <summary className="mb-2 cursor-pointer text-sm font-medium text-red-800">
+                Error Details (Development)
+              </summary>
+              <pre className="whitespace-pre-wrap break-words text-xs text-red-700">
+                {this.state.error.stack}
+              </pre>
+            </details>
+          )}
         </div>
       );
     }
@@ -101,11 +91,7 @@ export class ErrorBoundary extends Component<
   }
 }
 
-const VacademyLogoSVG = ({
-  className = "",
-}: {
-  className?: string;
-}) => (
+const VacademyLogoSVG = ({ className = "" }: { className?: string }) => (
   <svg
     className={className}
     viewBox="0 0 80 80"
@@ -139,39 +125,18 @@ const VacademyLogoSVG = ({
 );
 
 const Logo = ({ className = "" }: { className?: string }) => {
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoLoaded, setLogoLoaded] = useState(false);
-  const [isResolving, setIsResolving] = useState(true);
+  const cachedBranding = getCachedInstituteBranding();
 
-  useEffect(() => {
-    const loadLogo = async () => {
-      const cachedBranding = getCachedInstituteBranding();
+  // Use React Query to fetch and cache the logo URL (24-hour cache)
+  const { data: cachedLogoUrl, isLoading } = useQuery(
+    getInstituteLogoQuery(cachedBranding?.instituteLogoFileId ?? null)
+  );
 
-      if (cachedBranding?.instituteLogoUrl) {
-        setLogoUrl(cachedBranding.instituteLogoUrl);
-        setIsResolving(false);
-        return;
-      }
+  // Determine which logo URL to use
+  const logoUrl = cachedBranding?.instituteLogoUrl || cachedLogoUrl || null;
 
-      if (cachedBranding?.instituteLogoFileId) {
-        const resolvedUrl = await getPublicUrl(
-          cachedBranding.instituteLogoFileId
-        );
-        if (resolvedUrl) {
-          setLogoUrl(resolvedUrl);
-          setIsResolving(false);
-          return;
-        }
-      }
-
-      setIsResolving(false);
-      setLogoLoaded(true);
-    };
-
-    loadLogo();
-  }, []);
-
-  if (isResolving) {
+  if (isLoading) {
     return <div className={className} />;
   }
 
@@ -183,7 +148,6 @@ const Logo = ({ className = "" }: { className?: string }) => {
         className={className}
         onLoad={() => setLogoLoaded(true)}
         onError={() => {
-          setLogoUrl(null);
           setLogoLoaded(true);
         }}
       />
@@ -207,9 +171,7 @@ export const DashboardLoader = ({
   fullscreen = false,
 }: DashboardLoaderProps) => {
   const { getPrimaryColorCode } = useTheme();
-  const [loaderColor, setLoaderColor] = useState<string>(
-    getPrimaryColorCode()
-  );
+  const [loaderColor, setLoaderColor] = useState<string>(getPrimaryColorCode());
   const containerMinHeight = height || "100%";
 
   useEffect(() => {
@@ -268,4 +230,3 @@ export const DashboardLoader = ({
     </ErrorBoundary>
   );
 };
-

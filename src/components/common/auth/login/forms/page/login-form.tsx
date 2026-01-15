@@ -5,7 +5,6 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import {
   getTokenDecodedData,
   getTokenFromStorage,
-
   setTokenInStorage,
 } from "@/lib/auth/sessionUtility";
 import { EmailLogin } from "./EmailOtpForm";
@@ -24,14 +23,18 @@ import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import ClipLoader from "react-spinners/ClipLoader";
 import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
-import {
-  getStudentDisplaySettings,
-} from "@/services/student-display-settings";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { identifyUser } from "@/lib/analytics";
 import { useEffect as useEffectTheme } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 export const getFromStorage = async (key: string) => {
@@ -64,7 +67,12 @@ export function LoginForm({
     allowGithubAuth: boolean;
     allowEmailOtpAuth: boolean;
     allowUsernamePasswordAuth: boolean;
-  }>({ allowGoogleAuth: true, allowGithubAuth: true, allowEmailOtpAuth: true, allowUsernamePasswordAuth: true });
+  }>({
+    allowGoogleAuth: true,
+    allowGithubAuth: true,
+    allowEmailOtpAuth: true,
+    allowUsernamePasswordAuth: true,
+  });
   const { setInstituteId } = useInstituteFeatureStore();
   const domainRouting = useDomainRouting();
 
@@ -72,7 +80,8 @@ export function LoginForm({
   useEffectTheme(() => {
     (async () => {
       try {
-        const instituteId = (await Preferences.get({ key: "InstituteId" })).value || "";
+        const instituteId =
+          (await Preferences.get({ key: "InstituteId" })).value || "";
         if (!instituteId) return;
         const stored = await Preferences.get({ key: `LEARNER_${instituteId}` });
         if (!stored?.value) return;
@@ -85,23 +94,35 @@ export function LoginForm({
           allowGoogleAuth: parsed?.allowGoogleAuth !== false,
           allowGithubAuth: parsed?.allowGithubAuth !== false,
           allowEmailOtpAuth: parsed?.allowEmailOtpAuth !== false,
-          allowUsernamePasswordAuth: parsed?.allowUsernamePasswordAuth !== false,
+          allowUsernamePasswordAuth:
+            parsed?.allowUsernamePasswordAuth !== false,
         });
-        if (parsed?.allowUsernamePasswordAuth === false && parsed?.allowEmailOtpAuth !== false) {
+        if (
+          parsed?.allowUsernamePasswordAuth === false &&
+          parsed?.allowEmailOtpAuth !== false
+        ) {
           setIsEmailLogin(true);
         }
         if (parsed?.fontFamily) {
           const mapFamily = (f: string) => {
             const key = String(f).toUpperCase();
-            if (key === "INTER") return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "CAIRO") return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "PLAYPEN SANS") return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "WORK SANS") return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "LEXEND") return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+            if (key === "INTER")
+              return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+            if (key === "CAIRO")
+              return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+            if (key === "PLAYPEN SANS")
+              return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+            if (key === "WORK SANS")
+              return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+            if (key === "LEXEND")
+              return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
             return f;
           };
           const family = mapFamily(parsed.fontFamily);
-          document.documentElement.style.setProperty("--app-font-family", family);
+          document.documentElement.style.setProperty(
+            "--app-font-family",
+            family
+          );
           document.body.style.fontFamily = family;
         }
       } catch {
@@ -127,90 +148,109 @@ export function LoginForm({
       // Check if we have an opener (most reliable way to detect popup)
       try {
         if (window.opener && !window.opener.closed) {
-          console.log('[LoginForm] ✅ Detected popup via window.opener');
+          console.log("[LoginForm] ✅ Detected popup via window.opener");
           return true;
         }
       } catch (e) {
-        console.log('[LoginForm] ❌ window.opener check failed:', e);
+        console.log("[LoginForm] ❌ window.opener check failed:", e);
       }
 
       // Check window name
       try {
-        if (window.name && window.name.toLowerCase() === 'oauth_popup') {
-          console.log('[LoginForm] ✅ Detected popup via window.name');
+        if (window.name && window.name.toLowerCase() === "oauth_popup") {
+          console.log("[LoginForm] ✅ Detected popup via window.name");
           return true;
         }
-      } catch { }
+      } catch {}
 
       // Check for popup parameter in URL
       try {
         const q = new URLSearchParams(window.location.search);
-        if (q.get('popup') === '1') {
-          console.log('[LoginForm] ✅ Detected popup via ?popup=1');
+        if (q.get("popup") === "1") {
+          console.log("[LoginForm] ✅ Detected popup via ?popup=1");
           return true;
         }
-      } catch { }
+      } catch {}
 
-      console.log('[LoginForm] ❌ Not detected as popup window');
-      console.log('[LoginForm] Debug:', {
+      console.log("[LoginForm] ❌ Not detected as popup window");
+      console.log("[LoginForm] Debug:", {
         hasOpener: !!window.opener,
         windowName: window.name,
-        searchParams: window.location.search
+        searchParams: window.location.search,
       });
       return false;
     })();
 
-    console.log('[LoginForm] 🔍 POPUP DETECTION:', { isPopupWindow, hasTokens: !!(accessToken && refreshToken), accessToken: accessToken?.substring(0, 50) + '...' });
+    console.log("[LoginForm] 🔍 POPUP DETECTION:", {
+      isPopupWindow,
+      hasTokens: !!(accessToken && refreshToken),
+      accessToken: accessToken?.substring(0, 50) + "...",
+    });
 
     if (isPopupWindow && accessToken && refreshToken) {
-      console.log('[LoginForm] 🚀 POPUP DETECTED WITH TOKENS - CLOSING POPUP');
+      console.log("[LoginForm] 🚀 POPUP DETECTED WITH TOKENS - CLOSING POPUP");
       try {
         // postMessage (may be blocked by COOP)
         try {
           if (window.opener && !window.opener.closed) {
-            console.log('[LoginForm] 📨 Sending postMessage to opener');
+            console.log("[LoginForm] 📨 Sending postMessage to opener");
             window.opener.postMessage(
-              { type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true },
-              '*'
+              {
+                type: "oauth_success",
+                data: { accessToken, refreshToken },
+                isModalLogin: true,
+              },
+              "*"
             );
           }
         } catch (e) {
-          console.log('[LoginForm] ❌ postMessage failed:', e);
+          console.log("[LoginForm] ❌ postMessage failed:", e);
         }
 
         // localStorage event for parent listeners
         try {
-          console.log('[LoginForm] 💾 Writing to localStorage');
-          localStorage.setItem('OAUTH_RESULT', JSON.stringify({
-            type: 'oauth_success',
-            data: { accessToken, refreshToken },
-            ts: Date.now(),
-            isModalLogin: true, // Mark as modal login so __root.tsx ignores it
-          }));
+          console.log("[LoginForm] 💾 Writing to localStorage");
+          localStorage.setItem(
+            "OAUTH_RESULT",
+            JSON.stringify({
+              type: "oauth_success",
+              data: { accessToken, refreshToken },
+              ts: Date.now(),
+              isModalLogin: true, // Mark as modal login so __root.tsx ignores it
+            })
+          );
         } catch (e) {
-          console.log('[LoginForm] ❌ localStorage failed:', e);
+          console.log("[LoginForm] ❌ localStorage failed:", e);
         }
 
         // BroadcastChannel fallback
         try {
-          if (typeof BroadcastChannel !== 'undefined') {
-            console.log('[LoginForm] 📡 Broadcasting via BroadcastChannel');
-            const bc = new BroadcastChannel('OAUTH_CHANNEL');
-            bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true });
-            try { bc.close(); } catch { /* ignore */ }
+          if (typeof BroadcastChannel !== "undefined") {
+            console.log("[LoginForm] 📡 Broadcasting via BroadcastChannel");
+            const bc = new BroadcastChannel("OAUTH_CHANNEL");
+            bc.postMessage({
+              type: "oauth_success",
+              data: { accessToken, refreshToken },
+              isModalLogin: true,
+            });
+            try {
+              bc.close();
+            } catch {
+              /* ignore */
+            }
           }
         } catch (e) {
-          console.log('[LoginForm] ❌ BroadcastChannel failed:', e);
+          console.log("[LoginForm] ❌ BroadcastChannel failed:", e);
         }
       } finally {
         // Close popup quickly
-        console.log('[LoginForm] 🔒 Closing popup in 300ms');
+        console.log("[LoginForm] 🔒 Closing popup in 300ms");
         setTimeout(() => {
           try {
-            console.log('[LoginForm] 👋 Closing now');
+            console.log("[LoginForm] 👋 Closing now");
             window.close();
           } catch (e) {
-            console.log('[LoginForm] ❌ window.close() failed:', e);
+            console.log("[LoginForm] ❌ window.close() failed:", e);
           }
         }, 300);
       }
@@ -224,126 +264,157 @@ export function LoginForm({
       const emailVerified = urlParams.get("emailVerified");
       const state = urlParams.get("state");
 
-      if (error === 'true') {
-        console.log('[LoginForm] 🚫 POPUP DETECTED WITH ERROR - OAuth login failed');
+      if (error === "true") {
+        console.log(
+          "[LoginForm] 🚫 POPUP DETECTED WITH ERROR - OAuth login failed"
+        );
 
         // Check if this is a signup scenario (user doesn't exist but we have OAuth data)
         if (signupData) {
-          console.log('[LoginForm] 📝 SignupData present - switching to signup flow');
+          console.log(
+            "[LoginForm] 📝 SignupData present - switching to signup flow"
+          );
 
           // Decode signupData
           let decodedSignupData = null;
           try {
             decodedSignupData = JSON.parse(atob(signupData));
           } catch (e) {
-            console.log('[LoginForm] ❌ Failed to decode signupData:', e);
+            console.log("[LoginForm] ❌ Failed to decode signupData:", e);
           }
 
           // Send signup_needed message to parent
           const signupPayload = {
             signupData: decodedSignupData,
             state: state,
-            emailVerified: emailVerified === 'true'
+            emailVerified: emailVerified === "true",
           };
 
           try {
             if (window.opener && !window.opener.closed) {
-              console.log('[LoginForm] 📨 Sending signup_needed postMessage to opener');
-              window.opener.postMessage({
-                action: 'oauth_complete',
-                success: false,
-                needsSignup: true,
-                signupData: signupPayload,
-              }, '*');
+              console.log(
+                "[LoginForm] 📨 Sending signup_needed postMessage to opener"
+              );
+              window.opener.postMessage(
+                {
+                  action: "oauth_complete",
+                  success: false,
+                  needsSignup: true,
+                  signupData: signupPayload,
+                },
+                "*"
+              );
             }
           } catch (e) {
-            console.log('[LoginForm] ❌ Signup postMessage failed:', e);
+            console.log("[LoginForm] ❌ Signup postMessage failed:", e);
           }
 
           // localStorage for storage event listeners
           try {
-            console.log('[LoginForm] 💾 Writing signup_needed to localStorage');
-            localStorage.setItem('OAUTH_RESULT', JSON.stringify({
-              type: 'oauth_signup_needed',
-              data: signupPayload,
-              ts: Date.now(),
-              isModalLogin: true
-            }));
+            console.log("[LoginForm] 💾 Writing signup_needed to localStorage");
+            localStorage.setItem(
+              "OAUTH_RESULT",
+              JSON.stringify({
+                type: "oauth_signup_needed",
+                data: signupPayload,
+                ts: Date.now(),
+                isModalLogin: true,
+              })
+            );
           } catch (e) {
-            console.log('[LoginForm] ❌ localStorage signup write failed:', e);
+            console.log("[LoginForm] ❌ localStorage signup write failed:", e);
           }
 
           // BroadcastChannel fallback
           try {
-            if (typeof BroadcastChannel !== 'undefined') {
-              console.log('[LoginForm] 📡 Broadcasting signup_needed via BroadcastChannel');
-              const bc = new BroadcastChannel('OAUTH_CHANNEL');
+            if (typeof BroadcastChannel !== "undefined") {
+              console.log(
+                "[LoginForm] 📡 Broadcasting signup_needed via BroadcastChannel"
+              );
+              const bc = new BroadcastChannel("OAUTH_CHANNEL");
               bc.postMessage({
-                type: 'oauth_signup_needed',
+                type: "oauth_signup_needed",
                 data: signupPayload,
-                isModalLogin: true
+                isModalLogin: true,
               });
-              try { bc.close(); } catch { /* ignore */ }
+              try {
+                bc.close();
+              } catch {
+                /* ignore */
+              }
             }
           } catch (e) {
-            console.log('[LoginForm] ❌ BroadcastChannel signup failed:', e);
+            console.log("[LoginForm] ❌ BroadcastChannel signup failed:", e);
           }
         } else {
           // No signupData - genuine error
-          const errorMessage = "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.";
+          const errorMessage =
+            "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.";
 
           // Send error via multiple channels (same as modal-learner.tsx)
           try {
             if (window.opener && !window.opener.closed) {
-              console.log('[LoginForm] 📨 Sending error postMessage to opener');
-              window.opener.postMessage({
-                action: 'oauth_complete',
-                success: false,
-                error: errorMessage,
-              }, '*');
+              console.log("[LoginForm] 📨 Sending error postMessage to opener");
+              window.opener.postMessage(
+                {
+                  action: "oauth_complete",
+                  success: false,
+                  error: errorMessage,
+                },
+                "*"
+              );
             }
           } catch (e) {
-            console.log('[LoginForm] ❌ Error postMessage failed:', e);
+            console.log("[LoginForm] ❌ Error postMessage failed:", e);
           }
 
           // localStorage for storage event listeners
           try {
-            console.log('[LoginForm] 💾 Writing error to localStorage');
-            localStorage.setItem('OAUTH_RESULT', JSON.stringify({
-              type: 'oauth_error',
-              data: { message: errorMessage },
-              ts: Date.now(),
-              isModalLogin: true
-            }));
+            console.log("[LoginForm] 💾 Writing error to localStorage");
+            localStorage.setItem(
+              "OAUTH_RESULT",
+              JSON.stringify({
+                type: "oauth_error",
+                data: { message: errorMessage },
+                ts: Date.now(),
+                isModalLogin: true,
+              })
+            );
           } catch (e) {
-            console.log('[LoginForm] ❌ localStorage error write failed:', e);
+            console.log("[LoginForm] ❌ localStorage error write failed:", e);
           }
 
           // BroadcastChannel fallback
           try {
-            if (typeof BroadcastChannel !== 'undefined') {
-              console.log('[LoginForm] 📡 Broadcasting error via BroadcastChannel');
-              const bc = new BroadcastChannel('OAUTH_CHANNEL');
+            if (typeof BroadcastChannel !== "undefined") {
+              console.log(
+                "[LoginForm] 📡 Broadcasting error via BroadcastChannel"
+              );
+              const bc = new BroadcastChannel("OAUTH_CHANNEL");
               bc.postMessage({
-                type: 'oauth_error',
+                type: "oauth_error",
                 data: { message: errorMessage },
-                isModalLogin: true
+                isModalLogin: true,
               });
-              try { bc.close(); } catch { /* ignore */ }
+              try {
+                bc.close();
+              } catch {
+                /* ignore */
+              }
             }
           } catch (e) {
-            console.log('[LoginForm] ❌ BroadcastChannel error failed:', e);
+            console.log("[LoginForm] ❌ BroadcastChannel error failed:", e);
           }
         }
 
         // Close popup after short delay
-        console.log('[LoginForm] 🔒 Closing popup in 800ms');
+        console.log("[LoginForm] 🔒 Closing popup in 800ms");
         setTimeout(() => {
           try {
-            console.log('[LoginForm] 👋 Closing popup now');
+            console.log("[LoginForm] 👋 Closing popup now");
             window.close();
           } catch (e) {
-            console.log('[LoginForm] ❌ window.close() failed:', e);
+            console.log("[LoginForm] ❌ window.close() failed:", e);
           }
         }, 800);
 
@@ -369,20 +440,42 @@ export function LoginForm({
       })();
 
       if (hasOpener) {
-        console.log('[LoginForm] FAILSAFE: Detected opener after initial check - closing popup');
+        console.log(
+          "[LoginForm] FAILSAFE: Detected opener after initial check - closing popup"
+        );
         // Send tokens and close
         try {
-          window.opener.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true }, '*');
-        } catch { /* ignore */ }
+          window.opener.postMessage(
+            {
+              type: "oauth_success",
+              data: { accessToken, refreshToken },
+              isModalLogin: true,
+            },
+            "*"
+          );
+        } catch {
+          /* ignore */
+        }
         try {
-          localStorage.setItem('OAUTH_RESULT', JSON.stringify({
-            type: 'oauth_success',
-            data: { accessToken, refreshToken },
-            ts: Date.now(),
-            isModalLogin: true,
-          }));
-        } catch { /* ignore */ }
-        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 300);
+          localStorage.setItem(
+            "OAUTH_RESULT",
+            JSON.stringify({
+              type: "oauth_success",
+              data: { accessToken, refreshToken },
+              ts: Date.now(),
+              isModalLogin: true,
+            })
+          );
+        } catch {
+          /* ignore */
+        }
+        setTimeout(() => {
+          try {
+            window.close();
+          } catch {
+            /* ignore */
+          }
+        }, 300);
         return;
       }
 
@@ -559,11 +652,14 @@ export function LoginForm({
             if (instituteId === HOLISTIC_INSTITUTE_ID) {
               setPrimaryColor("holistic");
             } else {
-              setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
+              setPrimaryColor(
+                details?.institute_theme_code ??
+                  import.meta.env.VITE_DEFAULT_THEME_COLOR ??
+                  "#E67E22"
+              );
             }
           } catch (error) {
             console.error("Error fetching institute details:", error);
-
           }
 
           try {
@@ -580,11 +676,6 @@ export function LoginForm({
           const settings = await getStudentDisplaySettings(true);
           const redirectRoute =
             settings?.postLoginRedirectRoute || "/dashboard";
-
-          console.group("[Post-Login Redirect | Username/Password]");
-          console.log("Fetched settings:", settings);
-          console.log("Resolved redirectRoute:", redirectRoute);
-          console.groupEnd();
 
           if (/^https?:\/\//.test(redirectRoute)) {
             window.location.assign(redirectRoute);
@@ -723,13 +814,12 @@ export function LoginForm({
 
   return (
     <div
-      className={`${type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
-        } bg-background relative `}
+      className={`${
+        type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
+      } bg-background relative `}
     >
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />
-
-
 
       {/* Centered container */}
       <div className="w-full min-h-[60vh] flex items-center justify-center p-4">
@@ -755,7 +845,13 @@ export function LoginForm({
             transition={{ delay: 0.3, duration: 0.4 }}
             className="w-full"
           >
-            <Card className={type ? "border-0 shadow-none p-0" : "w-full shadow-lg border-gray-100"}>
+            <Card
+              className={
+                type
+                  ? "border-0 shadow-none p-0"
+                  : "w-full shadow-lg border-gray-100"
+              }
+            >
               <CardHeader className="space-y-1 pb-6 text-center">
                 <CardTitle className="text-2xl font-bold tracking-tight text-primary-700">
                   Welcome Back
@@ -819,7 +915,8 @@ export function LoginForm({
                   <AnimatePresence mode="wait">
                     {(() => {
                       const allowEmail = providerFlags.allowEmailOtpAuth;
-                      const allowUserPass = providerFlags.allowUsernamePasswordAuth;
+                      const allowUserPass =
+                        providerFlags.allowUsernamePasswordAuth;
 
                       // Only Email OTP allowed
                       if (allowEmail && !allowUserPass) {
@@ -832,11 +929,15 @@ export function LoginForm({
                             transition={{ duration: 0.2 }}
                           >
                             <EmailLogin
-                              onSwitchToUsername={() => { /* hidden via child check */ }}
+                              onSwitchToUsername={() => {
+                                /* hidden via child check */
+                              }}
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
-                              allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
+                              allowUsernamePasswordAuth={
+                                providerFlags.allowUsernamePasswordAuth
+                              }
                             />
                           </motion.div>
                         );
@@ -853,7 +954,9 @@ export function LoginForm({
                             transition={{ duration: 0.2 }}
                           >
                             <UsernameLogin
-                              onSwitchToEmail={() => { /* no email route enabled */ }}
+                              onSwitchToEmail={() => {
+                                /* no email route enabled */
+                              }}
                               allowEmailOtpAuth={false}
                               type={type}
                               courseId={courseId}
@@ -878,7 +981,9 @@ export function LoginForm({
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
-                              allowUsernamePasswordAuth={providerFlags.allowUsernamePasswordAuth}
+                              allowUsernamePasswordAuth={
+                                providerFlags.allowUsernamePasswordAuth
+                              }
                             />
                           </motion.div>
                         ) : (
@@ -891,7 +996,9 @@ export function LoginForm({
                           >
                             <UsernameLogin
                               onSwitchToEmail={() => setIsEmailLogin(true)}
-                              allowEmailOtpAuth={providerFlags.allowEmailOtpAuth}
+                              allowEmailOtpAuth={
+                                providerFlags.allowEmailOtpAuth
+                              }
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
@@ -907,7 +1014,8 @@ export function LoginForm({
                 </motion.div>
 
                 {/* Explore Courses (for institutes with public catalog) */}
-                {domainRouting?.redirectPath && domainRouting.redirectPath !== "/login" ? (
+                {domainRouting?.redirectPath &&
+                domainRouting.redirectPath !== "/login" ? (
                   <motion.div
                     initial={{ y: 10, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
@@ -916,13 +1024,14 @@ export function LoginForm({
                     <Button
                       variant="default"
                       className="w-full h-11 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200"
-                      onClick={() => navigate({ to: domainRouting.redirectPath as never })}
+                      onClick={() =>
+                        navigate({ to: domainRouting.redirectPath as never })
+                      }
                     >
                       Explore Courses
                     </Button>
                   </motion.div>
                 ) : null}
-
               </CardContent>
             </Card>
           </motion.div>
@@ -940,9 +1049,13 @@ export function LoginForm({
                 whileHover={{ scale: 1.02 }}
                 onClick={async () => {
                   try {
-                    const storedInstitute = (await Preferences.get({ key: "InstituteId" })).value || "";
+                    const storedInstitute =
+                      (await Preferences.get({ key: "InstituteId" })).value ||
+                      "";
                     if (storedInstitute) {
-                      const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+                      const stored = await Preferences.get({
+                        key: `LEARNER_${storedInstitute}`,
+                      });
                       if (stored?.value) {
                         const parsed = JSON.parse(stored.value);
                         if (parsed?.termsAndConditionUrl) {
@@ -965,9 +1078,13 @@ export function LoginForm({
                 whileHover={{ scale: 1.02 }}
                 onClick={async () => {
                   try {
-                    const storedInstitute = (await Preferences.get({ key: "InstituteId" })).value || "";
+                    const storedInstitute =
+                      (await Preferences.get({ key: "InstituteId" })).value ||
+                      "";
                     if (storedInstitute) {
-                      const stored = await Preferences.get({ key: `LEARNER_${storedInstitute}` });
+                      const stored = await Preferences.get({
+                        key: `LEARNER_${storedInstitute}`,
+                      });
                       if (stored?.value) {
                         const parsed = JSON.parse(stored.value);
                         if (parsed?.privacyPolicyUrl) {

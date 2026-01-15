@@ -41,9 +41,8 @@ export interface ChatbotSettingsData {
 export async function setChatbotSettings(
   settings: ChatbotSettingsData
 ): Promise<void> {
-  const storageKey = "chatbot_settings";
   await Preferences.set({
-    key: storageKey,
+    key: LS_KEY,
     value: JSON.stringify(settings),
   });
 }
@@ -115,5 +114,18 @@ export async function getChatbotSettings(
     const defaults = DEFAULT_CHATBOT_SETTINGS;
     await writeCacheForInstitute(instituteId, defaults);
     return defaults;
+  }
+}
+
+export function clearChatbotSettingsCache(): void {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(`${LS_KEY}:`)) keysToRemove.push(key);
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch (error) {
+    console.error("Error clearing chatbot settings cache:", error);
   }
 }

@@ -23,9 +23,11 @@ import { ScratchProjectSlide } from "./scratch-project-slide";
 import { SplitScreenVideoSlide } from "./split-screen-video-slide";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import QuizViewer from "./quiz-viewer";
-import { Slide } from "@/hooks/study-library/use-slides";
+import { Slide, AIVideoData } from "@/hooks/study-library/use-slides";
+import { AIVideoPlayer } from "@/components/ai-video-player";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { ConcentrationSettings } from "@/types/student-display-settings";
+import { fetchHtmlVideoUrls } from "@/utils/htmlVideoService";
 
 export const SlideMaterial = () => {
   const { activeItem, items, setActiveItem, slideEvaluations } =
@@ -166,7 +168,229 @@ export const SlideMaterial = () => {
       // Add artificial delay for smooth loading experience
       await new Promise((resolve) => setTimeout(resolve, 300));
 
-      switch (activeItem.source_type) {
+      switch (activeItem.source_type?.toUpperCase()) {
+        case "AI_VIDEO": {
+          // AI_VIDEO slides from course generation - have aiVideoData already
+          const aiVideoData = activeItem.aiVideoData || (activeItem as any).ai_video_data;
+          
+          // Transform snake_case to camelCase if needed
+          let transformedData: AIVideoData | undefined;
+          if (aiVideoData) {
+            if (aiVideoData.status && aiVideoData.timeline_url && aiVideoData.audio_url) {
+              transformedData = {
+                status: aiVideoData.status,
+                timelineUrl: aiVideoData.timeline_url,
+                audioUrl: aiVideoData.audio_url,
+                progress: aiVideoData.progress,
+              };
+            } else if (aiVideoData.status && aiVideoData.timelineUrl && aiVideoData.audioUrl) {
+              transformedData = aiVideoData;
+            }
+          }
+
+          if (transformedData?.status === "COMPLETED" && 
+              transformedData.timelineUrl && 
+              transformedData.audioUrl) {
+            setContent(
+              <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200 p-4">
+                  <AIVideoPlayer
+                    timelineUrl={transformedData.timelineUrl}
+                    audioUrl={transformedData.audioUrl}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            );
+          } else if (transformedData?.status === "GENERATING") {
+            setContent(
+              <div className="h-full w-full flex items-center justify-center">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-gray-600 font-medium">Generating video...</p>
+                  {transformedData.progress !== undefined && (
+                    <p className="text-gray-500 text-sm mt-2">
+                      {transformedData.progress}% complete
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          } else {
+            setContent(
+              <div className="h-full w-full flex items-center justify-center">
+                <div className="text-center text-gray-500">
+                  <p>Video pending generation</p>
+                </div>
+              </div>
+            );
+          }
+          break;
+        }
+
+        case "HTML_VIDEO": {
+          // HTML_VIDEO slides from backend
+          // Check multiple possible field names (snake_case, camelCase, etc.)
+          const htmlVideoSlide = 
+            activeItem.html_video_slide || 
+            (activeItem as any).htmlVideoSlide ||
+            (activeItem as any).html_video ||
+            (activeItem as any).htmlVideo;
+          
+          console.log("[SlideMaterial] HTML_VIDEO slide detected:", {
+            source_type: activeItem.source_type,
+            slide_id: activeItem.id,
+            source_id: activeItem.source_id,
+            html_video_slide: htmlVideoSlide,
+            // Log all keys to see what's available
+            allKeys: Object.keys(activeItem),
+            // Log the entire slide object
+            fullSlide: activeItem,
+          });
+
+          // First, check if URLs are already in the slide data (might be pre-populated)
+          const existingHtmlUrl = 
+            htmlVideoSlide?.html_url ||
+            htmlVideoSlide?.htmlUrl ||
+            htmlVideoSlide?.timeline_url ||
+            htmlVideoSlide?.timelineUrl ||
+            (activeItem as any).html_url ||
+            (activeItem as any).htmlUrl ||
+            (activeItem as any).timeline_url ||
+            (activeItem as any).timelineUrl;
+
+          const existingAudioUrl = 
+            htmlVideoSlide?.audio_url ||
+            htmlVideoSlide?.audioUrl ||
+            (activeItem as any).audio_url ||
+            (activeItem as any).audioUrl;
+
+          // If URLs are already available, use them directly
+          if (existingHtmlUrl && existingAudioUrl) {
+            console.log("[SlideMaterial] Using URLs from slide data:", {
+              htmlUrl: existingHtmlUrl,
+              audioUrl: existingAudioUrl,
+            });
+            setContent(
+              <div 
+                key={`html-video-${activeItem.id}`} 
+                className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+              >
+                <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200 p-4">
+                  <AIVideoPlayer
+                    timelineUrl={existingHtmlUrl}
+                    audioUrl={existingAudioUrl}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            );
+            break;
+          }
+
+          // If URLs not in slide data, try to fetch from API
+          // Check for video ID
+          const videoId = 
+            htmlVideoSlide?.ai_gen_video_id ||
+            htmlVideoSlide?.aiGenVideoId ||
+            (activeItem as any).ai_gen_video_id ||
+            (activeItem as any).aiGenVideoId ||
+            activeItem.source_id;
+
+          if (!videoId) {
+            console.error("[SlideMaterial] HTML_VIDEO slide missing video ID and URLs", {
+              slide_id: activeItem.id,
+              source_id: activeItem.source_id,
+              html_video_slide: htmlVideoSlide,
+              allKeys: Object.keys(activeItem),
+            });
+            setContent(
+              <div className="h-full w-full flex items-center justify-center">
+                <div className="text-center text-red-500">
+                  <p>Video data not found</p>
+                  <p className="text-xs mt-2">HTML_VIDEO slide is missing video ID and URLs</p>
+                  <p className="text-xs mt-1">Source ID: {activeItem.source_id || "N/A"}</p>
+                </div>
+              </div>
+            );
+            break;
+          }
+
+          // Fetch video URLs from API (only if not already in slide data)
+          try {
+            console.log("[SlideMaterial] Fetching video URLs from API for videoId:", videoId);
+            const videoUrls = await fetchHtmlVideoUrls(videoId);
+            
+            console.log("[SlideMaterial] Fetched HTML video URLs:", {
+              videoId: videoId,
+              hasHtmlUrl: !!videoUrls.htmlUrl,
+              hasAudioUrl: !!videoUrls.audioUrl,
+              htmlUrl: videoUrls.htmlUrl,
+              audioUrl: videoUrls.audioUrl,
+            });
+
+            if (videoUrls.htmlUrl && videoUrls.audioUrl) {
+              setContent(
+                <div 
+                  key={`html-video-${activeItem.id}`} 
+                  className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+                >
+                  <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200 p-4">
+                    <AIVideoPlayer
+                      timelineUrl={videoUrls.htmlUrl}
+                      audioUrl={videoUrls.audioUrl}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              );
+            } else {
+              setContent(
+                <div className="h-full w-full flex items-center justify-center">
+                  <div className="text-center text-gray-500">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-gray-600 font-medium">Processing video...</p>
+                    <p className="text-xs mt-2">Video URLs not available yet</p>
+                  </div>
+                </div>
+              );
+            }
+          } catch (err: any) {
+            console.error("[SlideMaterial] Error fetching HTML video URLs:", {
+              error: err,
+              videoId: videoId,
+              status: err.response?.status,
+              message: err.message,
+              response: err.response?.data,
+              // CORS error details
+              isCorsError: err.code === 'ERR_NETWORK' || err.message === 'Network Error',
+            });
+            
+            // Check if it's a CORS error
+            const isCorsError = err.code === 'ERR_NETWORK' || err.message === 'Network Error';
+            const errorMessage = isCorsError
+              ? 'CORS Error: Backend proxy route may not be configured. Please check backend configuration for /ai-service/video/urls/ endpoint.'
+              : err.response?.status === 404 
+                ? `Video ${videoId} not found`
+                : 'Failed to load video URLs';
+            
+            setContent(
+              <div className="h-full w-full flex items-center justify-center">
+                <div className="text-center text-red-500 max-w-md">
+                  <p className="font-medium">{errorMessage}</p>
+                  <p className="text-xs mt-2">
+                    {isCorsError 
+                      ? 'The backend needs to configure a proxy route for /ai-service/video/urls/'
+                      : 'Please try again later'}
+                  </p>
+                  <p className="text-xs mt-1 text-gray-400">Video ID: {videoId}</p>
+                </div>
+              </div>
+            );
+          }
+          break;
+        }
+
         case "VIDEO": {
           if (generationId !== loadGenerationRef.current) return;
           const videoSlide = activeItem.video_slide;

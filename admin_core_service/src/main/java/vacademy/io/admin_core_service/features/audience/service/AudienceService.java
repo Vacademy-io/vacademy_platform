@@ -1797,9 +1797,6 @@ public class AudienceService {
                 .customFields(new HashMap<>())
                 .build();
     }
-    
-    /**
-     * Get custom fields as Map for a given source
-     */
+
 }
 

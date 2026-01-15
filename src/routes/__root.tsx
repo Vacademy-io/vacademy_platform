@@ -4,7 +4,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   AppUpdate,
   AppUpdateAvailability,
@@ -177,6 +177,7 @@ const RootComponent = () => {
   const { setUpdateAvailable } = useUpdate();
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
+  const [isChatbotEnabled, setIsChatbotEnabled] = useState(false);
 
   const setPrimaryColorFromStorage = async () => {
     const details = await Preferences.get({ key: "InstituteDetails" });
@@ -217,6 +218,11 @@ const RootComponent = () => {
 
     checkForUpdate();
     setPrimaryColorFromStorage();
+    
+    // Fetch chatbot settings and enable floating button if enabled in settings
+    getChatbotSettings(false)
+      .then((settings) => setIsChatbotEnabled(settings?.enable === true))
+      .catch(() => setIsChatbotEnabled(false));
     // Apply global ui-vibrant class based on override/settings and expose debug helpers
     const applyUiType = (t: StudentUIType) => {
       const root = document.documentElement;
@@ -420,7 +426,7 @@ const RootComponent = () => {
     <ChatbotProvider>
       <Outlet />
       <ChatbotPanel />
-      <ChatbotFloatingButton />
+      {isChatbotEnabled && <ChatbotFloatingButton />}
     </ChatbotProvider>
   );
 };

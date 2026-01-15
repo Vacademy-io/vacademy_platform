@@ -71,7 +71,11 @@ public class ApplicationSecurityConfig {
             // User Resolution APIs for notification service - OPEN for internal
             // communication
             "/auth-service/v1/users/by-role",
-            "/auth-service/v1/users/by-ids"
+            "/auth-service/v1/users/by-ids",
+
+            // for whatsapp "thanks ak"
+            "/auth-service/v1/request-whatsapp-otp",
+            "/auth-service/v1/login-whatsapp-otp"
     };
 
     @Autowired

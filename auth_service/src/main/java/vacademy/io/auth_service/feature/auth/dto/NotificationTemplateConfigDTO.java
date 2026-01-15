@@ -9,17 +9,16 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@AllArgsConstructor
-@NoArgsConstructor
 @Builder
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+@NoArgsConstructor
+@AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class AuthRequestDto {
-    private String userName;
-    private String password;
-    private String clientName;
-    private String instituteId;
-    private String email;
-    private String otp;
-    private String phoneNumber;
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+public class NotificationTemplateConfigDTO {
+    private String templateId;
+    private String templateName;
+    private String templateType;
+    private String languageCode;
+    private String settingJson;
+    private String vendorId;
 }

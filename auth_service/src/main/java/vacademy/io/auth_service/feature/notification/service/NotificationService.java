@@ -28,23 +28,52 @@ public class NotificationService {
     @Value("${notification.server.baseurl}")
     private String notificationServerBaseUrl;
 
-    public String sendOtp(EmailOTPRequest emailOTPRequest,String instituteId) {
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
-        instituteId=instituteId!=null?instituteId:"";
-        String url=NotificationConstant.SEND_EMAIL_OTP+"?instituteId="+instituteId;
+    @Value("${admin.core.service.base_url}")
+    private String adminCoreServiceBaseUrl;
+
+    public vacademy.io.auth_service.feature.auth.dto.NotificationTemplateConfigDTO getTemplateConfig(
+            String eventName, String instituteId, String templateType) {
+
+        String url = "/admin-core-service/internal/v1/notification-config/by-event" +
+                "?event_name=" + eventName +
+                "&institute_id=" + instituteId +
+                "&template_type=" + templateType;
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.GET.name(),
+                adminCoreServiceBaseUrl,
+                url,
+                null);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            return objectMapper.readValue(response.getBody(),
+                    new TypeReference<vacademy.io.auth_service.feature.auth.dto.NotificationTemplateConfigDTO>() {
+                    });
+        } catch (JsonProcessingException e) {
+            throw new VacademyException("Failed to parse template config: " + e.getMessage());
+        }
+    }
+
+    public String sendOtp(EmailOTPRequest emailOTPRequest, String instituteId) {
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
+        instituteId = instituteId != null ? instituteId : "";
+        String url = NotificationConstant.SEND_EMAIL_OTP + "?instituteId=" + instituteId;
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.POST.name(),
                 notificationServerBaseUrl,
                 url,
-                emailOTPRequest
-        );
+                emailOTPRequest);
         return response.getBody();
     }
 
     public Boolean verifyOTP(EmailOTPRequest request) {
 
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, NotificationConstant.VERIFY_EMAIL_OTP, request);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
+                notificationServerBaseUrl, NotificationConstant.VERIFY_EMAIL_OTP, request);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
@@ -57,13 +86,13 @@ public class NotificationService {
         }
     }
 
-
     public Boolean sendGenericHtmlMail(GenericEmailRequest request, String instituteId) {
         String endpoint = NotificationConstant.SEND_HTML_EMAIL;
         if (StringUtils.hasText(instituteId)) {
             endpoint += "?instituteId=" + instituteId;
         }
-        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(), notificationServerBaseUrl, endpoint, request);
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
+                notificationServerBaseUrl, endpoint, request);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {
@@ -77,15 +106,43 @@ public class NotificationService {
     }
 
     public String sendEmailToUsers(NotificationDTO notificationDTO) {
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.POST.name(),
                 notificationServerBaseUrl,
                 NotificationConstant.EMAIL_TO_USERS,
-                notificationDTO
-        );
+                notificationDTO);
         return response.getBody();
 
+    }
+
+    public String sendWhatsAppOtp(vacademy.io.auth_service.feature.auth.dto.WhatsAppOTPRequest whatsAppOTPRequest) {
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                NotificationConstant.SEND_WHATSAPP_OTP,
+                whatsAppOTPRequest);
+        return response.getBody();
+    }
+
+    public Boolean verifyWhatsAppOTP(vacademy.io.auth_service.feature.auth.dto.WhatsAppOTPVerifyRequest request) {
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                NotificationConstant.VERIFY_WHATSAPP_OTP,
+                request);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            Boolean isOtpValid = objectMapper.readValue(response.getBody(), new TypeReference<Boolean>() {
+            });
+            return isOtpValid;
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(e.getMessage());
+        }
     }
 }

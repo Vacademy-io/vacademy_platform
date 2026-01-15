@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { AI_SERVICE_BASE_URL } from "@/constants/urls";
-import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+
 import axios from "axios";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
@@ -94,9 +94,19 @@ function APIKeyManagement() {
     initialize();
   }, [fetchModels]);
 
+  // Set default model when models are loaded
+  useEffect(() => {
+    if (models.length > 0 && !formData.default_model) {
+      setFormData((prev) => ({
+        ...prev,
+        default_model: apiKeyData?.default_model || models[0].id,
+      }));
+    }
+  }, [models, apiKeyData?.default_model, formData.default_model]);
+
   const handleSave = async () => {
     try {
-      const payload: any = {};
+      const payload: Record<string, string> = {};
 
       if (
         formData.default_model &&
@@ -283,13 +293,14 @@ function APIKeyManagement() {
         <div className="space-y-2">
           <Label htmlFor="default-model">Default AI Model</Label>
           <Select
-            value={models[0].id}
+            value={formData.default_model || models[0]?.id || ""}
             onValueChange={(value) =>
               setFormData({ ...formData, default_model: value })
             }
+            disabled={models.length === 0}
           >
             <SelectTrigger id="default-model">
-              <SelectValue />
+              <SelectValue placeholder={models.length === 0 ? "Loading models..." : "Select a model"} />
             </SelectTrigger>
             <SelectContent>
               {models.map((model) => (

@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "@tanstack/react-router";
 import axios from "axios";
-import { ChatMessage, ChatbotContext } from "./types";
+import { ChatMessage, ChatbotContext, QuizSubmission } from "./types";
 import {
   chatbotAPI,
   ContextType,
   ContextMeta,
   MessageEvent,
   AIStatus,
+  MessageIntent,
 } from "@/services/chatbot-api";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
@@ -366,10 +367,10 @@ export const useChatbot = () => {
 
           const newMessage: ChatMessage = {
             id: messageData.id,
-            role: messageData.type,
+            role: messageData.type as ChatMessage["role"],
             content: messageData.content,
             timestamp: new Date(messageData.created_at).getTime(),
-            metadata: messageData.metadata,
+            metadata: messageData.metadata as ChatMessage["metadata"],
           };
 
           setMessages((prev) => {
@@ -500,7 +501,7 @@ export const useChatbot = () => {
     updateContextAsync();
   }, [sessionId, isOpen, isInitializing, getContextType, buildContextMeta]);
 
-  const sendMessage = async (content: string) => {
+  const sendMessage = async (content: string, intent?: MessageIntent) => {
     if (!content.trim() || !sessionId) return;
 
     const newMessage: ChatMessage = {
@@ -512,11 +513,12 @@ export const useChatbot = () => {
 
     setMessages((prev) => [...prev, newMessage]);
     setInputValue("");
+    // If intent is practice, show generating_quiz status, else thinking
     setIsLoading(true);
-    setAiStatus("thinking");
+    setAiStatus(intent === "practice" ? "generating_quiz" : "thinking");
 
     try {
-      await chatbotAPI.sendMessage(sessionId, content);
+      await chatbotAPI.sendMessage(sessionId, content, intent);
       // Response will come through SSE
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -526,6 +528,37 @@ export const useChatbot = () => {
         role: "assistant",
         content:
           "I'm sorry, I encountered an error while processing your request. Please try again.",
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+      setAiStatus("idle");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const submitQuiz = async (submission: QuizSubmission) => {
+    if (!sessionId) return;
+
+    setIsLoading(true);
+    setAiStatus("thinking");
+
+    try {
+      await chatbotAPI.sendMessage(
+        sessionId,
+        "Quiz completed",
+        undefined,
+        submission
+      );
+      // Response will come through SSE as quiz_feedback
+    } catch (error) {
+      console.error("Failed to submit quiz:", error);
+      setHasError(true);
+      const errorMessage: ChatMessage = {
+        id: Date.now(),
+        role: "assistant",
+        content:
+          "I'm sorry, I couldn't submit your quiz. Please try again.",
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -598,10 +631,11 @@ export const useChatbot = () => {
     isOpen,
     setIsOpen,
     messages,
-    isLoading: isLoading || aiStatus === "thinking",
+    isLoading: isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz",
     inputValue,
     setInputValue,
     sendMessage,
+    submitQuiz,
     startNewChat,
     closeSession,
     shouldShowChatbot,

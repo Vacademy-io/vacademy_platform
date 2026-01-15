@@ -2,13 +2,15 @@ import { getUserId } from "@/constants/getUserId";
 import { Preferences } from "@capacitor/preferences";
 import axios from "axios";
 import { getUserBasicDetails } from "./getBasicUserDetails";
+import { QuizSubmission } from "@/components/chatbot/types";
 
 const AI_SERVICE_BASE_URL = "https://backend-stage.vacademy.io/ai-service";
 
 export type ContextType = "slide" | "course_details" | "general";
-export type MessageType = "user" | "assistant" | "tool_call" | "tool_result";
-export type AIStatus = "idle" | "thinking";
+export type MessageType = "user" | "assistant" | "tool_call" | "tool_result" | "quiz" | "quiz_feedback";
+export type AIStatus = "idle" | "thinking" | "generating_quiz";
 export type SessionStatus = "ACTIVE" | "CLOSED";
+export type MessageIntent = "doubt" | "practice" | "general";
 
 export interface ContextMeta {
   // Slide context
@@ -59,6 +61,8 @@ export interface MessageEvent {
     tool_name?: string;
     tool_arguments?: object;
     tool_call_id?: string;
+    quiz_data?: object;
+    feedback?: object;
   };
   created_at: string;
 }
@@ -70,6 +74,8 @@ export interface StatusEvent {
 
 export interface SendMessageRequest {
   message: string;
+  intent?: MessageIntent;
+  quiz_submission?: QuizSubmission;
 }
 
 export interface SendMessageResponse {
@@ -174,9 +180,15 @@ class ChatbotAPIService {
 
   async sendMessage(
     sessionId: string,
-    message: string
+    message: string,
+    intent?: MessageIntent,
+    quizSubmission?: QuizSubmission
   ): Promise<SendMessageResponse> {
-    const request: SendMessageRequest = { message };
+    const request: SendMessageRequest = { 
+      message,
+      ...(intent && { intent }),
+      ...(quizSubmission && { quiz_submission: quizSubmission }),
+    };
 
     const response = await axios.post<SendMessageResponse>(
       `${this.baseUrl}/chat-agent/session/${sessionId}/message`,

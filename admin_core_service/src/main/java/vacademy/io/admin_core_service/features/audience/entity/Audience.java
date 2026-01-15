@@ -57,6 +57,12 @@ public class Audience {
     @Column(name = "send_respondent_email")
     private Boolean sendRespondentEmail; // Whether to send email to the respondent
 
+    @Column(name = "session_id")
+    private String sessionId; // References session(id)
+
+    @Column(name = "setting_json", columnDefinition = "TEXT")
+    private String settingJson; // JSON settings for the audience campaign
+
     @Column(name = "created_by_user_id")
     private String createdByUserId;
 
@@ -82,6 +88,8 @@ public class Audience {
         this.jsonWebMetadata = dto.getJsonWebMetadata();
         this.toNotify = dto.getToNotify();
         this.sendRespondentEmail = dto.getSendRespondentEmail();
+        this.sessionId = dto.getSessionId();
+        this.settingJson = dto.getSettingJson();
         this.createdByUserId = dto.getCreatedByUserId();
     }
 }

@@ -48,6 +48,7 @@ public class CourseService {
     private final FacultyService facultyService;
     private final PackageService packageService;
     private final PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationToPaymentOptionRepository;
+    private final vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
@@ -306,10 +307,38 @@ public class CourseService {
         learnerInvitationService.deleteLearnerInvitationBySourceAndSourceId(
                 LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), packageSessionIds);
 
-        // Also mark the enroll invite junction table entries as deleted
+        // Handle enroll_invite cleanup
         if (!packageSessionIds.isEmpty()) {
+            // Find all affected enroll_invite_ids before marking junction table as deleted
+            List<String> affectedEnrollInviteIds = packageSessionLearnerInvitationToPaymentOptionRepository
+                    .findDistinctEnrollInviteIdsByPackageSessionIds(packageSessionIds);
+            
+            // Mark the enroll invite junction table entries as deleted
             packageSessionLearnerInvitationToPaymentOptionRepository.updateStatusByPackageSessionIds(
                     packageSessionIds, PackageStatusEnum.DELETED.name());
+            
+            // Find enroll_invites that now have zero active package sessions
+            if (!affectedEnrollInviteIds.isEmpty()) {
+                List<Object[]> activeCounts = packageSessionLearnerInvitationToPaymentOptionRepository
+                        .countActiveByEnrollInviteIds(affectedEnrollInviteIds);
+                
+                // Convert to map for efficient lookup: enrollInviteId -> activeCount
+                Map<String, Long> activeCountMap = activeCounts.stream()
+                        .collect(Collectors.toMap(
+                                arr -> (String) arr[0],
+                                arr -> (Long) arr[1]
+                        ));
+                
+                // Find enroll_invites with zero active sessions
+                List<String> enrollInvitesToDelete = affectedEnrollInviteIds.stream()
+                        .filter(id -> activeCountMap.getOrDefault(id, 0L) == 0L)
+                        .collect(Collectors.toList());
+                
+                // Bulk update enroll_invites to DELETED status
+                if (!enrollInvitesToDelete.isEmpty()) {
+                    enrollInviteRepository.updateStatusByIds(enrollInvitesToDelete, PackageStatusEnum.DELETED.name());
+                }
+            }
         }
 
         return "Course deleted successfully";

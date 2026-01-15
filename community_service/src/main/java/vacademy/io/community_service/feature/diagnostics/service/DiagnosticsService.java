@@ -310,7 +310,7 @@ public class DiagnosticsService {
         try {
             V1PodList podList = coreV1Api.listNamespacedPod(
                     namespace, null, null, null, null, labelSelector,
-                    null, null, null, null, null, null);
+                    null, null, null, null, null);
 
             List<PodInfo> pods = new ArrayList<>();
             int totalRestarts = 0;
@@ -387,7 +387,7 @@ public class DiagnosticsService {
     private List<Map<String, Object>> getPodsInNamespace(String namespace) throws ApiException {
         V1PodList podList = coreV1Api.listNamespacedPod(
                 namespace, null, null, null, null, null,
-                null, null, null, null, null, null);
+                null, null, null, null, null);
 
         return podList.getItems().stream().map(pod -> {
             Map<String, Object> podInfo = new LinkedHashMap<>();
@@ -620,8 +620,8 @@ public class DiagnosticsService {
 
         try {
             // Get events from last hour, warnings only
-            V1EventList eventList = coreV1Api.listEventForAllNamespaces(
-                    null, null, "type=Warning", null, null, null, null, null, null, null, null);
+            CoreV1EventList eventList = coreV1Api.listEventForAllNamespaces(
+                    null, null, "type=Warning", null, null, null, null, null, null, null);
 
             return eventList.getItems().stream()
                     .sorted((a, b) -> {

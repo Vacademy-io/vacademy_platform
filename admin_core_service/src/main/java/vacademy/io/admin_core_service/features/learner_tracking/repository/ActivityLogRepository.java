@@ -114,6 +114,15 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     List<Object[]> getVideoTrackedIntervals(@Param("slideId") String slideId, @Param("userId") String userId);
 
     @Query(value = """
+            SELECT at.start_time, at.end_time
+            FROM activity_log a
+            JOIN audio_tracked at ON at.activity_id = a.id
+            WHERE a.user_id = :userId
+              AND a.slide_id = :slideId
+            """, nativeQuery = true)
+    List<Object[]> getAudioTrackedIntervals(@Param("slideId") String slideId, @Param("userId") String userId);
+
+    @Query(value = """
                 SELECT
                     COALESCE((COUNT(DISTINCT dt.page_number) * 100.0 / MAX(ds.published_document_total_pages)), 0) AS percentage_watched
                 FROM
@@ -285,6 +294,15 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("slideId") String slideId,
             Pageable pageable);
 
+    @Query("""
+            SELECT DISTINCT al FROM ActivityLog al
+            LEFT JOIN FETCH al.audioTracked at
+            WHERE al.userId = :userId AND al.slideId = :slideId
+            """)
+    Page<ActivityLog> findActivityLogsWithAudios(@Param("userId") String userId,
+            @Param("slideId") String slideId,
+            Pageable pageable);
+
     @Query(value = """
             SELECT s.user_id AS userId,
                    s.full_name AS fullName,
@@ -310,6 +328,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                                          / NULLIF(COALESCE(v.published_video_length, 1), 0) * 100,
                                 0),
                             100)
+                        WHEN s.source_type = 'AUDIO' THEN
+                            LEAST(
+                                COALESCE(SUM(EXTRACT(EPOCH FROM (at.end_time - at.start_time))) * 1000
+                                         / NULLIF(COALESCE(aud.published_audio_length_in_millis, 1), 0) * 100,
+                                0),
+                            100)
                         WHEN s.source_type IN ('DOCUMENT', 'PDF') THEN
                             LEAST(
                                 COALESCE(COUNT(DISTINCT dt.page_number) * 100.0
@@ -322,6 +346,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 LEFT JOIN activity_log al ON al.slide_id = s.id
                 LEFT JOIN video_tracked vt ON vt.activity_id = al.id
                 LEFT JOIN video v ON s.source_id = v.id AND s.source_type = 'VIDEO'
+                LEFT JOIN audio_tracked at ON at.activity_id = al.id
+                LEFT JOIN audio_slide aud ON s.source_id = aud.id AND s.source_type = 'AUDIO'
                 LEFT JOIN document_tracked dt ON dt.activity_id = al.id
                 LEFT JOIN document_slide ds ON s.source_id = ds.id AND s.source_type IN ('DOCUMENT', 'PDF')
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
@@ -345,7 +371,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     AND cs.status IN :slideStatusList
                     AND s.source_type IN :slideTypeList
                     AND ssigm.status IN :ssigmStatusList
-                GROUP BY s.id, s.source_type, v.published_video_length, ds.published_document_total_pages, al.user_id
+                GROUP BY s.id, s.source_type, v.published_video_length, aud.published_audio_length_in_millis, ds.published_document_total_pages, al.user_id
             ),
             user_wise_progress AS (
                 SELECT user_id, AVG(slide_completion) AS user_avg_completion

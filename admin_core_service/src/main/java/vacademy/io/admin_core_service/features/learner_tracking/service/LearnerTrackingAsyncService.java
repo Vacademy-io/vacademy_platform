@@ -50,6 +50,8 @@ public class LearnerTrackingAsyncService {
         private vacademy.io.admin_core_service.features.slide.repository.HtmlVideoSlideRepository htmlVideoSlideRepository;
         @Autowired
         private LLMActivityAnalyticsService llmActivityAnalyticsService;
+        @Autowired
+        private vacademy.io.admin_core_service.features.slide.repository.AudioSlideRepository audioSlideRepository;
 
         // ==== Document Slide Tracking ====
 
@@ -346,6 +348,62 @@ public class LearnerTrackingAsyncService {
                                 .sum();
         }
 
+        // ==== Audio Slide Tracking ====
+
+        @Async
+        @Transactional
+        public void updateLearnerOperationsForAudio(String userId, String slideId, String chapterId,
+                        String moduleId, String subjectId, String packageSessionId,
+                        ActivityLogDTO activityLogDTO) {
+                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
+                                userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED.name());
+
+                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
+                                userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.AUDIO_LAST_TIMESTAMP.name());
+
+                // STEP 1: Get endTime for timestamp metric
+                Long maxEndTime = activityLogDTO.getAudios() != null
+                                ? activityLogDTO.getAudios().stream()
+                                                .map(vacademy.io.admin_core_service.features.learner_tracking.dto.AudioActivityLogDTO::getEndTimeInMillis)
+                                                .filter(java.util.Objects::nonNull)
+                                                .max(Long::compareTo)
+                                                .orElse(null)
+                                : null;
+
+                // STEP 2: Fetch all start-end time intervals for this slide + user
+                List<Object[]> trackedTimes = activityLogRepository.getAudioTrackedIntervals(slideId, userId);
+                List<VideoInterval> intervals = trackedTimes.stream()
+                                .filter(row -> row[0] != null && row[1] != null)
+                                .map(row -> new VideoInterval(((Timestamp) row[0]).toInstant(),
+                                                ((Timestamp) row[1]).toInstant()))
+                                .collect(Collectors.toCollection(ArrayList::new));
+
+                // STEP 3: Calculate actual listened milliseconds
+                long actualListenedMillis = getUniqueWatchedDurationMillis(intervals);
+
+                // STEP 4: Fetch published audio length
+                Long publishedAudioLengthMillis = audioSlideRepository.getPublishedAudioLength(slideId);
+
+                Double percentageListened = null;
+                if (publishedAudioLengthMillis != null && publishedAudioLengthMillis > 0) {
+                        percentageListened = (actualListenedMillis * 100.0) / publishedAudioLengthMillis;
+                }
+
+                // STEP 5: Save learner operations
+                addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED.name(), percentageListened);
+
+                if (maxEndTime != null) {
+                        learnerOperationService.addOrUpdateOperation(userId, LearnerOperationSourceEnum.SLIDE.name(),
+                                        slideId,
+                                        LearnerOperationEnum.AUDIO_LAST_TIMESTAMP.name(), String.valueOf(maxEndTime));
+                }
+
+                updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
+        }
+
         // ==== Chapter-Level Tracking ====
 
         public void updateLearnerOperationsForChapter(String userId, String chapterId, String moduleId,
@@ -361,7 +419,8 @@ public class LearnerTrackingAsyncService {
                                 LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED.name(),
                                 LearnerOperationEnum.PERCENTAGE_ASSIGNMENT_COMPLETED.name(),
                                 LearnerOperationEnum.PERCENTAGE_QUESTION_COMPLETED.name(),
-                                LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED.name());
+                                LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED.name(),
+                                LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED.name());
                 List<String> slideStatusList = List.of(
                                 SlideStatus.PUBLISHED.name(),
                                 SlideStatus.UNSYNC.name());
@@ -371,7 +430,7 @@ public class LearnerTrackingAsyncService {
                                 List.of(SlideTypeEnum.VIDEO.name(), SlideTypeEnum.DOCUMENT.name(),
                                                 SlideTypeEnum.ASSIGNMENT.name(),
                                                 SlideTypeEnum.QUESTION.name(), SlideTypeEnum.QUIZ.name(),
-                                                SlideTypeEnum.HTML_VIDEO.name()));
+                                                SlideTypeEnum.HTML_VIDEO.name(), SlideTypeEnum.AUDIO.name()));
 
                 addOrUpdatePercentageOperation(
                                 userId,

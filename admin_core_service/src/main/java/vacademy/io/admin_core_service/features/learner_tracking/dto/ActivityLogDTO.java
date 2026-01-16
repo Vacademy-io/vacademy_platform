@@ -21,10 +21,11 @@ public class ActivityLogDTO {
     private Long endTimeInMillis;
     private Double percentageWatched;
     private List<VideoActivityLogDTO> videos;
+    private List<AudioActivityLogDTO> audios;
     private List<DocumentActivityLogDTO> documents;
-    private List<QuestionSlideActivityLogDTO>questionSlides;
-    private List<AssignmentSlideActivityLogDTO>assignmentSlides;
-    private List<VideoSlideQuestionActivityLogDTO>videoSlidesQuestions;
+    private List<QuestionSlideActivityLogDTO> questionSlides;
+    private List<AssignmentSlideActivityLogDTO> assignmentSlides;
+    private List<VideoSlideQuestionActivityLogDTO> videoSlidesQuestions;
     private boolean newActivity;
     private ConcentrationScoreDTO concentrationScore;
     private List<QuizSideActivityLogDTO> quizSides;

@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.learner_tracking.service;
 
-import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -10,9 +9,11 @@ import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogD
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.DocumentTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.VideoTracked;
+import vacademy.io.admin_core_service.features.learner_tracking.entity.AudioTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.DocumentTrackedRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.VideoTrackedRepository;
+import vacademy.io.admin_core_service.features.learner_tracking.repository.AudioTrackedRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -26,6 +27,7 @@ public class LearnerTrackingService {
     private final ActivityLogRepository activityLogRepository;
     private final DocumentTrackedRepository documentTrackedRepository;
     private final VideoTrackedRepository videoTrackedRepository;
+    private final AudioTrackedRepository audioTrackedRepository;
     private final LearnerOperationService learnerOperationService;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
     private final ConcentrationScoreService concentrationScoreService;
@@ -35,12 +37,14 @@ public class LearnerTrackingService {
             ActivityLogRepository activityLogRepository,
             DocumentTrackedRepository documentTrackedRepository,
             VideoTrackedRepository videoTrackedRepository,
+            AudioTrackedRepository audioTrackedRepository,
             LearnerOperationService learnerOperationService,
             LearnerTrackingAsyncService learnerTrackingAsyncService,
             ConcentrationScoreService concentrationScoreService) {
         this.activityLogRepository = activityLogRepository;
         this.documentTrackedRepository = documentTrackedRepository;
         this.videoTrackedRepository = videoTrackedRepository;
+        this.audioTrackedRepository = audioTrackedRepository;
         this.learnerOperationService = learnerOperationService;
         this.learnerTrackingAsyncService = learnerTrackingAsyncService;
         this.concentrationScoreService = concentrationScoreService;
@@ -150,6 +154,47 @@ public class LearnerTrackingService {
     public Page<ActivityLogDTO> getVideoActivityLogs(String userId, String slideId, Pageable pageable,
             CustomUserDetails userDetails) {
         Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithVideos(userId, slideId, pageable);
+        return activityLogs.map(ActivityLog::toActivityLogDTO);
+    }
+
+    // ==== Audio Tracking Methods ====
+
+    public ActivityLogDTO addOrUpdateAudioActivityLog(ActivityLogDTO activityLogDTO, String slideId,
+            String chapterId, String moduleId, String subjectId, String packageSessionId, CustomUserDetails user) {
+        validateAudioActivityLogDTO(activityLogDTO);
+        ActivityLog activityLog = activityLogDTO.isNewActivity()
+                ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
+
+        saveAudioTracking(activityLogDTO, activityLog);
+        learnerTrackingAsyncService.updateLearnerOperationsForAudio(user.getUserId(), slideId, chapterId, moduleId,
+                subjectId, packageSessionId, activityLogDTO);
+        concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
+        return activityLog.toActivityLogDTO();
+    }
+
+    private void saveAudioTracking(ActivityLogDTO activityLogDTO, ActivityLog activityLog) {
+        audioTrackedRepository.deleteByActivityId(activityLog.getId()); // Clear existing tracked audios
+        if (activityLogDTO.getAudios() != null) {
+            List<AudioTracked> audioTrackedList = activityLogDTO.getAudios().stream()
+                    .map(audioActivityLogDTO -> new AudioTracked(audioActivityLogDTO, activityLog))
+                    .toList();
+            audioTrackedRepository.saveAll(audioTrackedList);
+        }
+    }
+
+    private void validateAudioActivityLogDTO(ActivityLogDTO dto) {
+        if (Objects.isNull(dto)) {
+            throw new VacademyException("Invalid request. Activity Log cannot be null.");
+        }
+        if (Objects.isNull(dto.getAudios())) {
+            throw new VacademyException("Invalid request. Audios cannot be null.");
+        }
+    }
+
+    public Page<ActivityLogDTO> getAudioActivityLogs(String userId, String slideId, Pageable pageable,
+            CustomUserDetails userDetails) {
+        Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithAudios(userId, slideId, pageable);
         return activityLogs.map(ActivityLog::toActivityLogDTO);
     }
 

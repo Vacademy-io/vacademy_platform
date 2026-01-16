@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.slide.dto.AddDocumentSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.AddVideoSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.AddHtmlVideoSlideDTO;
 import vacademy.io.admin_core_service.features.slide.dto.AddScormSlideDTO;
+import vacademy.io.admin_core_service.features.slide.dto.AddAudioSlideDTO;
 import vacademy.io.admin_core_service.features.slide.entity.HtmlVideoSlide;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 
@@ -54,6 +55,10 @@ public class Slide {
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id", referencedColumnName = "id", insertable = false, updatable = false)
     private HtmlVideoSlide htmlVideoSlide;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id", referencedColumnName = "id", insertable = false, updatable = false)
+    private AudioSlide audioSlide;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
@@ -111,6 +116,19 @@ public class Slide {
         this.description = addScormSlideDTO.getDescription();
         this.status = status;
         this.id = addScormSlideDTO.getId();
+    }
+
+    public Slide(AddAudioSlideDTO addAudioSlideDTO, String sourceId, String sourceType, String status) {
+        this.sourceId = sourceId;
+        this.sourceType = sourceType;
+        this.title = addAudioSlideDTO.getTitle();
+        this.imageFileId = addAudioSlideDTO.getImageFileId();
+        this.description = addAudioSlideDTO.getDescription();
+        this.status = status;
+        this.id = addAudioSlideDTO.getId();
+        if (status.equals(SlideStatus.PUBLISHED.name())) {
+            this.lastSyncDate = new Timestamp(System.currentTimeMillis());
+        }
     }
 
     public Slide() {

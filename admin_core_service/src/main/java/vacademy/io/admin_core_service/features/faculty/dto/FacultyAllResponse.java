@@ -16,6 +16,7 @@ import java.util.List;
 @NoArgsConstructor
 @Builder
 public class FacultyAllResponse {
+    @Builder.Default
     private List<FacultyTopLevelResponse> content = new ArrayList<>();
     private int pageNo;
     private int pageSize;

@@ -98,13 +98,13 @@ public class StudyLibraryService {
 
     @Transactional
     public List<CourseDTOWithDetails> getStudyLibraryInitDetails(String instituteId) {
-           
+
         // Step 1: Fetch all packages for the institute
         List<PackageEntity> packages = packageRepository.findDistinctPackagesByInstituteIdAndStatuses(
-                instituteId, 
-                List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name(), PackageStatusEnum.IN_REVIEW.name()), 
-                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name())
-        );
+                instituteId,
+                List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name(),
+                        PackageStatusEnum.IN_REVIEW.name()),
+                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()));
 
         return buildCourseDTOWithDetailsForPackages(packages, instituteId);
     }
@@ -371,6 +371,7 @@ public class StudyLibraryService {
     /**
      * @deprecated Has N+1 query problem. Used by buildCourseDTOWithDetails().
      */
+    @Deprecated
     public List<SessionDTOWithDetails> buildSessionDTOWithDetails(String packageId, String instituteId) {
         List<SessionDTOWithDetails> sessionDTOWithDetails = new ArrayList<>();
         List<SessionProjection> packageSessions = packageRepository.findDistinctSessionsByPackageIdAndStatuses(
@@ -391,6 +392,7 @@ public class StudyLibraryService {
     /**
      * @deprecated Has N+1 query problem. Used by buildSessionDTOWithDetails().
      */
+    @Deprecated
     public List<LevelDTOWithDetails> buildLevelDTOWithDetails(String instituteId, String sessionId, String packageId) {
         List<LevelDTOWithDetails> levelWithDetails = new ArrayList<>();
         List<Level> levels = levelRepository.findDistinctLevelsByInstituteIdAndSessionId(instituteId, sessionId,
@@ -411,6 +413,7 @@ public class StudyLibraryService {
     /**
      * @deprecated Has N+1 query problem. Used by buildLevelDTOWithDetails().
      */
+    @Deprecated
     public LevelDTOWithDetails buildLevelDTOWithDetails(Level level, String packageId, String sessionId) {
         List<Subject> subjects = subjectRepository.findDistinctSubjectsPackageSession(level.getId(), packageId,
                 sessionId);

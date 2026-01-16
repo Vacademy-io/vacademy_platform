@@ -268,36 +268,28 @@ public class AuthService {
         childUser.setLinkedParentId(parentUser.getId());
         childUser = userRepository.save(childUser);
 
-        UserDTO parentResponseDTO = new UserDTO();
-        parentResponseDTO.setId(parentUser.getId());
-        parentResponseDTO.setFullName(parentUser.getFullName());
-        parentResponseDTO.setEmail(parentUser.getEmail());
-        parentResponseDTO.setUsername(parentUser.getUsername());
-        parentResponseDTO.setMobileNumber(parentUser.getMobileNumber());
-        parentResponseDTO.setAddressLine(parentUser.getAddressLine());
-        parentResponseDTO.setCity(parentUser.getCity());
-        parentResponseDTO.setPinCode(parentUser.getPinCode());
-        parentResponseDTO.setGender(parentUser.getGender());
-        parentResponseDTO.setDateOfBirth(parentUser.getDateOfBirth());
-        parentResponseDTO.setProfilePicFileId(parentUser.getProfilePicFileId());
-        parentResponseDTO.setIsParent(parentUser.getIsParent());
-        parentResponseDTO.setLinkedParentId(parentUser.getLinkedParentId());
-        
-        UserDTO childResponseDTO = new UserDTO();
-        childResponseDTO.setId(childUser.getId());
-        childResponseDTO.setFullName(childUser.getFullName());
-        childResponseDTO.setEmail(childUser.getEmail());
-        childResponseDTO.setUsername(childUser.getUsername());
-        childResponseDTO.setMobileNumber(childUser.getMobileNumber());
-        childResponseDTO.setAddressLine(childUser.getAddressLine());
-        childResponseDTO.setCity(childUser.getCity());
-        childResponseDTO.setPinCode(childUser.getPinCode());
-        childResponseDTO.setGender(childUser.getGender());
-        childResponseDTO.setDateOfBirth(childUser.getDateOfBirth());
-        childResponseDTO.setProfilePicFileId(childUser.getProfilePicFileId());
-        childResponseDTO.setIsParent(childUser.getIsParent());
-        childResponseDTO.setLinkedParentId(childUser.getLinkedParentId());
+        UserDTO parentResponseDTO = convertToUserDto(parentUser);
+        UserDTO childResponseDTO = convertToUserDto(childUser);
         
         return List.of(parentResponseDTO, childResponseDTO);
+    }
+
+    private UserDTO convertToUserDto(User user){
+        UserDTO childResponseDTO = new UserDTO();
+        childResponseDTO.setId(user.getId());
+        childResponseDTO.setFullName(user.getFullName());
+        childResponseDTO.setEmail(user.getEmail());
+        childResponseDTO.setUsername(user.getUsername());
+        childResponseDTO.setMobileNumber(user.getMobileNumber());
+        childResponseDTO.setAddressLine(user.getAddressLine());
+        childResponseDTO.setCity(user.getCity());
+        childResponseDTO.setPinCode(user.getPinCode());
+        childResponseDTO.setGender(user.getGender());
+        childResponseDTO.setDateOfBirth(user.getDateOfBirth());
+        childResponseDTO.setProfilePicFileId(user.getProfilePicFileId());
+        childResponseDTO.setIsParent(user.getIsParent());
+        childResponseDTO.setLinkedParentId(user.getLinkedParentId());
+        return childResponseDTO;
+
     }
 }

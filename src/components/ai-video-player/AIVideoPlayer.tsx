@@ -256,8 +256,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       const scaleY = containerHeight / height;
       const newScale = Math.min(scaleX, scaleY);
       
-       // Apply 0.8 multiplier to zoom out (make it 80% of calculated scale)
-       const zoomedOutScale = newScale * 0.8;
+       // Apply 0.95 multiplier to zoom out (make it 95% of calculated scale)
+       const zoomedOutScale = newScale * 0.95;
       
       // Cap at 1 to prevent zooming in beyond 100% (only scale down, never up)
       const finalScale = Math.min(zoomedOutScale, 1);

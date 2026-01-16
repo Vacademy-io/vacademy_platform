@@ -1,31 +1,7 @@
-import React, { useEffect, useRef } from 'react';
-
-// Initialize mermaid once globally
-let mermaidInitialized = false;
-
-const initializeMermaid = async () => {
-    if (!mermaidInitialized) {
-        try {
-            const mermaidModule = await import('mermaid');
-            const mermaid = mermaidModule.default;
-            
-            mermaid.initialize({ 
-                startOnLoad: false,  // Important: set to false
-                theme: 'default',
-                securityLevel: 'loose',
-                fontFamily: 'inherit',
-                flowchart: {
-                    useMaxWidth: true,
-                    htmlLabels: true,
-                    curve: 'basis',
-                },
-            });
-            mermaidInitialized = true;
-        } catch (error) {
-            console.error('Error initializing mermaid:', error);
-        }
-    }
-};
+import React, { useEffect, useRef, useState } from 'react';
+import mermaid from 'mermaid';
+import { sanitizeMermaidCode } from '@/utils/mermaidSanitizer';
+import { initializeMermaid } from '@/utils/initializeMermaid';
 
 interface MermaidDiagramProps {
     code: string;
@@ -39,10 +15,11 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
     id 
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const diagramIdRef = useRef<string>(id || `mermaid-${Math.random().toString(36).substr(2, 9)}`);
     const renderedCodeRef = useRef<string>('');
+    const [hasError, setHasError] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string>('');
 
-    // Initialize mermaid on mount
+    // Initialize mermaid once
     useEffect(() => {
         initializeMermaid();
     }, []);
@@ -53,83 +30,87 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
             return;
         }
 
-        // Skip if already rendered with same code
-        const cleanCode = code.trim();
-        if (renderedCodeRef.current === cleanCode) {
+        // Skip if code hasn't changed (prevents double rendering in React Strict Mode)
+        const trimmedCode = code.trim();
+        if (renderedCodeRef.current === trimmedCode) {
+            console.log('[MermaidDiagram] Skipping render - code unchanged');
             return;
         }
 
         const renderDiagram = async () => {
             try {
-                // Clear previous content
+                // Clear container
                 if (containerRef.current) {
                     containerRef.current.innerHTML = '';
                 }
 
-                let processedCode = cleanCode;
+                // Clean and sanitize code
+                let cleanCode = code.trim();
                 
-                // Remove "mermaid " prefix if present
-                if (processedCode.toLowerCase().startsWith('mermaid ')) {
-                    processedCode = processedCode.substring(8).trim();
+                // Optional: Log for debugging
+                // console.log('[MermaidDiagram] Rendering diagram, code length:', cleanCode.length);
+                
+                if (cleanCode.toLowerCase().startsWith('mermaid ')) {
+                    cleanCode = cleanCode.substring(8).trim();
                 }
-                
-                if (!processedCode) {
-                    return;
-                }
+                cleanCode = sanitizeMermaidCode(cleanCode);
 
-                // Ensure mermaid is initialized
-                await initializeMermaid();
-                
-                // Import mermaid
-                const mermaidModule = await import('mermaid');
-                const mermaid = mermaidModule.default;
-
-                // Generate unique render ID (required for mermaid.render())
+                // Generate unique render ID
                 const renderId = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 
-                // ⚠️ CRITICAL: Call mermaid.render() to actually render the diagram
-                const result = await mermaid.render(renderId, processedCode);
+                // Render diagram
+                const result = await mermaid.render(renderId, cleanCode);
                 
                 if (result && result.svg) {
-                    // Successfully rendered - insert SVG
                     if (containerRef.current) {
+                        // Mark that we're rendering this code
+                        renderedCodeRef.current = cleanCode;
+                        
+                        // Create wrapper for responsive SVG
                         const svgWrapper = document.createElement('div');
                         svgWrapper.style.cssText = 'width: 100%; max-width: 100%; overflow: auto; display: flex; justify-content: center;';
                         
+                        // Parse and modify SVG
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = result.svg;
                         const svgElement = tempDiv.querySelector('svg');
                         
                         if (svgElement) {
-                            svgElement.setAttribute('width', '100%');
-                            svgElement.setAttribute('height', 'auto');
-                            svgElement.style.maxWidth = '100%';
+                            // Remove fixed width/height attributes
+                            svgElement.removeAttribute('height');
+                            svgElement.removeAttribute('width');
+                            
+                            // Set responsive styles
+                            svgElement.style.width = '100%';
                             svgElement.style.height = 'auto';
+                            svgElement.style.maxWidth = '100%';
                             svgWrapper.appendChild(svgElement);
                         } else {
                             svgWrapper.innerHTML = result.svg;
                         }
                         
-                        containerRef.current.innerHTML = '';
                         containerRef.current.appendChild(svgWrapper);
-                        renderedCodeRef.current = cleanCode;
+                        setHasError(false);
                     }
                 } else {
                     throw new Error('mermaid.render() did not return SVG');
                 }
             } catch (error) {
                 console.error('Error rendering mermaid diagram:', error);
+                
                 // Show error fallback
                 if (containerRef.current) {
                     containerRef.current.innerHTML = `
                         <div style="padding: 15px; border: 1px solid #ff9800; border-radius: 4px; background: #fff3e0;">
                             <div style="font-size: 12px; color: #e65100; margin-bottom: 8px;">
-                                <strong>⚠️ Diagram rendering failed. Showing code:</strong>
+                                <strong>⚠️ Diagram rendering failed</strong>
                             </div>
                             <pre style="margin: 0; font-size: 11px; overflow-x: auto; white-space: pre-wrap;">${code}</pre>
                         </div>
                     `;
                 }
+                setHasError(true);
+                setErrorMessage(error instanceof Error ? error.message : 'Unknown error');
             }
         };
 
@@ -150,8 +131,16 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                 maxWidth: '100%',
                 width: '100%',
                 overflow: 'hidden',
+                boxSizing: 'border-box',
             }}
-        />
+        >
+            <style>{`
+                .mermaid-diagram-container svg {
+                    max-width: 100% !important;
+                    width: 100% !important;
+                    height: auto !important;
+                }
+            `}</style>
+        </div>
     );
 };
-

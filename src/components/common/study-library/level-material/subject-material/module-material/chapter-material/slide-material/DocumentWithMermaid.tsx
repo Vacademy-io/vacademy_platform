@@ -18,12 +18,17 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             return;
         }
 
+        // Log for debugging (can be removed in production)
+        // console.log('[DocumentWithMermaid] Processing HTML content, length:', htmlContent.length);
+
         try {
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = htmlContent;
             
-            // Find all code blocks - check multiple patterns
-            // Try: pre code, pre, code (if inside pre), and also check for escaped HTML
+            // First, check for div.mermaid elements (most common pattern)
+            const mermaidDivs = tempDiv.querySelectorAll('div.mermaid');
+            
+            // Also check for code blocks
             const codeBlocks = tempDiv.querySelectorAll('pre code, pre, code');
             
             // Also check raw HTML string for mermaid patterns
@@ -34,41 +39,63 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             // Mark mermaid blocks in DOM
             const mermaidBlocks: Array<{ element: Element; code: string }> = [];
             
-            codeBlocks.forEach((block) => {
-                // Get text content - try multiple methods
-                let codeText = '';
-                if (block.tagName === 'CODE' && block.parentElement?.tagName === 'PRE') {
-                    // If it's a code inside pre, get the code text
-                    codeText = block.textContent || block.innerText || '';
-                } else if (block.tagName === 'PRE') {
-                    // If it's just a pre, get text from it or from code inside
-                    const codeElement = block.querySelector('code');
-                    codeText = codeElement ? (codeElement.textContent || codeElement.innerText || '') : (block.textContent || block.innerText || '');
-                } else {
-                    codeText = block.textContent || block.innerText || '';
-                }
+            // Process div.mermaid elements first (highest priority)
+            mermaidDivs.forEach((div) => {
+                // For div.mermaid, get the FULL text content including all nested content
+                const codeText = div.textContent || div.innerText || '';
                 
-                const trimmedCode = codeText.trim().toLowerCase();
+                // console.log('[DocumentWithMermaid] Found div.mermaid, code length:', codeText.length);
                 
-                const isMermaid = 
-                    trimmedCode.includes('graph') ||
-                    trimmedCode.includes('flowchart') ||
-                    trimmedCode.includes('sequencediagram') ||
-                    trimmedCode.includes('classdiagram') ||
-                    trimmedCode.includes('gantt') ||
-                    trimmedCode.includes('pie') ||
-                    trimmedCode.includes('erdiagram') ||
-                    trimmedCode.includes('journey');
-                
-                if (isMermaid) {
-                    // Mark this element for replacement
-                    block.setAttribute('data-mermaid-block', 'true');
-                    mermaidBlocks.push({
-                        element: block,
-                        code: codeText.trim()
-                    });
-                }
+                mermaidBlocks.push({
+                    element: div,
+                    code: codeText.trim()
+                });
             });
+            
+            // Only process code blocks if no div.mermaid found
+            if (mermaidBlocks.length === 0) {
+                codeBlocks.forEach((block) => {
+                    // Get text content - try multiple methods
+                    let codeText = '';
+                    if (block.tagName === 'CODE' && block.parentElement?.tagName === 'PRE') {
+                        // If it's a code inside pre, get the code text
+                        codeText = block.textContent || block.innerText || '';
+                    } else if (block.tagName === 'PRE') {
+                        // If it's just a pre, get text from it or from code inside
+                        const codeElement = block.querySelector('code');
+                        codeText = codeElement ? (codeElement.textContent || codeElement.innerText || '') : (block.textContent || block.innerText || '');
+                    } else {
+                        codeText = block.textContent || block.innerText || '';
+                    }
+                    
+                    const trimmedCode = codeText.trim().toLowerCase();
+                    
+                    const isMermaid = 
+                        trimmedCode.includes('graph') ||
+                        trimmedCode.includes('flowchart') ||
+                        trimmedCode.includes('sequencediagram') ||
+                        trimmedCode.includes('classdiagram') ||
+                        trimmedCode.includes('gantt') ||
+                        trimmedCode.includes('pie') ||
+                        trimmedCode.includes('erdiagram') ||
+                        trimmedCode.includes('journey');
+                    
+                    if (isMermaid) {
+                        // Mark this element for replacement
+                        block.setAttribute('data-mermaid-block', 'true');
+                        // Preserve original code with newlines - don't trim too aggressively
+                        // Use textContent which preserves newlines better than innerText
+                        const preservedCode = codeText;
+                        
+                        // console.log('[DocumentWithMermaid] Found Mermaid in code block, length:', preservedCode.length);
+                        
+                        mermaidBlocks.push({
+                            element: block,
+                            code: preservedCode
+                        });
+                    }
+                });
+            }
             
             // Build sections by splitting HTML around mermaid blocks
             if (mermaidBlocks.length > 0) {
@@ -77,37 +104,53 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 const markers: Array<{ marker: string; code: string; position: number }> = [];
                 
                 mermaidBlocks.forEach((mermaidBlock, idx) => {
-                    // Try to find the block in the original HTML
-                    // Use the element's outerHTML, but also try innerHTML for code elements
-                    let blockHtml = mermaidBlock.element.outerHTML;
+                    const marker = `__MERMAID_MARKER_${idx}__`;
                     
-                    // If outerHTML doesn't match, try to construct it
-                    if (!processedHtml.includes(blockHtml)) {
-                        // Try with just the code content wrapped
-                        const codeContent = mermaidBlock.code;
-                        // Try different patterns
-                        const patterns = [
-                            `<pre><code>${codeContent}</code></pre>`,
-                            `<pre>${codeContent}</pre>`,
-                            `<code>${codeContent}</code>`,
-                        ];
+                    // For div.mermaid, use a regex to find the entire div block
+                    if (mermaidBlock.element.classList.contains('mermaid')) {
+                        // Match <div class="mermaid">...</div> with any content inside
+                        const divPattern = /<div\s+class="mermaid"[^>]*>([\s\S]*?)<\/div>/i;
+                        const match = processedHtml.match(divPattern);
                         
-                        for (const pattern of patterns) {
-                            if (processedHtml.includes(pattern)) {
-                                blockHtml = pattern;
-                                break;
+                        if (match) {
+                            const position = processedHtml.indexOf(match[0]);
+                            processedHtml = processedHtml.substring(0, position) + 
+                                          marker + 
+                                          processedHtml.substring(position + match[0].length);
+                            markers.push({ marker, code: mermaidBlock.code, position });
+                        }
+                    } else {
+                        // Try to find the block in the original HTML
+                        // Use the element's outerHTML, but also try innerHTML for code elements
+                        let blockHtml = mermaidBlock.element.outerHTML;
+                        
+                        // If outerHTML doesn't match, try to construct it
+                        if (!processedHtml.includes(blockHtml)) {
+                            // Try with just the code content wrapped
+                            const codeContent = mermaidBlock.code;
+                            // Try different patterns
+                            const patterns = [
+                                `<pre><code>${codeContent}</code></pre>`,
+                                `<pre>${codeContent}</pre>`,
+                                `<code>${codeContent}</code>`,
+                            ];
+                            
+                            for (const pattern of patterns) {
+                                if (processedHtml.includes(pattern)) {
+                                    blockHtml = pattern;
+                                    break;
+                                }
                             }
                         }
-                    }
-                    
-                    const marker = `__MERMAID_MARKER_${idx}__`;
-                    const position = processedHtml.indexOf(blockHtml);
-                    
-                    if (position !== -1) {
-                        processedHtml = processedHtml.substring(0, position) + 
-                                      marker + 
-                                      processedHtml.substring(position + blockHtml.length);
-                        markers.push({ marker, code: mermaidBlock.code, position });
+                        
+                        const position = processedHtml.indexOf(blockHtml);
+                        
+                        if (position !== -1) {
+                            processedHtml = processedHtml.substring(0, position) + 
+                                          marker + 
+                                          processedHtml.substring(position + blockHtml.length);
+                            markers.push({ marker, code: mermaidBlock.code, position });
+                        }
                     }
                 });
                 

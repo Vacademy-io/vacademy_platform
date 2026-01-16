@@ -137,4 +137,17 @@ public class UserController {
         return ResponseEntity.ok(users);
     }
 
+    @PostMapping("/internal/create-multiple-users")
+    @Transactional
+    public ResponseEntity<List<UserDTO>> createMultipleUsers(@RequestBody List<UserDTO> userDTOs,
+                                                             @RequestParam("instituteId") String instituteId,
+                                                             @RequestParam(name = "isNotify", required = false, defaultValue = "true") boolean isNotify) {
+        try {
+            List<UserDTO> users = authService.createMultipleUsers(userDTOs, instituteId, isNotify);
+            return ResponseEntity.ok(users);
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
 }

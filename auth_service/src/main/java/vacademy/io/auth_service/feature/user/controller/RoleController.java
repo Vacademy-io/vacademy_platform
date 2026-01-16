@@ -5,8 +5,8 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
 import vacademy.io.auth_service.feature.user.dto.UserRoleFilterDTO;
 import vacademy.io.auth_service.feature.user.service.RoleService;
+import vacademy.io.common.auth.dto.PagedUserWithRolesResponse;
 import vacademy.io.common.auth.dto.RoleCountProjection;
-import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.enums.UserRoleStatus;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -51,10 +51,11 @@ public class RoleController {
     }
 
     @PostMapping("/users-of-status")
-    public ResponseEntity<List<UserWithRolesDTO>> getUsersOfStatus(@RequestBody UserRoleFilterDTO filterDTO,
-                                                                   @RequestParam String instituteId,
-                                                                   @RequestAttribute("user") CustomUserDetails customUserDetails) {
-        List<UserWithRolesDTO> response = roleService.getUsersByInstituteIdAndStatus(instituteId, filterDTO, customUserDetails);
+    public ResponseEntity<PagedUserWithRolesResponse> getUsersOfStatus(@RequestBody UserRoleFilterDTO filterDTO,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails customUserDetails) {
+        PagedUserWithRolesResponse response = roleService.getUsersByInstituteIdAndStatusPaged(instituteId, filterDTO,
+                customUserDetails);
         return ResponseEntity.ok(response);
     }
 

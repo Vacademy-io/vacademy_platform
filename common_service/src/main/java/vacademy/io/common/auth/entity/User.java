@@ -58,6 +58,12 @@ public class User {
     @Column(name = "is_root_user")
     private boolean isRootUser;
 
+    @Column(name = "is_parent")
+    private Boolean isParent;
+
+    @Column(name = "linked_parent_id")
+    private String linkedParentId;
+
     @Column(name = "last_token_update_time")
     @Temporal(TemporalType.TIMESTAMP)
     private Date lastTokenUpdateTime;
@@ -208,6 +214,22 @@ public class User {
 
     public void setRootUser(boolean rootUser) {
         isRootUser = rootUser;
+    }
+
+    public Boolean getIsParent() {
+        return isParent;
+    }
+
+    public void setIsParent(Boolean isParent) {
+        this.isParent = isParent;
+    }
+
+    public String getLinkedParentId() {
+        return linkedParentId;
+    }
+
+    public void setLinkedParentId(String linkedParentId) {
+        this.linkedParentId = linkedParentId;
     }
 
     public Date getLastTokenUpdateTime() {

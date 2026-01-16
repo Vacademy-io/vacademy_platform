@@ -118,6 +118,11 @@ public class CacheConfiguration {
                                 "liveAndUpcomingSessions",
                                 caffeineCache2mBuilder().build());
 
+                // Learner Dashboard cache (2 minutes TTL)
+                CaffeineCache learnerDashboard = new CaffeineCache(
+                                "learnerDashboard",
+                                caffeineCache2mBuilder().build());
+
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
                                 facultyByPackageSessions,
@@ -141,7 +146,8 @@ public class CacheConfiguration {
                                 nodeLogs,
                                 timeRangeLogs,
                                 userDetails,
-                                liveAndUpcomingSessions));
+                                liveAndUpcomingSessions,
+                                learnerDashboard));
 
                 return cacheManager;
         }

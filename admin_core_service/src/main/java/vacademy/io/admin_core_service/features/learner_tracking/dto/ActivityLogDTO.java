@@ -30,4 +30,5 @@ public class ActivityLogDTO {
     private ConcentrationScoreDTO concentrationScore;
     private List<QuizSideActivityLogDTO> quizSides;
     private boolean isCertificateCriteriaAchieved;
+    private String learnerOperation;
 }

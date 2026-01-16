@@ -21,53 +21,54 @@ Use this endpoint to create a new audio slide or update an existing one within a
   - `packageSessionId` (Required): ID of the package session.
   - `instituteId` (Required): ID of the institute.
 
-- **Request Body (`AddAudioSlideDTO`):**
+- **Request Body (`AddAudioSlideDTO` - snake_case):**
 
 ```json
 {
   "id": "string (optional, send for update)",
   "title": "string (required)",
   "description": "string (optional)",
-  "imageFileId": "string (optional, thumbnail file ID from File Service)",
+  "image_file_id": "string (optional, thumbnail file ID from File Service)",
   "status": "DRAFT | PUBLISHED",
-  "slideOrder": 1,
+  "slide_order": 1,
   "notify": true,
-  "audioSlide": {
+  "new_slide": true, // <--- IMPORTANT: Send true if creating a new slide (even if you provide an ID)
+  "audio_slide": {
     "id": "string (optional, send for update)",
-    "audioFileId": "string (required, audio file ID from File Service)",
-    "thumbnailFileId": "string (optional)",
-    "audioLengthInMillis": 0,
-    "sourceType": "FILE | URL",
-    "externalUrl": "string (optional, if sourceType is URL)",
+    "audio_file_id": "string (required, audio file ID from File Service)",
+    "thumbnail_file_id": "string (optional)",
+    "audio_length_in_millis": 0,
+    "source_type": "FILE | URL",
+    "external_url": "string (optional, if source_type is URL)",
     "transcript": "string (optional)"
   }
 }
 ```
 
 - **Workflow:**
-  1.  **Upload Audio:** Admin uploads the audio file using the existing File Service API. reliable return generic `fileId`.
+  1.  **Upload Audio:** Admin uploads the audio file using the existing File Service API.
   2.  **Upload Thumbnail (Optional):** Admin uploads a cover image/thumbnail.
-  3.  **Submit Form:** calling the above API with the `fileId`s and metadata.
+  3.  **Submit Form:** calling the above API with the `fileId`s and metadata (using snake_case keys).
 
 ### 2.2 Retrieve Audio Slide Details
 
 Use this endpoint to fetch details of an audio slide for editing or viewing.
 
 - **Endpoint:** `GET /admin-core-service/slide/audio-slide/{slideId}`
-- **Response Body (`AudioSlideDTO`):**
+- **Response Body (`AudioSlideDTO` - snake_case):**
 
 ```json
 {
   "id": "string",
   "title": "string",
   "description": "string",
-  "audioFileId": "string",
-  "thumbnailFileId": "string",
-  "audioLengthInMillis": 120000,
-  "publishedAudioFileId": "string",
-  "publishedAudioLengthInMillis": 120000,
-  "sourceType": "FILE",
-  "externalUrl": null,
+  "audio_file_id": "string",
+  "thumbnail_file_id": "string",
+  "audio_length_in_millis": 120000,
+  "published_audio_file_id": "string",
+  "published_audio_length_in_millis": 120000,
+  "source_type": "FILE",
+  "external_url": null,
   "transcript": "string"
 }
 ```
@@ -81,19 +82,19 @@ The Learner App must track the user's listening progress similar to how Video Sl
 The audio player should send heartbeat updates or "interval" logs to the backend to track progress.
 
 - **Endpoint:** `POST /admin-core-service/learner/activity/add-activity` (General Activity Log Endpoint)
-- **Request Body (`ActivityLogDTO`):**
+- **Request Body (`ActivityLogDTO` - snake_case):**
 
 ```json
 {
-  "slideId": "string",
-  "userId": "string",
-  "isNewActivity": false,
-  "learnerOperation": "AUDIO_LAST_TIMESTAMP",
+  "slide_id": "string",
+  "user_id": "string",
+  "is_new_activity": false,
+  "learner_operation": "AUDIO_LAST_TIMESTAMP",
   "audios": [
     {
-      "startTimeInMillis": 0,
-      "endTimeInMillis": 10000,
-      "playbackSpeed": 1.0
+      "start_time_in_millis": 0,
+      "end_time_in_millis": 10000,
+      "playback_speed": 1.0
     }
   ]
 }
@@ -101,13 +102,8 @@ The audio player should send heartbeat updates or "interval" logs to the backend
 
 - **Logic:**
   - Send updates periodically (e.g., every 10-30 seconds) or on events (Pause, Seek, End).
-  - `startTimeInMillis` and `endTimeInMillis` represent the **segment** of the audio file listened to during that interval.
+  - `start_time_in_millis` and `end_time_in_millis` represent the **segment** of the audio file listened to during that interval.
   - The backend automatically merges overlapping intervals and calculates the total completion percentage.
-
-### 3.2 Completion Logic
-
-- **Completion:** The backend calculates completion percentage based on the unique duration covered by the tracked intervals against the `publishedAudioLengthInMillis`.
-- **UI Status:** The UI can use the standard course/chapter progress APIs, which now include Audio Slide progress in their calculations.
 
 ## 4. Key Enums
 

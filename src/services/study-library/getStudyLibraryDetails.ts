@@ -1,13 +1,21 @@
 // services/study-library/getStudyLibraryDetails.ts
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { INIT_STUDY_LIBRARY, INSTITUTE_ID } from "@/constants/urls";
-import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
+import { INIT_STUDY_LIBRARY } from "@/constants/urls";
+import { useStudyLibraryStore, SubjectType } from "@/stores/study-library/use-study-library-store";
+import { getInstituteId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { queryOptions } from "@tanstack/react-query";
 
-export const fetchStudyLibraryDetails = async (packageSessionId: string) => {
+export const fetchStudyLibraryDetails = async (packageSessionId: string): Promise<SubjectType[]> => {
+  // Favor the structured getInstituteId utility
+  const idFromDetails = await getInstituteId();
+
+  // Fallback to stand-alone key or hardcoded ID if details are missing
+  const effectiveInstituteId = idFromDetails;
+
+
   const response = await authenticatedAxiosInstance.get(INIT_STUDY_LIBRARY, {
     params: {
-      instituteId: INSTITUTE_ID,
+      instituteId: effectiveInstituteId,
       packageSessionId: packageSessionId,
     },
   });

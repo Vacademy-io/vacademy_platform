@@ -99,7 +99,7 @@ export function DashboardComponent() {
     data: liveSessions,
     isLoading: isLoadingLiveSessions,
     refetch: refetchLiveSessions,
-  } = useLiveSessions(batchId || "");
+  } = useLiveSessions(batchId || "", { size: 10 });
 
   // Initialize analytics tracking
   const { trackPageView, track, trackLessonStarted } = useAnalytics();
@@ -121,7 +121,7 @@ export function DashboardComponent() {
           navigate({ to: route as never, replace: true });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -166,8 +166,8 @@ export function DashboardComponent() {
 
   useEffect(() => {
     // Force-refresh Student Display Settings on dashboard mount to update local cache
-    getStudentDisplaySettings(true).catch(() => {});
-    getChatbotSettings(true).catch(() => {});
+    getStudentDisplaySettings(true).catch(() => { });
+    getChatbotSettings(true).catch(() => { });
 
     const fetchIds = async () => {
       try {
@@ -299,7 +299,7 @@ export function DashboardComponent() {
           streamingType: session.session_streaming_service_type,
           joinMethod:
             session.session_streaming_service_type ===
-            SessionStreamingServiceType.EMBED
+              SessionStreamingServiceType.EMBED
               ? "embed"
               : "external_link",
         });
@@ -368,10 +368,9 @@ export function DashboardComponent() {
                   <Skeleton className="h-8 w-48" />
                 ) : (
                   <span>
-                    {`Welcome back, ${
-                      username ||
+                    {`Welcome back, ${username ||
                       getTerminology(RoleTerms.Learner, SystemTerms.Learner)
-                    }!`}{" "}
+                      }!`}{" "}
                     <span className="hidden sm:inline-block origin-bottom-right rotate-12">
                       👋
                     </span>
@@ -653,59 +652,59 @@ export function DashboardComponent() {
                     <div className="grid grid-cols-7 gap-1">
                       {isLoadingAttendance
                         ? [...Array(7)].map((_, i) => (
-                            <div
-                              key={i}
-                              className="flex flex-col items-center gap-1 p-2 border rounded-md"
-                            >
-                              <Skeleton className="h-4 w-4 rounded-full" />
-                              <Skeleton className="h-3 w-8" />
-                            </div>
-                          ))
+                          <div
+                            key={i}
+                            className="flex flex-col items-center gap-1 p-2 border rounded-md"
+                          >
+                            <Skeleton className="h-4 w-4 rounded-full" />
+                            <Skeleton className="h-3 w-8" />
+                          </div>
+                        ))
                         : (weeklyAttendance?.days || []).map((dayData) => {
-                            let Icon = Hourglass;
-                            let colorClass = "text-muted-foreground";
+                          let Icon = Hourglass;
+                          let colorClass = "text-muted-foreground";
 
-                            switch (dayData.status) {
-                              case "PRESENT":
-                                Icon = CheckCircle;
-                                colorClass = "text-green-500";
-                                break;
-                              case "ABSENT":
-                                Icon = XCircle;
-                                colorClass = "text-red-500";
-                                break;
-                              case "PENDING":
-                                Icon = Hourglass;
-                                colorClass = "text-yellow-500";
-                                break;
-                              case "NO_CLASS":
-                                Icon = Clock;
-                                colorClass = "text-muted-foreground";
-                                break;
-                            }
+                          switch (dayData.status) {
+                            case "PRESENT":
+                              Icon = CheckCircle;
+                              colorClass = "text-green-500";
+                              break;
+                            case "ABSENT":
+                              Icon = XCircle;
+                              colorClass = "text-red-500";
+                              break;
+                            case "PENDING":
+                              Icon = Hourglass;
+                              colorClass = "text-yellow-500";
+                              break;
+                            case "NO_CLASS":
+                              Icon = Clock;
+                              colorClass = "text-muted-foreground";
+                              break;
+                          }
 
-                            return (
-                              <div
-                                key={dayData.day}
-                                className={cn(
-                                  "flex flex-col items-center gap-1 p-2 border rounded-md text-center transition-colors",
-                                  dayData.status === "PENDING" ||
-                                    dayData.status === "NO_CLASS"
-                                    ? "opacity-60"
-                                    : "bg-muted/10"
-                                )}
-                              >
-                                <Icon
-                                  size={16}
-                                  className={colorClass}
-                                  weight="duotone"
-                                />
-                                <span className="text-[10px] font-medium text-muted-foreground truncate w-full">
-                                  {dayData.day}
-                                </span>
-                              </div>
-                            );
-                          })}
+                          return (
+                            <div
+                              key={dayData.day}
+                              className={cn(
+                                "flex flex-col items-center gap-1 p-2 border rounded-md text-center transition-colors",
+                                dayData.status === "PENDING" ||
+                                  dayData.status === "NO_CLASS"
+                                  ? "opacity-60"
+                                  : "bg-muted/10"
+                              )}
+                            >
+                              <Icon
+                                size={16}
+                                className={colorClass}
+                                weight="duotone"
+                              />
+                              <span className="text-[10px] font-medium text-muted-foreground truncate w-full">
+                                {dayData.day}
+                              </span>
+                            </div>
+                          );
+                        })}
                     </div>
                   </CardContent>
                 </Card>

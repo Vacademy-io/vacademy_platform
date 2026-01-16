@@ -10,7 +10,9 @@ export interface LiveSession {
 }
 
 export interface LiveSessionsResponse {
-  data: DaySession[];
+  live_sessions: SessionDetails[];
+  upcoming_sessions: SessionDetails[];
+  totalReturned: number;
 }
 
 // Raw API response types

@@ -621,6 +621,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
 
+
                         UNION ALL
 
                         -- SCORM SLIDES
@@ -652,6 +653,44 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         WHERE s.source_type = 'SCORM' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
+
+                        UNION ALL
+
+                        -- AUDIO SLIDES
+                        SELECT
+                            s.created_at,
+                            cs.slide_order,
+                            json_build_object(
+                                'id', s.id,
+                                'title', s.title,
+                                'status', s.status,
+                                'is_loaded', true,
+                                'new_slide', true,
+                                'source_id', s.source_id,
+                                'description', s.description,
+                                'slide_order', cs.slide_order,
+                                'source_type', s.source_type,
+                                'drip_condition', s.drip_condition_json,
+                                'audio_slide', json_build_object(
+                                    'id', a.id,
+                                    'title', a.title,
+                                    'description', a.description,
+                                    'audio_file_id', a.audio_file_id,
+                                    'thumbnail_file_id', a.thumbnail_file_id,
+                                    'audio_length_in_millis', a.audio_length_in_millis,
+                                    'published_audio_file_id', a.published_audio_file_id,
+                                    'published_audio_length_in_millis', a.published_audio_length_in_millis,
+                                    'source_type', a.source_type,
+                                    'external_url', a.external_url,
+                                    'transcript', a.transcript
+                                )
+                            ) AS slide_data
+                        FROM slide s
+                        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                        JOIN chapter c ON c.id = cs.chapter_id
+                        JOIN audio_slide a ON a.id = s.source_id
+                        WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
+                        AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
                     ) AS all_slides
             """, nativeQuery = true)
@@ -1037,6 +1076,52 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 JOIN chapter c ON c.id = cs.chapter_id
                 JOIN html_video_slide h ON h.id = s.source_id
                 WHERE s.source_type = 'HTML_VIDEO' AND c.id = :chapterId
+                AND s.status IN (:slideStatus)
+                AND cs.status IN (:chapterToSlidesStatus)
+
+                UNION ALL
+
+                -- AUDIO SLIDES
+                SELECT DISTINCT ON (s.id)
+                    s.created_at,
+                    cs.slide_order,
+                    json_build_object(
+                        'id', s.id,
+                        'title', s.title,
+                        'status', s.status,
+                        'is_loaded', true,
+                        'new_slide', true,
+                        'source_id', s.source_id,
+                        'description', s.description,
+                        'slide_order', cs.slide_order,
+                        'source_type', s.source_type,
+                        'drip_condition', s.drip_condition_json,
+                        'progress_marker', COALESCE(CAST(lo_audio_marker.value AS bigint), NULL),
+                        'percentage_completed', CASE
+                            WHEN lo_audio_percent.value IS NULL OR lo_audio_percent.value = 'null' THEN NULL
+                            ELSE CAST(lo_audio_percent.value AS double precision)
+                        END,
+                        'audio_slide', json_build_object(
+                            'id', a.id,
+                            'title', a.title,
+                            'description', a.description,
+                            'audio_file_id', a.audio_file_id,
+                            'thumbnail_file_id', a.thumbnail_file_id,
+                            'audio_length_in_millis', a.audio_length_in_millis,
+                            'published_audio_file_id', a.published_audio_file_id,
+                            'published_audio_length_in_millis', a.published_audio_length_in_millis,
+                            'source_type', a.source_type,
+                            'external_url', a.external_url,
+                            'transcript', a.transcript
+                        )
+                    ) AS slide_data
+                FROM slide s
+                JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                JOIN chapter c ON c.id = cs.chapter_id
+                JOIN audio_slide a ON a.id = s.source_id
+                LEFT JOIN learner_operation lo_audio_marker ON lo_audio_marker.source = 'SLIDE' AND lo_audio_marker.source_id = s.id AND lo_audio_marker.user_id = :userId AND lo_audio_marker.operation = 'AUDIO_LAST_TIMESTAMP'
+                LEFT JOIN learner_operation lo_audio_percent ON lo_audio_percent.source = 'SLIDE' AND lo_audio_percent.source_id = s.id AND lo_audio_percent.user_id = :userId AND lo_audio_percent.operation = 'PERCENTAGE_AUDIO_LISTENED'
+                WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
                 AND s.status IN (:slideStatus)
                 AND cs.status IN (:chapterToSlidesStatus)
             ) AS slide_data
@@ -1663,6 +1748,47 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     JOIN chapter c ON c.id = cs.chapter_id
                     JOIN scorm_slide sc ON sc.id = s.source_id
                     WHERE s.source_type = 'SCORM' AND c.id = :chapterId
+                    AND s.status IN (:slideStatus)
+                    AND cs.status IN (:chapterToSlidesStatus)
+
+                    UNION ALL
+
+                    -- AUDIO SLIDES
+                    SELECT DISTINCT ON (s.id)
+                        s.created_at,
+                        cs.slide_order,
+                        json_build_object(
+                            'id', s.id,
+                            'title', s.title,
+                            'status', s.status,
+                            'is_loaded', true,
+                            'new_slide', true,
+                            'source_id', s.source_id,
+                            'description', s.description,
+                            'slide_order', cs.slide_order,
+                            'source_type', s.source_type,
+                            'drip_condition', s.drip_condition_json,
+                            'progress_marker', NULL,
+                            'percentage_completed', NULL,
+                            'audio_slide', json_build_object(
+                                'id', a.id,
+                                'title', a.title,
+                                'description', a.description,
+                                'audio_file_id', a.audio_file_id,
+                                'thumbnail_file_id', a.thumbnail_file_id,
+                                'audio_length_in_millis', a.audio_length_in_millis,
+                                'published_audio_file_id', a.published_audio_file_id,
+                                'published_audio_length_in_millis', a.published_audio_length_in_millis,
+                                'source_type', a.source_type,
+                                'external_url', a.external_url,
+                                'transcript', a.transcript
+                            )
+                        ) AS slide_data
+                    FROM slide s
+                    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                    JOIN chapter c ON c.id = cs.chapter_id
+                    JOIN audio_slide a ON a.id = s.source_id
+                    WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
                     AND cs.status IN (:chapterToSlidesStatus)
                 ) AS slide_data

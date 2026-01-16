@@ -10,12 +10,11 @@ import io.kubernetes.client.util.Config;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import vacademy.io.community_service.feature.diagnostics.dto.InfrastructureHealthResponse;
 import vacademy.io.community_service.feature.diagnostics.dto.InfrastructureHealthResponse.*;
 
@@ -29,7 +28,6 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -58,6 +56,8 @@ public class DiagnosticsService {
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
 
+    private RestTemplate restTemplate;
+
     private CoreV1Api coreV1Api;
     private AppsV1Api appsV1Api;
     private boolean k8sAvailable = false;
@@ -78,6 +78,12 @@ public class DiagnosticsService {
             log.warn("Running outside Kubernetes cluster, K8s features disabled: {}", e.getMessage());
             this.k8sAvailable = false;
         }
+
+        // Initialize RestTemplate with timeout
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);
+        factory.setReadTimeout(3000);
+        this.restTemplate = new RestTemplate(factory);
     }
 
     /**
@@ -96,15 +102,18 @@ public class DiagnosticsService {
 
         // Services and Connectivity are now static/client-side focused, no need for
         // async fetch
-        List<ServiceHealth> services = checkAllServices();
+        // Services check (now async)
+        CompletableFuture<List<ServiceHealth>> servicesFuture = CompletableFuture.supplyAsync(this::checkAllServices);
+
         List<ConnectivityCheck> connectivity = checkConnectivity();
 
         // Wait for async checks
-        CompletableFuture.allOf(k8sFuture, depsFuture, eventsFuture).join();
+        CompletableFuture.allOf(k8sFuture, depsFuture, eventsFuture, servicesFuture).join();
 
         KubernetesInfrastructure k8sHealth = k8sFuture.join();
         DependencyHealth deps = depsFuture.join();
         List<KubernetesEvent> events = eventsFuture.join();
+        List<ServiceHealth> services = servicesFuture.join();
 
         // Determine overall status
         String overallStatus = determineOverallStatus(k8sHealth, services, deps, connectivity);
@@ -389,42 +398,63 @@ public class DiagnosticsService {
     }
 
     private List<ServiceHealth> checkAllServices() {
-        List<ServiceHealth> services = new ArrayList<>();
+        List<CompletableFuture<ServiceHealth>> futures = new ArrayList<>();
 
-        services.add(createServiceHealth("auth-service", "/auth-service/actuator/health"));
-        services.add(createServiceHealth("admin-core-service", "/admin-core-service/actuator/health"));
-        services.add(createServiceHealth("media-service", "/media-service/actuator/health"));
-        services.add(createServiceHealth("assessment-service", "/assessment-service/actuator/health"));
-        services.add(createServiceHealth("notification-service", "/notification-service/actuator/health"));
-        services.add(createServiceHealth("ai-service", "/ai-service/actuator/health"));
+        futures.add(checkServiceHealthAsync("auth-service", 8071, "/auth-service/actuator/health"));
+        futures.add(checkServiceHealthAsync("admin-core-service", 8072, "/admin-core-service/actuator/health"));
+        futures.add(checkServiceHealthAsync("media-service", 8075, "/media-service/actuator/health"));
+        futures.add(checkServiceHealthAsync("assessment-service", 8074, "/assessment-service/actuator/health"));
+        futures.add(checkServiceHealthAsync("notification-service", 8076, "/notification-service/actuator/health"));
+        futures.add(checkServiceHealthAsync("ai-service", 8077, "/ai-service/actuator/health"));
 
-        // Add community-service (this service)
-        services.add(ServiceHealth.builder()
+        // Community service (self)
+        futures.add(CompletableFuture.completedFuture(ServiceHealth.builder()
                 .name("community-service")
                 .status("UP")
                 .responseTimeMs(0L)
                 .healthEndpoint("/community-service/actuator/health")
                 .publicHealthEndpoint("/community-service/actuator/health")
                 .lastCheck(Instant.now())
-                .build());
+                .build()));
 
-        return services;
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
     }
 
-    private ServiceHealth createServiceHealth(String name, String publicPath) {
-        return ServiceHealth.builder()
-                .name(name)
-                .status("PENDING_CLIENT_CHECK")
-                .responseTimeMs(null)
-                .healthEndpoint(publicPath)
-                .publicHealthEndpoint(publicPath)
-                .lastCheck(Instant.now())
-                .build();
+    private CompletableFuture<ServiceHealth> checkServiceHealthAsync(String name, int port, String path) {
+        return CompletableFuture.supplyAsync(() -> {
+            String url = String.format("http://%s:%d%s", name, port, path);
+            long start = System.currentTimeMillis();
+            try {
+                ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+                long duration = System.currentTimeMillis() - start;
+                boolean up = response.getStatusCode().is2xxSuccessful();
+                return ServiceHealth.builder()
+                        .name(name)
+                        .status(up ? "UP" : "DOWN")
+                        .responseTimeMs(duration)
+                        .healthEndpoint(path)
+                        .publicHealthEndpoint(path)
+                        .lastCheck(Instant.now())
+                        .build();
+            } catch (Exception e) {
+                log.error("Health check failed for {}: {}", name, e.getMessage());
+                return ServiceHealth.builder()
+                        .name(name)
+                        .status("DOWN")
+                        .responseTimeMs(System.currentTimeMillis() - start)
+                        .healthEndpoint(path)
+                        .publicHealthEndpoint(path)
+                        .lastCheck(Instant.now())
+                        .build();
+            }
+        });
     }
 
     private Map<String, Object> createQuickServiceConfig(String publicPath) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("status", "CHECK_CLIENT_SIDE");
+        result.put("status", "Check Detail");
         result.put("public_endpoint", publicPath);
         return result;
     }

@@ -117,6 +117,7 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/repository/UserActivityRepository.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/PaymentResponseDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/UserServiceDTO.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/PagedUserWithRolesResponse.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/scheduler/repository/TaskExecutionAuditRepository.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/scheduler/enums/TaskAuditSourceEnum.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/UserWithRolesDTO.java

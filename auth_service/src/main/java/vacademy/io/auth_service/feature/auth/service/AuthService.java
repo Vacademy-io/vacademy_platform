@@ -246,4 +246,50 @@ public class AuthService {
         emailRequest.setBody(body);
         notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }
+
+    @Transactional
+    public List<UserDTO> createMultipleUsers(List<UserDTO> userDTOs, String instituteId, boolean isNotify) {
+        if (userDTOs == null || userDTOs.isEmpty()) {
+            throw new IllegalArgumentException("User DTOs list cannot be null or empty");
+        }
+        
+        if (userDTOs.size() != 2) {
+            throw new IllegalArgumentException("Expected exactly 2 users (parent and child)");
+        }
+        
+        UserDTO parentDTO = userDTOs.get(0);
+        UserDTO childDTO = userDTOs.get(1);
+
+        User parentUser = createUser(parentDTO, instituteId, isNotify);
+        parentUser.setIsParent(true);
+        parentUser = userRepository.save(parentUser);
+
+        User childUser = createUser(childDTO, instituteId, isNotify);
+        childUser.setLinkedParentId(parentUser.getId());
+        childUser = userRepository.save(childUser);
+
+        UserDTO parentResponseDTO = convertToUserDto(parentUser);
+        UserDTO childResponseDTO = convertToUserDto(childUser);
+        
+        return List.of(parentResponseDTO, childResponseDTO);
+    }
+
+    private UserDTO convertToUserDto(User user){
+        UserDTO childResponseDTO = new UserDTO();
+        childResponseDTO.setId(user.getId());
+        childResponseDTO.setFullName(user.getFullName());
+        childResponseDTO.setEmail(user.getEmail());
+        childResponseDTO.setUsername(user.getUsername());
+        childResponseDTO.setMobileNumber(user.getMobileNumber());
+        childResponseDTO.setAddressLine(user.getAddressLine());
+        childResponseDTO.setCity(user.getCity());
+        childResponseDTO.setPinCode(user.getPinCode());
+        childResponseDTO.setGender(user.getGender());
+        childResponseDTO.setDateOfBirth(user.getDateOfBirth());
+        childResponseDTO.setProfilePicFileId(user.getProfilePicFileId());
+        childResponseDTO.setIsParent(user.getIsParent());
+        childResponseDTO.setLinkedParentId(user.getLinkedParentId());
+        return childResponseDTO;
+
+    }
 }

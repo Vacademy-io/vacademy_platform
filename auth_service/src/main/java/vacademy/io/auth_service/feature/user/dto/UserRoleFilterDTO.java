@@ -15,4 +15,6 @@ import java.util.List;
 public class UserRoleFilterDTO {
     private List<String> roles;
     private List<String> status;
+    private Integer pageNumber = 0;
+    private Integer pageSize = 50;
 }

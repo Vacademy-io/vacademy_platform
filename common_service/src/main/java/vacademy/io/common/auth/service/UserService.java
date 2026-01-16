@@ -307,6 +307,31 @@ public class UserService {
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
+    public PagedUserWithRolesResponse getUsersByInstituteIdAndStatusPaged(String instituteId, List<String> statuses,
+            List<String> roles, int pageNumber, int pageSize, CustomUserDetails userDetails) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(pageNumber,
+                pageSize);
+
+        List<User> users = userRepository.findUsersByStatusAndInstitutePaged(statuses, roles, instituteId, pageable);
+        long totalElements = userRepository.countUsersByStatusAndInstitute(statuses, roles, instituteId);
+
+        List<UserWithRolesDTO> content = users.stream()
+                .map(UserWithRolesDTO::new)
+                .collect(Collectors.toList());
+
+        int totalPages = (int) Math.ceil((double) totalElements / pageSize);
+
+        return PagedUserWithRolesResponse.builder()
+                .content(content)
+                .pageNumber(pageNumber)
+                .pageSize(pageSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .first(pageNumber == 0)
+                .last(pageNumber >= totalPages - 1)
+                .build();
+    }
+
     public User updateUser(User user, UserDTO userDTO) {
         if (StringUtils.hasText(userDTO.getUsername()))
             user.setUsername(userDTO.getUsername());

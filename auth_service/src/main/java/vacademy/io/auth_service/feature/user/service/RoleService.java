@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
 import vacademy.io.auth_service.feature.user.dto.UserRoleFilterDTO;
+import vacademy.io.common.auth.dto.PagedUserWithRolesResponse;
 import vacademy.io.common.auth.dto.RoleCountProjection;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.entity.Role;
@@ -104,8 +105,19 @@ public class RoleService {
         return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(), filterDTO.getRoles(), customUserDetails);
     }
 
-    public String updateUserRoleStatusByInstituteIdAndUserId(String newStatus, String instituteId, List<String> userIds, CustomUserDetails user) {
-        int rowsUpdated = userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(newStatus, instituteId, userIds);
+    public PagedUserWithRolesResponse getUsersByInstituteIdAndStatusPaged(String instituteId,
+            UserRoleFilterDTO filterDTO,
+            CustomUserDetails customUserDetails) {
+        int pageNumber = filterDTO.getPageNumber() != null ? filterDTO.getPageNumber() : 0;
+        int pageSize = filterDTO.getPageSize() != null ? filterDTO.getPageSize() : 50;
+        return userService.getUsersByInstituteIdAndStatusPaged(instituteId, filterDTO.getStatus(), filterDTO.getRoles(),
+                pageNumber, pageSize, customUserDetails);
+    }
+
+    public String updateUserRoleStatusByInstituteIdAndUserId(String newStatus, String instituteId, List<String> userIds,
+            CustomUserDetails user) {
+        int rowsUpdated = userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(newStatus, instituteId,
+                userIds);
         if (rowsUpdated == 0) {
             throw new VacademyException("No role found to update the status!!!");
         }

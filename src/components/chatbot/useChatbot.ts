@@ -41,6 +41,15 @@ export const useChatbot = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
+  // Subscribe to stores for reactive context
+  const activeSlide = useContentStore((state) => state.activeItem);
+  const instituteDetails = useInstituteDetailsStore(
+    (state) => state.instituteDetails
+  );
+  const getCourseDetails = useCourseDetailsStore(
+    (state) => state.getCourseDetails
+  );
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -128,10 +137,7 @@ export const useChatbot = () => {
     const context = getContext();
 
     if (contextType === "slide") {
-      // Get slide data from content store
-      const { activeItem: activeSlide } = useContentStore.getState();
-      const { instituteDetails } = useInstituteDetailsStore.getState();
-
+      // Data is already subscribed via hooks above
       if (activeSlide) {
         // Determine slide type
         let slideType = "DOCUMENT";
@@ -230,10 +236,7 @@ export const useChatbot = () => {
         course: "",
       };
     } else if (contextType === "course_details") {
-      // Get course data from institute details and course details store
-      const { instituteDetails } = useInstituteDetailsStore.getState();
-      const { getCourseDetails } = useCourseDetailsStore.getState();
-
+      // Data subscribed via hooks
       if (context.courseId) {
         // Try to get cached course details first
         // @ts-expect-error : course details type issue
@@ -298,8 +301,16 @@ export const useChatbot = () => {
       };
     }
 
+
+
     return {};
-  }, [getContextType, getContext]);
+  }, [
+    getContextType,
+    getContext,
+    activeSlide,
+    instituteDetails,
+    getCourseDetails,
+  ]);
 
   const initializeSession = useCallback(async () => {
     if (isInitializing || sessionId) return;
@@ -330,7 +341,11 @@ export const useChatbot = () => {
       const contextMeta = await buildContextMeta();
       console.log("Initializing session with context:", contextMeta);
 
-      const response = await chatbotAPI.initSession();
+      const response = await chatbotAPI.initSession(
+        undefined,
+        contextType,
+        contextMeta
+      );
 
       setSessionId(response.session_id);
       setAiStatus(response.status);

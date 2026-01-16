@@ -246,4 +246,58 @@ public class AuthService {
         emailRequest.setBody(body);
         notificationService.sendGenericHtmlMail(emailRequest, instituteId);
     }
+
+    @Transactional
+    public List<UserDTO> createMultipleUsers(List<UserDTO> userDTOs, String instituteId, boolean isNotify) {
+        if (userDTOs == null || userDTOs.isEmpty()) {
+            throw new IllegalArgumentException("User DTOs list cannot be null or empty");
+        }
+        
+        if (userDTOs.size() != 2) {
+            throw new IllegalArgumentException("Expected exactly 2 users (parent and child)");
+        }
+        
+        UserDTO parentDTO = userDTOs.get(0);
+        UserDTO childDTO = userDTOs.get(1);
+
+        User parentUser = createUser(parentDTO, instituteId, isNotify);
+        parentUser.setIsParent(true);
+        parentUser = userRepository.save(parentUser);
+
+        User childUser = createUser(childDTO, instituteId, isNotify);
+        childUser.setLinkedParentId(parentUser.getId());
+        childUser = userRepository.save(childUser);
+
+        UserDTO parentResponseDTO = new UserDTO();
+        parentResponseDTO.setId(parentUser.getId());
+        parentResponseDTO.setFullName(parentUser.getFullName());
+        parentResponseDTO.setEmail(parentUser.getEmail());
+        parentResponseDTO.setUsername(parentUser.getUsername());
+        parentResponseDTO.setMobileNumber(parentUser.getMobileNumber());
+        parentResponseDTO.setAddressLine(parentUser.getAddressLine());
+        parentResponseDTO.setCity(parentUser.getCity());
+        parentResponseDTO.setPinCode(parentUser.getPinCode());
+        parentResponseDTO.setGender(parentUser.getGender());
+        parentResponseDTO.setDateOfBirth(parentUser.getDateOfBirth());
+        parentResponseDTO.setProfilePicFileId(parentUser.getProfilePicFileId());
+        parentResponseDTO.setIsParent(parentUser.getIsParent());
+        parentResponseDTO.setLinkedParentId(parentUser.getLinkedParentId());
+        
+        UserDTO childResponseDTO = new UserDTO();
+        childResponseDTO.setId(childUser.getId());
+        childResponseDTO.setFullName(childUser.getFullName());
+        childResponseDTO.setEmail(childUser.getEmail());
+        childResponseDTO.setUsername(childUser.getUsername());
+        childResponseDTO.setMobileNumber(childUser.getMobileNumber());
+        childResponseDTO.setAddressLine(childUser.getAddressLine());
+        childResponseDTO.setCity(childUser.getCity());
+        childResponseDTO.setPinCode(childUser.getPinCode());
+        childResponseDTO.setGender(childUser.getGender());
+        childResponseDTO.setDateOfBirth(childUser.getDateOfBirth());
+        childResponseDTO.setProfilePicFileId(childUser.getProfilePicFileId());
+        childResponseDTO.setIsParent(childUser.getIsParent());
+        childResponseDTO.setLinkedParentId(childUser.getLinkedParentId());
+        
+        return List.of(parentResponseDTO, childResponseDTO);
+    }
 }

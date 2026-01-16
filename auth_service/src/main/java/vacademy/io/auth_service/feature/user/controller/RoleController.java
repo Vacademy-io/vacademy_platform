@@ -53,7 +53,18 @@ public class RoleController {
     @PostMapping("/users-of-status")
     public ResponseEntity<PagedUserWithRolesResponse> getUsersOfStatus(@RequestBody UserRoleFilterDTO filterDTO,
             @RequestParam String instituteId,
+            @RequestParam(required = false) Integer pageNumber,
+            @RequestParam(required = false) Integer pageSize,
             @RequestAttribute("user") CustomUserDetails customUserDetails) {
+
+        // Override DTO values if query params are provided
+        if (pageNumber != null) {
+            filterDTO.setPageNumber(pageNumber);
+        }
+        if (pageSize != null) {
+            filterDTO.setPageSize(pageSize);
+        }
+
         PagedUserWithRolesResponse response = roleService.getUsersByInstituteIdAndStatusPaged(instituteId, filterDTO,
                 customUserDetails);
         return ResponseEntity.ok(response);

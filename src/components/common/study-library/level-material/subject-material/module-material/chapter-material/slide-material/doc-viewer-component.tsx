@@ -2,6 +2,7 @@ import { forwardRef, memo, useImperativeHandle, useRef, useEffect, useState, use
 import { renderAsync } from "docx-preview";
 import TurndownService from "turndown";
 import ReactMarkdown from "react-markdown";
+import { DocumentWithMermaid } from "./DocumentWithMermaid";
 
 // Helper to strip expired query params from public AWS S3 URLs
 // Example: https://...amazonaws.com/.../image.jpg?X-Amz-Algorithm=... -> https://...amazonaws.com/.../image.jpg
@@ -152,23 +153,27 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
             setMarkdownContent("");
           } catch {
             // If parsing fails, fallback to direct assignment
-            setHtmlContent(stripAwsQueryParamsFromUrls(stableDocUrl));
+            const sanitized = stripAwsQueryParamsFromUrls(stableDocUrl);
+            setHtmlContent(sanitized);
             setMarkdownContent("");
           }
         } else {
           try {
-            // Convert HTML to Markdown using Turndown for better theming
+            // Keep HTML as-is for mermaid rendering (DocumentWithMermaid will handle it)
             const sanitized = stripAwsQueryParamsFromUrls(stableDocUrl);
+            // Keep HTML for mermaid rendering - DocumentWithMermaid will detect and render mermaid
+            setHtmlContent(sanitized);
+            // Also convert to markdown for fallback/display
             const markdown = turndownService.turndown(sanitized);
             setMarkdownContent(markdown);
-            setHtmlContent("");
           } catch {
             // Fallback to plain text if conversion fails
             const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = stripAwsQueryParamsFromUrls(stableDocUrl);
+            const sanitized = stripAwsQueryParamsFromUrls(stableDocUrl);
+            setHtmlContent(sanitized);
+            tempDiv.innerHTML = sanitized;
             const fallbackContent = tempDiv.textContent || stableDocUrl;
             setMarkdownContent(fallbackContent);
-            setHtmlContent("");
           }
         }
       } else {
@@ -272,9 +277,10 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
     <div ref={containerRef} className="min-h-[40vh] sm:min-h-[50vh] lg:min-h-[60vh] max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(100vh-170px)] overflow-auto bg-white rounded-lg sm:rounded-xl lg:rounded-2xl border border-gray-200 shadow-lg hover:shadow-xl transition-shadow duration-300">
       {isHtml ? (
         <div className="p-4 sm:p-6 lg:p-8 xl:p-12 markdown-content">
+          {/* Always use htmlContent if it exists (even if markdownContent also exists) for mermaid support */}
           {htmlContent ? (
             <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray max-w-none">
-              <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+              <DocumentWithMermaid htmlContent={htmlContent} />
             </div>
           ) : markdownContent ? (
             <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray max-w-none">

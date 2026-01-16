@@ -100,6 +100,22 @@ export interface AssignmentSlide {
   comma_separated_media_ids: string;
 }
 
+// HTML Video slide interface (for HTML_VIDEO source_type)
+export interface HtmlVideoSlide {
+  id: string;
+  ai_gen_video_id: string; // Video ID needed to fetch URLs from API
+  url?: string;
+  video_length_in_millis?: number;
+}
+
+// AI Video Data interface
+export interface AIVideoData {
+  status: 'COMPLETED' | 'GENERATING' | 'FAILED';
+  timelineUrl: string;
+  audioUrl: string;
+  progress?: number;
+}
+
 // Main slide interface
 export interface Slide {
   id: string;
@@ -115,6 +131,8 @@ export interface Slide {
   question_slide?: QuestionSlide;
   quiz_slide?: QuizSlide;
   assignment_slide?: AssignmentSlide;
+  html_video_slide?: HtmlVideoSlide; // For HTML_VIDEO source_type slides
+  aiVideoData?: AIVideoData;
   is_loaded: boolean;
   new_slide: boolean;
   percentage_completed: number;
@@ -139,6 +157,33 @@ export const useSlides = (chapterId: string) => {
       const response = await authenticatedAxiosInstance.get(
         `${GET_SLIDES}?chapterId=${chapterId}`
       );
+      
+      // Debug: Log HTML_VIDEO slides to see their structure
+      if (response.data && Array.isArray(response.data)) {
+        const htmlVideoSlides = response.data.filter((slide: any) => 
+          slide.source_type === 'HTML_VIDEO' || slide.source_type === 'html_video'
+        );
+        if (htmlVideoSlides.length > 0) {
+          console.log('[useSlides] Found HTML_VIDEO slides:', {
+            count: htmlVideoSlides.length,
+            slides: htmlVideoSlides.map((slide: any) => ({
+              id: slide.id,
+              source_type: slide.source_type,
+              title: slide.title,
+              // Log all possible field names
+              html_video_slide: slide.html_video_slide,
+              htmlVideoSlide: slide.htmlVideoSlide,
+              html_video: slide.html_video,
+              htmlVideo: slide.htmlVideo,
+              // Log all keys to see what's available
+              allKeys: Object.keys(slide),
+              // Log the entire slide object
+              fullSlide: slide,
+            })),
+          });
+        }
+      }
+      
       return response.data;
     },
     staleTime: 3600000,

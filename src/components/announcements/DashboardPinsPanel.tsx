@@ -128,7 +128,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
   }
 
   // Don't render if no pins
-  if (!loading && pins.length === 0) {
+  if (pins.length === 0) {
     return null;
   }
 

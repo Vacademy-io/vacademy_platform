@@ -5,7 +5,6 @@ import { FiSidebar } from "react-icons/fi";
 import { useEffect, useMemo, useState } from "react";
 import useStore from "../sidebar/useSidebar";
 import { Preferences } from "@capacitor/preferences";
-import { getPublicUrl } from "@/services/upload_file";
 import { LogoutSidebar } from "../sidebar/logoutSidebar";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import {
@@ -24,6 +23,9 @@ import { handleGetPublicInstituteDetails } from "../services/navbar-services";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { ChatbotTrigger } from "@/components/chatbot/ChatbotTrigger";
+import { getDataFromPreferences } from "@/utils/storage";
+import { InstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
+import { getInstituteLogoQuery } from "@/services/institute-logo";
 
 interface UserRole {
   id: string;
@@ -42,6 +44,11 @@ export function Navbar() {
     isLoading,
     error,
   } = useSuspenseQuery(handleFetchUserRoleDetails());
+
+  // Fetch cached institute logo URL (cached for 24 hours)
+  const { data: cachedLogoUrl } = useSuspenseQuery(
+    getInstituteLogoQuery(instituteDetails?.institute_logo_file_id ?? null)
+  );
 
   const hasTeacherAndStudentRole = useMemo(() => {
     const roles: UserRole[] | undefined = userRoleDetails?.roles;
@@ -62,32 +69,21 @@ export function Navbar() {
   const router = useRouter();
   const [canGoBack, setCanGoBack] = useState(false);
 
-    const handleNavigateToAdmin = () => {
-        const accessToken = localStorage.getItem(TokenKey.accessToken);
-        const refreshToken = localStorage.getItem(TokenKey.refreshToken);
-        window.location.href = `https://${instituteDetails.teacher_portal_base_url}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
-    };
+  const handleNavigateToAdmin = () => {
+    const accessToken = localStorage.getItem(TokenKey.accessToken);
+    const refreshToken = localStorage.getItem(TokenKey.refreshToken);
+    window.location.href = `https://${instituteDetails.teacher_portal_base_url}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
+  };
 
   async function fetch() {
     try {
-      const InstituteDetailsData = await Preferences.get({
-        key: "InstituteDetails",
-      });
-
-      const InstituteDetails = InstituteDetailsData.value
-        ? JSON.parse(InstituteDetailsData.value)
-        : null;
-
-      if (InstituteDetails) {
-        const url = InstituteDetails.institute_logo_file_id
-          ? await getPublicUrl(InstituteDetails.institute_logo_file_id)
-          : "";
-
+      if (instituteDetails) {
+        // Use cached logo URL from React Query instead of fetching again
         setInstituteDetails(
-          InstituteDetails.institute_name,
-          url,
-          InstituteDetails.home_icon_click_route ??
-            InstituteDetails.homeIconClickRoute ??
+          instituteDetails.institute_name,
+          cachedLogoUrl || "",
+          instituteDetails.home_icon_click_route ??
+            instituteDetails.homeIconClickRoute ??
             null
         );
       }
@@ -103,41 +99,32 @@ export function Navbar() {
     // setNotifications(true);
     fetch();
     // Apply institute details from public query as a reliable source on refresh
-    if (instituteDetails) {
-      const maybeSet = async () => {
-        try {
-          const url = instituteDetails.institute_logo_file_id
-            ? await getPublicUrl(instituteDetails.institute_logo_file_id)
-            : "";
-          setInstituteDetails(
-            instituteDetails.institute_name,
-            url,
-            (
-              instituteDetails as {
-                home_icon_click_route?: string | null;
-                homeIconClickRoute?: string | null;
-              }
-            )?.home_icon_click_route ??
-              (
-                instituteDetails as {
-                  home_icon_click_route?: string | null;
-                  homeIconClickRoute?: string | null;
-                }
-              )?.homeIconClickRoute ??
-              null
-          );
-        } catch (e) {
-          console.warn("Navbar: failed to derive public logo url", e);
-        }
-      };
-      void maybeSet();
+    if (instituteDetails && cachedLogoUrl !== undefined) {
+      // Use cached logo URL - no need to fetch again
+      setInstituteDetails(
+        instituteDetails.institute_name,
+        cachedLogoUrl || "",
+        (
+          instituteDetails as {
+            home_icon_click_route?: string | null;
+            homeIconClickRoute?: string | null;
+          }
+        )?.home_icon_click_route ??
+          (
+            instituteDetails as {
+              home_icon_click_route?: string | null;
+              homeIconClickRoute?: string | null;
+            }
+          )?.homeIconClickRoute ??
+          null
+      );
     }
     // Load sidebar visibility from Student Display Settings (uses cache on dashboard refresh)
     getStudentDisplaySettings(false)
       .then((s) => setShowSidebarControls(s?.sidebar?.visible !== false))
       .catch(() => setShowSidebarControls(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instituteDetails]);
+  }, [instituteDetails, cachedLogoUrl]);
 
   const handleInstituteLogoClick = () => {
     if (homeIconClickRoute) {

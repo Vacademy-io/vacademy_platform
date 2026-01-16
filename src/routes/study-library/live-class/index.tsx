@@ -1,7 +1,7 @@
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { createFileRoute } from "@tanstack/react-router";
 import { Helmet } from "react-helmet";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useLayoutEffect } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useLiveSessions } from "./-hooks/useLiveSessions";
 import { SessionDetails } from "./-types/types";
@@ -61,16 +61,27 @@ function RouteComponent() {
     sessions: SessionDetails[];
   } | null>(null);
 
-  // Pagination states
-  const [liveSessionsCurrentPage, setLiveSessionsCurrentPage] =
-    useState<number>(1);
-  const [upcomingSessionsCurrentPage, setUpcomingSessionsCurrentPage] =
-    useState<number>(1);
-  const [sessionsPerPage] = useState<number>(5);
 
   // Filter states
   const [startDateFilter, setStartDateFilter] = useState<string>("");
   const [endDateFilter, setEndDateFilter] = useState<string>("");
+  const [apiPage, setApiPage] = useState<number>(0);
+
+  const clearFilters = () => {
+    setStartDateFilter("");
+    setEndDateFilter("");
+    setApiPage(0);
+  };
+
+
+  // Helper function to format date as YYYY-MM-DD
+  const formatDateToISO = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
 
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
@@ -82,11 +93,30 @@ function RouteComponent() {
     fetchBatchId();
   }, []);
 
-  const { data: sessions, isLoading, error } = useLiveSessions(batchId);
+  const {
+    data: sessions,
+    isLoading,
+    error,
+  } = useLiveSessions(batchId, {
+    startDate:
+      selectedView === "calendar"
+        ? formatDateToISO(
+          new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
+        )
+        : startDateFilter || undefined,
+    endDate:
+      selectedView === "calendar"
+        ? formatDateToISO(
+          new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0)
+        )
+        : endDateFilter || undefined,
+    size: selectedView === "list" ? 10 : 500,
+    page: selectedView === "list" ? apiPage : 0,
+  });
 
   console.log(sessions);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setNavHeading(
       <div className="flex items-center gap-2">
         <div>Live Classes</div>
@@ -167,7 +197,7 @@ function RouteComponent() {
     // If we're in waiting room period, ONLY go to waiting room
     if (isInWaitingRoom) {
       // Navigate to waiting room without marking attendance
-      navigate({
+      (navigate as any)({
         to: "/study-library/live-class/waiting-room",
         search: { sessionId: session.schedule_id },
       });
@@ -191,7 +221,7 @@ function RouteComponent() {
           session.session_streaming_service_type ===
           SessionStreamingServiceType.EMBED
         ) {
-          navigate({
+          (navigate as any)({
             to: "/study-library/live-class/embed",
             search: { sessionId: session.schedule_id },
           });
@@ -207,7 +237,7 @@ function RouteComponent() {
           session.session_streaming_service_type ===
           SessionStreamingServiceType.EMBED
         ) {
-          navigate({
+          (navigate as any)({
             to: "/study-library/live-class/embed",
             search: { sessionId: session.schedule_id },
           });
@@ -225,50 +255,25 @@ function RouteComponent() {
   // Helper function to filter sessions based on date range and subject
   const filterSessions = (sessions: SessionDetails[]) => {
     return sessions.filter((session) => {
-      const sessionDate = new Date(session.meeting_date);
+      // Use string comparison for YYYY-MM-DD which is more robust than Date objects
+      const sessionDateStr = session.meeting_date;
 
       // Date range filter
-      if (startDateFilter) {
-        const startDate = new Date(startDateFilter);
-        if (sessionDate < startDate) return false;
+      if (startDateFilter && sessionDateStr < startDateFilter) {
+        return false;
       }
 
-      if (endDateFilter) {
-        const endDate = new Date(endDateFilter);
-        if (sessionDate > endDate) return false;
+      if (endDateFilter && sessionDateStr > endDateFilter) {
+        return false;
       }
 
       return true;
     });
   };
 
-  // Helper function to paginate sessions
-  const paginateSessions = (
-    sessions: SessionDetails[],
-    currentPage: number
-  ) => {
-    const startIndex = (currentPage - 1) * sessionsPerPage;
-    const endIndex = startIndex + sessionsPerPage;
-    return sessions.slice(startIndex, endIndex);
-  };
-
-  // Helper function to get total pages
-  const getTotalPages = (totalSessions: number) => {
-    return Math.ceil(totalSessions / sessionsPerPage);
-  };
-
-  // Clear all filters
-  const clearFilters = () => {
-    setStartDateFilter("");
-    setEndDateFilter("");
-    setLiveSessionsCurrentPage(1);
-    setUpcomingSessionsCurrentPage(1);
-  };
-
   // Reset pagination when filters change
   useEffect(() => {
-    setLiveSessionsCurrentPage(1);
-    setUpcomingSessionsCurrentPage(1);
+    setApiPage(0);
   }, [startDateFilter, endDateFilter]);
 
   // Helper function to determine if a session is currently live (in waiting room or live)
@@ -340,19 +345,18 @@ function RouteComponent() {
               </h3>
               {isLive && (
                 <span
-                  className={`px-2 py-1 text-white text-xs font-medium rounded-full animate-pulse ${
-                    isInWaitingRoom
-                      ? "bg-orange-600"
-                      : isLiveClassStarted
+                  className={`px-2 py-1 text-white text-xs font-medium rounded-full animate-pulse ${isInWaitingRoom
+                    ? "bg-orange-600"
+                    : isLiveClassStarted
                       ? "bg-danger-600"
                       : "bg-gray-600"
-                  }`}
+                    }`}
                 >
                   {isInWaitingRoom
                     ? "WAITING ROOM"
                     : isLiveClassStarted
-                    ? "LIVE"
-                    : "STARTING SOON"}
+                      ? "LIVE"
+                      : "STARTING SOON"}
                 </span>
               )}
             </div>
@@ -377,8 +381,8 @@ function RouteComponent() {
               {isBeforeWaitingRoom
                 ? "Not Started"
                 : isInWaitingRoom
-                ? "Join Waiting Room"
-                : "Join Session"}
+                  ? "Join Waiting Room"
+                  : "Join Session"}
             </Button>
           )}
         </div>
@@ -478,10 +482,10 @@ function RouteComponent() {
     if (!selectedDayData) return null;
 
     const liveSessions = selectedDayData.sessions.filter((session) =>
-      sessions?.live_sessions.includes(session)
+      sessions?.live_sessions?.includes(session)
     );
     const upcomingSessions = selectedDayData.sessions.filter((session) =>
-      sessions?.upcoming_sessions.includes(session)
+      sessions?.upcoming_sessions?.includes(session)
     );
 
     return (
@@ -684,40 +688,36 @@ function RouteComponent() {
       const sessionsForDay = getSessionsForDate(currentDate);
       const isToday = currentDate.toDateString() === new Date().toDateString();
       const hasLive = sessionsForDay.some((session) =>
-        sessions?.live_sessions.includes(session)
+        sessions?.live_sessions?.includes(session)
       );
       const sessionCount = sessionsForDay.length;
 
       days.push(
         <div
           key={day}
-          className={`h-24 border border-neutral-200 dark:border-neutral-800 p-1 transition-all duration-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer ${
-            isToday
-              ? "bg-primary-50/50 border-primary-200 dark:bg-primary-950/30 dark:border-primary-700"
-              : "bg-white dark:bg-neutral-900"
-          } ${sessionCount > 0 ? "hover:shadow-sm" : ""}`}
+          className={`h-24 border border-neutral-200 dark:border-neutral-800 p-1 transition-all duration-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer ${isToday
+            ? "bg-primary-50/50 border-primary-200 dark:bg-primary-950/30 dark:border-primary-700"
+            : "bg-white dark:bg-neutral-900"
+            } ${sessionCount > 0 ? "hover:shadow-sm" : ""}`}
           onClick={() => handleDayClick(currentDate, sessionsForDay)}
         >
           <div
-            className={`text-sm font-medium mb-1 flex items-center justify-between ${
-              isToday
-                ? "text-primary-700 dark:text-primary-300"
-                : "text-neutral-700 dark:text-neutral-200"
-            }`}
+            className={`text-sm font-medium mb-1 flex items-center justify-between ${isToday
+              ? "text-primary-700 dark:text-primary-300"
+              : "text-neutral-700 dark:text-neutral-200"
+              }`}
           >
             <span>{day}</span>
             {sessionCount > 0 && (
               <div
-                className={`flex items-center gap-1 ${
-                  hasLive
-                    ? "text-red-600 dark:text-red-400"
-                    : "text-blue-600 dark:text-blue-400"
-                }`}
+                className={`flex items-center gap-1 ${hasLive
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-blue-600 dark:text-blue-400"
+                  }`}
               >
                 <div
-                  className={`w-2 h-2 rounded-full ${
-                    hasLive ? "bg-danger-600 animate-pulse" : "bg-info-600"
-                  }`}
+                  className={`w-2 h-2 rounded-full ${hasLive ? "bg-danger-600 animate-pulse" : "bg-info-600"
+                    }`}
                 ></div>
                 <span className="text-xs font-semibold">{sessionCount}</span>
               </div>
@@ -727,22 +727,19 @@ function RouteComponent() {
           {/* Compact session indicators */}
           <div className="space-y-1">
             {sessionsForDay.slice(0, 1).map((session) => {
-              const isLive = sessions?.live_sessions.includes(session);
+              const isLive = sessions?.live_sessions?.includes(session);
               return (
                 <div
                   key={session.schedule_id}
-                  className={`text-xs p-1 rounded truncate transition-all duration-200 ${
-                    isLive
-                      ? "bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
-                      : "bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
-                  }`}
-                  title={`${session.title} - ${session.start_time}${
-                    session.timezone
-                      ? ` (${
-                          getTimezoneDisplayInfo(session.timezone).sessionTz
-                        })`
-                      : ""
-                  }`}
+                  className={`text-xs p-1 rounded truncate transition-all duration-200 ${isLive
+                    ? "bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
+                    : "bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
+                    }`}
+                  title={`${session.title} - ${session.start_time}${session.timezone
+                    ? ` (${getTimezoneDisplayInfo(session.timezone).sessionTz
+                    })`
+                    : ""
+                    }`}
                 >
                   {formatSessionTimeInUserTimezone(
                     session.meeting_date,
@@ -756,11 +753,10 @@ function RouteComponent() {
 
             {sessionCount > 1 && (
               <div
-                className={`text-xs text-center font-medium rounded py-1 ${
-                  hasLive
-                    ? "bg-red-100/80 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
-                    : "bg-blue-100/80 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
-                }`}
+                className={`text-xs text-center font-medium rounded py-1 ${hasLive
+                  ? "bg-red-100/80 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
+                  : "bg-blue-100/80 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
+                  }`}
               >
                 +{sessionCount - 1} more
               </div>
@@ -936,7 +932,10 @@ function RouteComponent() {
                   <Input
                     type="date"
                     value={startDateFilter}
-                    onChange={(e) => setStartDateFilter(e.target.value)}
+                    onChange={(e) => {
+                      setStartDateFilter(e.target.value);
+                      setApiPage(0);
+                    }}
                     className="w-full"
                   />
                 </div>
@@ -948,7 +947,10 @@ function RouteComponent() {
                   <Input
                     type="date"
                     value={endDateFilter}
-                    onChange={(e) => setEndDateFilter(e.target.value)}
+                    onChange={(e) => {
+                      setEndDateFilter(e.target.value);
+                      setApiPage(0);
+                    }}
                     className="w-full"
                   />
                 </div>
@@ -975,88 +977,15 @@ function RouteComponent() {
                 </div>
                 {(() => {
                   const filteredLiveSessions = filterSessions(liveSessions);
-                  const paginatedLiveSessions = paginateSessions(
-                    filteredLiveSessions,
-                    liveSessionsCurrentPage
-                  );
-                  const totalPages = getTotalPages(filteredLiveSessions.length);
 
                   return (
                     <>
-                      {paginatedLiveSessions.length > 0 ? (
-                        <>
-                          <div className="space-y-4 w-full">
-                            {paginatedLiveSessions.map((session) =>
-                              renderSession(session, isSessionLive(session))
-                            )}
-                          </div>
-
-                          {totalPages > 1 && (
-                            <div className="mt-6 flex justify-center">
-                              <Pagination>
-                                <PaginationContent>
-                                  <PaginationItem>
-                                    <PaginationPrevious
-                                      onClick={() =>
-                                        setLiveSessionsCurrentPage(
-                                          Math.max(
-                                            1,
-                                            liveSessionsCurrentPage - 1
-                                          )
-                                        )
-                                      }
-                                      className={
-                                        liveSessionsCurrentPage === 1
-                                          ? "pointer-events-none opacity-50"
-                                          : "cursor-pointer"
-                                      }
-                                    />
-                                  </PaginationItem>
-
-                                  {Array.from(
-                                    { length: totalPages },
-                                    (_, index) => (
-                                      <PaginationItem key={index + 1}>
-                                        <PaginationLink
-                                          onClick={() =>
-                                            setLiveSessionsCurrentPage(
-                                              index + 1
-                                            )
-                                          }
-                                          isActive={
-                                            liveSessionsCurrentPage ===
-                                            index + 1
-                                          }
-                                          className="cursor-pointer"
-                                        >
-                                          {index + 1}
-                                        </PaginationLink>
-                                      </PaginationItem>
-                                    )
-                                  )}
-
-                                  <PaginationItem>
-                                    <PaginationNext
-                                      onClick={() =>
-                                        setLiveSessionsCurrentPage(
-                                          Math.min(
-                                            totalPages,
-                                            liveSessionsCurrentPage + 1
-                                          )
-                                        )
-                                      }
-                                      className={
-                                        liveSessionsCurrentPage === totalPages
-                                          ? "pointer-events-none opacity-50"
-                                          : "cursor-pointer"
-                                      }
-                                    />
-                                  </PaginationItem>
-                                </PaginationContent>
-                              </Pagination>
-                            </div>
+                      {filteredLiveSessions.length > 0 ? (
+                        <div className="space-y-4 w-full">
+                          {filteredLiveSessions.map((session) =>
+                            renderSession(session, isSessionLive(session))
                           )}
-                        </>
+                        </div>
                       ) : (
                         <div className="text-neutral-600 dark:text-neutral-300 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
                           <div className="text-center">
@@ -1106,91 +1035,15 @@ function RouteComponent() {
                 {(() => {
                   const filteredUpcomingSessions =
                     filterSessions(upcomingSessions);
-                  const paginatedUpcomingSessions = paginateSessions(
-                    filteredUpcomingSessions,
-                    upcomingSessionsCurrentPage
-                  );
-                  const totalPages = getTotalPages(
-                    filteredUpcomingSessions.length
-                  );
 
                   return (
                     <>
-                      {paginatedUpcomingSessions.length > 0 ? (
-                        <>
-                          <div className="space-y-4 w-full">
-                            {paginatedUpcomingSessions.map((session) =>
-                              renderSession(session, false)
-                            )}
-                          </div>
-
-                          {totalPages > 1 && (
-                            <div className="mt-6 flex justify-center">
-                              <Pagination>
-                                <PaginationContent>
-                                  <PaginationItem>
-                                    <PaginationPrevious
-                                      onClick={() =>
-                                        setUpcomingSessionsCurrentPage(
-                                          Math.max(
-                                            1,
-                                            upcomingSessionsCurrentPage - 1
-                                          )
-                                        )
-                                      }
-                                      className={
-                                        upcomingSessionsCurrentPage === 1
-                                          ? "pointer-events-none opacity-50"
-                                          : "cursor-pointer"
-                                      }
-                                    />
-                                  </PaginationItem>
-
-                                  {Array.from(
-                                    { length: totalPages },
-                                    (_, index) => (
-                                      <PaginationItem key={index + 1}>
-                                        <PaginationLink
-                                          onClick={() =>
-                                            setUpcomingSessionsCurrentPage(
-                                              index + 1
-                                            )
-                                          }
-                                          isActive={
-                                            upcomingSessionsCurrentPage ===
-                                            index + 1
-                                          }
-                                          className="cursor-pointer"
-                                        >
-                                          {index + 1}
-                                        </PaginationLink>
-                                      </PaginationItem>
-                                    )
-                                  )}
-
-                                  <PaginationItem>
-                                    <PaginationNext
-                                      onClick={() =>
-                                        setUpcomingSessionsCurrentPage(
-                                          Math.min(
-                                            totalPages,
-                                            upcomingSessionsCurrentPage + 1
-                                          )
-                                        )
-                                      }
-                                      className={
-                                        upcomingSessionsCurrentPage ===
-                                        totalPages
-                                          ? "pointer-events-none opacity-50"
-                                          : "cursor-pointer"
-                                      }
-                                    />
-                                  </PaginationItem>
-                                </PaginationContent>
-                              </Pagination>
-                            </div>
+                      {filteredUpcomingSessions.length > 0 ? (
+                        <div className="space-y-4 w-full">
+                          {filteredUpcomingSessions.map((session) =>
+                            renderSession(session, false)
                           )}
-                        </>
+                        </div>
                       ) : (
                         <div className="text-neutral-600 dark:text-neutral-300 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
                           <div className="text-center">
@@ -1215,6 +1068,39 @@ function RouteComponent() {
                   );
                 })()}
               </div>
+
+              {/* API Pagination - To navigate through the sized results */}
+              {(sessions as any)?.totalReturned >= 10 || apiPage > 0 ? (
+                <div className="mt-12 flex flex-col items-center gap-4 border-t pt-8">
+                  <div className="text-sm text-neutral-500">
+                    Viewing Page {apiPage + 1}
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setApiPage(Math.max(0, apiPage - 1));
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      disabled={apiPage === 0}
+                    >
+                      Previous Sessions
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setApiPage(apiPage + 1);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      disabled={((sessions as any)?.totalReturned || 0) < 10}
+                    >
+                      Next Sessions
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+
             </div>
           </TabsContent>
 

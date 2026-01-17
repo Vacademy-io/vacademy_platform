@@ -34,7 +34,7 @@ public class CsvToStudentDataMapper {
                     false,
                     "PASSWORD",
                     null,
-                    null,null
+                    null,null,false,null
             );
 
             StudentExtraDetails studentExtraDetails = new StudentExtraDetails(

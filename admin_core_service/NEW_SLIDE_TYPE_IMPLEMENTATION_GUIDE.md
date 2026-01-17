@@ -135,7 +135,20 @@ public class SlideDTO {
 }
 ```
 
-### 4.5 Update `ActivityLogDTO.java` (If tracking)
+### 4.6 Update `LearnerSlidesDetailDTO.java`
+
+**Path:** `features/learner_study_library/dto/LearnerSlidesDetailDTO.java`
+
+Add a field for the new slide type's DTO to ensure it is mapped correctly in the Learner API.
+
+```java
+public class LearnerSlidesDetailDTO {
+    // ... existing fields
+    private InteractiveSlideDTO interactiveSlide; // <-- Add this
+}
+```
+
+### 4.7 Update `ActivityLogDTO.java` (If tracking)
 
 **Path:** `features/learner_tracking/dto/ActivityLogDTO.java`
 
@@ -378,6 +391,7 @@ if (slide.sourceType === "AUDIO") {
 | **DTO**        | `Add<NewType>SlideDTO.java`                     | ☐    |
 | **DTO**        | `<NewType>ActivityLogDTO.java` (if tracking)    | ☐    |
 | **DTO**        | Update `SlideDTO.java`                          | ☐    |
+| **DTO**        | Update `LearnerSlidesDetailDTO.java`            | ☐    |
 | **DTO**        | Update `ActivityLogDTO.java` (if tracking)      | ☐    |
 | **Repository** | `<NewType>SlideRepository.java`                 | ☐    |
 | **Repository** | Update `SlideRepository.java` native queries    | ☐    |

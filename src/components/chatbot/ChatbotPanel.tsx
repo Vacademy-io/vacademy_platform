@@ -47,6 +47,7 @@ import "katex/dist/katex.min.css";
 import { avatarUrl } from "@/services/chatbot-settings";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
+import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 
 // Sound notification for new messages
 const playNotificationSound = () => {
@@ -153,6 +154,12 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     isInitializing,
     sessionId,
   } = useChatbotContext();
+
+  // Check if the docked panel should be used - checking store AND route for immediate detection
+  const { isDockedMode } = useChatbotPanelStore();
+  // Always use docked mode on desktop - the floating panel is no longer needed
+  const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
+  const shouldUseDockedMode = isDockedMode || isDesktop;
 
   // Get context-aware quick actions
   const quickActions = getQuickActions(location.pathname);
@@ -345,7 +352,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     onOpenChange?.(isOpen);
   }, [isOpen, onOpenChange]);
 
-  if (!shouldShowChatbot()) {
+  // Early return if chatbot should not be shown or if docked mode is active
+  if (!shouldShowChatbot() || shouldUseDockedMode) {
     return null;
   }
 

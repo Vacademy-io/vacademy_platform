@@ -18,6 +18,7 @@ import {
   DEFAULT_CHATBOT_SETTINGS,
   getChatbotSettings,
 } from "@/services/chatbot-settings";
+import { isChatbotVisibleOnRoute } from "@/config/chatbot-routes";
 
 export const useChatbot = () => {
   const location = useLocation();
@@ -99,8 +100,8 @@ export const useChatbot = () => {
     // Check global visibility setting first
     if (!chatbotSettings.enable) return false;
 
-    // Show chatbot on all pages (can be restricted by route if needed later)
-    return true;
+    // Check centralized route configuration
+    return isChatbotVisibleOnRoute(location.pathname);
   };
 
   const getContext = useCallback((): ChatbotContext => {
@@ -494,7 +495,7 @@ export const useChatbot = () => {
     }
   }, [isOpen, sessionId, isInitializing, hasError, initializeSession]);
 
-  // Update context when page/route changes
+  // Update context when page/route changes or active slide changes
   useEffect(() => {
     if (!isOpen || !sessionId || isInitializing) return;
 
@@ -514,7 +515,7 @@ export const useChatbot = () => {
     };
 
     updateContextAsync();
-  }, [sessionId, isOpen, isInitializing, getContextType, buildContextMeta]);
+  }, [sessionId, isOpen, isInitializing, getContextType, buildContextMeta, location.pathname, activeSlide]);
 
   const sendMessage = async (content: string, intent?: MessageIntent) => {
     if (!content.trim() || !sessionId) return;

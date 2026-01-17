@@ -211,4 +211,25 @@ public class AuthService {
         }
     }
 
+    public List<UserDTO> createMultipleUsers(List<UserDTO> userDTOs, String instituteId,boolean toNotifiy) {
+        if (userDTOs == null || userDTOs.isEmpty()) {
+            throw new VacademyException("User DTOs list cannot be null or empty");
+        }
+        try {
+            String endpoint = AuthServiceRoutes.CREATE_MULTIPLE_USERS + "?instituteId=" + instituteId + "&isNotify=" + toNotifiy;
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    userDTOs);
+
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {});
+        } catch (Exception e) {
+            throw new VacademyException("Failed to create multiple users: " + e.getMessage());
+        }
+    }
+
 }

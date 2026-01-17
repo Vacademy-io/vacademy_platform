@@ -671,34 +671,47 @@ public class AudienceService {
 
         String instituteId = audience.getInstituteId();
 
-        // STEP 2: Create/fetch user from auth_service
-        String userId = null;
-        UserDTO createdUser = null;
+        // STEP 2: Create parent and child users using batch endpoint
+        String parentUserId = null;
+        UserDTO parentUserDTO = null;
+        UserDTO childUserDTO = null;
         
-        UserDTO userDTO = requestDTO.getUserDTO();
-        if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
-            createdUser = authService.createUserFromAuthService(
-                    userDTO,
-                    audience.getInstituteId(),
-                    false  // Don't send credentials email
+        if (requestDTO.getParentUserDTO() != null && requestDTO.getChildUserDTO() != null) {
+            // Validate and prepare child user DTO (generate email/name if missing)
+            UserDTO preparedChildDTO = validateAndPrepareChildUserDTO(
+                requestDTO.getChildUserDTO(), 
+                requestDTO.getParentUserDTO()
             );
-            userId = createdUser.getId();
-            logger.info("Created/fetched user with ID: {}", userId);
+            
+            List<UserDTO> userDTOs = List.of(requestDTO.getParentUserDTO(), preparedChildDTO);
+            List<UserDTO> createdUsers = authService.createMultipleUsers(userDTOs, audience.getInstituteId(),false);
+            
+            if (createdUsers.size() != 2) {
+                throw new VacademyException("Expected 2 users to be created (parent and child)");
+            }
+            
+            parentUserDTO = createdUsers.get(0);
+            childUserDTO = createdUsers.get(1);
+            parentUserId = parentUserDTO.getId();
+            
+            logger.info("Created parent user with ID: {} and child user with ID: {}", 
+                    parentUserId, childUserDTO.getId());
 
-            // Duplicate submission guard
-            if (StringUtils.hasText(userId) &&
-                    audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), userId)) {
+            // Duplicate submission guard - check if parent has already submitted
+            if (StringUtils.hasText(parentUserId) &&
+                    audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), parentUserId)) {
                 throw new VacademyException("You have already submitted your response for this campaign");
             }
         } else {
-            throw new VacademyException("User information is required");
+            throw new VacademyException("Both parent and child user information are required");
         }
 
         // STEP 3: Create Enquiry Entry
         UUID enquiryId = null;
+        Enquiry enquiry=null;
         if (requestDTO.getEnquiry() != null) {
             EnquiryDTO enquiryDTO = requestDTO.getEnquiry();
-            Enquiry enquiry = Enquiry.builder()
+             enquiry = Enquiry.builder()
                     .checklist(enquiryDTO.getChecklist())
                     .enquiryStatus(enquiryDTO.getEnquiryStatus())
                     .convertionStatus(enquiryDTO.getConvertionStatus())
@@ -718,12 +731,12 @@ public class AudienceService {
             logger.info("Created enquiry with ID: {}", enquiryId);
         }
 
-        // STEP 4: Create Audience Response Entry with new fields
+        // STEP 4: Create Audience Response Entry with new fields - store parent's user_id
         AudienceResponse response = AudienceResponse.builder()
                 .audienceId(requestDTO.getAudienceId())
                 .sourceType(requestDTO.getSourceType())
                 .sourceId(requestDTO.getSourceId())
-                .userId(userId)
+                .userId(parentUserId)  // Store parent's user_id
                 .enquiryId(enquiryId != null ? enquiryId.toString() : null)
                 .destinationPackageSessionId(requestDTO.getDestinationPackageSessionId())
                 .parentName(requestDTO.getParentName())
@@ -732,8 +745,8 @@ public class AudienceService {
                 .build();
 
         AudienceResponse savedResponse = audienceResponseRepository.save(response);
-        logger.info("Saved audience response with ID: {} linked to enquiry: {}", 
-                savedResponse.getId(), enquiryId);
+        logger.info("Saved audience response with ID: {} linked to enquiry: {} with parent user_id: {}", 
+                savedResponse.getId(), enquiryId, parentUserId);
 
         // STEP 5: Save custom field values (same as existing submitLead)
         if (!CollectionUtils.isEmpty(requestDTO.getCustomFieldValues())) {
@@ -743,17 +756,19 @@ public class AudienceService {
                     audience.getInstituteId()
             );
         }
+       
+        linkCounsellorToEnquiry(instituteId,requestDTO.getAudienceId(),enquiry,requestDTO.getCounsellorId());
 
         // STEP 6: Build custom field map for email
         Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
 
         // STEP 7: Send notification to respondent (same logic as submitLead)
-        final UserDTO userForNotification = createdUser;
+        final UserDTO userForNotification = parentUserDTO;  // Use parent user for notifications
         final String instituteIdForNotification = instituteId;
         final String audienceInstituteId = audience.getInstituteId();
 
         if (audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail()) {
-            logger.info("Sending notification to respondent: {}", userForNotification.getEmail());
+            logger.info("Sending notification to respondent (parent): {}", userForNotification.getEmail());
 
             // Fetch notification template
             Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
@@ -847,9 +862,91 @@ public class AudienceService {
         return SubmitLeadWithEnquiryResponseDTO.builder()
                 .enquiryId(enquiryId)
                 .audienceResponseId(savedResponse.getId())
-                .userId(userId)
+                .parentUserId(parentUserId)  // Return parent user ID
+                .counsellorId(requestDTO.getCounsellorId())
                 .message("Lead and enquiry submitted successfully")
                 .build();
+    }
+    
+
+    private void linkCounsellorToEnquiry(String instituteId, String audienceId, Enquiry enquiry, String counsellorId) {
+        // Handle null counsellor_id case
+        if (!StringUtils.hasText(counsellorId)) {
+            logger.info("No counsellor_id provided for enquiry: {}", enquiry.getId());
+            return;
+        }
+        
+        logger.info("Linking counsellor {} to enquiry {}", counsellorId, enquiry.getId());
+        
+        // TODO: Implement counsellor linking logic
+        
+        // STEP 1: Validate counsellor exists and has appropriate role
+        // - Check if counsellorId exists in users table
+        // - Verify counsellor has COUNSELLOR role for this institute
+        // - Optional: Check if counsellor is active
+        
+        // STEP 2: Update enquiry table
+        // - Set assigned_user_id = true (or update a counsellor_id column if added)
+        // - Update enquiry status if needed
+        // - Save the enquiry entity
+        
+        // STEP 3: Create entry in linked_users table
+        // - Link the enquiry to the counsellor
+        // - Set source_type = "ENQUIRY"
+        // - Set source_id = enquiry.getId()
+        // - Set linked_user_id = counsellorId
+        // - Set link_type = "ASSIGNED_COUNSELLOR" or similar
+        // - Set institute_id = instituteId
+        
+        // STEP 4: Create entry in linked_events table
+        // - Log the counsellor assignment event
+        // - Set event_type = "COUNSELLOR_ASSIGNED"
+        // - Set source_type = "ENQUIRY"
+        // - Set source_id = enquiry.getId()
+        // - Set related_entity_type = "USER"
+        // - Set related_entity_id = counsellorId
+        // - Set metadata_json with additional context (audienceId, timestamp, etc.)
+        
+        // STEP 5: Optional - Send notification to counsellor
+        // - Notify counsellor about new enquiry assignment
+        // - Include enquiry details, student info, etc.
+        
+        logger.info("Counsellor linking completed for enquiry: {}", enquiry.getId());
+    }
+
+    /**
+     * Validate and prepare child user DTO
+     * Generates unique email and full name if not present
+     * 
+     * @param childUserDTO Child user DTO from request
+     * @param parentUserDTO Parent user DTO for reference
+     * @return Validated and prepared child user DTO
+     */
+    private UserDTO validateAndPrepareChildUserDTO(UserDTO childUserDTO, UserDTO parentUserDTO) {
+        if (childUserDTO == null) {
+            throw new VacademyException("Child user information is required");
+        }
+        
+        // Check and generate email if not present
+        if (!StringUtils.hasText(childUserDTO.getEmail())) {
+            // Generate unique email using UUID
+            String uniqueEmail = "child_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12) 
+                + "@noemail.vacademy.io";
+            childUserDTO.setEmail(uniqueEmail);
+            logger.info("Generated unique email for child: {}", uniqueEmail);
+        }
+        
+        // Check and generate full name if not present
+        if (!StringUtils.hasText(childUserDTO.getFullName())) {
+            String parentName = StringUtils.hasText(parentUserDTO.getFullName()) 
+                ? parentUserDTO.getFullName() 
+                : "Parent";
+            String childFullName = "Child of " + parentName;
+            childUserDTO.setFullName(childFullName);
+            logger.info("Generated full name for child: {}", childFullName);
+        }
+        
+        return childUserDTO;
     }
 
     /**

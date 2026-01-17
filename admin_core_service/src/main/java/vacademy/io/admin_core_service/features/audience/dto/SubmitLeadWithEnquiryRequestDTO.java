@@ -31,14 +31,18 @@ public class SubmitLeadWithEnquiryRequestDTO {
     // Key: fieldKey (e.g., "email", "phone"), Value: submitted value
     private Map<String, String> customFieldValues;
 
-    // Optional direct user payload
-    private UserDTO userDTO;
+    // Parent and child user payloads (REQUIRED)
+    private UserDTO parentUserDTO;
+    private UserDTO childUserDTO;
     
     // New AudienceResponse fields
     private String destinationPackageSessionId;
     private String parentName;
     private String parentEmail;
     private String parentMobile;
+    
+    // Counsellor assignment (optional)
+    private String counsellorId;
     
     // Enquiry Data
     private EnquiryDTO enquiry;

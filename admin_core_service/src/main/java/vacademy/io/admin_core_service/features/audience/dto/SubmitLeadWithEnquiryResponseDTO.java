@@ -21,6 +21,7 @@ public class SubmitLeadWithEnquiryResponseDTO {
 
     private UUID enquiryId;
     private String audienceResponseId;
-    private String userId;
+    private String parentUserId;
+    private String counsellorId;
     private String message;
 }

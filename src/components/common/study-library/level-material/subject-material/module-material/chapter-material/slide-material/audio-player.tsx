@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useAudioTrackingStore } from "@/stores/study-library/audio-tracking-store";
 import { useAudioSync } from "@/hooks/study-library/useAudioSync";
@@ -39,6 +39,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
     const audioRef = useRef<HTMLAudioElement>(null);
     const activityId = useRef(uuidv4());
     const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const lastSyncTimeRef = useRef<number>(0);
+    const isSyncingRef = useRef<boolean>(false);
     
     // State
     const [isPlaying, setIsPlaying] = useState(false);
@@ -52,8 +54,14 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
     const [error, setError] = useState<string | null>(null);
     const [showTranscript, setShowTranscript] = useState(false);
 
-    // Tracking State
+    // Tracking State - track the segment being listened
     const currentSegmentStart = useRef<number>(0);
+    const accumulatedTimestamps = useRef<Array<{
+        id: string;
+        start: number;
+        end: number;
+        speed: number;
+    }>>([]);
 
     // Load Resources
     useEffect(() => {
@@ -90,73 +98,119 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         };
     }, [audioSlide]);
 
-    // Initialize Interval Sync + Cleanup on unmount
+    // Debounced sync function to prevent rapid API calls
+    const debouncedSync = useCallback(async () => {
+        const now = Date.now();
+        // Prevent syncing more than once every 10 seconds
+        if (now - lastSyncTimeRef.current < 10000) {
+            console.log("[AudioPlayer] Skipping sync - too soon since last sync");
+            return;
+        }
+        
+        // Prevent concurrent syncs
+        if (isSyncingRef.current) {
+            console.log("[AudioPlayer] Skipping sync - already syncing");
+            return;
+        }
+        
+        // Only sync if we have accumulated timestamps
+        if (accumulatedTimestamps.current.length === 0) {
+            console.log("[AudioPlayer] Skipping sync - no timestamps to sync");
+            return;
+        }
+        
+        isSyncingRef.current = true;
+        lastSyncTimeRef.current = now;
+        
+        try {
+            await syncAudioTrackingData();
+        } finally {
+            isSyncingRef.current = false;
+        }
+    }, [syncAudioTrackingData]);
+
+    // Initialize Interval Sync (every 15 seconds)
     useEffect(() => {
         syncIntervalRef.current = setInterval(() => {
-             syncAudioTrackingData();
-        }, 15000); // Sync every 15s
+            if (isPlaying) {
+                debouncedSync();
+            }
+        }, 15000);
         
         return () => {
-            // Sync on unmount (leaving slide)
-            syncAudioTrackingData();
             if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
         };
-    }, [syncAudioTrackingData]);
+    }, [debouncedSync, isPlaying]);
+
+    // Sync on unmount (but don't block)
+    useEffect(() => {
+        return () => {
+            // Fire and forget - don't await
+            if (accumulatedTimestamps.current.length > 0) {
+                syncAudioTrackingData().catch(console.error);
+            }
+        };
+    }, []); // Empty deps - only on unmount
+
+    // Save current segment to accumulated timestamps
+    const saveCurrentSegment = useCallback((endTime: number) => {
+        if (!activeItem) return;
+        
+        const start = currentSegmentStart.current * 1000;
+        const end = endTime * 1000;
+        
+        // Only save if we have meaningful progress (at least 500ms)
+        if (end - start < 500) return;
+        
+        const newTimestamp = {
+            id: uuidv4(),
+            start: start,
+            end: end,
+            speed: playbackRate
+        };
+        
+        accumulatedTimestamps.current.push(newTimestamp);
+        
+        // Update store with accumulated timestamps
+        addActivity({
+            id: activeItem.id,
+            activity_id: activityId.current,
+            source: "AUDIO",
+            source_id: audioSlide.published_audio_file_id,
+            start_time: Date.now(),
+            end_time: Date.now(),
+            percentage_watched: (end / (audioSlide.published_audio_length_in_millis || (duration * 1000))) * 100,
+            timestamps: accumulatedTimestamps.current,
+            sync_status: 'STALE',
+            new_activity: accumulatedTimestamps.current.length === 1, // First segment = new activity
+            current_start_time_in_epoch: Date.now()
+        }, true);
+        
+        // Move start pointer for next segment
+        currentSegmentStart.current = endTime;
+    }, [activeItem, audioSlide, duration, playbackRate, addActivity]);
 
     const handleTimeUpdate = () => {
         if (!audioRef.current) return;
         const now = audioRef.current.currentTime;
         setCurrentTime(now);
         setDuration(audioRef.current.duration || 0);
-
-        if (isPlaying) {
-             updateTracking(now);
-        }
-    };
-
-    const updateTracking = (current: number) => {
-        if (!activeItem) return;
-        
-        // Accumulate segment
-        const start = currentSegmentStart.current * 1000;
-        const end = current * 1000;
-        
-        if (end <= start) return; // No progress
-
-        addActivity({
-            id: activeItem.id,
-            activity_id: activityId.current,
-            source: "AUDIO",
-            source_id: audioSlide.published_audio_file_id,
-            start_time: Date.now(), // approximation of session start
-            end_time: Date.now(),
-            percentage_watched: (end / (audioSlide.published_audio_length_in_millis || (duration * 1000))) * 100,
-            timestamps: [{
-                id: uuidv4(), // Granular segments might be too much, but schema requires ID
-                start: start,
-                end: end,
-                speed: playbackRate
-            }],
-            sync_status: 'STALE',
-            new_activity: false, // You might want true on first play
-            current_start_time_in_epoch: Date.now()
-        }, true); // isUpdate = true to merge timestamps
-        
-        // Move start pointer
-        currentSegmentStart.current = current;
+        // NOTE: We do NOT call updateTracking here anymore
+        // Tracking happens only on: pause, seek, speed change, end
     };
 
     const togglePlay = () => {
         if (!audioRef.current) return;
         
         if (isPlaying) {
+            // Pausing - save current segment and sync
+            saveCurrentSegment(audioRef.current.currentTime);
             audioRef.current.pause();
-            // Sync on pause
-            updateTracking(audioRef.current.currentTime);
-            syncAudioTrackingData();
+            debouncedSync();
         } else {
-            audioRef.current.play();
+            // Starting playback - set segment start
             currentSegmentStart.current = audioRef.current.currentTime;
+            audioRef.current.play();
         }
         setIsPlaying(!isPlaying);
     };
@@ -164,31 +218,39 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
     const handleSeek = (time: number) => {
         if (!audioRef.current) return;
         
-        // Close current segment before seeking
-        if (isPlaying) {
-            updateTracking(audioRef.current.currentTime);
+        // If playing, save current segment before seeking
+        if (isPlaying && audioRef.current.currentTime !== time) {
+            saveCurrentSegment(audioRef.current.currentTime);
         }
         
         audioRef.current.currentTime = time;
         setCurrentTime(time);
         
-        // Reset segment start
+        // Reset segment start to new position
         currentSegmentStart.current = time;
     };
 
     const changeSpeed = (speed: number) => {
-         if (!audioRef.current) return;
-         
-         // Close current segment with old speed
-         if(isPlaying) {
-             updateTracking(audioRef.current.currentTime);
-         }
-         
-         audioRef.current.playbackRate = speed;
-         setPlaybackRate(speed);
-         
-         // Reset segment start for new speed interval
-         currentSegmentStart.current = audioRef.current.currentTime;
+        if (!audioRef.current) return;
+        
+        // Save current segment with old speed
+        if (isPlaying) {
+            saveCurrentSegment(audioRef.current.currentTime);
+        }
+        
+        audioRef.current.playbackRate = speed;
+        setPlaybackRate(speed);
+        
+        // Reset segment start for new speed
+        currentSegmentStart.current = audioRef.current.currentTime;
+    };
+
+    const handleAudioEnded = () => {
+        if (audioRef.current) {
+            saveCurrentSegment(audioRef.current.currentTime);
+        }
+        setIsPlaying(false);
+        debouncedSync();
     };
 
     const formatTime = (time: number) => {
@@ -320,7 +382,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                                 </button>
                             </div>
 
-                            {/* Volume Control (Simple Toggle for now, or Slider) */}
+                            {/* Volume Control */}
                             <div className="flex items-center gap-2 w-24">
                                 <button 
                                     onClick={() => {
@@ -352,18 +414,12 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                     </div>
                 </div>
 
+                {/* Audio Element */}
                 <audio
                     ref={audioRef}
                     src={audioUrl}
                     onTimeUpdate={handleTimeUpdate}
-                    onEnded={() => {
-                        setIsPlaying(false);
-                        // Sync on audio end
-                        if (audioRef.current) {
-                            updateTracking(audioRef.current.currentTime);
-                        }
-                        syncAudioTrackingData();
-                    }}
+                    onEnded={handleAudioEnded}
                     onError={(e) => {
                          console.error("Audio error", e); 
                          setError("Playback error");

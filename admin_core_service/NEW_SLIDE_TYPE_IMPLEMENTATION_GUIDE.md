@@ -172,6 +172,89 @@ Create a repository for the tracking entity. Must include a `deleteByActivityId`
 void deleteByActivityId(@Param("activityId") String activityId);
 ```
 
+### 5.3 Update `SlideRepository.java`
+
+**Path:** `features/slide/repository/SlideRepository.java`
+
+You MUST update the native SQL queries to include the new slide type in the results. FAILURE TO DO THIS WILL RESULT IN THE SLIDE NOT APPEARING IN THE LIST.
+
+**Queries to Update:**
+
+1.  `getSlidesByChapterId` (Admin version) - Add a `UNION ALL` block for basic slide details.
+2.  `getSlidesByChapterId` (Learner version with `userId`) - Add a `UNION ALL` block that includes `learner_operation` joins for progress tracking.
+3.  `getSlidesByChapterIdOpen` (Guest/Public version) - Add a `UNION ALL` block with `NULL` for progress markers.
+
+**Example (Admin Query Pattern):**
+
+```sql
+UNION ALL
+-- NEW SLIDE TYPE
+SELECT
+    s.created_at,
+    cs.slide_order,
+    json_build_object(
+        'id', s.id,
+        'title', s.title,
+        'status', s.status,
+        -- ... common fields
+        'new_slide_type', json_build_object(
+            'id', n.id,
+            'some_specific_field', n.some_specific_field
+            -- ... specific fields
+        )
+    ) AS slide_data
+FROM slide s
+JOIN chapter_to_slides cs ON cs.slide_id = s.id
+JOIN chapter c ON c.id = cs.chapter_id
+JOIN new_slide_type n ON n.id = s.source_id
+WHERE s.source_type = 'NEW_TYPE' AND c.id = :chapterId
+AND s.status IN (:slideStatus)
+AND cs.status IN (:chapterToSlidesStatus)
+```
+
+### 5.4 Update `ChapterRepository.java`
+
+**Path:** `features/chapter/repository/ChapterRepository.java`
+
+The query `getChaptersAndSlidesByModuleIdAndPackageSessionId` constructs a complex JSON response using Common Table Expressions (CTEs). You MUST:
+
+1.  Add a new CTE for your slide type (e.g., `audio_slides AS (...)`).
+2.  Add a `UNION ALL` clause to the `all_slides` CTE to include your new CTE.
+
+**Example CTE:**
+
+```sql
+your_new_slides AS (
+    SELECT
+        vs.chapter_id,
+        vs.created_at,
+        vs.slide_order,
+        json_build_object(
+            'id', vs.slide_id,
+           -- ... common fields
+            'new_slide_type', json_build_object(
+                'id', n.id,
+                -- ... specific fields
+            )
+        ) AS slide_data
+    FROM valid_slides vs
+    JOIN new_slide_type n ON n.id = vs.source_id
+    WHERE vs.source_type = 'NEW_TYPE'
+),
+```
+
+**Example Union:**
+
+```sql
+all_slides AS (
+    SELECT * FROM video_slides
+    UNION ALL
+    -- ...
+    UNION ALL
+    SELECT * FROM your_new_slides -- <-- Add this
+)
+```
+
 ---
 
 ## 6. Services
@@ -297,6 +380,8 @@ if (slide.sourceType === "AUDIO") {
 | **DTO**        | Update `SlideDTO.java`                          | ☐    |
 | **DTO**        | Update `ActivityLogDTO.java` (if tracking)      | ☐    |
 | **Repository** | `<NewType>SlideRepository.java`                 | ☐    |
+| **Repository** | Update `SlideRepository.java` native queries    | ☐    |
+| **Repository** | Update `ChapterRepository.java` native queries  | ☐    |
 | **Repository** | `<NewType>TrackedRepository.java` (if tracking) | ☐    |
 | **Service**    | `<NewType>SlideService.java`                    | ☐    |
 | **Controller** | `<NewType>SlideController.java`                 | ☐    |

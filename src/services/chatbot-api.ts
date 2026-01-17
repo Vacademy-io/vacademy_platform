@@ -134,7 +134,11 @@ class ChatbotAPIService {
     return this.userId;
   }
 
-  async initSession(initialMessage?: string): Promise<InitSessionResponse> {
+  async initSession(
+    initialMessage?: string,
+    contextType?: ContextType,
+    contextMeta?: ContextMeta
+  ): Promise<InitSessionResponse> {
     const userId = await this.getUserId();
     const userDetails = await getUserBasicDetails([userId]);
     const name = userDetails?.[0]?.name || "";
@@ -145,6 +149,8 @@ class ChatbotAPIService {
       institute_id: instituteId,
       initial_message: initialMessage,
       user_name: name || "Learner",
+      context_type: contextType,
+      context_meta: contextMeta,
     };
 
     console.log("Initializing session with:", request);

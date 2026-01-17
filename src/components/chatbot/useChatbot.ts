@@ -18,6 +18,7 @@ import {
   DEFAULT_CHATBOT_SETTINGS,
   getChatbotSettings,
 } from "@/services/chatbot-settings";
+import { isChatbotVisibleOnRoute } from "@/config/chatbot-routes";
 
 export const useChatbot = () => {
   const location = useLocation();
@@ -40,6 +41,15 @@ export const useChatbot = () => {
   // Ref to scroll to bottom
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Subscribe to stores for reactive context
+  const activeSlide = useContentStore((state) => state.activeItem);
+  const instituteDetails = useInstituteDetailsStore(
+    (state) => state.instituteDetails
+  );
+  const getCourseDetails = useCourseDetailsStore(
+    (state) => state.getCourseDetails
+  );
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -90,8 +100,8 @@ export const useChatbot = () => {
     // Check global visibility setting first
     if (!chatbotSettings.enable) return false;
 
-    // Show chatbot on all pages (can be restricted by route if needed later)
-    return true;
+    // Check centralized route configuration
+    return isChatbotVisibleOnRoute(location.pathname);
   };
 
   const getContext = useCallback((): ChatbotContext => {
@@ -128,10 +138,7 @@ export const useChatbot = () => {
     const context = getContext();
 
     if (contextType === "slide") {
-      // Get slide data from content store
-      const { activeItem: activeSlide } = useContentStore.getState();
-      const { instituteDetails } = useInstituteDetailsStore.getState();
-
+      // Data is already subscribed via hooks above
       if (activeSlide) {
         // Determine slide type
         let slideType = "DOCUMENT";
@@ -230,10 +237,7 @@ export const useChatbot = () => {
         course: "",
       };
     } else if (contextType === "course_details") {
-      // Get course data from institute details and course details store
-      const { instituteDetails } = useInstituteDetailsStore.getState();
-      const { getCourseDetails } = useCourseDetailsStore.getState();
-
+      // Data subscribed via hooks
       if (context.courseId) {
         // Try to get cached course details first
         // @ts-expect-error : course details type issue
@@ -298,8 +302,16 @@ export const useChatbot = () => {
       };
     }
 
+
+
     return {};
-  }, [getContextType, getContext]);
+  }, [
+    getContextType,
+    getContext,
+    activeSlide,
+    instituteDetails,
+    getCourseDetails,
+  ]);
 
   const initializeSession = useCallback(async () => {
     if (isInitializing || sessionId) return;
@@ -330,7 +342,11 @@ export const useChatbot = () => {
       const contextMeta = await buildContextMeta();
       console.log("Initializing session with context:", contextMeta);
 
-      const response = await chatbotAPI.initSession();
+      const response = await chatbotAPI.initSession(
+        undefined,
+        contextType,
+        contextMeta
+      );
 
       setSessionId(response.session_id);
       setAiStatus(response.status);
@@ -479,7 +495,7 @@ export const useChatbot = () => {
     }
   }, [isOpen, sessionId, isInitializing, hasError, initializeSession]);
 
-  // Update context when page/route changes
+  // Update context when page/route changes or active slide changes
   useEffect(() => {
     if (!isOpen || !sessionId || isInitializing) return;
 
@@ -499,7 +515,7 @@ export const useChatbot = () => {
     };
 
     updateContextAsync();
-  }, [sessionId, isOpen, isInitializing, getContextType, buildContextMeta]);
+  }, [sessionId, isOpen, isInitializing, getContextType, buildContextMeta, location.pathname, activeSlide]);
 
   const sendMessage = async (content: string, intent?: MessageIntent) => {
     if (!content.trim() || !sessionId) return;

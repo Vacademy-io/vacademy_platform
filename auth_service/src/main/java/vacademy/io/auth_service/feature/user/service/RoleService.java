@@ -109,9 +109,9 @@ public class RoleService {
             UserRoleFilterDTO filterDTO,
             CustomUserDetails customUserDetails) {
         int pageNumber = filterDTO.getPageNumber() != null ? filterDTO.getPageNumber() : 0;
-        int pageSize = filterDTO.getPageSize() != null ? filterDTO.getPageSize() : 50;
+        int pageSize = filterDTO.getPageSize() != null ? filterDTO.getPageSize() : 10;
         return userService.getUsersByInstituteIdAndStatusPaged(instituteId, filterDTO.getStatus(), filterDTO.getRoles(),
-                pageNumber, pageSize, customUserDetails);
+                filterDTO.getName(), pageNumber, pageSize, customUserDetails);
     }
 
     public String updateUserRoleStatusByInstituteIdAndUserId(String newStatus, String instituteId, List<String> userIds,

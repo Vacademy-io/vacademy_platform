@@ -145,14 +145,37 @@ public interface UserRepository extends CrudRepository<User, String> {
         List<User> findUsersByStatusAndInstitute(@Param("statuses") List<String> statuses,
                         @Param("roles") List<String> roles, @Param("instituteId") String instituteId);
 
-  @Query("SELECT DISTINCT ur.user FROM UserRole ur WHERE ur.status IN :statuses AND ur.role.name IN :roles AND ur.instituteId = :instituteId ORDER BY ur.user.fullName ASC")
+  @Query(value = "SELECT DISTINCT u.* FROM users u " +
+      "JOIN user_role ur ON u.id = ur.user_id " +
+      "JOIN roles r ON r.id = ur.role_id " +
+      "WHERE ur.status IN (:statuses) " +
+      "AND r.role_name IN (:roles) " +
+      "AND ur.institute_id = :instituteId " +
+      "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
+      "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
+      "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%')) " +
+      "ORDER BY u.full_name ASC", nativeQuery = true)
   List<User> findUsersByStatusAndInstitutePaged(@Param("statuses") List<String> statuses,
       @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
+      @Param("name") String name,
+      @Param("email") String email,
+      @Param("mobile") String mobile,
       org.springframework.data.domain.Pageable pageable);
 
-  @Query("SELECT COUNT(DISTINCT ur.user) FROM UserRole ur WHERE ur.status IN :statuses AND ur.role.name IN :roles AND ur.instituteId = :instituteId")
+  @Query(value = "SELECT COUNT(DISTINCT u.id) FROM users u " +
+      "JOIN user_role ur ON u.id = ur.user_id " +
+      "JOIN roles r ON r.id = ur.role_id " +
+      "WHERE ur.status IN (:statuses) " +
+      "AND r.role_name IN (:roles) " +
+      "AND ur.institute_id = :instituteId " +
+      "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
+      "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
+      "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%'))", nativeQuery = true)
   long countUsersByStatusAndInstitute(@Param("statuses") List<String> statuses,
-      @Param("roles") List<String> roles, @Param("instituteId") String instituteId);
+      @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
+      @Param("name") String name,
+      @Param("email") String email,
+      @Param("mobile") String mobile);
 
   @Modifying
   @Transactional

@@ -9,14 +9,28 @@ import { getPublicUrl } from "@/services/upload_file";
 import {
     Play,
     Pause,
-    Rewind,
-    FastForward,
-    SpeakerHigh,
-    SpeakerX,
+    SkipBack,
+    SkipForward,
+    Volume2,
+    VolumeX,
     FileText,
-    Spinner,
-} from "@phosphor-icons/react";
-import * as Slider from "@radix-ui/react-slider";
+    Loader2,
+    Music2,
+    ChevronDown,
+    ChevronUp,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Slider } from "@/components/ui/slider";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
     audioSlide: {
@@ -47,14 +61,14 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState(1);
-    const [playbackRate, setPlaybackRate] = useState(1);
+    const [playbackRate, setPlaybackRate] = useState("1");
     const [isLoading, setIsLoading] = useState(true);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [showTranscript, setShowTranscript] = useState(false);
 
-    // Tracking State - track the segment being listened
+    // Tracking State
     const currentSegmentStart = useRef<number>(0);
     const accumulatedTimestamps = useRef<Array<{
         id: string;
@@ -69,7 +83,6 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
             setIsLoading(true);
             setError(null);
             try {
-                // Get Audio URL
                 let url = audioSlide.external_url;
                 if (audioSlide.source_type === "FILE" || !url) {
                     url = await getPublicUrl(audioSlide.published_audio_file_id);
@@ -78,7 +91,6 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                 if (!url) throw new Error("Could not load audio source.");
                 setAudioUrl(url);
 
-                // Get Thumbnail URL
                 if (audioSlide.thumbnail_file_id) {
                     const img = await getPublicUrl(audioSlide.thumbnail_file_id);
                     setImageUrl(img);
@@ -94,30 +106,16 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         loadResources();
         
         return () => {
-             if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+            if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
         };
     }, [audioSlide]);
 
-    // Debounced sync function to prevent rapid API calls
+    // Debounced sync function
     const debouncedSync = useCallback(async () => {
         const now = Date.now();
-        // Prevent syncing more than once every 10 seconds
-        if (now - lastSyncTimeRef.current < 10000) {
-            console.log("[AudioPlayer] Skipping sync - too soon since last sync");
-            return;
-        }
-        
-        // Prevent concurrent syncs
-        if (isSyncingRef.current) {
-            console.log("[AudioPlayer] Skipping sync - already syncing");
-            return;
-        }
-        
-        // Only sync if we have accumulated timestamps
-        if (accumulatedTimestamps.current.length === 0) {
-            console.log("[AudioPlayer] Skipping sync - no timestamps to sync");
-            return;
-        }
+        if (now - lastSyncTimeRef.current < 10000) return;
+        if (isSyncingRef.current) return;
+        if (accumulatedTimestamps.current.length === 0) return;
         
         isSyncingRef.current = true;
         lastSyncTimeRef.current = now;
@@ -129,7 +127,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         }
     }, [syncAudioTrackingData]);
 
-    // Initialize Interval Sync (every 15 seconds)
+    // Initialize Interval Sync
     useEffect(() => {
         syncIntervalRef.current = setInterval(() => {
             if (isPlaying) {
@@ -142,36 +140,33 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         };
     }, [debouncedSync, isPlaying]);
 
-    // Sync on unmount (but don't block)
+    // Sync on unmount
     useEffect(() => {
         return () => {
-            // Fire and forget - don't await
             if (accumulatedTimestamps.current.length > 0) {
                 syncAudioTrackingData().catch(console.error);
             }
         };
-    }, []); // Empty deps - only on unmount
+    }, []);
 
-    // Save current segment to accumulated timestamps
+    // Save current segment
     const saveCurrentSegment = useCallback((endTime: number) => {
         if (!activeItem) return;
         
         const start = currentSegmentStart.current * 1000;
         const end = endTime * 1000;
         
-        // Only save if we have meaningful progress (at least 500ms)
         if (end - start < 500) return;
         
         const newTimestamp = {
             id: uuidv4(),
             start: start,
             end: end,
-            speed: playbackRate
+            speed: parseFloat(playbackRate)
         };
         
         accumulatedTimestamps.current.push(newTimestamp);
         
-        // Update store with accumulated timestamps
         addActivity({
             id: activeItem.id,
             activity_id: activityId.current,
@@ -182,11 +177,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
             percentage_watched: (end / (audioSlide.published_audio_length_in_millis || (duration * 1000))) * 100,
             timestamps: accumulatedTimestamps.current,
             sync_status: 'STALE',
-            new_activity: accumulatedTimestamps.current.length === 1, // First segment = new activity
+            new_activity: accumulatedTimestamps.current.length === 1,
             current_start_time_in_epoch: Date.now()
         }, true);
         
-        // Move start pointer for next segment
         currentSegmentStart.current = endTime;
     }, [activeItem, audioSlide, duration, playbackRate, addActivity]);
 
@@ -195,54 +189,70 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         const now = audioRef.current.currentTime;
         setCurrentTime(now);
         setDuration(audioRef.current.duration || 0);
-        // NOTE: We do NOT call updateTracking here anymore
-        // Tracking happens only on: pause, seek, speed change, end
     };
 
     const togglePlay = () => {
         if (!audioRef.current) return;
         
         if (isPlaying) {
-            // Pausing - save current segment and sync
             saveCurrentSegment(audioRef.current.currentTime);
             audioRef.current.pause();
             debouncedSync();
         } else {
-            // Starting playback - set segment start
             currentSegmentStart.current = audioRef.current.currentTime;
             audioRef.current.play();
         }
         setIsPlaying(!isPlaying);
     };
 
-    const handleSeek = (time: number) => {
+    const handleSeek = (value: number[]) => {
         if (!audioRef.current) return;
+        const time = value[0];
         
-        // If playing, save current segment before seeking
         if (isPlaying && audioRef.current.currentTime !== time) {
             saveCurrentSegment(audioRef.current.currentTime);
         }
         
         audioRef.current.currentTime = time;
         setCurrentTime(time);
-        
-        // Reset segment start to new position
         currentSegmentStart.current = time;
     };
 
-    const changeSpeed = (speed: number) => {
+    const handleSkip = (seconds: number) => {
         if (!audioRef.current) return;
+        const newTime = Math.max(0, Math.min(duration, currentTime + seconds));
         
-        // Save current segment with old speed
         if (isPlaying) {
             saveCurrentSegment(audioRef.current.currentTime);
         }
         
-        audioRef.current.playbackRate = speed;
-        setPlaybackRate(speed);
+        audioRef.current.currentTime = newTime;
+        setCurrentTime(newTime);
+        currentSegmentStart.current = newTime;
+    };
+
+    const handleSpeedChange = (speed: string) => {
+        if (!audioRef.current) return;
         
-        // Reset segment start for new speed
+        if (isPlaying) {
+            saveCurrentSegment(audioRef.current.currentTime);
+        }
+        
+        audioRef.current.playbackRate = parseFloat(speed);
+        setPlaybackRate(speed);
         currentSegmentStart.current = audioRef.current.currentTime;
+    };
+
+    const handleVolumeChange = (value: number[]) => {
+        const vol = value[0];
+        setVolume(vol);
+        if (audioRef.current) audioRef.current.volume = vol;
+    };
+
+    const toggleMute = () => {
+        const newVol = volume === 0 ? 1 : 0;
+        setVolume(newVol);
+        if (audioRef.current) audioRef.current.volume = newVol;
     };
 
     const handleAudioEnded = () => {
@@ -260,198 +270,233 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         return `${minutes}:${seconds.toString().padStart(2, "0")}`;
     };
 
+    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
     if (isLoading) {
         return (
-            <div className="flex flex-col items-center justify-center p-12 h-full bg-neutral-50 rounded-xl">
-                <Spinner className="animate-spin text-primary-500 mb-4" size={32} />
-                <p className="text-neutral-500 font-medium">Loading Audio...</p>
+            <div className="flex flex-col items-center justify-center p-12 h-full">
+                <Card className="w-full max-w-2xl">
+                    <CardContent className="flex flex-col items-center justify-center py-16">
+                        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+                        <p className="text-muted-foreground font-medium">Loading Audio...</p>
+                    </CardContent>
+                </Card>
             </div>
         );
     }
 
     if (error || !audioUrl) {
         return (
-            <div className="flex flex-col items-center justify-center p-12 h-full bg-neutral-50 rounded-xl">
-                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-500 mb-4">
-                    <SpeakerX size={24} />
-                </div>
-                <p className="text-red-500 font-medium">{error || "Audio source unavailable"}</p>
+            <div className="flex flex-col items-center justify-center p-12 h-full">
+                <Card className="w-full max-w-2xl">
+                    <CardContent className="flex flex-col items-center justify-center py-16">
+                        <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+                            <VolumeX className="h-7 w-7 text-destructive" />
+                        </div>
+                        <p className="text-destructive font-medium">{error || "Audio source unavailable"}</p>
+                        <Button 
+                            variant="outline" 
+                            className="mt-4"
+                            onClick={() => window.location.reload()}
+                        >
+                            Try Again
+                        </Button>
+                    </CardContent>
+                </Card>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col h-full max-w-3xl mx-auto p-4 sm:p-6">
+        <div className="flex flex-col h-full w-full max-w-3xl mx-auto p-4 sm:p-6 gap-4">
             {/* Main Player Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
-                <div className="flex flex-col md:flex-row">
-                    {/* Cover Art Area */}
-                    <div className="w-full md:w-64 h-64 md:h-auto bg-neutral-100 flex-shrink-0 relative">
-                        {imageUrl ? (
-                            <img 
-                                src={imageUrl} 
-                                alt="Audio Cover" 
-                                className="w-full h-full object-cover"
-                            />
-                        ) : (
-                            <div className="absolute inset-0 flex items-center justify-center text-neutral-300">
-                                <SpeakerHigh size={64} weight="duotone" />
-                            </div>
-                        )}
-                        {/* Overlay Gradient on Mobile */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent md:hidden" />
-                    </div>
-
-                    {/* Controls Area */}
-                    <div className="flex-1 p-6 flex flex-col justify-center">
-                        <div className="mb-6">
-                            <h2 className="text-xl font-bold text-neutral-900 line-clamp-2">
-                                {activeItem?.title || "Audio Track"}
-                            </h2>
-                            <p className="text-sm text-neutral-500 mt-1 line-clamp-1">
-                                {activeItem?.description || "Listen to this audio lesson"}
-                            </p>
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="mb-4 group">
-                            <Slider.Root
-                                className="relative flex items-center select-none touch-none w-full h-5"
-                                value={[currentTime]}
-                                max={duration}
-                                step={1}
-                                onValueChange={(val) => handleSeek(val[0])}
-                            >
-                                <Slider.Track className="bg-neutral-200 relative grow rounded-full h-1.5 overflow-hidden group-hover:h-2 transition-all">
-                                    <Slider.Range className="absolute bg-primary-500 rounded-full h-full" />
-                                </Slider.Track>
-                                <Slider.Thumb 
-                                    className="block w-4 h-4 bg-white border border-neutral-300 shadow-md rounded-full hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary-500/50 transition-transform" 
-                                    aria-label="Seek"
-                                />
-                            </Slider.Root>
-                            <div className="flex justify-between mt-1 text-xs font-medium text-neutral-400">
-                                <span>{formatTime(currentTime)}</span>
-                                <span>{formatTime(duration)}</span>
-                            </div>
-                        </div>
-
-                        {/* Playback Controls */}
-                        <div className="flex items-center justify-between gap-4">
-                             {/* Speed Control */}
-                             <div className="flex items-center gap-2">
-                                <select 
-                                    value={playbackRate} 
-                                    onChange={(e) => changeSpeed(parseFloat(e.target.value))}
-                                    className="bg-neutral-50 border border-neutral-200 text-neutral-700 text-xs font-semibold rounded px-2 py-1 focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                                >
-                                    {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => (
-                                        <option key={rate} value={rate}>{rate}x</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Main Buttons */}
-                            <div className="flex items-center gap-4">
-                                <button 
-                                    onClick={() => handleSeek(Math.max(0, currentTime - 10))}
-                                    className="p-2 text-neutral-400 hover:text-primary-600 hover:bg-primary-50 rounded-full transition-colors"
-                                    aria-label="Rewind 10s"
-                                >
-                                    <Rewind size={24} weight="fill" />
-                                </button>
+            <Card className="overflow-hidden shadow-lg border-0 bg-gradient-to-br from-background to-muted/30">
+                <CardContent className="p-0">
+                    <div className="flex flex-col">
+                        {/* Cover Art & Info */}
+                        <div className="relative">
+                            <div className="aspect-video sm:aspect-[21/9] w-full bg-gradient-to-br from-primary/20 via-primary/10 to-background relative overflow-hidden">
+                                {imageUrl ? (
+                                    <img 
+                                        src={imageUrl} 
+                                        alt="Audio Cover" 
+                                        className="w-full h-full object-cover opacity-80"
+                                    />
+                                ) : (
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
+                                            <Music2 className="h-12 w-12 text-primary/60" />
+                                        </div>
+                                    </div>
+                                )}
+                                {/* Gradient Overlay */}
+                                <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
                                 
-                                <button 
+                                {/* Title Overlay */}
+                                <div className="absolute bottom-0 left-0 right-0 p-6">
+                                    <h2 className="text-xl sm:text-2xl font-bold text-foreground line-clamp-2">
+                                        {activeItem?.title || "Audio Track"}
+                                    </h2>
+                                    <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+                                        {activeItem?.description || "Listen to this audio lesson"}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Controls Section */}
+                        <div className="p-6 space-y-6">
+                            {/* Progress Slider */}
+                            <div className="space-y-2">
+                                <Slider
+                                    value={[currentTime]}
+                                    max={duration || 100}
+                                    step={0.1}
+                                    onValueChange={handleSeek}
+                                    className="cursor-pointer"
+                                />
+                                <div className="flex justify-between text-xs text-muted-foreground font-medium">
+                                    <span>{formatTime(currentTime)}</span>
+                                    <span>{formatTime(duration)}</span>
+                                </div>
+                            </div>
+
+                            {/* Main Controls */}
+                            <div className="flex items-center justify-center gap-4">
+                                {/* Skip Back */}
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-12 w-12 rounded-full hover:bg-primary/10"
+                                    onClick={() => handleSkip(-10)}
+                                >
+                                    <SkipBack className="h-5 w-5" />
+                                </Button>
+
+                                {/* Play/Pause - Main Button */}
+                                <Button
+                                    variant="default"
+                                    size="icon"
+                                    className={cn(
+                                        "h-16 w-16 rounded-full shadow-lg transition-all duration-200",
+                                        "hover:scale-105 hover:shadow-xl",
+                                        "bg-primary hover:bg-primary/90"
+                                    )}
                                     onClick={togglePlay}
-                                    className="w-14 h-14 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-700 shadow-lg hover:shadow-xl hover:scale-105 transition-all"
-                                    aria-label={isPlaying ? "Pause" : "Play"}
                                 >
                                     {isPlaying ? (
-                                        <Pause size={28} weight="fill" />
+                                        <Pause className="h-7 w-7 fill-current" />
                                     ) : (
-                                        <Play size={28} weight="fill" className="ml-1" />
+                                        <Play className="h-7 w-7 fill-current ml-1" />
                                     )}
-                                </button>
-                                
-                                <button 
-                                    onClick={() => handleSeek(Math.min(duration, currentTime + 10))}
-                                    className="p-2 text-neutral-400 hover:text-primary-600 hover:bg-primary-50 rounded-full transition-colors"
-                                    aria-label="Forward 10s"
+                                </Button>
+
+                                {/* Skip Forward */}
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-12 w-12 rounded-full hover:bg-primary/10"
+                                    onClick={() => handleSkip(10)}
                                 >
-                                    <FastForward size={24} weight="fill" />
-                                </button>
+                                    <SkipForward className="h-5 w-5" />
+                                </Button>
                             </div>
 
-                            {/* Volume Control */}
-                            <div className="flex items-center gap-2 w-24">
-                                <button 
-                                    onClick={() => {
-                                        const newVol = volume === 0 ? 1 : 0;
-                                        setVolume(newVol);
-                                        if (audioRef.current) audioRef.current.volume = newVol;
-                                    }}
-                                    className="text-neutral-400 hover:text-neutral-600"
-                                >
-                                    {volume === 0 ? <SpeakerX size={20} /> : <SpeakerHigh size={20} />}
-                                </button>
-                                <Slider.Root
-                                    className="relative flex items-center select-none touch-none w-full h-5"
-                                    value={[volume]}
-                                    max={1}
-                                    step={0.1}
-                                    onValueChange={(val) => {
-                                        setVolume(val[0]);
-                                        if (audioRef.current) audioRef.current.volume = val[0];
-                                    }}
-                                >
-                                    <Slider.Track className="bg-neutral-200 relative grow rounded-full h-1 overflow-hidden">
-                                        <Slider.Range className="absolute bg-neutral-400 rounded-full h-full" />
-                                    </Slider.Track>
-                                    <Slider.Thumb className="block w-3 h-3 bg-white border border-neutral-300 shadow-sm rounded-full hover:scale-110 focus:outline-none" />
-                                </Slider.Root>
+                            {/* Secondary Controls */}
+                            <div className="flex items-center justify-between gap-4">
+                                {/* Speed Control */}
+                                <Select value={playbackRate} onValueChange={handleSpeedChange}>
+                                    <SelectTrigger className="w-20 h-9">
+                                        <SelectValue placeholder="Speed" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {["0.5", "0.75", "1", "1.25", "1.5", "1.75", "2"].map((rate) => (
+                                            <SelectItem key={rate} value={rate}>
+                                                {rate}x
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+
+                                {/* Volume Control */}
+                                <div className="flex items-center gap-2 flex-1 max-w-[180px]">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-9 w-9 shrink-0"
+                                        onClick={toggleMute}
+                                    >
+                                        {volume === 0 ? (
+                                            <VolumeX className="h-4 w-4" />
+                                        ) : (
+                                            <Volume2 className="h-4 w-4" />
+                                        )}
+                                    </Button>
+                                    <Slider
+                                        value={[volume]}
+                                        max={1}
+                                        step={0.1}
+                                        onValueChange={handleVolumeChange}
+                                        className="cursor-pointer"
+                                    />
+                                </div>
+
+                                {/* Transcript Toggle */}
+                                {audioSlide.transcript && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="gap-2"
+                                        onClick={() => setShowTranscript(!showTranscript)}
+                                    >
+                                        <FileText className="h-4 w-4" />
+                                        <span className="hidden sm:inline">Transcript</span>
+                                        {showTranscript ? (
+                                            <ChevronUp className="h-3 w-3" />
+                                        ) : (
+                                            <ChevronDown className="h-3 w-3" />
+                                        )}
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     </div>
-                </div>
-
-                {/* Audio Element */}
-                <audio
-                    ref={audioRef}
-                    src={audioUrl}
-                    onTimeUpdate={handleTimeUpdate}
-                    onEnded={handleAudioEnded}
-                    onError={(e) => {
-                         console.error("Audio error", e); 
-                         setError("Playback error");
-                    }}
-                />
-            </div>
+                </CardContent>
+            </Card>
 
             {/* Transcript Section */}
-            {audioSlide.transcript && (
-                <div className="mt-6 bg-white rounded-xl border border-neutral-200 overflow-hidden">
-                    <button 
-                        onClick={() => setShowTranscript(!showTranscript)}
-                        className="w-full px-6 py-4 flex items-center justify-between bg-neutral-50 hover:bg-neutral-100 transition-colors"
-                    >
-                        <div className="flex items-center gap-2 font-semibold text-neutral-700">
-                            <FileText size={20} className="text-primary-500" />
-                            <span>Transcript</span>
+            {audioSlide.transcript && showTranscript && (
+                <Card className="border shadow-sm">
+                    <CardContent className="p-0">
+                        <div className="p-4 border-b bg-muted/30">
+                            <h3 className="font-semibold flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-primary" />
+                                Transcript
+                            </h3>
                         </div>
-                        <span className="text-xs font-medium text-neutral-400 uppercase">
-                            {showTranscript ? "Hide" : "Show"}
-                        </span>
-                    </button>
-                    
-                    {showTranscript && (
-                         <div className="p-6 text-neutral-600 leading-relaxed text-sm h-64 overflow-y-auto custom-scrollbar border-t border-neutral-100">
-                             {audioSlide.transcript.split('\n').map((para, i) => (
-                                 <p key={i} className="mb-3 last:mb-0">{para}</p>
-                             ))}
-                         </div>
-                    )}
-                </div>
+                        <ScrollArea className="h-64">
+                            <div className="p-4 text-sm text-muted-foreground leading-relaxed">
+                                {audioSlide.transcript.split('\n').map((para, i) => (
+                                    <p key={i} className="mb-3 last:mb-0">{para}</p>
+                                ))}
+                            </div>
+                        </ScrollArea>
+                    </CardContent>
+                </Card>
             )}
+
+            {/* Hidden Audio Element */}
+            <audio
+                ref={audioRef}
+                src={audioUrl}
+                onTimeUpdate={handleTimeUpdate}
+                onEnded={handleAudioEnded}
+                onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
+                onError={(e) => {
+                    console.error("Audio error", e); 
+                    setError("Playback error");
+                }}
+            />
         </div>
     );
 };

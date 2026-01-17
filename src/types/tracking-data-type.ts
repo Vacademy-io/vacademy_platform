@@ -7,6 +7,13 @@ export interface TrackingDataType {
   start_time_in_millis: number,
   end_time_in_millis: number,
   percentage_watched: number | null,
+  learner_operation?: string,
+  is_new_activity?: boolean,
+  audios?: {
+    start_time_in_millis: number;
+    end_time_in_millis: number;
+    playback_speed: number;
+  }[],
   videos: 
     {
       id: string,

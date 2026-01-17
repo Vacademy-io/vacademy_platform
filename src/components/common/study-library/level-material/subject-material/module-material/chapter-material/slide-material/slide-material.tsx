@@ -28,6 +28,7 @@ import { AIVideoPlayer } from "@/components/ai-video-player";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { ConcentrationSettings } from "@/types/student-display-settings";
 import { fetchHtmlVideoUrls } from "@/utils/htmlVideoService";
+import AudioPlayer from "./audio-player";
 
 export const SlideMaterial = () => {
   const { activeItem, items, setActiveItem, slideEvaluations } =
@@ -520,7 +521,7 @@ export const SlideMaterial = () => {
           setContent(
             <QuizViewer
               questions={mappedQuestions}
-              onAnswer={async (questionId, selectedOptionId) => {
+              onAnswer={async (_questionId, selectedOptionId) => {
                 // Send/save answer data here if needed
                 await handleQuestionSubmit(String(selectedOptionId));
               }}
@@ -574,7 +575,7 @@ export const SlideMaterial = () => {
             setContent(
               <QuizViewer
                 questions={mappedQuestions}
-                onAnswer={async (questionId, selectedOptionId) => {
+                onAnswer={async (_questionId, selectedOptionId) => {
                   await handleQuestionSubmit(String(selectedOptionId));
                 }}
                 onComplete={() => {
@@ -745,6 +746,28 @@ export const SlideMaterial = () => {
                   />
                 </div>
               </div>
+            );
+          }
+          break;
+        }
+
+        case "AUDIO": {
+          const audioSlide = activeItem.audio_slide || activeItem.audioSlide;
+          
+          if (audioSlide) {
+             setContent(
+              <div
+                key={`audio-${activeItem.id}`}
+                className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+              >
+                  <AudioPlayer audioSlide={audioSlide} />
+              </div>
+            );
+          } else {
+            setContent(
+               <div className="flex h-[300px] flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <p className="text-red-500 font-medium">Audio slide data missing</p>
+               </div>
             );
           }
           break;

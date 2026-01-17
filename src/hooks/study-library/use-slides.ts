@@ -108,6 +108,17 @@ export interface HtmlVideoSlide {
   video_length_in_millis?: number;
 }
 
+// Audio slide interface
+export interface AudioSlide {
+  id: string;
+  source_type: "FILE" | "URL";
+  published_audio_file_id: string;
+  published_audio_length_in_millis: number;
+  thumbnail_file_id?: string;
+  transcript?: string;
+  external_url?: string | null;
+}
+
 // AI Video Data interface
 export interface AIVideoData {
   status: 'COMPLETED' | 'GENERATING' | 'FAILED';
@@ -131,6 +142,8 @@ export interface Slide {
   question_slide?: QuestionSlide;
   quiz_slide?: QuizSlide;
   assignment_slide?: AssignmentSlide;
+  audio_slide?: AudioSlide;
+  audioSlide?: AudioSlide;
   html_video_slide?: HtmlVideoSlide; // For HTML_VIDEO source_type slides
   aiVideoData?: AIVideoData;
   is_loaded: boolean;

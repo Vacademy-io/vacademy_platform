@@ -3,9 +3,8 @@ import { AudioActivitySchema } from "@/schemas/study-library/audio-tracking-sche
 import { useAddAudioActivity, AudioActivityPayload } from "@/services/study-library/tracking-api/add-audio-activity";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { Preferences } from "@capacitor/preferences";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { useSlidesRefresh } from "./useSlidesRefresh";
 
 const STORAGE_KEY = "audio_tracking_data";
 const USER_ID_KEY = "StudentDetails";
@@ -14,7 +13,15 @@ export const useAudioSync = () => {
     const addUpdateAudioActivity = useAddAudioActivity();
     const { activeItem } = useContentStore();
     const [userId, setUserId] = useState<string | null>(null);
-    const { refreshSlides } = useSlidesRefresh();
+    
+    // Use refs for values that shouldn't trigger re-renders
+    const activeItemIdRef = useRef<string | null>(null);
+    const isSyncingRef = useRef<boolean>(false);
+
+    // Update ref when activeItem changes
+    useEffect(() => {
+        activeItemIdRef.current = activeItem?.id || null;
+    }, [activeItem?.id]);
 
     // Load user ID on mount
     useEffect(() => {
@@ -29,6 +36,12 @@ export const useAudioSync = () => {
     }, []);
 
     const syncAudioTrackingData = useCallback(async () => {
+        // Prevent concurrent syncs
+        if (isSyncingRef.current) {
+            console.log("[useAudioSync] Already syncing, skipping...");
+            return;
+        }
+
         try {
             if (!userId) {
                 console.warn("[useAudioSync] User ID not found in storage");
@@ -36,15 +49,31 @@ export const useAudioSync = () => {
             }
 
             const { value } = await Preferences.get({ key: STORAGE_KEY });
-            if (!value) return;
+            if (!value) {
+                console.log("[useAudioSync] No tracking data in storage");
+                return;
+            }
 
             const trackingData = JSON.parse(value);
             const activities = trackingData.data as Array<
                 z.infer<typeof AudioActivitySchema>
             >;
             
-            if (activities.length === 0) return;
-            
+            if (activities.length === 0) {
+                console.log("[useAudioSync] No activities to sync");
+                return;
+            }
+
+            // Find activities that need syncing
+            const staleActivities = activities.filter(a => a.sync_status === "STALE");
+            if (staleActivities.length === 0) {
+                console.log("[useAudioSync] No stale activities to sync");
+                return;
+            }
+
+            isSyncingRef.current = true;
+            console.log(`[useAudioSync] Starting sync for ${staleActivities.length} activity(ies)`);
+
             const updatedActivities: Array<z.infer<typeof AudioActivitySchema>> = [];
 
             for (let i = 0; i < activities.length; i++) {
@@ -58,9 +87,15 @@ export const useAudioSync = () => {
                     continue;
                 }
 
+                // Skip if no timestamps to sync
+                if (!activity.timestamps || activity.timestamps.length === 0) {
+                    console.log("[useAudioSync] Skipping activity with no timestamps");
+                    continue;
+                }
+
                 // Prepare simplified payload per backend spec
                 const apiPayload: AudioActivityPayload = {
-                    slide_id: activeItem?.id || activity.id,
+                    slide_id: activeItemIdRef.current || activity.id,
                     user_id: userId,
                     is_new_activity: activity.new_activity,
                     learner_operation: "AUDIO_LAST_TIMESTAMP",
@@ -74,7 +109,7 @@ export const useAudioSync = () => {
                 try {
                     console.log(`📡 [useAudioSync] Syncing audio activity: ${activity.activity_id}`);
                     await addUpdateAudioActivity.mutateAsync(apiPayload);
-                    console.log(`✅ [useAudioSync] Audio activity synced: ${activity.activity_id}`);
+                    console.log(`✅ [useAudioSync] Audio activity synced successfully`);
                     
                     // Mark as synced
                     updatedActivities.push({
@@ -83,8 +118,7 @@ export const useAudioSync = () => {
                         new_activity: false,
                     });
 
-                    // Refresh slides to update progress
-                    await refreshSlides();
+                    // NOTE: Do NOT call refreshSlides() here as it causes re-renders and potential loops
                 } catch (error) {
                     console.error("[useAudioSync] API call failed:", error);
                     // Keep as STALE for retry
@@ -97,10 +131,14 @@ export const useAudioSync = () => {
                 key: STORAGE_KEY,
                 value: JSON.stringify({ data: updatedActivities }),
             });
+            
+            console.log("[useAudioSync] Sync completed, storage updated");
         } catch (error) {
             console.error("[useAudioSync] Failed to sync audio tracking data:", error);
+        } finally {
+            isSyncingRef.current = false;
         }
-    }, [userId, activeItem?.id, addUpdateAudioActivity, refreshSlides]);
+    }, [userId, addUpdateAudioActivity]);
 
     return { syncAudioTrackingData };
 };

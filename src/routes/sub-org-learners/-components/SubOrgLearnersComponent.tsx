@@ -10,14 +10,14 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Users, RefreshCw, X, Check, ChevronsUpDown, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Users, RefreshCw, X, Check, ChevronsUpDown, Loader2, Upload } from 'lucide-react';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
+import { BulkUploadModal } from './BulkUploadModal';
 
 interface SubOrgLearnersComponentProps {
   adminMappings: AdminMappings[];
@@ -36,6 +36,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
   const lastFetchedInviteRef = useRef<string | null>(null);
   const [isTerminateDialogOpen, setIsTerminateDialogOpen] = useState(false);
   const [isTerminating, setIsTerminating] = useState(false);
+  const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
 
   // Form states for add member
   const [formData, setFormData] = useState<any>({
@@ -521,6 +522,10 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
+          <Button variant="outline" onClick={() => setIsBulkUploadOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            Bulk Upload
+          </Button>
           <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -881,6 +886,16 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
           )}
         </CardContent>
       </Card>
+
+      {/* Bulk Upload Modal */}
+      <BulkUploadModal
+        isOpen={isBulkUploadOpen}
+        onOpenChange={setIsBulkUploadOpen}
+        adminMappings={adminMappings}
+        selectedPackageSession={selectedPackageSession}
+        instituteCustomFields={instituteCustomFields}
+        onUploadComplete={loadMembers}
+      />
     </div>
   );
 }

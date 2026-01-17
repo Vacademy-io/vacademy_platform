@@ -29,14 +29,16 @@ public class CourseCatalogueService {
     private CatalogueInstituteMappingRepository catalogueInstituteMappingRepository;
 
     @Transactional
-    public List<CourseCatalogueResponse> createCatalogues(List<CourseCatalogueRequest> requests, String instituteId, Institute institute) {
+    public List<CourseCatalogueResponse> createCatalogues(List<CourseCatalogueRequest> requests, String instituteId,
+            Institute institute) {
         List<CourseCatalogueResponse> responses = new ArrayList<>();
 
         for (CourseCatalogueRequest request : requests) {
             // Enforce uniqueness of (instituteId, tagName) among ACTIVE mappings
             if (request.getTagName() != null && !request.getTagName().isBlank()) {
                 Optional<CatalogueInstituteMapping> existing = catalogueInstituteMappingRepository
-                        .findByInstituteIdAndTagName(instituteId, request.getTagName(), List.of(CatalogueStatusEnum.ACTIVE.name()));
+                        .findByInstituteIdAndTagName(instituteId, request.getTagName(),
+                                List.of(CatalogueStatusEnum.ACTIVE.name()));
                 if (existing.isPresent()) {
                     throw new VacademyException(HttpStatus.CONFLICT, "Catalogue tag already exists for this institute");
                 }
@@ -67,8 +69,7 @@ public class CourseCatalogueService {
                             .source(mapping.getSource())
                             .sourceId(mapping.getSourceId())
                             .instituteId(instituteId)
-                            .build()
-            );
+                            .build());
         }
         return responses;
     }
@@ -86,8 +87,10 @@ public class CourseCatalogueService {
         catalogue.setStatus(request.getStatus());
         catalogue = courseCatalogueRepository.save(catalogue);
 
-        Optional<CatalogueInstituteMapping> mapping = catalogueInstituteMappingRepository.findById(catalogueId);
-        if(mapping.isEmpty()) throw new VacademyException(HttpStatus.NOT_FOUND, "Catalogue Not Found");
+        Optional<CatalogueInstituteMapping> mapping = catalogueInstituteMappingRepository
+                .findByCourseCatalogueId(catalogueId);
+        if (mapping.isEmpty())
+            throw new VacademyException(HttpStatus.NOT_FOUND, "Catalogue Not Found");
 
         mapping.get().setStatus(request.getStatus());
         mapping.get().setSource(request.getSource());
@@ -108,7 +111,8 @@ public class CourseCatalogueService {
     }
 
     public List<CourseCatalogueResponse> getAllCataloguesByInstitute(String instituteId) {
-        List<CatalogueInstituteMapping> mappings = catalogueInstituteMappingRepository.findByInstituteIdAndStatusIn(instituteId,List.of(CatalogueStatusEnum.ACTIVE.name()));
+        List<CatalogueInstituteMapping> mappings = catalogueInstituteMappingRepository
+                .findByInstituteIdAndStatusIn(instituteId, List.of(CatalogueStatusEnum.ACTIVE.name()));
 
         return mappings.stream()
                 .map(m -> CourseCatalogueResponse.builder()
@@ -123,8 +127,11 @@ public class CourseCatalogueService {
                 .collect(Collectors.toList());
     }
 
-    public List<CourseCatalogueResponse> getCataloguesForInstituteAndSourceAndSourceId(String instituteId, String source, String sourceId) {
-        List<CatalogueInstituteMapping> mappings = catalogueInstituteMappingRepository.findByInstituteIdAndSourceAndSourceIdAndStatusIn(instituteId,source,sourceId,List.of(CatalogueStatusEnum.ACTIVE.name()));
+    public List<CourseCatalogueResponse> getCataloguesForInstituteAndSourceAndSourceId(String instituteId,
+            String source, String sourceId) {
+        List<CatalogueInstituteMapping> mappings = catalogueInstituteMappingRepository
+                .findByInstituteIdAndSourceAndSourceIdAndStatusIn(instituteId, source, sourceId,
+                        List.of(CatalogueStatusEnum.ACTIVE.name()));
         return mappings.stream()
                 .map(m -> CourseCatalogueResponse.builder()
                         .id(m.getCourseCatalogue().getId())
@@ -139,8 +146,10 @@ public class CourseCatalogueService {
     }
 
     public CourseCatalogueResponse getDefaultCatalogueForInstituteId(String instituteId) {
-        Optional<CatalogueInstituteMapping> catalogueInstituteMappingOptional = catalogueInstituteMappingRepository.findDefaultCatalogueForInstituteId(instituteId, List.of(CatalogueStatusEnum.ACTIVE.name()));
-        if(catalogueInstituteMappingOptional.isEmpty()) throw new VacademyException("No Default Catalogue Found");
+        Optional<CatalogueInstituteMapping> catalogueInstituteMappingOptional = catalogueInstituteMappingRepository
+                .findDefaultCatalogueForInstituteId(instituteId, List.of(CatalogueStatusEnum.ACTIVE.name()));
+        if (catalogueInstituteMappingOptional.isEmpty())
+            throw new VacademyException("No Default Catalogue Found");
         CatalogueInstituteMapping mapping = catalogueInstituteMappingOptional.get();
 
         return CourseCatalogueResponse.builder()

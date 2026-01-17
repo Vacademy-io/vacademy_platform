@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.util.Map;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 @Component
@@ -57,6 +58,15 @@ public class InternalClientUtils {
             String baseUrl,
             String route,
             MultipartFile file) throws IOException {
+        return makeHmacRequestForMultipartFile(clientName, method, baseUrl, route, file, null);
+    }
+
+    public ResponseEntity<String> makeHmacRequestForMultipartFile(String clientName,
+            String method,
+            String baseUrl,
+            String route,
+            MultipartFile file,
+            Map<String, Object> additionalParams) throws IOException {
         // Retrieve the secret key from the database
         String secretKey = hmacUtils.retrieveSecretKeyFromDatabase(clientName);
         if (secretKey == null) {
@@ -74,6 +84,12 @@ public class InternalClientUtils {
         // Prepare body as multipart
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("file", new MultipartInputStreamFileResource(file.getInputStream(), file.getOriginalFilename()));
+
+        if (additionalParams != null) {
+            for (Map.Entry<String, Object> entry : additionalParams.entrySet()) {
+                body.add(entry.getKey(), entry.getValue());
+            }
+        }
 
         HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 

@@ -90,6 +90,30 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
+    public FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key)
+            throws FileUploadException, IOException {
+        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
+        FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(),
+                Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
+                "SCORM_UPLOAD", "SCORM_UPLOAD");
+        fileMetadata = fileMetadataRepository.save(fileMetadata);
+        String url = "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+
+        FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
+                .expiry(addTime(100))
+                .fileName(fileMetadata.getFileName())
+                .fileType(fileMetadata.getFileType())
+                .id(fileMetadata.getId())
+                .source(fileMetadata.getSource())
+                .sourceId(fileMetadata.getSourceId())
+                .url(url)
+                .createdOn(fileMetadata.getCreatedOn())
+                .updatedOn(fileMetadata.getUpdatedOn());
+
+        return builder.build();
+    }
+
+    @Override
     public Object downloadFile(String fileName) throws FileDownloadException, IOException {
         return null;
     }

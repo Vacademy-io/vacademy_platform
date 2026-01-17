@@ -13,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.HmacAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
@@ -70,18 +71,20 @@ public class WebSecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf().disable() // Disable csrf protection as we're using JWT
-                .authorizeHttpRequests()
-                .requestMatchers(ALLOWED_PATHS) // Allow access to specific paths without authentication
-                .permitAll()
-                .anyRequest()
-                .authenticated() // Require authentication for all other requests
-                .and()
-                .sessionManagement()
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS) // Use stateless JWT based authentication
-                .and()
-                .authenticationProvider(authenticationProvider()) // Use custom authentication provider
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class); // Add JWT filter before username/password filter
+                .csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .authorizeHttpRequests(authz -> {
+                    // Use AntPathRequestMatcher for Ant-style pattern matching (compatible with
+                    // Spring 6)
+                    for (String path : ALLOWED_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).permitAll();
+                    }
+                    authz.anyRequest().authenticated();
+                })
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -92,7 +95,8 @@ public class WebSecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    // Bean for authentication provider using user details service and password encoder
+    // Bean for authentication provider using user details service and password
+    // encoder
     @Bean
     public AuthenticationProvider authenticationProvider() {
         return new ServiceAuthProvider();

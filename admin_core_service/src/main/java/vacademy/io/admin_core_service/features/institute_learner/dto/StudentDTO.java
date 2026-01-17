@@ -55,6 +55,9 @@ public class StudentDTO {
     // 🔑 Dynamic custom fields (fieldKey -> value)
     private Map<String, String> customFields = new HashMap<>();
     private Long referralCount;
+    private String packageName;
+    private String levelName;
+    private String sessionName;
 
     // Constructor that takes a Student entity
     public StudentDTO(Student student) {
@@ -129,11 +132,22 @@ public class StudentDTO {
             if (objects.length > 26) {
                 this.parentsToMotherEmail = (String) objects[26]; // Additional field from mapping table
             }
-            if (objects.length > 27){
+            if (objects.length > 27) {
                 this.userPlanId = (String) objects[27]; // Additional field from mapping table
             }
-            if (objects.length > 28){
-                this.attendancePercent = (Double) objects[28]; // Additional field for attendance percentage
+            if (objects.length > 28) {
+                if (objects[28] instanceof Double) {
+                    this.attendancePercent = (Double) objects[28]; // Additional field for attendance percentage
+                }
+            }
+            if (objects.length > 29) {
+                this.packageName = (String) objects[29];
+            }
+            if (objects.length > 30) {
+                this.levelName = (String) objects[30];
+            }
+            if (objects.length > 31) {
+                this.sessionName = (String) objects[31];
             }
         }
     }

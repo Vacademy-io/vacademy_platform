@@ -23,5 +23,6 @@ public class PaymentInitiationRequestDTO {
     private PayPalRequestDTO payPalRequest;
     private ManualPaymentDTO manualRequest;
     private EwayRequestDTO ewayRequest;
+    private PhonePeRequestDTO phonePeRequest;
     private PaymentType paymentType;
 }

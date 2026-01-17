@@ -37,8 +37,6 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.text.SimpleDateFormat;
-import vacademy.io.common.institute.entity.Institute;
-import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.List;
 import java.util.Map;
@@ -80,6 +78,8 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private ReenrollmentGapValidationService reenrollmentGapValidationService;
+
+    @Autowired
     private InstituteRepository instituteRepository;
 
     @Autowired
@@ -89,7 +89,9 @@ public class LearnerEnrollRequestService {
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
-            boolean sendCredentials = getSendCredentialsFlag(learnerEnrollRequestDTO.getInstituteId());
+            boolean sendCredentials = getSendCredentialsFlag(
+                    learnerEnrollRequestDTO.getInstituteId(),
+                    enrollDTO.getPackageSessionIds());
             UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
             learnerEnrollRequestDTO.setUser(user);
@@ -173,7 +175,7 @@ public class LearnerEnrollRequestService {
                 } else {
                     // At least one is allowed - filter out blocked ones
                     log.info("Filtering out {} blocked package sessions due to gap violation. " +
-                            "Proceeding with {} allowed package sessions.",
+                                    "Proceeding with {} allowed package sessions.",
                             gapValidationResult.getBlockedPackageSessions().size(),
                             gapValidationResult.getAllowedPackageSessionIds().size());
 
@@ -332,28 +334,75 @@ public class LearnerEnrollRequestService {
                 learnerEnrollRequestDTO.getLearnerExtraDetails());
     }
 
-
-
     /**
-     * Extract sendCredentials flag from institute's setting_json
+     * Extract sendCredentials flag using two-level policy:
+     * 1. Institute-level setting (short-circuits if NO)
+     * 2. Package-level setting (returns YES if at least one package says YES)
      *
-     * Expected JSON structure:
+     * Institute setting JSON structure:
      * {
-     *   "setting": {
-     *     "LEARNER_ENROLLMENT_SETTING": {
-     *       "key": "LEARNER_ENROLLMENT_SETTING",
-     *       "name": "Learner Enrollment Settings",
-     *       "data": {
-     *         "sendCredentials": true/false
-     *       }
-     *     }
-     *   }
+     * "setting": {
+     * "LEARNER_ENROLLMENT_SETTING": {
+     * "key": "LEARNER_ENROLLMENT_SETTING",
+     * "name": "Learner Enrollment Settings",
+     * "data": {
+     * "sendCredentials": true/false
+     * }
+     * }
+     * }
      * }
      *
-     * @param instituteId The institute ID
+     * Package setting JSON structure (in course_setting column):
+     * {
+     * "setting": {
+     * "LEARNER_ENROLLMENT_SETTING": {
+     * "key": "LEARNER_ENROLLMENT_SETTING",
+     * "name": "Learner Enrollment Settings",
+     * "data": {
+     * "sendCredentials": true/false
+     * }
+     * }
+     * }
+     * }
+     *
+     * @param instituteId       The institute ID
+     * @param packageSessionIds List of package session IDs for enrollment
      * @return true if credentials should be sent (default), false otherwise
      */
-    private boolean getSendCredentialsFlag(String instituteId) {
+    private boolean getSendCredentialsFlag(String instituteId, List<String> packageSessionIds) {
+        try {
+            // LEVEL 1: Check institute-level setting first
+            boolean instituteSendCredentials = checkInstituteSendCredentialsFlag(instituteId);
+
+            // If institute says NO, short-circuit and return false immediately
+            if (!instituteSendCredentials) {
+                log.info("Institute {} has sendCredentials=false. Skipping package-level checks.", instituteId);
+                return false;
+            }
+
+            // LEVEL 2: Institute says YES, now check package-level settings
+            // If at least one package says YES, return true
+            boolean packageSendCredentials = checkPackageSendCredentialsFlag(packageSessionIds);
+
+            log.info("Final sendCredentials decision for institute {}: {}",
+                    instituteId, packageSendCredentials);
+            return packageSendCredentials;
+
+        } catch (Exception e) {
+            log.error("Error in getSendCredentialsFlag for institute: {} - defaulting to sendCredentials=true",
+                    instituteId, e);
+            return true;
+        }
+    }
+
+    /**
+     * Check institute-level sendCredentials flag
+     *
+     * @param instituteId The institute ID
+     * @return true if credentials should be sent at institute level (default),
+     *         false otherwise
+     */
+    private boolean checkInstituteSendCredentialsFlag(String instituteId) {
         try {
             Optional<Institute> instituteOpt = instituteRepository.findById(instituteId);
 
@@ -374,25 +423,33 @@ public class LearnerEnrollRequestService {
 
             // Check each level of the path to provide better error messages
             if (!rootNode.has("setting")) {
-                log.info("'setting' object not found in setting_json for institute: {} - defaulting to sendCredentials=true", instituteId);
+                log.info(
+                        "'setting' object not found in setting_json for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
                 return true;
             }
 
             JsonNode settingNode = rootNode.path("setting");
             if (!settingNode.has("LEARNER_ENROLLMENT_SETTING")) {
-                log.info("'LEARNER_ENROLLMENT_SETTING' not found in setting_json for institute: {} - defaulting to sendCredentials=true", instituteId);
+                log.info(
+                        "'LEARNER_ENROLLMENT_SETTING' not found in setting_json for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
                 return true;
             }
 
             JsonNode enrollmentSettingNode = settingNode.path("LEARNER_ENROLLMENT_SETTING");
             if (!enrollmentSettingNode.has("data")) {
-                log.info("'data' object not found in LEARNER_ENROLLMENT_SETTING for institute: {} - defaulting to sendCredentials=true", instituteId);
+                log.info(
+                        "'data' object not found in LEARNER_ENROLLMENT_SETTING for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
                 return true;
             }
 
             JsonNode dataNode = enrollmentSettingNode.path("data");
             if (!dataNode.has("sendCredentials")) {
-                log.info("'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for institute: {} - defaulting to sendCredentials=true", instituteId);
+                log.info(
+                        "'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
                 return true;
             }
 
@@ -402,8 +459,116 @@ public class LearnerEnrollRequestService {
             return sendCredentials;
 
         } catch (Exception e) {
-            log.error("Error parsing setting_json for institute: {} - defaulting to sendCredentials=true",
+            log.error("Error parsing institute setting_json for institute: {} - defaulting to sendCredentials=true",
                     instituteId, e);
+            return true;
+        }
+    }
+
+    /**
+     * Check package-level sendCredentials flag for all packages in the enrollment
+     * Returns true if at least one package has sendCredentials=true
+     *
+     * @param packageSessionIds List of package session IDs
+     * @return true if at least one package says to send credentials (default),
+     *         false otherwise
+     */
+    private boolean checkPackageSendCredentialsFlag(List<String> packageSessionIds) {
+        try {
+            // If no package sessions provided, default to true
+            if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+                log.info("No package sessions provided - defaulting to sendCredentials=true");
+                return true;
+            }
+
+            // Fetch all package sessions to get their package IDs
+            List<PackageSession> packageSessions = packageSessionRepository
+                    .findPackageSessionsByIds(packageSessionIds);
+
+            if (packageSessions.isEmpty()) {
+                log.warn("No package sessions found for provided IDs - defaulting to sendCredentials=true");
+                return true;
+            }
+
+            // Check each package's course_setting for sendCredentials flag
+            for (PackageSession packageSession : packageSessions) {
+                try {
+                    if (packageSession.getPackageEntity() == null) {
+                        log.warn("Package entity is null for package session: {} - skipping",
+                                packageSession.getId());
+                        continue;
+                    }
+
+                    String packageId = packageSession.getPackageEntity().getId();
+                    String courseSetting = packageSession.getPackageEntity().getCourseSetting();
+
+                    // If courseSetting is null or empty, treat as sendCredentials=true for this
+                    // package
+                    if (!StringUtils.hasText(courseSetting)) {
+                        log.info("No course_setting found for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    // Parse the course_setting JSON
+                    JsonNode rootNode = objectMapper.readTree(courseSetting);
+
+                    // Navigate through the JSON structure
+                    if (!rootNode.has("setting")) {
+                        log.info(
+                                "'setting' object not found in course_setting for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    JsonNode settingNode = rootNode.path("setting");
+                    if (!settingNode.has("LEARNER_ENROLLMENT_SETTING")) {
+                        log.info(
+                                "'LEARNER_ENROLLMENT_SETTING' not found in course_setting for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    JsonNode enrollmentSettingNode = settingNode.path("LEARNER_ENROLLMENT_SETTING");
+                    if (!enrollmentSettingNode.has("data")) {
+                        log.info(
+                                "'data' object not found in LEARNER_ENROLLMENT_SETTING for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    JsonNode dataNode = enrollmentSettingNode.path("data");
+                    if (!dataNode.has("sendCredentials")) {
+                        log.info(
+                                "'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    JsonNode sendCredentialsNode = dataNode.path("sendCredentials");
+                    boolean packageSendCredentials = sendCredentialsNode.asBoolean(true);
+
+                    log.info("Package {} sendCredentials setting found: {}", packageId, packageSendCredentials);
+
+                    // If at least one package says YES, return true
+                    if (packageSendCredentials) {
+                        log.info("At least one package ({}) has sendCredentials=true - returning true", packageId);
+                        return true;
+                    }
+
+                } catch (Exception e) {
+                    log.error("Error parsing course_setting for package session: {} - treating as sendCredentials=true",
+                            packageSession.getId(), e);
+                    return true; // Error in parsing, default to true
+                }
+            }
+
+            // If we reach here, all packages explicitly said NO
+            log.info("All packages have sendCredentials=false - returning false");
+            return false;
+
+        } catch (Exception e) {
+            log.error("Error in checkPackageSendCredentialsFlag - defaulting to sendCredentials=true", e);
             return true;
         }
     }

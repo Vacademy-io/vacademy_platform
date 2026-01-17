@@ -22,7 +22,16 @@ public class LearnerSetupController {
     @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
     @Cacheable(value = "learnerInstituteDetails", key = "#instituteId + ':' + #userId")
     public ResponseEntity<StudentInstituteInfoDTO> getInstituteDetails(@PathVariable String instituteId, @RequestParam String userId) {
-        StudentInstituteInfoDTO instituteInfoDTO = learnerInstituteManager.getInstituteDetails(instituteId, userId);
+        StudentInstituteInfoDTO instituteInfoDTO = learnerInstituteManager.getInstituteDetails(instituteId, userId, true);
+        return ResponseEntity.ok(instituteInfoDTO);
+    }
+
+
+    @GetMapping("/details-without-batches/{instituteId}")
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
+    @Cacheable(value = "learnerInstituteDetails", key = "#instituteId + ':' + #userId")
+    public ResponseEntity<StudentInstituteInfoDTO> getInstituteDetailsWithoutBatches(@PathVariable String instituteId, @RequestParam String userId) {
+        StudentInstituteInfoDTO instituteInfoDTO = learnerInstituteManager.getInstituteDetails(instituteId, userId, false);
         return ResponseEntity.ok(instituteInfoDTO);
     }
 

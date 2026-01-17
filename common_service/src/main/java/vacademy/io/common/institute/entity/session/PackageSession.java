@@ -60,6 +60,9 @@ public class PackageSession {
     @Column(name = "enrollment_policy_settings")
     private String enrollmentPolicySettings;
 
+    @Column(name = "available_slots")
+    private Integer availableSlots;
+
     @PrePersist
     public void prePersist() {
         if (isOrgAssociated == null){

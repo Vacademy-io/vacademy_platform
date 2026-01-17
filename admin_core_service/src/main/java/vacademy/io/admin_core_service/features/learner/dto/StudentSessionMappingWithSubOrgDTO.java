@@ -27,7 +27,7 @@ public class StudentSessionMappingWithSubOrgDTO {
     private String status;
     private Date createdAt;
     private Date updatedAt;
-    
+
     // Related IDs
     private String groupId;
     private String instituteId;
@@ -40,11 +40,16 @@ public class StudentSessionMappingWithSubOrgDTO {
     private String desiredLevelId;
     private String desiredPackageId;
     private String automatedCompletionCertificateFileId;
-    
+
     // Sub-org specific
     private String subOrgId;
     private String commaSeparatedOrgRoles;
-    
+
+    // New fields
+    private String packageName;
+    private String levelName;
+    private String sessionName;
+
     // Sub-org details (nested institute object)
     private InstituteBasicDTO subOrgDetails;
     private String inviteCode;

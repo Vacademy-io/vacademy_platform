@@ -2,6 +2,9 @@ package vacademy.io.admin_core_service.features.course.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -266,6 +269,47 @@ public class CourseApprovalService {
         return rawResults.stream()
             .map(TeacherCourseDetailDTO::fromDatabaseResult)
             .collect(Collectors.toList());
+    }
+
+    /**
+     * V2: Enhanced method to get teacher's courses with detailed relationship information
+     * Includes DELETED filter and pagination support
+     */
+    public Page<Map<String, Object>> getTeacherCoursesWithDetailsV2(String teacherId, Pageable pageable) {
+        List<String> packageStatuses = Arrays.asList(
+            PackageStatusEnum.DRAFT.name(), 
+            PackageStatusEnum.IN_REVIEW.name(), 
+            PackageStatusEnum.ACTIVE.name()
+        );
+        
+        List<String> facultyMappingStatuses = Arrays.asList(
+            "ACTIVE"  // Only consider active faculty assignments
+        );
+        
+        return packageRepository.findTeacherPackagesWithRelationshipDetailsV2(
+            teacherId, 
+            packageStatuses, 
+            facultyMappingStatuses,
+            pageable
+        );
+    }
+    
+    /**
+     * V2: Get teacher's courses with structured DTO response including relationship details
+     * Includes DELETED filter and pagination support
+     */
+    public Page<TeacherCourseDetailDTO> getTeacherCoursesAsDTOV2(String teacherId, Pageable pageable) {
+        Page<Map<String, Object>> rawResults = getTeacherCoursesWithDetailsV2(teacherId, pageable);
+        
+        List<TeacherCourseDetailDTO> dtoList = rawResults.getContent().stream()
+            .map(TeacherCourseDetailDTO::fromDatabaseResult)
+            .collect(Collectors.toList());
+        
+        return new PageImpl<>(
+            dtoList,
+            rawResults.getPageable(),
+            rawResults.getTotalElements()
+        );
     }
 
     /**

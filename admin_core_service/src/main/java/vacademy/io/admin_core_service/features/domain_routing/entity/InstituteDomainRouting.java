@@ -89,4 +89,7 @@ public class InstituteDomainRouting {
 
     @Column(name = "mac_app_link", length = 500)
     private String macAppLink;
+
+    @Column(name = "convert_username_password_to_lowercase", nullable = false)
+    private boolean convertUsernamePasswordToLowercase;
 }

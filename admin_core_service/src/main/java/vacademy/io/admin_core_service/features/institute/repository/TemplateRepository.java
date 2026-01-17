@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.institute.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -63,6 +65,10 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     // Find templates by institute ID with pagination support
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId ORDER BY t.createdAt DESC")
     List<Template> findByInstituteIdOrderByCreatedAtDesc(@Param("instituteId") String instituteId);
+
+    // Find templates by institute ID with pagination (Pageable)
+    @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId ORDER BY t.createdAt DESC")
+    Page<Template> findByInstituteIdOrderByCreatedAtDescPageable(@Param("instituteId") String instituteId, Pageable pageable);
 
     // Find templates by institute ID and type with pagination support
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND t.type = :type ORDER BY t.createdAt DESC")

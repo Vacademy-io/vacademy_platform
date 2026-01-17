@@ -13,9 +13,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
     @Query("""
                 SELECT new vacademy.io.admin_core_service.features.slide.dto.SlideCountProjection(
                     COALESCE(SUM(CASE WHEN s.sourceType = 'VIDEO' THEN 1 ELSE 0 END), 0) AS videoCount,
+                    COALESCE(SUM(CASE WHEN s.sourceType = 'HTML_VIDEO' THEN 1 ELSE 0 END), 0) AS htmlVideoCount,
+                    COALESCE(SUM(CASE WHEN s.sourceType = 'SCORM' THEN 1 ELSE 0 END), 0) AS scormCount,
                     COALESCE(SUM(CASE WHEN s.sourceType = 'DOCUMENT' AND EXISTS (SELECT 1 FROM DocumentSlide d WHERE d.id = s.sourceId AND d.type = 'PDF') THEN 1 ELSE 0 END), 0) AS pdfCount,
                     COALESCE(SUM(CASE WHEN s.sourceType = 'DOCUMENT' AND EXISTS (SELECT 1 FROM DocumentSlide d WHERE d.id = s.sourceId AND d.type = 'DOC') THEN 1 ELSE 0 END), 0) AS docCount,
-                    COALESCE(SUM(CASE WHEN s.sourceType NOT IN ('VIDEO', 'DOCUMENT') THEN 1 ELSE 0 END), 0) AS unknownCount
+                    COALESCE(SUM(CASE WHEN s.sourceType NOT IN ('VIDEO', 'HTML_VIDEO', 'SCORM', 'DOCUMENT') THEN 1 ELSE 0 END), 0) AS unknownCount
                 )
                 FROM ChapterToSlides cts
                 JOIN Slide s ON cts.slide.id = s.id
@@ -586,6 +588,110 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         WHERE s.source_type = 'QUIZ' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
+
+                        UNION ALL
+
+                        -- HTML VIDEO SLIDES
+                        SELECT
+                            s.created_at,
+                            cs.slide_order,
+                            json_build_object(
+                                'id', s.id,
+                                'title', s.title,
+                                'status', s.status,
+                                'is_loaded', true,
+                                'new_slide', true,
+                                'source_id', s.source_id,
+                                'description', s.description,
+                                'slide_order', cs.slide_order,
+                                'source_type', s.source_type,
+                                'drip_condition', s.drip_condition_json,
+                                'html_video_slide', json_build_object(
+                                    'id', h.id,
+                                    'url', h.url,
+                                    'video_length_in_millis', h.video_length,
+                                    'ai_gen_video_id', h.ai_gen_video_id
+                                )
+                            ) AS slide_data
+                        FROM slide s
+                        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                        JOIN chapter c ON c.id = cs.chapter_id
+                        JOIN html_video_slide h ON h.id = s.source_id
+                        WHERE s.source_type = 'HTML_VIDEO' AND c.id = :chapterId
+                        AND s.status IN (:slideStatus)
+                        AND cs.status IN (:chapterToSlidesStatus)
+
+
+                        UNION ALL
+
+                        -- SCORM SLIDES
+                        SELECT
+                            s.created_at,
+                            cs.slide_order,
+                            json_build_object(
+                                'id', s.id,
+                                'title', s.title,
+                                'status', s.status,
+                                'is_loaded', true,
+                                'new_slide', true,
+                                'source_id', s.source_id,
+                                'description', s.description,
+                                'slide_order', cs.slide_order,
+                                'source_type', s.source_type,
+                                'drip_condition', s.drip_condition_json,
+                                'scorm_slide', json_build_object(
+                                    'id', sc.id,
+                                    'launch_path', sc.launch_path,
+                                    'scorm_version', sc.scorm_version,
+                                    'original_file_id', sc.original_file_id
+                                )
+                            ) AS slide_data
+                        FROM slide s
+                        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                        JOIN chapter c ON c.id = cs.chapter_id
+                        JOIN scorm_slide sc ON sc.id = s.source_id
+                        WHERE s.source_type = 'SCORM' AND c.id = :chapterId
+                        AND s.status IN (:slideStatus)
+                        AND cs.status IN (:chapterToSlidesStatus)
+
+                        UNION ALL
+
+                        -- AUDIO SLIDES
+                        SELECT
+                            s.created_at,
+                            cs.slide_order,
+                            json_build_object(
+                                'id', s.id,
+                                'title', s.title,
+                                'status', s.status,
+                                'is_loaded', true,
+                                'new_slide', true,
+                                'source_id', s.source_id,
+                                'description', s.description,
+                                'slide_order', cs.slide_order,
+                                'source_type', s.source_type,
+                                'drip_condition', s.drip_condition_json,
+                                'audio_slide', json_build_object(
+                                    'id', a.id,
+                                    'title', a.title,
+                                    'description', a.description,
+                                    'audio_file_id', a.audio_file_id,
+                                    'thumbnail_file_id', a.thumbnail_file_id,
+                                    'audio_length_in_millis', a.audio_length_in_millis,
+                                    'published_audio_file_id', a.published_audio_file_id,
+                                    'published_audio_length_in_millis', a.published_audio_length_in_millis,
+                                    'source_type', a.source_type,
+                                    'external_url', a.external_url,
+                                    'transcript', a.transcript
+                                )
+                            ) AS slide_data
+                        FROM slide s
+                        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                        JOIN chapter c ON c.id = cs.chapter_id
+                        JOIN audio_slide a ON a.id = s.source_id
+                        WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
+                        AND s.status IN (:slideStatus)
+                        AND cs.status IN (:chapterToSlidesStatus)
                     ) AS all_slides
             """, nativeQuery = true)
     String getSlidesByChapterId(
@@ -938,6 +1044,86 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 WHERE s.source_type = 'QUIZ' AND c.id = :chapterId
                 AND s.status IN (:slideStatus)
                 AND cs.status IN (:chapterToSlidesStatus)
+
+                UNION ALL
+
+                -- HTML VIDEO SLIDES
+                SELECT DISTINCT ON (s.id)
+                    s.created_at,
+                    cs.slide_order,
+                    json_build_object(
+                        'id', s.id,
+                        'title', s.title,
+                        'status', s.status,
+                        'is_loaded', true,
+                        'new_slide', true,
+                        'source_id', s.source_id,
+                        'description', s.description,
+                        'slide_order', cs.slide_order,
+                        'source_type', s.source_type,
+                        'drip_condition', s.drip_condition_json,
+                        'progress_marker', NULL,
+                        'percentage_completed', NULL,
+                        'html_video_slide', json_build_object(
+                            'id', h.id,
+                            'url', h.url,
+                            'video_length_in_millis', h.video_length,
+                            'ai_gen_video_id', h.ai_gen_video_id
+                        )
+                    ) AS slide_data
+                FROM slide s
+                JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                JOIN chapter c ON c.id = cs.chapter_id
+                JOIN html_video_slide h ON h.id = s.source_id
+                WHERE s.source_type = 'HTML_VIDEO' AND c.id = :chapterId
+                AND s.status IN (:slideStatus)
+                AND cs.status IN (:chapterToSlidesStatus)
+
+                UNION ALL
+
+                -- AUDIO SLIDES
+                SELECT DISTINCT ON (s.id)
+                    s.created_at,
+                    cs.slide_order,
+                    json_build_object(
+                        'id', s.id,
+                        'title', s.title,
+                        'status', s.status,
+                        'is_loaded', true,
+                        'new_slide', true,
+                        'source_id', s.source_id,
+                        'description', s.description,
+                        'slide_order', cs.slide_order,
+                        'source_type', s.source_type,
+                        'drip_condition', s.drip_condition_json,
+                        'progress_marker', COALESCE(CAST(lo_audio_marker.value AS bigint), NULL),
+                        'percentage_completed', CASE
+                            WHEN lo_audio_percent.value IS NULL OR lo_audio_percent.value = 'null' THEN NULL
+                            ELSE CAST(lo_audio_percent.value AS double precision)
+                        END,
+                        'audio_slide', json_build_object(
+                            'id', a.id,
+                            'title', a.title,
+                            'description', a.description,
+                            'audio_file_id', a.audio_file_id,
+                            'thumbnail_file_id', a.thumbnail_file_id,
+                            'audio_length_in_millis', a.audio_length_in_millis,
+                            'published_audio_file_id', a.published_audio_file_id,
+                            'published_audio_length_in_millis', a.published_audio_length_in_millis,
+                            'source_type', a.source_type,
+                            'external_url', a.external_url,
+                            'transcript', a.transcript
+                        )
+                    ) AS slide_data
+                FROM slide s
+                JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                JOIN chapter c ON c.id = cs.chapter_id
+                JOIN audio_slide a ON a.id = s.source_id
+                LEFT JOIN learner_operation lo_audio_marker ON lo_audio_marker.source = 'SLIDE' AND lo_audio_marker.source_id = s.id AND lo_audio_marker.user_id = :userId AND lo_audio_marker.operation = 'AUDIO_LAST_TIMESTAMP'
+                LEFT JOIN learner_operation lo_audio_percent ON lo_audio_percent.source = 'SLIDE' AND lo_audio_percent.source_id = s.id AND lo_audio_percent.user_id = :userId AND lo_audio_percent.operation = 'PERCENTAGE_AUDIO_LISTENED'
+                WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
+                AND s.status IN (:slideStatus)
+                AND cs.status IN (:chapterToSlidesStatus)
             ) AS slide_data
             """, nativeQuery = true)
     String getSlidesByChapterId(
@@ -1005,6 +1191,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     CASE
                         WHEN s.source_type = 'VIDEO' THEN
                             ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'HTML_VIDEO' THEN
+                            ROUND(COALESCE(hvs.video_length, 0) / 60000.0, 2)
                         WHEN s.source_type = 'DOCUMENT' THEN
                             CASE
                                 WHEN ds.type = 'PDF' THEN
@@ -1026,6 +1214,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             FROM slide s
             LEFT JOIN video vs
                 ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+            LEFT JOIN html_video_slide hvs
+                ON hvs.id = s.source_id AND s.source_type = 'HTML_VIDEO'
             LEFT JOIN document_slide ds
                 ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
             LEFT JOIN assignment_question_counts aqc
@@ -1101,6 +1291,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     CASE
                         WHEN s.source_type = 'VIDEO' THEN
                             ROUND(COALESCE(vs.published_video_length, 0) / 60000.0, 2) -- Corrected ROUND function arguments
+                        WHEN s.source_type = 'HTML_VIDEO' THEN
+                            ROUND(COALESCE(hvs.video_length, 0) / 60000.0, 2)
                         WHEN s.source_type = 'DOCUMENT' THEN
                             CASE
                                 WHEN ds.type = 'PDF' THEN
@@ -1122,6 +1314,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             FROM slide s
             LEFT JOIN video vs
                 ON vs.id = s.source_id AND s.source_type = 'VIDEO'
+            LEFT JOIN html_video_slide hvs
+                ON hvs.id = s.source_id AND s.source_type = 'HTML_VIDEO'
             LEFT JOIN document_slide ds
                 ON ds.id = s.source_id AND s.source_type = 'DOCUMENT'
             LEFT JOIN assignment_question_counts aqc
@@ -1488,6 +1682,115 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     WHERE s.source_type = 'QUIZ' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
                     AND cs.status IN (:chapterToSlidesStatus)
+
+                    UNION ALL
+
+                    -- HTML VIDEO SLIDES
+                    SELECT DISTINCT ON (s.id)
+                        s.created_at,
+                        cs.slide_order,
+                        json_build_object(
+                            'id', s.id,
+                            'title', s.title,
+                            'status', s.status,
+                            'is_loaded', true,
+                            'new_slide', true,
+                            'source_id', s.source_id,
+                            'description', s.description,
+                            'slide_order', cs.slide_order,
+                            'source_type', s.source_type,
+                            'drip_condition', s.drip_condition_json,
+                            'progress_marker', NULL,
+                            'percentage_completed', NULL,
+                            'html_video_slide', json_build_object(
+                                'id', h.id,
+                                'url', h.url,
+                                'video_length_in_millis', h.video_length,
+                                'ai_gen_video_id', h.ai_gen_video_id
+                            )
+                        ) AS slide_data
+                    FROM slide s
+                    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                    JOIN chapter c ON c.id = cs.chapter_id
+                    JOIN html_video_slide h ON h.id = s.source_id
+                    WHERE s.source_type = 'HTML_VIDEO' AND c.id = :chapterId
+                    AND s.status IN (:slideStatus)
+                    AND cs.status IN (:chapterToSlidesStatus)
+
+                    UNION ALL
+
+                    -- SCORM SLIDES
+                    SELECT DISTINCT ON (s.id)
+                        s.created_at,
+                        cs.slide_order,
+                        json_build_object(
+                            'id', s.id,
+                            'title', s.title,
+                            'status', s.status,
+                            'is_loaded', true,
+                            'new_slide', true,
+                            'source_id', s.source_id,
+                            'description', s.description,
+                            'slide_order', cs.slide_order,
+                            'source_type', s.source_type,
+                            'drip_condition', s.drip_condition_json,
+                            'progress_marker', NULL,
+                            'percentage_completed', NULL,
+                            'scorm_slide', json_build_object(
+                                'id', sc.id,
+                                'launch_path', sc.launch_path,
+                                'scorm_version', sc.scorm_version,
+                                'original_file_id', sc.original_file_id
+                            )
+                        ) AS slide_data
+                    FROM slide s
+                    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                    JOIN chapter c ON c.id = cs.chapter_id
+                    JOIN scorm_slide sc ON sc.id = s.source_id
+                    WHERE s.source_type = 'SCORM' AND c.id = :chapterId
+                    AND s.status IN (:slideStatus)
+                    AND cs.status IN (:chapterToSlidesStatus)
+
+                    UNION ALL
+
+                    -- AUDIO SLIDES
+                    SELECT DISTINCT ON (s.id)
+                        s.created_at,
+                        cs.slide_order,
+                        json_build_object(
+                            'id', s.id,
+                            'title', s.title,
+                            'status', s.status,
+                            'is_loaded', true,
+                            'new_slide', true,
+                            'source_id', s.source_id,
+                            'description', s.description,
+                            'slide_order', cs.slide_order,
+                            'source_type', s.source_type,
+                            'drip_condition', s.drip_condition_json,
+                            'progress_marker', NULL,
+                            'percentage_completed', NULL,
+                            'audio_slide', json_build_object(
+                                'id', a.id,
+                                'title', a.title,
+                                'description', a.description,
+                                'audio_file_id', a.audio_file_id,
+                                'thumbnail_file_id', a.thumbnail_file_id,
+                                'audio_length_in_millis', a.audio_length_in_millis,
+                                'published_audio_file_id', a.published_audio_file_id,
+                                'published_audio_length_in_millis', a.published_audio_length_in_millis,
+                                'source_type', a.source_type,
+                                'external_url', a.external_url,
+                                'transcript', a.transcript
+                            )
+                        ) AS slide_data
+                    FROM slide s
+                    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                    JOIN chapter c ON c.id = cs.chapter_id
+                    JOIN audio_slide a ON a.id = s.source_id
+                    WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
+                    AND s.status IN (:slideStatus)
+                    AND cs.status IN (:chapterToSlidesStatus)
                 ) AS slide_data
             """, nativeQuery = true)
     String getSlidesByChapterIdOpen(
@@ -1530,6 +1833,14 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         WHEN s.source_type = 'VIDEO' THEN
                             -- CORRECTED this line: vs.video_length -> vs.video_length
                             ROUND(COALESCE(vs.published_video_length, vs.video_length, 0) / 60000.0, 2)
+
+                        -- 1.5 For HTML_VIDEO slides
+                        WHEN s.source_type = 'HTML_VIDEO' THEN
+                            ROUND(COALESCE(hvs.video_length, 0) / 60000.0, 2)
+
+                        -- 1.6 For SCORM slides (default 15 mins)
+                        WHEN s.source_type = 'SCORM' THEN
+                            15.0
 
                         -- 2. For DOCUMENT slides (PDF, PRESENTATION, etc.)
                         WHEN s.source_type = 'DOCUMENT' THEN
@@ -1577,6 +1888,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 assignment_question_counts aqc ON s.source_id = aqc.assignment_slide_id AND s.source_type = 'ASSIGNMENT'
             LEFT JOIN
                 quiz_question_counts qqc ON s.source_id = qqc.quiz_slide_id AND s.source_type = 'QUIZ'
+            LEFT JOIN
+                html_video_slide hvs ON s.source_id = hvs.id AND s.source_type = 'HTML_VIDEO'
             WHERE
                 ps.package_id = :packageId
                 AND ps.session_id = :sessionId
@@ -1623,6 +1936,10 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     CASE
                         WHEN s.source_type = 'VIDEO' THEN
                             ROUND(COALESCE(vs.published_video_length, vs.video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'HTML_VIDEO' THEN
+                            ROUND(COALESCE(hvs.video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'SCORM' THEN
+                            15.0
                         WHEN s.source_type = 'DOCUMENT' THEN
                             CASE
                                 WHEN ds.type = 'PDF' THEN
@@ -1657,6 +1974,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 assignment_question_counts aqc ON s.source_id = aqc.assignment_slide_id AND s.source_type = 'ASSIGNMENT'
             LEFT JOIN
                 quiz_question_counts qqc ON s.source_id = qqc.quiz_slide_id AND s.source_type = 'QUIZ'
+            LEFT JOIN
+                html_video_slide hvs ON s.source_id = hvs.id AND s.source_type = 'HTML_VIDEO'
             WHERE
                 ps.id = :packageSessionId
                 AND s.status IN (:slideStatusList)
@@ -1705,6 +2024,10 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     CASE
                         WHEN s.source_type = 'VIDEO' THEN
                             ROUND(COALESCE(vs.published_video_length, vs.video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'HTML_VIDEO' THEN
+                            ROUND(COALESCE(hvs.video_length, 0) / 60000.0, 2)
+                        WHEN s.source_type = 'SCORM' THEN
+                            15.0
                         WHEN s.source_type = 'DOCUMENT' THEN
                             CASE
                                 WHEN ds.type = 'PDF' THEN
@@ -1739,6 +2062,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 assignment_question_counts aqc ON s.source_id = aqc.assignment_slide_id AND s.source_type = 'ASSIGNMENT'
             LEFT JOIN
                 quiz_question_counts qqc ON s.source_id = qqc.quiz_slide_id AND s.source_type = 'QUIZ'
+            LEFT JOIN
+                html_video_slide hvs ON s.source_id = hvs.id AND s.source_type = 'HTML_VIDEO'
             WHERE
                 ps.id IN (:packageSessionIds)
                 AND s.status IN (:slideStatusList)

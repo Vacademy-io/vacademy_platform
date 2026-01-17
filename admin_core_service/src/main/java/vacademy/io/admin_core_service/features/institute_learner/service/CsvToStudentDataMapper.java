@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.institute_learner.service;
 
-
 import org.apache.commons.csv.CSVRecord;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
@@ -15,7 +14,8 @@ import java.util.List;
 
 public class CsvToStudentDataMapper {
 
-    public static List<InstituteStudentDTO> mapCsvRecordsToInstituteStudentDTOs(Iterable<CSVRecord> records, String instituteId, String packageSessionId) {
+    public static List<InstituteStudentDTO> mapCsvRecordsToInstituteStudentDTOs(Iterable<CSVRecord> records,
+            String instituteId, String packageSessionId) {
         List<InstituteStudentDTO> students = new ArrayList<>();
 
         for (CSVRecord record : records) {
@@ -34,8 +34,10 @@ public class CsvToStudentDataMapper {
                     false,
                     "PASSWORD",
                     null,
-                    null,null,false,null
-            );
+                    null,
+                    null,
+                    null,
+                    null);
 
             StudentExtraDetails studentExtraDetails = new StudentExtraDetails(
                     getFieldValue(record, "FATHER_NAME"),
@@ -44,8 +46,7 @@ public class CsvToStudentDataMapper {
                     getFieldValue(record, "PARENTS_EMAIL"),
                     getFieldValue(record, "PARENTS_TO_MOTHER_MOBILE_NUMBER"),
                     getFieldValue(record, "PARENTS_TO_MOTHER_EMAIL"),
-                    getFieldValue(record, "LINKED_INSTITUTE_NAME")
-            );
+                    getFieldValue(record, "LINKED_INSTITUTE_NAME"));
 
             InstituteStudentDetails instituteStudentDetails = new InstituteStudentDetails(
                     instituteId,
@@ -54,10 +55,10 @@ public class CsvToStudentDataMapper {
                     getFieldValue(record, "ENROLLMENT_STATUS"),
                     parseDate(getFieldValue(record, "ENROLLMENT_DATE")),
                     getFieldValue(record, "GROUP_ID"),
-                    getFieldValue(record, "ACCESS_DAYS"),null,null,null,null
-            );
+                    getFieldValue(record, "ACCESS_DAYS"), null, null, null, null);
 
-            InstituteStudentDTO student = new InstituteStudentDTO(userDetails, studentExtraDetails, instituteStudentDetails, null, null, null);
+            InstituteStudentDTO student = new InstituteStudentDTO(userDetails, studentExtraDetails,
+                    instituteStudentDetails, null, null, null);
             students.add(student);
 
         }

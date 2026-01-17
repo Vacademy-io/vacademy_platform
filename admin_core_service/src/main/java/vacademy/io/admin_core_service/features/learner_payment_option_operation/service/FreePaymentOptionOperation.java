@@ -1,5 +1,8 @@
 package vacademy.io.admin_core_service.features.learner_payment_option_operation.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -24,6 +27,8 @@ import java.util.*;
 
 @Service
 public class FreePaymentOptionOperation implements PaymentOptionOperationStrategy {
+    private static final Logger log = LoggerFactory.getLogger(FreePaymentOptionOperation.class);
+
     @Autowired
     private LearnerBatchEnrollService learnerBatchEnrollService;
 
@@ -34,7 +39,9 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
     private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
     @Autowired
-    private AuthService authService;    @Override
+    private AuthService authService;
+
+    @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
             LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
             String instituteId,
@@ -42,11 +49,12 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
             PaymentOption paymentOption,
             UserPlan userPlan,
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+        log.info("Processing FREE enrollment for user: {}", userDTO.getEmail());
         // Use startDate from DTO if provided, otherwise default to current date
-        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null 
-                ? learnerPackageSessionsEnrollDTO.getStartDate() 
+        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
+                ? learnerPackageSessionsEnrollDTO.getStartDate()
                 : new Date();
-        
+
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();

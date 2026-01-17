@@ -27,6 +27,7 @@ import vacademy.io.notification_service.features.announcements.service.EmailConf
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 import vacademy.io.common.logging.SentryLogger;
+import vacademy.io.notification_service.util.EmailDomainBlocklistUtil;
 
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -163,8 +164,9 @@ public class EmailService {
                     }
                 }
             } catch (Exception e) {
-                logger.error("Error parsing institute email settings", e);
-                throw new VacademyException("Error parsing JSON object for email settings");
+                logger.error("Error parsing institute email settings for instituteId: {}. Using default SMTP.",
+                        instituteId, e);
+                // Continue with default settings instead of throwing
             }
         } else {
             logger.info("No instituteId provided, using default SMTP");
@@ -444,6 +446,11 @@ public class EmailService {
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
             String customFromEmail, String customFromName, String emailType) {
         try {
+            // Skip sending email if the domain is in the blocked list
+            if (EmailDomainBlocklistUtil.isEmailDomainBlocked(to)) {
+                logger.info("Skipping HTML email for user with blocked email domain: {}", to);
+                return;
+            }
 
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId, emailType);
             final JavaMailSender finalMailSender = config.getKey();
@@ -520,6 +527,12 @@ public class EmailService {
     public void sendAttachmentEmail(String to, String subject, String service, String body,
             Map<String, byte[]> attachments, String instituteId) {
         try {
+            // Skip sending email if the domain is in the blocked list
+            if (EmailDomainBlocklistUtil.isEmailDomainBlocked(to)) {
+                logger.info("Skipping attachment email for user with blocked email domain: {}", to);
+                return;
+            }
+            
             logger.info("Preparing to send email to: {} with subject: {}", to, subject);
 
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);

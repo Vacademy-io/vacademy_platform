@@ -34,6 +34,7 @@ public class InstituteSettingController {
     }
 
     // Unified API for any setting key - handles both create and update
+    // Supports: NAME_SETTING, COURSE_SETTING, CERTIFICATE_SETTING, CHATBOT_SETTING, etc.
     @PostMapping("/save-setting")
     public ResponseEntity<String> saveSetting(@RequestAttribute("user")CustomUserDetails userDetails,
                                               @RequestParam("instituteId") String instituteId,

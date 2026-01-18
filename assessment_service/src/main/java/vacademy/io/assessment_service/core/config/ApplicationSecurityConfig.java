@@ -33,7 +33,7 @@ public class ApplicationSecurityConfig {
             "/assessment-service/v3/api-docs/**", "/assessment-service/swagger-ui/**",
             "/assessment-service/webjars/swagger-ui/**", "/assessment-service/api-docs/**",
             "/assessment-service/open-registrations/v1/assessment-page", "/assessment-service/evaluation-tool/**",
-            "/assessment-service/scheduler/test/**" };
+            "/assessment-service/scheduler/test/**", "/assessment-service/health/**" };
 
     @Autowired
     AssessmentJwtAuthFilter jwtAuthFilter;

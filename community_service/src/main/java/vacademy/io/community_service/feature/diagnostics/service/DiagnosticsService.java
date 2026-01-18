@@ -313,25 +313,7 @@ public class DiagnosticsService {
             int readyCount = 0;
 
             for (V1Pod pod : podList.getItems()) {
-                V1PodStatus status = pod.getStatus();
-                String podName = pod.getMetadata().getName();
-                boolean ready = isPodReady(status);
-                int restarts = getPodRestarts(status);
-                String age = getAge(pod.getMetadata().getCreationTimestamp());
-                String node = pod.getSpec().getNodeName();
-
-                if (ready)
-                    readyCount++;
-                totalRestarts += restarts;
-
-                pods.add(PodInfo.builder()
-                        .name(podName)
-                        .status(status.getPhase())
-                        .ready(ready)
-                        .restarts(restarts)
-                        .age(age)
-                        .node(node)
-                        .build());
+                pods.add(enrichedPodInfo(pod));
             }
 
             String statusStr = readyCount == pods.size() ? "UP" : (readyCount > 0 ? "DEGRADED" : "DOWN");
@@ -380,21 +362,14 @@ public class DiagnosticsService {
         }
     }
 
-    private List<Map<String, Object>> getPodsInNamespace(String namespace) throws ApiException {
+    private List<PodInfo> getPodsInNamespace(String namespace) throws ApiException {
         V1PodList podList = coreV1Api.listNamespacedPod(
                 namespace, null, null, null, null, null,
                 null, null, null, null, null);
 
-        return podList.getItems().stream().map(pod -> {
-            Map<String, Object> podInfo = new LinkedHashMap<>();
-            podInfo.put("name", pod.getMetadata().getName());
-            podInfo.put("status", pod.getStatus().getPhase());
-            podInfo.put("ready", isPodReady(pod.getStatus()));
-            podInfo.put("restarts", getPodRestarts(pod.getStatus()));
-            podInfo.put("age", getAge(pod.getMetadata().getCreationTimestamp()));
-            podInfo.put("node", pod.getSpec().getNodeName());
-            return podInfo;
-        }).collect(Collectors.toList());
+        return podList.getItems().stream()
+                .map(this::enrichedPodInfo)
+                .collect(Collectors.toList());
     }
 
     private List<ServiceHealth> checkAllServices() {
@@ -556,13 +531,6 @@ public class DiagnosticsService {
         return result;
     }
 
-    private List<ConnectivityCheck> checkConnectivity() {
-        // Inter-service connectivity checks performed by backend are often misleading
-        // or reflect internal cluster state rather than user-facing availability.
-        // Returning empty list as requested to avoid confusion.
-        return new ArrayList<>();
-    }
-
     private List<KubernetesEvent> getRecentKubernetesEvents() {
         if (!k8sAvailable) {
             return Collections.emptyList();
@@ -625,6 +593,72 @@ public class DiagnosticsService {
         return "HEALTHY";
     }
 
+    private List<ConnectivityCheck> checkConnectivity() {
+        List<ConnectivityCheck> checks = new ArrayList<>();
+
+        // 1. Check connectivity from Community Service (this service) to others
+        checks.add(performDirectConnectivityCheck("community-service", "auth-service",
+                "http://auth-service:8071/auth-service/health/ping"));
+        checks.add(performDirectConnectivityCheck("community-service", "admin-core-service",
+                "http://admin-core-service:8072/admin-core-service/health/ping"));
+        checks.add(performDirectConnectivityCheck("community-service", "media-service",
+                "http://media-service:8075/media-service/health/ping"));
+
+        // 2. Ask Admin Core Service about its connectivity (since it's a central hub)
+        try {
+            String url = "http://admin-core-service:8072/admin-core-service/health/connectivity/all";
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> body = response.getBody();
+                processRemoteConnectivityCheck(checks, body, "auth_service");
+                processRemoteConnectivityCheck(checks, body, "media_service");
+                processRemoteConnectivityCheck(checks, body, "assessment_service");
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch connectivity from admin-core-service: {}", e.getMessage());
+        }
+
+        return checks;
+    }
+
+    private ConnectivityCheck performDirectConnectivityCheck(String source, String target, String url) {
+        long start = System.currentTimeMillis();
+        try {
+            restTemplate.getForEntity(url, String.class);
+            return ConnectivityCheck.builder()
+                    .source(source)
+                    .target(target)
+                    .status("OK")
+                    .responseTimeMs(System.currentTimeMillis() - start)
+                    .lastCheck(Instant.now())
+                    .build();
+        } catch (Exception e) {
+            return ConnectivityCheck.builder()
+                    .source(source)
+                    .target(target)
+                    .status("FAILED")
+                    .responseTimeMs(System.currentTimeMillis() - start)
+                    .errorMessage(e.getMessage())
+                    .lastCheck(Instant.now())
+                    .build();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void processRemoteConnectivityCheck(List<ConnectivityCheck> checks, Map<String, Object> body, String key) {
+        if (body.containsKey(key)) {
+            Map<String, Object> data = (Map<String, Object>) body.get(key);
+            checks.add(ConnectivityCheck.builder()
+                    .source((String) data.get("source"))
+                    .target((String) data.get("target"))
+                    .status((String) data.get("status"))
+                    .responseTimeMs(((Number) data.get("latency_ms")).longValue())
+                    .errorMessage((String) data.get("error"))
+                    .lastCheck(Instant.now())
+                    .build());
+        }
+    }
+
     private boolean isPodReady(V1PodStatus status) {
         if (status == null || status.getConditions() == null)
             return false;
@@ -638,6 +672,76 @@ public class DiagnosticsService {
         return status.getContainerStatuses().stream()
                 .mapToInt(V1ContainerStatus::getRestartCount)
                 .sum();
+    }
+
+    private PodInfo enrichedPodInfo(V1Pod pod) {
+        if (pod == null || pod.getMetadata() == null) {
+            return null;
+        }
+
+        V1PodStatus status = pod.getStatus();
+        boolean ready = isPodReady(status);
+        int restarts = getPodRestarts(status);
+
+        // Get termination details and logs if there are issues
+        String terminationReason = null;
+        Integer lastExitCode = null;
+        List<String> logs = new ArrayList<>();
+
+        if (status != null && status.getContainerStatuses() != null) {
+            for (V1ContainerStatus cs : status.getContainerStatuses()) {
+                if (cs.getState() != null && cs.getState().getTerminated() != null) {
+                    terminationReason = cs.getState().getTerminated().getReason();
+                    lastExitCode = cs.getState().getTerminated().getExitCode();
+                } else if (cs.getLastState() != null && cs.getLastState().getTerminated() != null) {
+                    terminationReason = cs.getLastState().getTerminated().getReason();
+                    lastExitCode = cs.getLastState().getTerminated().getExitCode();
+                }
+
+                // Fetch logs if restarts > 0 or not ready
+                if (restarts > 0 || !ready) {
+                    logs.addAll(
+                            fetchPodLogs(pod.getMetadata().getName(), pod.getMetadata().getNamespace(), cs.getName()));
+                }
+            }
+        }
+
+        return PodInfo.builder()
+                .name(pod.getMetadata().getName())
+                .status(status != null ? status.getPhase() : "Unknown")
+                .ready(ready)
+                .restarts(restarts)
+                .age(getAge(pod.getMetadata().getCreationTimestamp()))
+                .node(pod.getSpec() != null ? pod.getSpec().getNodeName() : null)
+                .terminationReason(terminationReason)
+                .lastExitCode(lastExitCode)
+                .logs(logs.isEmpty() ? null : logs)
+                .build();
+    }
+
+    private List<String> fetchPodLogs(String podName, String namespace, String container) {
+        try {
+            // Fetch last 50 lines
+            String logContent = coreV1Api.readNamespacedPodLog(
+                    podName,
+                    namespace,
+                    container,
+                    false,
+                    null,
+                    null,
+                    null,
+                    true,
+                    null,
+                    50,
+                    true);
+
+            if (logContent != null) {
+                return Arrays.asList(logContent.split("\n"));
+            }
+        } catch (ApiException e) {
+            log.warn("Failed to fetch logs for {}/{}: {}", namespace, podName, e.getMessage());
+        }
+        return Collections.emptyList();
     }
 
     private String getAge(OffsetDateTime creationTimestamp) {

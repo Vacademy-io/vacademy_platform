@@ -109,6 +109,15 @@ public class InfrastructureHealthResponse {
 
         @JsonProperty("node")
         private String node;
+
+        @JsonProperty("termination_reason")
+        private String terminationReason;
+
+        @JsonProperty("last_exit_code")
+        private Integer lastExitCode;
+
+        @JsonProperty("logs")
+        private List<String> logs;
     }
 
     @Data

@@ -34,8 +34,9 @@ public class WebSecurityConfig {
             "/swagger-ui.html", "/media-service/swagger-ui/index.html", "/media-service/v3/api-docs/**",
             "/media-service/swagger-ui/**", "/media-service/webjars/swagger-ui/**", "/media-service/public/**",
             "/media-service/ai/get-question-audio/**", "/media-service/ai/evaluation-tool/**",
-            "/media-service/ai/chat-with-pdf/**", "/media-service/task-status/**", "/media-service/ai/lecture/**",
-            "/media-service/course/ai/v1/**" };
+            "/media-service/ai/evaluate-subjective-answer/**", "/media-service/ai/chat-with-pdf/**",
+            "/media-service/task-status/**", "/media-service/ai/lecture/**",
+            "/media-service/course/ai/v1/**", "/media-service/health/**" };
     @Autowired
     private JwtAuthFilter jwtAuthFilter; // Inject JwtAuthFilter dependency
     @Autowired

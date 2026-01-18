@@ -74,7 +74,8 @@ public class ApplicationSecurityConfig {
             // Agent SSE stream - EventSource doesn't support auth headers, session is
             // validated internally
             "/admin-core-service/v1/agent/stream/**",
-            "/admin-core-service/api/v1/audience/webhook/**"
+            "/admin-core-service/api/v1/audience/webhook/**",
+            "/admin-core-service/health/**"
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;

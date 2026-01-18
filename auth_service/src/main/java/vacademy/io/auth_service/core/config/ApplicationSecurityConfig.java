@@ -74,8 +74,10 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/users/by-ids",
 
             // for whatsapp "thanks ak"
+            // for whatsapp "thanks ak"
             "/auth-service/v1/request-whatsapp-otp",
-            "/auth-service/v1/login-whatsapp-otp"
+            "/auth-service/v1/login-whatsapp-otp",
+            "/auth-service/health/**"
     };
 
     @Autowired

@@ -26,23 +26,131 @@ Call these endpoints periodically (e.g., every 5-10 seconds) to measure `Time To
 
 **Ping Response Example:**
 
+- **Status Code:** `200 OK`
+- **Body (Text/JSON):**
+  ```json
+  "Pong from auth-service"
+  ```
+  _(Note: Some services might return a simple text string. Handle both JSON and Text)._
+
+### B. Database & detailed Check Endpoint
+
+Call `/health/db` to check the service's internal DB connection.
+
+**Request:** `GET /<service-name>/health/db`
+**Response Example:**
+
 ```json
 {
-  "status": "OK",
-  "service": "auth-service",
-  "timestamp": 1705561234567
+  "status": "UP",
+  "database": "postgres",
+  "latency_ms": 15,
+  "timestamp": "2024-01-20T10:00:00Z"
 }
 ```
 
-### B. Aggregated Infrastructure Health
+### C. Aggregated Infrastructure Health (The "Summary" API)
 
 Call this endpoint every 30-60 seconds to get the "Heavy" data (Pod definitions, restart logs, etc).
 
 - **Endpoint:** `GET https://backend-stage.vacademy.io/community-service/diagnostics/health`
-- **Key Data Points:**
-  - `kubernetes_infrastructure.pods`: List of all pods in relevant namespaces.
-  - `dependencies`: Redis & PostgreSQL cluster health.
-  - `connectivity_matrix`: Backend-view of inter-service connection success.
+- **Request:** No parameters.
+- **Response Example (Full):**
+
+```json
+{
+  "timestamp": "2024-01-20T10:00:00Z",
+  "overall_status": "DEGRADED",
+  "kubernetes_infrastructure": {
+    "ingress_nginx": {
+      "status": "UP",
+      "ready_replicas": 2,
+      "total_replicas": 2,
+      "restart_count": 0,
+      "pods": [
+        {
+          "name": "ingress-nginx-controller-xyz",
+          "status": "Running",
+          "ready": true,
+          "restarts": 0,
+          "age": "5d"
+        }
+      ]
+    },
+    "load_balancer": {
+      "status": "ACTIVE",
+      "external_ip": "1.2.3.4"
+    }
+  },
+  "application_services": [
+    {
+      "name": "auth-service",
+      "status": "UP",
+      "response_time_ms": 45,
+      "health_endpoint": "/auth-service/actuator/health",
+      "last_check": "2024-01-20T10:00:00Z"
+    },
+    {
+      "name": "ai-service",
+      "status": "DOWN",
+      "response_time_ms": 5000,
+      "health_endpoint": "/ai-service/actuator/health",
+      "last_check": "2024-01-20T10:00:00Z"
+    }
+  ],
+  "dependencies": {
+    "redis": {
+      "status": "UP",
+      "connected": true,
+      "response_time_ms": 2,
+      "host": "redis"
+    },
+    "postgresql": {
+      "status": "UP",
+      "connected": true,
+      "response_time_ms": 12
+    }
+  },
+  "connectivity_matrix": [
+    {
+      "source": "community-service",
+      "target": "auth-service",
+      "status": "OK",
+      "response_time_ms": 10
+    }
+  ],
+  "recent_events": [
+    {
+      "type": "Warning",
+      "reason": "BackOff",
+      "message": "Back-off restarting failed container",
+      "object": "ai-service-pod-123",
+      "count": 5,
+      "timestamp": "2024-01-20T09:55:00Z"
+    }
+  ]
+}
+```
+
+### D. Detailed Pod Info (Nested in Infrastructure Response)
+
+Use this structure to render the "Debugger" table logs.
+
+**JSON Structure (inside `kubernetes_infrastructure.<component>.pods`):**
+
+```json
+{
+  "name": "ai-service-75c78886d5-4q82k",
+  "status": "CrashLoopBackOff",
+  "ready": false,
+  "restarts": 8,
+  "age": "2d14h",
+  "node": "lke-node-123",
+  "termination_reason": "OOMKilled",
+  "last_exit_code": 137,
+  "logs": ["Error: Out of memory", "at /app/main.py:45", "Killing process..."]
+}
+```
 
 ---
 

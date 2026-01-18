@@ -9,7 +9,7 @@ from ..config import get_settings
 from ..db import db_dependency
 
 router = APIRouter(
-    prefix="/ai-service/health",
+    prefix="/health",
     tags=["Health"]
 )
 

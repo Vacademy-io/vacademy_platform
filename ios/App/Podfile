@@ -26,6 +26,15 @@ target 'App' do
   # Add your Pods here
 end
 
+
+target 'the7cs' do
+  capacitor_pods
+end
+
+target 'SSDC Horizon' do
+  capacitor_pods
+end
+
 target 'Five Sep' do
   capacitor_pods
 end

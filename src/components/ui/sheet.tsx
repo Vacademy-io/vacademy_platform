@@ -5,6 +5,7 @@ import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { Cross2Icon } from "@radix-ui/react-icons";
+import { isIOSPlatform } from "@/hooks/useIsIOS";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -48,30 +49,40 @@ const sheetVariants = cva(
 
 interface SheetContentProps
     extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-        VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+    hideCloseButton?: boolean;
+}
 
 const SheetContent = React.forwardRef<
     React.ElementRef<typeof SheetPrimitive.Content>,
     SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-    <SheetPortal>
-        <SheetOverlay />
-        <SheetPrimitive.Content
-            ref={ref}
-            className={cn(sheetVariants({ side }), className)}
-            {...props}
-        >
-            <SheetPrimitive.Close
-                className="absolute right-4 left-auto top-4 grid h-9 w-9 place-items-center rounded-md bg-white/90 text-foreground shadow-md ring-1 ring-black/10 backdrop-blur-sm opacity-95 transition hover:opacity-100 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none data-[state=open]:bg-secondary dark:bg-neutral-800/90 dark:ring-white/10"
-                style={{ position: "absolute", right: "1rem", top: "1rem", left: "auto" }}
+>(({ side = "right", className, children, hideCloseButton, ...props }, ref) => {
+    const isIOS = isIOSPlatform();
+    // Hide close button on iOS, or if explicitly set via prop
+    const shouldHideCloseButton = isIOS || hideCloseButton;
+
+    return (
+        <SheetPortal>
+            <SheetOverlay />
+            <SheetPrimitive.Content
+                ref={ref}
+                className={cn(sheetVariants({ side }), className)}
+                {...props}
             >
-                <Cross2Icon className="size-4" />
-                <span className="sr-only">Close</span>
-            </SheetPrimitive.Close>
-            {children}
-        </SheetPrimitive.Content>
-    </SheetPortal>
-));
+                {!shouldHideCloseButton && (
+                    <SheetPrimitive.Close
+                        className="absolute right-4 left-auto top-4 grid h-9 w-9 place-items-center rounded-md bg-white/90 text-foreground shadow-md ring-1 ring-black/10 backdrop-blur-sm opacity-95 transition hover:opacity-100 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none data-[state=open]:bg-secondary dark:bg-neutral-800/90 dark:ring-white/10"
+                        style={{ position: "absolute", right: "1rem", top: "1rem", left: "auto" }}
+                    >
+                        <Cross2Icon className="size-4" />
+                        <span className="sr-only">Close</span>
+                    </SheetPrimitive.Close>
+                )}
+                {children}
+            </SheetPrimitive.Content>
+        </SheetPortal>
+    );
+});
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

@@ -48,6 +48,7 @@ import type {
   subItemsType,
 } from "../../../../types/layout-container-types";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
+import { useIsIOS } from "@/hooks/useIsIOS";
 
 // Local letter-based icon factory for tabs without predefined icons
 const createLetterIcon =
@@ -97,6 +98,7 @@ export const MySidebar = ({
   };
 
   const { permissions } = useStudentPermissions();
+  const isIOS = useIsIOS();
   const [filteredSidebarItems, setFilteredSidebarItems] = useState<
     SidebarItemsType[]
   >([]);
@@ -204,7 +206,7 @@ export const MySidebar = ({
 
   return (
     <Sidebar side="left" collapsible={sidebarComponent ? "offcanvas" : "icon"}>
-      <SidebarContent className="sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out max-w-full w-full overflow-x-hidden">
+      <SidebarContent className={`sidebar-content flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
         <SidebarHeader>
           <SidebarMenu className="px-2">
             <SidebarMenuItem>
@@ -215,7 +217,7 @@ export const MySidebar = ({
                   homeIconClickRoute ? handleInstituteLogoClick : undefined
                 }
               >
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg  text-sidebar-primary-foreground">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg  text-sidebar-primary-foreground ">
                   {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                     <img
                       src={instituteLogoFileUrl}

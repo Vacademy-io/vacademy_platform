@@ -7,6 +7,24 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0E3507892F1C931700F1F9F9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		0E35078D2F1C931700F1F9F9 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
+		0E35078E2F1C931700F1F9F9 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
+		0E35078F2F1C931700F1F9F9 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		0E3507902F1C931700F1F9F9 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		0E3507912F1C931700F1F9F9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		0E3507922F1C931700F1F9F9 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		0E3507932F1C931700F1F9F9 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		0E3507942F1C931700F1F9F9 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		0E35079E2F1C931F00F1F9F9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		0E3507A22F1C931F00F1F9F9 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
+		0E3507A32F1C931F00F1F9F9 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
+		0E3507A42F1C931F00F1F9F9 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		0E3507A52F1C931F00F1F9F9 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		0E3507A62F1C931F00F1F9F9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		0E3507A72F1C931F00F1F9F9 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		0E3507A82F1C931F00F1F9F9 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		0E3507A92F1C931F00F1F9F9 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		0E5CB2362F0ABC0800089DAC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		0E5CB23A2F0ABC0800089DAC /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		0E5CB23B2F0ABC0800089DAC /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
@@ -14,8 +32,9 @@
 		0E5CB23D2F0ABC0800089DAC /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		0E5CB23E2F0ABC0800089DAC /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		0E5CB23F2F0ABC0800089DAC /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
-		0EFC07AD2F0BAA7600B3FC57 /* App copy-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* App copy-Info.plist */; };
+		0EFC07AD2F0BAA7600B3FC57 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
 		0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
+		0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -23,17 +42,25 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
-		9DC19BA1DC8A586B110A7BD1 /* Pods_Five_Sep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2488268F25AF2EF27E9ADF58 /* Pods_Five_Sep.framework */; };
+		7411584DD8EBBB621F299383 /* Pods_the7cs.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */; };
+		9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF80D54945E534E81704718B /* Pods_Five_Sep.framework */; };
+		9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		C314EA5A6665CB1D512B6D35 /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		043931A970C72A57050EDC91 /* Pods-the7cs.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-the7cs.release.xcconfig"; path = "Pods/Target Support Files/Pods-the7cs/Pods-the7cs.release.xcconfig"; sourceTree = "<group>"; };
+		0E3507992F1C931700F1F9F9 /* the7cs.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = the7cs.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0E35079A2F1C931700F1F9F9 /* the7cs-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "the7cs-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/the7cs-Info.plist"; sourceTree = "<absolute>"; };
+		0E3507AE2F1C931F00F1F9F9 /* SSDC Horizon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "SSDC Horizon.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		0E3507AF2F1C932000F1F9F9 /* SSDC-HORIZON-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "SSDC-HORIZON-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/SSDC-HORIZON-Info.plist"; sourceTree = "<absolute>"; };
 		0E5CB2442F0ABC0800089DAC /* Five Sep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Five Sep.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		0E5CB2452F0ABC0900089DAC /* App copy-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "App copy-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/App copy-Info.plist"; sourceTree = "<absolute>"; };
+		0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "ithinkersByFiveSep-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/ithinkersByFiveSep-Info.plist"; sourceTree = "<absolute>"; };
 		0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "../../../../Desktop/GoogleService-Info.plist"; sourceTree = "<group>"; };
-		2488268F25AF2EF27E9ADF58 /* Pods_Five_Sep.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Five_Sep.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		25A963DCA873DEB99161804B /* Pods-the7cs.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-the7cs.debug.xcconfig"; path = "Pods/Target Support Files/Pods-the7cs/Pods-the7cs.debug.xcconfig"; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		364227EFB287C39D41393156 /* Pods-SSDC Horizon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.debug.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.debug.xcconfig"; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -43,18 +70,39 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		54FDC0D1DF0A5F5687F4CCC5 /* Pods-Five Sep.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.debug.xcconfig"; sourceTree = "<group>"; };
+		7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SSDC_Horizon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		86003D6B1A377A8DB634EE53 /* Pods-SSDC Horizon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.release.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.release.xcconfig"; sourceTree = "<group>"; };
 		8B279DBAA24BE3BC1F188689 /* Pods-Five Sep.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.release.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.release.xcconfig"; sourceTree = "<group>"; };
 		9BF657DED25A2F36B05C0907 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B313585718531D2F9A4F2BE7 /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
+		D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_the7cs.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		FF80D54945E534E81704718B /* Pods_Five_Sep.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Five_Sep.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		0E35078A2F1C931700F1F9F9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7411584DD8EBBB621F299383 /* Pods_the7cs.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0E35079F2F1C931F00F1F9F9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		0E5CB2372F0ABC0800089DAC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9DC19BA1DC8A586B110A7BD1 /* Pods_Five_Sep.framework in Frameworks */,
+				9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */,
+				9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -74,7 +122,9 @@
 			isa = PBXGroup;
 			children = (
 				AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */,
-				2488268F25AF2EF27E9ADF58 /* Pods_Five_Sep.framework */,
+				7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */,
+				D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */,
+				FF80D54945E534E81704718B /* Pods_Five_Sep.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -87,7 +137,9 @@
 				504EC3051FED79650016851F /* Products */,
 				7F8756D8B27F46E3366F6CEA /* Pods */,
 				27E2DDA53C4D2A4D1A88CE4A /* Frameworks */,
-				0E5CB2452F0ABC0900089DAC /* App copy-Info.plist */,
+				0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */,
+				0E35079A2F1C931700F1F9F9 /* the7cs-Info.plist */,
+				0E3507AF2F1C932000F1F9F9 /* SSDC-HORIZON-Info.plist */,
 			);
 			sourceTree = "<group>";
 		};
@@ -96,6 +148,8 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				0E5CB2442F0ABC0800089DAC /* Five Sep.app */,
+				0E3507992F1C931700F1F9F9 /* the7cs.app */,
+				0E3507AE2F1C931F00F1F9F9 /* SSDC Horizon.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -122,6 +176,10 @@
 				9BF657DED25A2F36B05C0907 /* Pods-App.release.xcconfig */,
 				54FDC0D1DF0A5F5687F4CCC5 /* Pods-Five Sep.debug.xcconfig */,
 				8B279DBAA24BE3BC1F188689 /* Pods-Five Sep.release.xcconfig */,
+				364227EFB287C39D41393156 /* Pods-SSDC Horizon.debug.xcconfig */,
+				86003D6B1A377A8DB634EE53 /* Pods-SSDC Horizon.release.xcconfig */,
+				25A963DCA873DEB99161804B /* Pods-the7cs.debug.xcconfig */,
+				043931A970C72A57050EDC91 /* Pods-the7cs.release.xcconfig */,
 			);
 			name = Pods;
 			sourceTree = "<group>";
@@ -129,6 +187,44 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0E3507862F1C931700F1F9F9 /* the7cs */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0E3507962F1C931700F1F9F9 /* Build configuration list for PBXNativeTarget "the7cs" */;
+			buildPhases = (
+				0E3507872F1C931700F1F9F9 /* [CP] Check Pods Manifest.lock */,
+				0E3507882F1C931700F1F9F9 /* Sources */,
+				0E35078A2F1C931700F1F9F9 /* Frameworks */,
+				0E35078C2F1C931700F1F9F9 /* Resources */,
+				0E3507952F1C931700F1F9F9 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = the7cs;
+			productName = App;
+			productReference = 0E3507992F1C931700F1F9F9 /* the7cs.app */;
+			productType = "com.apple.product-type.application";
+		};
+		0E35079B2F1C931F00F1F9F9 /* SSDC Horizon */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0E3507AB2F1C931F00F1F9F9 /* Build configuration list for PBXNativeTarget "SSDC Horizon" */;
+			buildPhases = (
+				0E35079C2F1C931F00F1F9F9 /* [CP] Check Pods Manifest.lock */,
+				0E35079D2F1C931F00F1F9F9 /* Sources */,
+				0E35079F2F1C931F00F1F9F9 /* Frameworks */,
+				0E3507A12F1C931F00F1F9F9 /* Resources */,
+				0E3507AA2F1C931F00F1F9F9 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "SSDC Horizon";
+			productName = App;
+			productReference = 0E3507AE2F1C931F00F1F9F9 /* SSDC Horizon.app */;
+			productType = "com.apple.product-type.application";
+		};
 		0E5CB2332F0ABC0800089DAC /* Five Sep */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0E5CB2412F0ABC0800089DAC /* Build configuration list for PBXNativeTarget "Five Sep" */;
@@ -176,6 +272,12 @@
 				LastSwiftUpdateCheck = 920;
 				LastUpgradeCheck = 920;
 				TargetAttributes = {
+					0E3507862F1C931700F1F9F9 = {
+						ProvisioningStyle = Automatic;
+					};
+					0E35079B2F1C931F00F1F9F9 = {
+						ProvisioningStyle = Automatic;
+					};
 					0E5CB2332F0ABC0800089DAC = {
 						ProvisioningStyle = Automatic;
 					};
@@ -201,17 +303,49 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				0E5CB2332F0ABC0800089DAC /* Five Sep */,
+				0E3507862F1C931700F1F9F9 /* the7cs */,
+				0E35079B2F1C931F00F1F9F9 /* SSDC Horizon */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0E35078C2F1C931700F1F9F9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E35078D2F1C931700F1F9F9 /* GoogleService-Info.plist in Resources */,
+				0E35078E2F1C931700F1F9F9 /* ithinkersByFiveSep-Info.plist in Resources */,
+				0E35078F2F1C931700F1F9F9 /* LaunchScreen.storyboard in Resources */,
+				0E3507902F1C931700F1F9F9 /* public in Resources */,
+				0E3507912F1C931700F1F9F9 /* Assets.xcassets in Resources */,
+				0E3507922F1C931700F1F9F9 /* capacitor.config.json in Resources */,
+				0E3507932F1C931700F1F9F9 /* Main.storyboard in Resources */,
+				0E3507942F1C931700F1F9F9 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0E3507A12F1C931F00F1F9F9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E3507A22F1C931F00F1F9F9 /* GoogleService-Info.plist in Resources */,
+				0E3507A32F1C931F00F1F9F9 /* ithinkersByFiveSep-Info.plist in Resources */,
+				0E3507A42F1C931F00F1F9F9 /* LaunchScreen.storyboard in Resources */,
+				0E3507A52F1C931F00F1F9F9 /* public in Resources */,
+				0E3507A62F1C931F00F1F9F9 /* Assets.xcassets in Resources */,
+				0E3507A72F1C931F00F1F9F9 /* capacitor.config.json in Resources */,
+				0E3507A82F1C931F00F1F9F9 /* Main.storyboard in Resources */,
+				0E3507A92F1C931F00F1F9F9 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		0E5CB2392F0ABC0800089DAC /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */,
-				0EFC07AD2F0BAA7600B3FC57 /* App copy-Info.plist in Resources */,
+				0EFC07AD2F0BAA7600B3FC57 /* ithinkersByFiveSep-Info.plist in Resources */,
 				0E5CB23A2F0ABC0800089DAC /* LaunchScreen.storyboard in Resources */,
 				0E5CB23B2F0ABC0800089DAC /* public in Resources */,
 				0E5CB23C2F0ABC0800089DAC /* Assets.xcassets in Resources */,
@@ -237,6 +371,80 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		0E3507872F1C931700F1F9F9 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-the7cs-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		0E3507952F1C931700F1F9F9 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-the7cs/Pods-the7cs-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		0E35079C2F1C931F00F1F9F9 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-SSDC Horizon-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		0E3507AA2F1C931F00F1F9F9 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		579D18F69719808A1D27B79C /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -310,6 +518,22 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0E3507882F1C931700F1F9F9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E3507892F1C931700F1F9F9 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0E35079D2F1C931F00F1F9F9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E35079E2F1C931F00F1F9F9 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		0E5CB2352F0ABC0800089DAC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -348,6 +572,96 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		0E3507972F1C931700F1F9F9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 25A963DCA873DEB99161804B /* Pods-the7cs.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = the7csIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "the7cs-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = the7cs;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.2;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = com.sevencs.learner;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0E3507982F1C931700F1F9F9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 043931A970C72A57050EDC91 /* Pods-the7cs.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = the7csIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "the7cs-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = the7cs;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sevencs.learner;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		0E3507AC2F1C931F00F1F9F9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 364227EFB287C39D41393156 /* Pods-SSDC Horizon.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = SSDCicon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "SSDC-HORIZON-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "SSDC Horizon";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.1.5;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = io.ssdc.student.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0E3507AD2F1C931F00F1F9F9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 86003D6B1A377A8DB634EE53 /* Pods-SSDC Horizon.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = SSDCicon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "SSDC-HORIZON-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "SSDC Horizon";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.1.5;
+				PRODUCT_BUNDLE_IDENTIFIER = io.ssdc.student.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		0E5CB2422F0ABC0800089DAC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 54FDC0D1DF0A5F5687F4CCC5 /* Pods-Five Sep.debug.xcconfig */;
@@ -357,7 +671,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
-				INFOPLIST_FILE = "App copy-Info.plist";
+				INFOPLIST_FILE = "ithinkersByFiveSep-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "iThinkers by Fivesep";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -380,7 +694,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
-				INFOPLIST_FILE = "App copy-Info.plist";
+				INFOPLIST_FILE = "ithinkersByFiveSep-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "iThinkers by Fivesep";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -546,6 +860,24 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		0E3507962F1C931700F1F9F9 /* Build configuration list for PBXNativeTarget "the7cs" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0E3507972F1C931700F1F9F9 /* Debug */,
+				0E3507982F1C931700F1F9F9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0E3507AB2F1C931F00F1F9F9 /* Build configuration list for PBXNativeTarget "SSDC Horizon" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0E3507AC2F1C931F00F1F9F9 /* Debug */,
+				0E3507AD2F1C931F00F1F9F9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		0E5CB2412F0ABC0800089DAC /* Build configuration list for PBXNativeTarget "Five Sep" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

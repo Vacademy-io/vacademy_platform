@@ -17,6 +17,7 @@ import { Preferences } from "@capacitor/preferences";
 import { Student } from "@/types/user/user-detail";
 import { getPublicUrl } from "@/services/upload_file";
 import { User } from "lucide-react";
+import { useIsIOS } from "@/hooks/useIsIOS";
 
 export const LogoutSidebar = ({
   sidebarComponent,
@@ -29,6 +30,7 @@ export const LogoutSidebar = ({
     setSidebarOpen,
     homeIconClickRoute,
   } = useStore();
+  const isIOS = useIsIOS();
   const handleInstituteLogoClick = () => {
     if (homeIconClickRoute) {
       window.location.href = homeIconClickRoute;
@@ -118,9 +120,10 @@ export const LogoutSidebar = ({
     <Sheet open={sideBarOpen} onOpenChange={setSidebarOpen}>
       <SheetContent
         side="right"
+        hideCloseButton={isIOS}
         className="sidebar-content flex flex-col bg-white border-l border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800 p-0 w-[86vw] sm:w-80 transition-all duration-300 ease-in-out shadow-xl"
       >
-        <SheetHeader className="px-5 py-5 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-white to-neutral-50 dark:from-neutral-900 dark:to-neutral-900">
+        <SheetHeader className={`px-5 py-5 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-white to-neutral-50 dark:from-neutral-900 dark:to-neutral-900 ${isIOS ? 'mt-10' : ''}`}>
           <div className="flex items-center justify-center">
             <div className="relative group">
               {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (

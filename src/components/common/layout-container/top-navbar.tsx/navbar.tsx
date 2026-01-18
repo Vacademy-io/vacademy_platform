@@ -26,6 +26,7 @@ import { ChatbotTrigger } from "@/components/chatbot/ChatbotTrigger";
 import { getDataFromPreferences } from "@/utils/storage";
 import { InstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { getInstituteLogoQuery } from "@/services/institute-logo";
+import { useIsIOS } from "@/hooks/useIsIOS";
 
 interface UserRole {
   id: string;
@@ -49,6 +50,7 @@ export function Navbar() {
   const { data: cachedLogoUrl } = useSuspenseQuery(
     getInstituteLogoQuery(instituteDetails?.institute_logo_file_id ?? null)
   );
+  const isIOS = useIsIOS();
 
   const hasTeacherAndStudentRole = useMemo(() => {
     const roles: UserRole[] | undefined = userRoleDetails?.roles;
@@ -253,7 +255,7 @@ export function Navbar() {
   }
 
   return (
-    <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-[60px] items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap">
+    <div className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-[60px] items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap ${isIOS ? 'mt-10' : ''}`}>
       <LogoutSidebar />
 
       {/* Left Section */}

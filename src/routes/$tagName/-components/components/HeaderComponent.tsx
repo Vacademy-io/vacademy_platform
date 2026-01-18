@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import { Search, ShoppingCart, X } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { isIOSPlatform } from "@/hooks/useIsIOS";
 
 export const HeaderComponent: React.FC<HeaderProps & {
   navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
@@ -44,6 +45,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const [searchTerm, setSearchTerm] = useState("");
     const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
     const [searchBarRef, setSearchBarRef] = useState<HTMLDivElement | null>(null);
+    const isIOS = isIOSPlatform();
 
     // Calculate cart item count based on current mode (Buy or Rent)
     useEffect(() => {
@@ -390,7 +392,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const hideSearchAndCart = shouldHideSearchAndCart();
 
     return (
-      <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm border-b w-full">
+      <header className={`fixed top-0 left-0 right-0 z-50 bg-white shadow-sm border-b w-full ${isIOS ? 'pt-8' : ''}`}>
         <div className={`w-full ${isHeaderStylesEnabled && !isMobile ? 'px-20' : 'px-4 sm:px-6 lg:px-8'}`}>
           <div className={`flex items-center pt-2 pb-2 ${isCourseCatalogeTypeEnabled ? 'md:justify-between h-14' : 'justify-between  h-19'}  `}>
             {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}

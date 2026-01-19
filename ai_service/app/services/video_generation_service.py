@@ -85,7 +85,8 @@ class VideoGenerationService:
         language: str = "English",
         captions_enabled: bool = True,
         html_quality: str = "advanced",
-        resume: bool = False
+        resume: bool = False,
+        model: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -174,7 +175,8 @@ class VideoGenerationService:
                     html_quality=html_quality,
                     work_dir=work_dir,
                     start_stage_idx=start_stage_idx,
-                    target_stage_idx=target_stage_idx
+                    target_stage_idx=target_stage_idx,
+                    model=model
                 ):
                     # If we get an error event, log it and check if we should stop
                     if event.get("type") == "error":
@@ -224,7 +226,8 @@ class VideoGenerationService:
         html_quality: str,
         work_dir: Path,
         start_stage_idx: int,
-        target_stage_idx: int
+        target_stage_idx: int,
+        model: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -262,7 +265,9 @@ class VideoGenerationService:
         pipeline = VideoGenerationPipeline(
             openrouter_key=openrouter_key,
             gemini_image_key=gemini_key or "",  # Pass Gemini key for image generation
-            runs_dir=work_dir.parent
+            runs_dir=work_dir.parent,
+            script_model=model,  # Optional override
+            html_model=model     # Optional override
         )
         
         # Map stage indices to pipeline stage names and file keys

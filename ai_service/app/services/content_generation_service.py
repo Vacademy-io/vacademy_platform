@@ -363,10 +363,11 @@ class ContentGenerationService:
                 video_id=video_id,
                 prompt=prompt,
                 target_stage="SCRIPT",  # Stop at SCRIPT stage
-                language="English",  # TODO: Get from todo metadata if available
+                language=todo.metadata.get("language", "English"),
                 captions_enabled=True,  # Default for course outline
-                html_quality="advanced",  # Default for course outline
-                resume=False
+                html_quality=todo.metadata.get("html_quality", "advanced"),
+                resume=False,
+                model=todo.metadata.get("model") or todo.model  # Use model from metadata or todo
             ):
                 event_count += 1
                 logger.info(f"[AI_VIDEO] Received event #{event_count} for {video_id}: {event.get('type', 'unknown')}, stage={event.get('stage', 'N/A')}")
@@ -450,10 +451,11 @@ class ContentGenerationService:
                         video_id=video_id,
                         prompt=prompt,
                         target_stage="HTML",  # Continue till HTML
-                        language="English",
+                        language=todo.metadata.get("language", "English"),
                         captions_enabled=True,
-                        html_quality="advanced",
-                        resume=True  # Resume from current stage (SCRIPT)
+                        html_quality=todo.metadata.get("html_quality", "advanced"),
+                        resume=True,  # Resume from current stage (SCRIPT)
+                        model=todo.metadata.get("model") or todo.model
                     ):
                         # Log background progress but don't send events to frontend
                         if event.get("type") == "completed":

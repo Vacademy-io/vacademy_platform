@@ -13,31 +13,25 @@ import java.util.Date;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@SqlResultSetMapping(
-    name = "LiveSessionListProjectionMapping",
-    classes = @ConstructorResult(
-        targetClass = LiveSessionListProjectionImpl.class,
-        columns = {
-            @ColumnResult(name = "sessionId", type = String.class),
-            @ColumnResult(name = "waitingRoomTime", type = Integer.class),
-            @ColumnResult(name = "thumbnailFileId", type = String.class),
-            @ColumnResult(name = "backgroundScoreFileId", type = String.class),
-            @ColumnResult(name = "sessionStreamingServiceType", type = String.class),
-            @ColumnResult(name = "scheduleId", type = String.class),
-            @ColumnResult(name = "meetingDate", type = java.sql.Date.class),
-            @ColumnResult(name = "startTime", type = java.sql.Time.class),
-            @ColumnResult(name = "lastEntryTime", type = java.sql.Time.class),
-            @ColumnResult(name = "recurrenceType", type = String.class),
-            @ColumnResult(name = "accessLevel", type = String.class),
-            @ColumnResult(name = "title", type = String.class),
-            @ColumnResult(name = "subject", type = String.class),
-            @ColumnResult(name = "registrationFormLinkForPublicSessions", type = String.class),
-            @ColumnResult(name = "allowPlayPause", type = Boolean.class),
-            @ColumnResult(name = "timezone", type = String.class),
-            @ColumnResult(name = "meetingLink", type = String.class)
-        }
-    )
-)
+@SqlResultSetMapping(name = "LiveSessionListProjectionMapping", classes = @ConstructorResult(targetClass = LiveSessionListProjectionImpl.class, columns = {
+        @ColumnResult(name = "sessionId", type = String.class),
+        @ColumnResult(name = "waitingRoomTime", type = Integer.class),
+        @ColumnResult(name = "thumbnailFileId", type = String.class),
+        @ColumnResult(name = "backgroundScoreFileId", type = String.class),
+        @ColumnResult(name = "sessionStreamingServiceType", type = String.class),
+        @ColumnResult(name = "scheduleId", type = String.class),
+        @ColumnResult(name = "meetingDate", type = java.sql.Date.class),
+        @ColumnResult(name = "startTime", type = java.sql.Time.class),
+        @ColumnResult(name = "lastEntryTime", type = java.sql.Time.class),
+        @ColumnResult(name = "recurrenceType", type = String.class),
+        @ColumnResult(name = "accessLevel", type = String.class),
+        @ColumnResult(name = "title", type = String.class),
+        @ColumnResult(name = "subject", type = String.class),
+        @ColumnResult(name = "registrationFormLinkForPublicSessions", type = String.class),
+        @ColumnResult(name = "allowPlayPause", type = Boolean.class),
+        @ColumnResult(name = "timezone", type = String.class),
+        @ColumnResult(name = "meetingLink", type = String.class)
+}))
 public class LiveSession {
 
     @Id
@@ -66,11 +60,20 @@ public class LiveSession {
     private String subject;
     private String status;
 
-    private Integer waitingRoomTime;               // New field
-    private String thumbnailFileId;                // New field
-    private String backgroundScoreFileId;          // New field
+    private Integer waitingRoomTime; // New field
+    private String thumbnailFileId; // New field
+    private String backgroundScoreFileId; // New field
     private Boolean allowRewind;
     private String sessionStreamingServiceType;
+
+    @Column(name = "booking_type_id")
+    private String bookingTypeId;
+
+    @Column(name = "source")
+    private String source;
+
+    @Column(name = "source_id")
+    private String sourceId;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
@@ -78,7 +81,7 @@ public class LiveSession {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
 
-    @Column(name="allow_play_pause")
+    @Column(name = "allow_play_pause")
     private boolean allowPlayPause;
 
     private String timezone;

@@ -152,6 +152,10 @@ class Todo(BaseModel):
         default=None,
         description="Chapter name (only populated for depth 3-5 todos)"
     )
+    metadata: Optional[dict] = Field(
+        default_factory=dict,
+        description="Optional metadata keys (e.g. 'language', 'html_quality')"
+    )
 
 
 class CourseMetadata(BaseModel):

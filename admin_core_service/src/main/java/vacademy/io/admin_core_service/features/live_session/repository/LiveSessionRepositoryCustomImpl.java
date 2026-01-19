@@ -33,33 +33,33 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
 
         // Base query
         String baseSelect = """
-            SELECT DISTINCT
-                s.id AS sessionId,
-                s.waiting_room_time AS waitingRoomTime,
-                s.thumbnail_file_id AS thumbnailFileId,
-                s.background_score_file_id AS backgroundScoreFileId,
-                s.session_streaming_service_type AS sessionStreamingServiceType,
-                ss.id AS scheduleId,
-                ss.meeting_date AS meetingDate,
-                ss.start_time AS startTime,
-                ss.last_entry_time AS lastEntryTime,
-                ss.recurrence_type AS recurrenceType,
-                s.access_level AS accessLevel,
-                s.title AS title,
-                s.subject AS subject,
-                s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
-                s.allow_play_pause AS allowPlayPause,
-                COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
-                CASE
-                    WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
-                    ELSE s.default_meet_link
-                END AS meetingLink
-            """;
+                SELECT DISTINCT
+                    s.id AS sessionId,
+                    s.waiting_room_time AS waitingRoomTime,
+                    s.thumbnail_file_id AS thumbnailFileId,
+                    s.background_score_file_id AS backgroundScoreFileId,
+                    s.session_streaming_service_type AS sessionStreamingServiceType,
+                    ss.id AS scheduleId,
+                    ss.meeting_date AS meetingDate,
+                    ss.start_time AS startTime,
+                    ss.last_entry_time AS lastEntryTime,
+                    ss.recurrence_type AS recurrenceType,
+                    s.access_level AS accessLevel,
+                    s.title AS title,
+                    s.subject AS subject,
+                    s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
+                    s.allow_play_pause AS allowPlayPause,
+                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+                    CASE
+                        WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
+                        ELSE s.default_meet_link
+                    END AS meetingLink
+                """;
 
         String baseFrom = """
-            FROM live_session s
-            JOIN session_schedules ss ON s.id = ss.session_id
-            """;
+                FROM live_session s
+                JOIN session_schedules ss ON s.id = ss.session_id
+                """;
 
         String countSelect = "SELECT COUNT(DISTINCT ss.id) ";
 
@@ -68,7 +68,7 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
 
         // Add LEFT JOIN for participants if filtering by batchIds or userIds
         if ((request.getBatchIds() != null && !request.getBatchIds().isEmpty()) ||
-            (request.getUserIds() != null && !request.getUserIds().isEmpty())) {
+                (request.getUserIds() != null && !request.getUserIds().isEmpty())) {
             String participantJoin = "LEFT JOIN live_session_participants lsp ON lsp.session_id = s.id ";
             queryBuilder.append(participantJoin);
             countQueryBuilder.append(participantJoin);
@@ -104,8 +104,8 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
 
         // Check if filtering for LIVE status specifically
         List<String> statuses = request.getStatuses();
-        boolean isLiveOnly = statuses != null && statuses.size() == 1 && 
-                           statuses.stream().anyMatch(s -> s.equalsIgnoreCase("LIVE"));
+        boolean isLiveOnly = statuses != null && statuses.size() == 1 &&
+                statuses.stream().anyMatch(s -> s.equalsIgnoreCase("LIVE"));
 
         // Apply smart date defaults if not provided
         if (startDate == null && endDate == null) {
@@ -116,16 +116,20 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
                 // 2. current_time >= start_time (session has started)
                 // 3. current_time <= last_entry_time (still accepting entries)
                 // Uses timezone-aware comparison
-                conditions.add("ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)");
-                
+                conditions.add(
+                        "ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)");
+
                 // Check if current time is between start_time and last_entry_time
-                conditions.add("CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) >= ss.start_time");
-                conditions.add("CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) <= ss.last_entry_time");
+                conditions.add(
+                        "CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) >= ss.start_time");
+                conditions.add(
+                        "CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) <= ss.last_entry_time");
             } else {
                 // For upcoming/draft sessions: show next month using timezone-aware logic
                 // meeting_date >= CURRENT_DATE in session's timezone
-                conditions.add("ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)");
-                
+                conditions.add(
+                        "ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)");
+
                 // Add end date: 1 month from now
                 LocalDate oneMonthLater = LocalDate.now().plusMonths(1);
                 conditions.add("ss.meeting_date <= :endDate");
@@ -142,6 +146,48 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
                 conditions.add("ss.meeting_date <= :endDate");
                 parameters.put("endDate", java.sql.Date.valueOf(endDate));
             }
+        }
+
+        // Time Status Filter (UPCOMING, LIVE, PAST)
+        if (request.getTimeStatus() != null) {
+            String status = request.getTimeStatus().toUpperCase();
+            String timeZoneExp = "COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')";
+            String nowExp = "(CURRENT_TIMESTAMP AT TIME ZONE " + timeZoneExp + ")";
+            String todayExp = "CAST(" + nowExp + " AS date)";
+            String currentTimeExp = "CAST(" + nowExp + " AS time)";
+
+            if ("LIVE".equals(status)) {
+                conditions.add("ss.meeting_date = " + todayExp);
+                conditions.add("ss.start_time <= " + currentTimeExp);
+                conditions.add("ss.last_entry_time >= " + currentTimeExp);
+
+                // Also enforce session status is LIVE
+                conditions.add("s.status = 'LIVE'");
+            } else if ("UPCOMING".equals(status)) {
+                // Future dates OR today but future time
+                conditions.add("(ss.meeting_date > " + todayExp +
+                        " OR (ss.meeting_date = " + todayExp + " AND ss.start_time > " + currentTimeExp + "))");
+            } else if ("PAST".equals(status)) {
+                // Past dates OR today but past last entry time
+                conditions.add("(ss.meeting_date < " + todayExp +
+                        " OR (ss.meeting_date = " + todayExp + " AND ss.last_entry_time < " + currentTimeExp + "))");
+            }
+        }
+
+        // Booking & Source Filters
+        if (request.getBookingTypeIds() != null && !request.getBookingTypeIds().isEmpty()) {
+            conditions.add("s.booking_type_id IN :bookingTypeIds");
+            parameters.put("bookingTypeIds", request.getBookingTypeIds());
+        }
+
+        if (request.getSource() != null) {
+            conditions.add("s.source = :source");
+            parameters.put("source", request.getSource());
+        }
+
+        if (request.getSourceId() != null) {
+            conditions.add("s.source_id = :sourceId");
+            parameters.put("sourceId", request.getSourceId());
         }
 
         // Time of day filter
@@ -258,4 +304,3 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
         }
     }
 }
-

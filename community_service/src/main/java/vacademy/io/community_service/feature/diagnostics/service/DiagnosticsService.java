@@ -699,9 +699,12 @@ public class DiagnosticsService {
                 }
 
                 // Fetch logs if restarts > 0 or not ready
-                if (restarts > 0 || !ready) {
-                    logs.addAll(
-                            fetchPodLogs(pod.getMetadata().getName(), pod.getMetadata().getNamespace(), cs.getName()));
+                if (restarts > 0) {
+                    logs.addAll(fetchPodLogs(pod.getMetadata().getName(), pod.getMetadata().getNamespace(),
+                            cs.getName(), true));
+                } else if (!ready) {
+                    logs.addAll(fetchPodLogs(pod.getMetadata().getName(), pod.getMetadata().getNamespace(),
+                            cs.getName(), false));
                 }
             }
         }
@@ -719,7 +722,7 @@ public class DiagnosticsService {
                 .build();
     }
 
-    private List<String> fetchPodLogs(String podName, String namespace, String container) {
+    private List<String> fetchPodLogs(String podName, String namespace, String container, boolean previous) {
         try {
             // Fetch last 50 lines
             String logContent = coreV1Api.readNamespacedPodLog(
@@ -730,7 +733,7 @@ public class DiagnosticsService {
                     null,
                     null,
                     null,
-                    true,
+                    previous,
                     null,
                     50,
                     true);
@@ -739,7 +742,11 @@ public class DiagnosticsService {
                 return Arrays.asList(logContent.split("\n"));
             }
         } catch (ApiException e) {
-            log.warn("Failed to fetch logs for {}/{}: {}", namespace, podName, e.getMessage());
+            // If requesting previous logs and they don't exist, we might want current logs?
+            // But for now, just logging warning is fine.
+            if (!previous) {
+                log.warn("Failed to fetch logs for {}/{}: {}", namespace, podName, e.getMessage());
+            }
         }
         return Collections.emptyList();
     }

@@ -252,4 +252,21 @@ public interface UserRepository extends CrudRepository<User, String> {
       @Param("roleNames") List<String> roleNames,
       @Param("query") String query);
 
+  @Query(value = """
+      SELECT DISTINCT u.* FROM users u
+      JOIN user_role ur ON u.id = ur.user_id
+      JOIN roles r ON r.id = ur.role_id
+      WHERE ur.status = 'ACTIVE'
+      AND ur.institute_id = :instituteId
+      AND (
+          (:query IS NULL OR LOWER(u.full_name) LIKE LOWER(CONCAT('%', :query, '%'))) OR
+          (:query IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%'))) OR
+          (:query IS NULL OR u.mobile_number LIKE CONCAT('%', :query, '%'))
+      )
+      ORDER BY u.full_name ASC
+      LIMIT 10
+      """, nativeQuery = true)
+  List<User> autoSuggestUsersAllRoles(@Param("instituteId") String instituteId,
+      @Param("query") String query);
+
 }

@@ -31,8 +31,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
     @Query(value = "SELECT DISTINCT l.* FROM level l " +
             "JOIN package_session ps ON l.id = ps.level_id " +
-            "JOIN package p ON ps.package_id = p.id " +
-            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "JOIN package_institute pi ON ps.package_id = pi.package_id " +
             "WHERE pi.institute_id = :instituteId AND l.status IN (:statusList) AND ps.status IN (:statusList)", nativeQuery = true)
     List<LevelProjection> findDistinctLevelsByInstituteIdAndStatusIn(@Param("instituteId") String instituteId,
             @Param("statusList") List<String> statusList);
@@ -113,13 +112,18 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             "AND ps.status != 'DELETED' and ps.level_id != 'DEFAULT' ", nativeQuery = true)
     Long countDistinctLevelsByInstituteId(@Param("instituteId") String instituteId);
 
-    @Query(value = "SELECT DISTINCT TRIM(tag) FROM package p " +
-            "JOIN package_institute pi ON p.id = pi.package_id, " +
-            "LATERAL unnest(string_to_array(p.comma_separated_tags, ',')) AS tag " +
-            "WHERE pi.institute_id = :instituteId " +
-            "AND p.status != 'DELETED' " +
-            "AND p.comma_separated_tags IS NOT NULL " +
-            "AND p.comma_separated_tags != ''", nativeQuery = true)
+    @Query(value = """
+            SELECT DISTINCT TRIM(t.tag)
+            FROM package_institute pi
+            JOIN package p ON pi.package_id = p.id
+            CROSS JOIN LATERAL unnest(string_to_array(p.comma_separated_tags, ',')) AS t(tag)
+            WHERE pi.institute_id = :instituteId
+            AND p.status != 'DELETED'
+            AND p.comma_separated_tags IS NOT NULL
+            AND p.comma_separated_tags != ''
+            AND TRIM(t.tag) != ''
+            ORDER BY 1 ASC
+            """, nativeQuery = true)
     List<String> findAllDistinctTagsByInstituteId(@Param("instituteId") String instituteId);
 
     @Query(value = "SELECT DISTINCT p.* FROM package p " +
@@ -2387,7 +2391,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("facultyMappingStatuses") List<String> facultyMappingStatuses);
 
     /**
-     * V2: Get detailed package information where teacher is either creator or assigned as faculty
+     * V2: Get detailed package information where teacher is either creator or
+     * assigned as faculty
      * Includes DELETED filter and pagination support
      */
     @Query(value = """

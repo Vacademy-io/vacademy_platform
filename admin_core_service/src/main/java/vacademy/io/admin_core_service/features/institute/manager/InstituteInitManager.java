@@ -125,10 +125,6 @@ public class InstituteInitManager {
                 String instId = institute.getId();
                 List<String> activeStatuses = List.of(PackageSessionStatusEnum.ACTIVE.name());
 
-                // Trace submodule lookup
-                dto.setSubModules(PerformanceTracer.traceDbQuery(
-                                "instituteModuleService.getSubmoduleIdsForInstitute",
-                                () -> instituteModuleService.getSubmoduleIdsForInstitute(instId)));
 
                 // Trace tags lookup
                 dto.setTags(PerformanceTracer.traceDbQuery(

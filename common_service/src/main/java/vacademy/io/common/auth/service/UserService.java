@@ -549,4 +549,9 @@ public class UserService {
         }
     }
 
+    public List<UserDTO> autoSuggestUsers(String instituteId, List<String> roleNames, String query) {
+        List<User> users = userRepository.autoSuggestUsers(instituteId, roleNames, query);
+        return users.stream().map(UserDTO::new).collect(Collectors.toList());
+    }
+
 }

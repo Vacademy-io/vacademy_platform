@@ -19,14 +19,14 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.notification_service.constants.NotificationConstants;
-import vacademy.io.notification_service.features.announcements.service.InstituteAnnouncementSettingsService;
 import vacademy.io.notification_service.features.announcements.dto.EmailConfigDTO;
 import vacademy.io.notification_service.features.announcements.service.EmailConfigurationService;
+import vacademy.io.notification_service.features.announcements.service.InstituteAnnouncementSettingsService;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 import vacademy.io.common.logging.SentryLogger;
+import vacademy.io.notification_service.features.bounced_emails.service.BouncedEmailService;
 import vacademy.io.notification_service.util.EmailDomainBlocklistUtil;
 
 import java.util.AbstractMap;
@@ -57,18 +57,44 @@ public class EmailService {
     private final EmailConfigurationService emailConfigurationService;
     private final ObjectMapper objectMapper;
     private final InstituteAnnouncementSettingsService instituteAnnouncementSettingsService;
+    private final BouncedEmailService bouncedEmailService;
 
     @Autowired
     public EmailService(JavaMailSender mailSender, InstituteInternalService internalService,
             ObjectMapper objectMapper, EmailDispatcher emailDispatcher,
             InstituteAnnouncementSettingsService instituteAnnouncementSettingsService,
-            EmailConfigurationService emailConfigurationService) {
+            EmailConfigurationService emailConfigurationService,
+            BouncedEmailService bouncedEmailService) {
         this.mailSender = mailSender;
         this.internalService = internalService;
         this.objectMapper = objectMapper;
         this.emailDispatcher = emailDispatcher;
         this.instituteAnnouncementSettingsService = instituteAnnouncementSettingsService;
         this.emailConfigurationService = emailConfigurationService;
+        this.bouncedEmailService = bouncedEmailService;
+    }
+
+    /**
+     * Check if an email should be blocked from sending.
+     * Checks both domain blocklist and bounced email blocklist.
+     * 
+     * @param email The email address to check
+     * @return true if the email should be blocked, false otherwise
+     */
+    private boolean isEmailBlocked(String email) {
+        // Check domain blocklist first (faster, static check)
+        if (EmailDomainBlocklistUtil.isEmailDomainBlocked(email)) {
+            logger.info("Email blocked - domain is in blocklist: {}", email);
+            return true;
+        }
+        
+        // Check bounced email blocklist (database check with caching)
+        if (bouncedEmailService.isEmailBlocked(email)) {
+            logger.info("Email blocked - previously bounced: {}", email);
+            return true;
+        }
+        
+        return false;
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -210,11 +236,21 @@ public class EmailService {
         return false;
     }
 
+    /**
+     * Determines if SES Configuration Set header should be included for email tracking.
+     * 
+     * The header is included if:
+     * 1. AWS SQS is enabled (required for bounce detection/blocklist feature), OR
+     * 2. The original institute tracking logic allows it (preserves existing business logic)
+     * 
+     * This ensures bounce detection works globally while preserving existing institute preferences.
+     */
     private boolean shouldIncludeSesConfigurationHeader(String instituteId) {
         if (!awsSqsEnabled) {
             return false;
         }
 
+        // Original logic: check institute tracking preferences
         if (!StringUtils.hasText(instituteId)) {
             return true;
         }
@@ -229,6 +265,12 @@ public class EmailService {
 
     public void sendEmail(String to, String subject, String text, String instituteId) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping simple email for blocked email address: {}", to);
+                return;
+            }
+
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
@@ -265,6 +307,12 @@ public class EmailService {
 
     public void sendEmailOtp(String to, String subject, String service, String name, String otp, String instituteId) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping OTP email for blocked email address: {}", to);
+                return;
+            }
+
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
@@ -446,9 +494,9 @@ public class EmailService {
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
             String customFromEmail, String customFromName, String emailType) {
         try {
-            // Skip sending email if the domain is in the blocked list
-            if (EmailDomainBlocklistUtil.isEmailDomainBlocked(to)) {
-                logger.info("Skipping HTML email for user with blocked email domain: {}", to);
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping HTML email for blocked email address: {}", to);
                 return;
             }
 
@@ -527,9 +575,9 @@ public class EmailService {
     public void sendAttachmentEmail(String to, String subject, String service, String body,
             Map<String, byte[]> attachments, String instituteId) {
         try {
-            // Skip sending email if the domain is in the blocked list
-            if (EmailDomainBlocklistUtil.isEmailDomainBlocked(to)) {
-                logger.info("Skipping attachment email for user with blocked email domain: {}", to);
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping attachment email for blocked email address: {}", to);
                 return;
             }
             

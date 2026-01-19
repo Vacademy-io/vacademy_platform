@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.dto.SesEventDTO;
+import vacademy.io.notification_service.features.bounced_emails.service.BouncedEmailService;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
@@ -20,6 +21,7 @@ import java.util.UUID;
 public class EmailEventService {
 
     private final NotificationLogRepository notificationLogRepository;
+    private final BouncedEmailService bouncedEmailService;
 
     public void processEmailEvent(SesEventDTO sesEvent) {
         try {
@@ -54,10 +56,131 @@ public class EmailEventService {
             log.debug("Successfully saved SES event to database: {} for message: {} to recipient: {} with source: {}", 
                 eventType, messageId, recipient, originalLogId);
             
+            // Handle bounce events - add email to blocklist
+            if (isBounceEvent(eventType)) {
+                handleBounceEvent(sesEvent, recipient, messageId, originalLogId);
+            }
+            
+            // Handle complaint events - also add to blocklist (user marked as spam)
+            if (isComplaintEvent(eventType)) {
+                handleComplaintEvent(sesEvent, recipient, messageId, originalLogId);
+            }
+            
         } catch (Exception e) {
             log.error("Error processing SES event: {} - Error: {}", 
                 sesEvent != null ? sesEvent.getEventType() : "unknown", e.getMessage(), e);
         }
+    }
+
+    /**
+     * Check if the event type is a bounce event
+     */
+    private boolean isBounceEvent(String eventType) {
+        return eventType != null && eventType.equalsIgnoreCase("bounce");
+    }
+
+    /**
+     * Check if the event type is a complaint event
+     */
+    private boolean isComplaintEvent(String eventType) {
+        return eventType != null && eventType.equalsIgnoreCase("complaint");
+    }
+
+    /**
+     * Handle bounce event - extract bounce details and add email to blocklist
+     */
+    private void handleBounceEvent(SesEventDTO sesEvent, String recipient, String messageId, String originalLogId) {
+        try {
+            if (recipient == null || recipient.equals("unknown") || recipient.trim().isEmpty()) {
+                log.warn("Cannot add to blocklist - invalid recipient from bounce event");
+                return;
+            }
+
+            SesEventDTO.BounceDTO bounce = sesEvent.getBounce();
+            String bounceType = bounce != null ? bounce.getBounceType() : "Unknown";
+            String bounceSubType = bounce != null ? bounce.getBounceSubType() : "Unknown";
+            
+            // Build bounce reason from diagnostic codes if available
+            String bounceReason = buildBounceReason(bounce);
+
+            log.info("Processing bounce event for email: {} (type: {}/{}) - Adding to blocklist", 
+                recipient, bounceType, bounceSubType);
+
+            bouncedEmailService.addBouncedEmail(
+                recipient,
+                bounceType,
+                bounceSubType,
+                bounceReason,
+                messageId,
+                originalLogId
+            );
+
+            log.info("Successfully added bounced email to blocklist: {}", recipient);
+
+        } catch (Exception e) {
+            log.error("Error handling bounce event for recipient {}: {}", recipient, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Handle complaint event - user marked email as spam, add to blocklist
+     */
+    private void handleComplaintEvent(SesEventDTO sesEvent, String recipient, String messageId, String originalLogId) {
+        try {
+            if (recipient == null || recipient.equals("unknown") || recipient.trim().isEmpty()) {
+                log.warn("Cannot add to blocklist - invalid recipient from complaint event");
+                return;
+            }
+
+            SesEventDTO.ComplaintDTO complaint = sesEvent.getComplaint();
+            String complaintType = complaint != null ? complaint.getComplaintFeedbackType() : "Unknown";
+
+            log.info("Processing complaint event for email: {} (type: {}) - Adding to blocklist", 
+                recipient, complaintType);
+
+            // Treat complaints as a special type of bounce
+            bouncedEmailService.addBouncedEmail(
+                recipient,
+                "Complaint",
+                complaintType,
+                "User marked email as spam",
+                messageId,
+                originalLogId
+            );
+
+            log.info("Successfully added complained email to blocklist: {}", recipient);
+
+        } catch (Exception e) {
+            log.error("Error handling complaint event for recipient {}: {}", recipient, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Build a detailed bounce reason from the bounce DTO
+     */
+    private String buildBounceReason(SesEventDTO.BounceDTO bounce) {
+        if (bounce == null) {
+            return "No bounce details available";
+        }
+
+        StringBuilder reason = new StringBuilder();
+        reason.append("Bounce Type: ").append(bounce.getBounceType());
+        reason.append(", SubType: ").append(bounce.getBounceSubType());
+
+        if (bounce.getBouncedRecipients() != null && bounce.getBouncedRecipients().length > 0) {
+            SesEventDTO.BouncedRecipientDTO firstRecipient = bounce.getBouncedRecipients()[0];
+            if (firstRecipient.getDiagnosticCode() != null) {
+                reason.append(", Diagnostic: ").append(firstRecipient.getDiagnosticCode());
+            }
+            if (firstRecipient.getStatus() != null) {
+                reason.append(", Status: ").append(firstRecipient.getStatus());
+            }
+            if (firstRecipient.getAction() != null) {
+                reason.append(", Action: ").append(firstRecipient.getAction());
+            }
+        }
+
+        return reason.toString();
     }
 
     private String getRecipientFromEvent(SesEventDTO sesEvent) {

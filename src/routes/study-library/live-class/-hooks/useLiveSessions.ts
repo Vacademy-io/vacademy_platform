@@ -11,6 +11,7 @@ import {
   isSessionLiveTimezoneAware,
   isSessionUpcomingTimezoneAware,
 } from "@/utils/timezone";
+
 export interface LiveSessionsParams {
   startDate?: string;
   endDate?: string;
@@ -38,6 +39,8 @@ const fetchLiveAndUpcomingSessions = async (
         ...params,
       },
     });
+
+
 
     const allSessions = (response.data as DaySession[]).reduce<
       SessionDetails[]
@@ -73,9 +76,16 @@ export const useLiveSessions = (
   params?: LiveSessionsParams
 ) => {
   return useQuery({
-    queryKey: ["liveSessions", batchId, params],
+    queryKey: [
+      "liveSessions",
+      batchId,
+      params?.page,
+      params?.size,
+      params?.startDate,
+      params?.endDate,
+    ],
     queryFn: () => fetchLiveAndUpcomingSessions(batchId!, params),
-    //enabled: !!batchId,
+    // enabled: !!batchId,
     refetchInterval: 60000, // Refetch every minute to keep live status updated
   });
 };

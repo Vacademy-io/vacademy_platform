@@ -50,6 +50,7 @@ export const Route = createFileRoute("/study-library/live-class/")({
 });
 
 function RouteComponent() {
+
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
   const [batchId, setBatchId] = useState<string>("");
@@ -92,10 +93,14 @@ function RouteComponent() {
     };
     fetchBatchId();
   }, []);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [apiPage]);
 
   const {
     data: sessions,
     isLoading,
+    isFetching,
     error,
   } = useLiveSessions(batchId, {
     startDate:
@@ -114,7 +119,7 @@ function RouteComponent() {
     page: selectedView === "list" ? apiPage : 0,
   });
 
-  console.log(sessions);
+
 
   useLayoutEffect(() => {
     setNavHeading(
@@ -123,6 +128,7 @@ function RouteComponent() {
       </div>
     );
   }, [setNavHeading]);
+  const hasNextPage = (sessions?.totalReturned ?? 0) === 10;
 
   const formatDateTime = (date: string, time: string, timezone?: string) => {
     if (timezone) {
@@ -274,7 +280,7 @@ function RouteComponent() {
   // Reset pagination when filters change
   useEffect(() => {
     setApiPage(0);
-  }, [startDateFilter, endDateFilter]);
+  }, [startDateFilter, endDateFilter, selectedView]);
 
   // Helper function to determine if a session is currently live (in waiting room or live)
   const isSessionLive = (session: SessionDetails) => {
@@ -452,24 +458,16 @@ function RouteComponent() {
   };
 
   const getSessionsForDate = (date: Date) => {
-    // Format date as YYYY-MM-DD in local timezone to avoid UTC issues
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const dateString = `${year}-${month}-${day}`;
+    if (selectedView !== "calendar") return [];
 
-    const allSessions = [
+    const formattedDate = formatDateToISO(date);
+
+    return [
       ...(sessions?.live_sessions ?? []),
       ...(sessions?.upcoming_sessions ?? []),
-    ];
-
-    const filteredSessions = allSessions.filter(
-      (session) => session.meeting_date === dateString
-    );
-
-    // Apply additional filters
-    return filterSessions(filteredSessions);
+    ].filter((session) => session.meeting_date === formattedDate);
   };
+
 
   const handleDayClick = (date: Date, sessionsForDay: SessionDetails[]) => {
     if (sessionsForDay.length > 0) {
@@ -866,9 +864,10 @@ function RouteComponent() {
     );
   }
 
-  const liveSessions = sessions?.live_sessions ?? [];
-  const upcomingSessions = sessions?.upcoming_sessions ?? [];
+  const liveSessions = selectedView === "list" ? sessions?.live_sessions ?? [] : [];
 
+
+  const upcomingSessions = selectedView === "list" ? sessions?.upcoming_sessions ?? [] : [];
   return (
     <LayoutContainer>
       <Helmet>
@@ -899,7 +898,7 @@ function RouteComponent() {
               Calendar View
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="list" className="mt-6">
+          <TabsContent value="list" className="mt-6" key={`list-view-${apiPage}`}>
             {/* Filters Section */}
 
             <div className="mb-6 p-4 bg-gradient-to-r from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/60 border border-neutral-200 dark:border-neutral-800 rounded-lg">
@@ -957,7 +956,7 @@ function RouteComponent() {
               </div>
             </div>
 
-            <div className="space-y-8">
+            <div className={`space-y-8 transition-opacity duration-200 ${isFetching && !isLoading ? 'opacity-50' : 'opacity-100'}`} key={`page-${apiPage}`}>
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
@@ -1036,6 +1035,9 @@ function RouteComponent() {
                   const filteredUpcomingSessions =
                     filterSessions(upcomingSessions);
 
+
+
+
                   return (
                     <>
                       {filteredUpcomingSessions.length > 0 ? (
@@ -1079,7 +1081,8 @@ function RouteComponent() {
                     <Button
                       variant="outline"
                       onClick={() => {
-                        setApiPage(Math.max(0, apiPage - 1));
+                        setApiPage((p) => Math.max(0, p - 1));
+
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
                       disabled={apiPage === 0}
@@ -1092,7 +1095,8 @@ function RouteComponent() {
                         setApiPage(apiPage + 1);
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      disabled={((sessions as any)?.totalReturned || 0) < 10}
+                      disabled={!hasNextPage}
+
                     >
                       Next Sessions
                     </Button>

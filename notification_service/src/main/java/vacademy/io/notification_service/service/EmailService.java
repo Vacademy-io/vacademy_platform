@@ -27,8 +27,11 @@ import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 import vacademy.io.common.logging.SentryLogger;
 import vacademy.io.notification_service.features.bounced_emails.service.BouncedEmailService;
+import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.notification_service.util.EmailDomainBlocklistUtil;
 
+import java.time.LocalDateTime;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -37,6 +40,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class EmailService {
@@ -58,13 +62,15 @@ public class EmailService {
     private final ObjectMapper objectMapper;
     private final InstituteAnnouncementSettingsService instituteAnnouncementSettingsService;
     private final BouncedEmailService bouncedEmailService;
+    private final NotificationLogRepository notificationLogRepository;
 
     @Autowired
     public EmailService(JavaMailSender mailSender, InstituteInternalService internalService,
             ObjectMapper objectMapper, EmailDispatcher emailDispatcher,
             InstituteAnnouncementSettingsService instituteAnnouncementSettingsService,
             EmailConfigurationService emailConfigurationService,
-            BouncedEmailService bouncedEmailService) {
+            BouncedEmailService bouncedEmailService,
+            NotificationLogRepository notificationLogRepository) {
         this.mailSender = mailSender;
         this.internalService = internalService;
         this.objectMapper = objectMapper;
@@ -72,6 +78,7 @@ public class EmailService {
         this.instituteAnnouncementSettingsService = instituteAnnouncementSettingsService;
         this.emailConfigurationService = emailConfigurationService;
         this.bouncedEmailService = bouncedEmailService;
+        this.notificationLogRepository = notificationLogRepository;
     }
 
     /**
@@ -95,6 +102,37 @@ public class EmailService {
         }
         
         return false;
+    }
+
+    /**
+     * Save email notification log to database.
+     * This is required for bounce event processing to link bounce events back to original emails.
+     * 
+     * @param to Recipient email address
+     * @param subject Email subject
+     * @param body Email body/content
+     * @param source Source of the email (e.g., "EMAIL_SERVICE", "OTP_SERVICE")
+     * @param sourceId Optional source ID
+     * @param userId Optional user ID
+     */
+    private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId) {
+        try {
+            NotificationLog notificationLog = new NotificationLog();
+            notificationLog.setId(UUID.randomUUID().toString());
+            notificationLog.setNotificationType("EMAIL");
+            notificationLog.setChannelId(to); // Email address
+            notificationLog.setBody(body != null ? body : subject); // Use body if available, otherwise subject
+            notificationLog.setSource(source != null ? source : "EMAIL_SERVICE");
+            notificationLog.setSourceId(sourceId);
+            notificationLog.setUserId(userId);
+            notificationLog.setNotificationDate(LocalDateTime.now());
+            
+            notificationLogRepository.save(notificationLog);
+            logger.debug("Saved email notification log for: {} with ID: {}", to, notificationLog.getId());
+        } catch (Exception e) {
+            // Log error but don't fail email sending if log save fails
+            logger.error("Failed to save email notification log for: {} - Error: {}", to, e.getMessage(), e);
+        }
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -291,6 +329,9 @@ public class EmailService {
             logger.info("Email sent successfully to {} using {}", to,
                     StringUtils.hasText(instituteId) ? "custom SMTP" : "default SMTP");
 
+            // Save notification log for bounce event tracking
+            saveEmailNotificationLog(to, subject, text, "EMAIL_SERVICE", null, null);
+
         } catch (Exception e) {
             logger.error("Failed to send email", e);
             SentryLogger.SentryEventBuilder.error(e)
@@ -371,6 +412,9 @@ public class EmailService {
                     logger.info("Sending OTP email to: {}", to);
                     mailSenderToUse.send(message);
                     logger.info("OTP email successfully sent to: {}", to);
+
+                    // Save notification log for bounce event tracking
+                    saveEmailNotificationLog(to, emailSubject, emailBody, "OTP_SERVICE", service, null);
 
                 } catch (Exception e) {
                     logger.error("Error while sending OTP email", e);
@@ -551,6 +595,9 @@ public class EmailService {
                     message.setContent(multipart);
                     finalMailSender.send(message);
 
+                    // Save notification log for bounce event tracking
+                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", null, null);
+
                 } catch (Exception e) {
                     logger.error("Failed to send HTML email to: {}", to, e);
                     SentryLogger.SentryEventBuilder.error(e)
@@ -635,6 +682,9 @@ public class EmailService {
                     logger.info("Sending email to: {}", to);
                     mailSenderToUse.send(message);
                     logger.info("Email successfully sent to: {}", to);
+
+                    // Save notification log for bounce event tracking
+                    saveEmailNotificationLog(to, emailSubject, emailBody, service != null ? service : "ATTACHMENT_EMAIL_SERVICE", null, null);
 
                 } catch (MessagingException e) {
                     logger.error("Error while preparing or sending the email", e);

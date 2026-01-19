@@ -8,6 +8,7 @@ import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.dto.NotificationToUserDTO;
+import vacademy.io.notification_service.features.bounced_emails.service.BouncedEmailService;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
@@ -27,6 +28,16 @@ public class NotificationService {
 
     private final NotificationLogRepository notificationLogRepository;
     private final EmailService emailSenderService;
+    private final BouncedEmailService bouncedEmailService;
+
+    /**
+     * Check if an email should be blocked from sending.
+     * Checks both domain blocklist and bounced email blocklist.
+     */
+    private boolean isEmailBlocked(String email) {
+        return EmailDomainBlocklistUtil.isEmailDomainBlocked(email) || 
+               bouncedEmailService.isEmailBlocked(email);
+    }
 
     @Transactional
     public String sendNotification(NotificationDTO notificationDTO,String instituteId) {
@@ -47,9 +58,9 @@ public class NotificationService {
 
             switch (notificationType.toUpperCase()) {
                 case "EMAIL":
-                    // Skip sending email if the domain is in the blocked list
-                    if (EmailDomainBlocklistUtil.isEmailDomainBlocked(channelId)) {
-                        log.info("Skipping email notification for user with blocked email domain: {}", channelId);
+                    // Skip sending email if blocked (domain blocklist or bounced email blocklist)
+                    if (isEmailBlocked(channelId)) {
+                        log.info("Skipping email notification for blocked email address: {}", channelId);
                         break;
                     }
                     emailSenderService.sendHtmlEmail(channelId, parsedSubject, "email-service", parsedBody, instituteId);
@@ -111,9 +122,9 @@ public class NotificationService {
                     notificationLogs.add(notificationLog);
 
                     if ("EMAIL".equalsIgnoreCase(notificationType)) {
-                        // Skip sending email if the domain is in the blocked list
-                        if (EmailDomainBlocklistUtil.isEmailDomainBlocked(channelId)) {
-                            log.info("Skipping attachment email notification for user with blocked email domain: {}", channelId);
+                        // Skip sending email if blocked (domain blocklist or bounced email blocklist)
+                        if (isEmailBlocked(channelId)) {
+                            log.info("Skipping attachment email notification for blocked email address: {}", channelId);
                             continue;
                         }
                         Map<String, byte[]> base64AttachmentNameAndAttachment = user.getAttachments().stream()

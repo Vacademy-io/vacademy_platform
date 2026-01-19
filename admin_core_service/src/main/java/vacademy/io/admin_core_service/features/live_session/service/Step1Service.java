@@ -458,7 +458,7 @@ public class Step1Service {
 
             SessionSchedule schedule = new SessionSchedule();
             schedule.setSessionId(session.getId());
-            schedule.setRecurrenceType(request.getRecurrenceType());
+            schedule.setRecurrenceType(request.getRecurrenceType() != null ? request.getRecurrenceType() : "NONE");
             schedule.setMeetingDate(Date.valueOf(meetingLocalDate));
             schedule.setStartTime(Time.valueOf(startLocalTime));
             schedule.setLastEntryTime(Time.valueOf(lastEntryLocalTime));

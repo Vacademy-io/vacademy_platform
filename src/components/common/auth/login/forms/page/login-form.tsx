@@ -816,7 +816,7 @@ export function LoginForm({
     <div
       className={`${
         type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
-      } bg-background relative `}
+      } bg-background relative mt-10`}
     >
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />

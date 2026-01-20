@@ -706,6 +706,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
           totalAmount={getTotal()}
           items={items}
           membershipPlan={membershipPlan}
+          isRentMode={true}
         />
       </>
     );
@@ -763,6 +764,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         totalAmount={getTotal()}
         items={items}
         membershipPlan={membershipPlan}
+        isRentMode={false}
       />
     </div>
   );

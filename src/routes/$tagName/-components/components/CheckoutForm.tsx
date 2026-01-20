@@ -7,11 +7,13 @@ import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import {
     ENROLLMENT_PAYMENT_INITIATION,
+    ENROLLMENT_PAYMENT_INITIATION_V2,
     ENROLLMENT_INVITE_URL,
     LIVE_SESSION_REQUEST_OTP,
     LIVE_SESSION_VERIFY_OTP,
     INSTITUTE_ID,
 } from "@/constants/urls";
+import { getBooksPreferenceFieldId } from "../../-services/custom-fields-service";
 import { toast } from "sonner";
 import axios from "axios";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
@@ -24,6 +26,7 @@ interface CheckoutFormProps {
     totalAmount: number;
     items: any[];
     membershipPlan?: any;
+    isRentMode?: boolean;
 }
 
 export const CheckoutForm: React.FC<CheckoutFormProps> = ({
@@ -33,6 +36,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     totalAmount,
     items,
     membershipPlan,
+    isRentMode = false,
 }) => {
     const [email, setEmail] = useState("");
     const [fullName, setFullName] = useState("");
@@ -216,70 +220,150 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
         setLoading(true);
         try {
-            const sessionIds = [
-                ...(membershipPlan?.packageSessionId ? [membershipPlan.packageSessionId] : []),
-                ...items.map(item => item.packageSessionId || item.id)
-            ];
-
             const orderId = `book_order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
             // Store order_id in localStorage for verification on return
             localStorage.setItem("pendingOrderId", orderId);
 
-            const payload = {
-                user: {
-                    username: email.split('@')[0],
-                    email: email,
-                    full_name: fullName,
-                    mobile_number: phone,
-                    address_line: address,
-                    city: "",
-                    region: "",
-                    pin_code: "",
-                    date_of_birth: new Date().toISOString(),
-                    gender: null,
-                    password: "",
-                    profile_pic_file_id: "",
-                    roles: ["STUDENT"],
-                    root_user: true,
-                },
-                institute_id: instituteId,
-                subject_id: "",
-                vendor_id: "PHONEPE",
-                learner_package_session_enroll: {
-                    package_session_ids: sessionIds,
-                    plan_id: paymentPlanData?.planId || membershipPlan?.id || items[0]?.id,
-                    payment_option_id: paymentPlanData?.paymentOptionId || "default",
-                    enroll_invite_id: paymentPlanData?.enrollInviteId || membershipPlan?.enrollInviteId || items[0]?.enrollInviteId || items[0]?.id,
-                    payment_initiation_request: {
-                        amount: totalAmount,
-                        currency: "INR",
-                        description: `Order for ${items.length} items from Book Catalogue`,
-                        charge_automatically: true,
-                        institute_id: instituteId,
-                        order_id: orderId,
-                        redirect_url: window.location.href,
-                        phone_pe_request: {
-                            // Redirect back to current page (Catalogue/Courses) to let CartComponent handle status verification and auto-login
-                            redirect_url: window.location.href
-                        }
-                    },
-                    custom_field_values: [],
-                },
+            // Common user payload
+            const userPayload = {
+                full_name: fullName,
+                email: email,
+                mobileNumber: phone,
+                address_line: address,
+                city: "",
+                region: "",
+                pin_code: "",
+                date_of_birth: new Date().toISOString(),
+                gender: null,
+                password: "",
+                profile_pic_file_id: "",
+                roles: ["STUDENT"],
             };
 
-            console.log("Sending Checkout Payload:", payload);
-            // Using plain axios instead of authenticatedAxiosInstance to support guest checkout
-            const response = await axios.post(
-                ENROLLMENT_PAYMENT_INITIATION,
-                payload,
-                {
-                    headers: {
-                        "clientId": instituteId,
-                        "X-Institute-Id": instituteId
-                    }
+            // Get the redirect URL (current page)
+            const redirectUrl = window.location.href;
+
+            let response;
+
+            if (isRentMode) {
+                // ============ RENT MODE: Use v1 API with custom_field_values ============
+                console.log("[CheckoutForm] Processing RENT mode checkout");
+
+                // Fetch the "Books Preference" custom field ID
+                const booksPreferenceFieldId = await getBooksPreferenceFieldId(instituteId);
+
+                if (!booksPreferenceFieldId) {
+                    throw new Error("Unable to find Books Preference custom field. Please contact support.");
                 }
-            );
+
+                // Build the books preference value - only the book names (titles)
+                const bookNames = items.map(item => item.title || item.name || "Unknown Book");
+                const booksPreferenceValue = bookNames.join(", ");
+
+                console.log("[CheckoutForm] Books preference value (names only):", booksPreferenceValue);
+
+                // Use membership plan for Rent mode
+                const sessionIds = membershipPlan?.packageSessionId
+                    ? [membershipPlan.packageSessionId]
+                    : [];
+
+                const rentPayload = {
+                    user: {
+                        ...userPayload,
+                        username: email.split('@')[0],
+                        mobile_number: phone,
+                        root_user: true,
+                    },
+                    institute_id: instituteId,
+                    subject_id: "",
+                    vendor_id: "PHONEPE",
+                    learner_package_session_enroll: {
+                        package_session_ids: sessionIds,
+                        plan_id: paymentPlanData?.planId || membershipPlan?.id || items[0]?.id,
+                        payment_option_id: paymentPlanData?.paymentOptionId || "default",
+                        enroll_invite_id: paymentPlanData?.enrollInviteId || membershipPlan?.enrollInviteId || items[0]?.enrollInviteId || items[0]?.id,
+                        payment_initiation_request: {
+                            amount: totalAmount,
+                            currency: "INR",
+                            description: `Rent subscription for ${items.length} books`,
+                            charge_automatically: true,
+                            institute_id: instituteId,
+                            order_id: orderId,
+                            redirect_url: redirectUrl,
+                            phone_pe_request: {
+                                redirect_url: redirectUrl
+                            }
+                        },
+                        custom_field_values: [
+                            {
+                                custom_field_id: booksPreferenceFieldId,
+                                value: booksPreferenceValue
+                            }
+                        ],
+                    },
+                };
+
+                console.log("[CheckoutForm] Sending RENT Checkout Payload:", rentPayload);
+
+                response = await axios.post(
+                    ENROLLMENT_PAYMENT_INITIATION,
+                    rentPayload,
+                    {
+                        headers: {
+                            "clientId": instituteId,
+                            "X-Institute-Id": instituteId
+                        }
+                    }
+                );
+            } else {
+                // ============ BUY MODE: Use v2 API with learner_package_session_enrollments array ============
+                console.log("[CheckoutForm] Processing BUY mode checkout");
+
+                // Build learner_package_session_enrollments array for each item
+                const learnerPackageSessionEnrollments = items.map(item => ({
+                    package_session_id: item.packageSessionId || item.id,
+                    plan_id: paymentPlanData?.planId || item.planId || item.id,
+                    payment_option_id: paymentPlanData?.paymentOptionId || item.paymentOptionId || "default",
+                    enroll_invite_id: item.enrollInviteId || item.id
+                }));
+
+                // Calculate total amount as sum of all package sessions
+                const calculatedTotalAmount = items.reduce(
+                    (total, item) => total + (item.price * (item.quantity || 1)),
+                    0
+                );
+
+                const buyPayload = {
+                    user: userPayload,
+                    institute_id: instituteId,
+                    vendor_id: "PHONEPE",
+                    learner_package_session_enrollments: learnerPackageSessionEnrollments,
+                    payment_initiation_request: {
+                        amount: calculatedTotalAmount,
+                        currency: "INR",
+                        merchant_id: "PGTESTPAYUAT",
+                        redirect_url: redirectUrl,
+                        phone_pe_request: {
+                            redirect_url: redirectUrl
+                        }
+                    }
+                };
+
+                console.log("[CheckoutForm] Sending BUY Checkout Payload:", buyPayload);
+
+                response = await axios.post(
+                    ENROLLMENT_PAYMENT_INITIATION_V2,
+                    buyPayload,
+                    {
+                        headers: {
+                            "Content-Type": "application/json",
+                            "clientId": instituteId,
+                            "X-Institute-Id": instituteId
+                        }
+                    }
+                );
+            }
 
             console.log("Checkout response data:", response.data);
 
@@ -342,11 +426,11 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             }
 
             // Check for redirect URL from response (e.g. PhonePe)
-            const redirectUrl =
+            const paymentRedirectUrl =
                 response.data?.payment_response?.response_data?.redirectUrl;
 
-            if (redirectUrl) {
-                window.location.href = redirectUrl;
+            if (paymentRedirectUrl) {
+                window.location.href = paymentRedirectUrl;
             } else if (response.data && (response.data.responseCode === "SUCCESS" || response.data.status === "SUCCESS")) {
                 toast.success("Checkout successful!");
                 // Clean up credentials storage as we are doing direct redirect with tokens potentially

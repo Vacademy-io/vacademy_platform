@@ -339,6 +339,12 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
       return packageType === "COURSE";
     });
 
+    // Filter by level (Buy/Rent) based on cartMode
+    result = result.filter((c) => {
+      const levelName = (c.level_name || c.level || "").toLowerCase();
+      return levelName === cartMode;
+    });
+
     // Fast search: Search in package_name, author/instructor name, and textContent (pre-processed)
     if (searchTerm && searchTerm.trim()) {
       const searchLower = searchTerm.trim().toLowerCase();
@@ -372,7 +378,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
     // Price filter
 
     return result;
-  }, [courses, searchTerm, selectedGenres]);
+  }, [courses, searchTerm, selectedGenres, cartMode]);
 
   // Reset displayed count when filters change
   useEffect(() => {

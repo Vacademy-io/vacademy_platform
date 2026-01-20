@@ -63,9 +63,15 @@ public class PackageSession {
     @Column(name = "available_slots")
     private Integer availableSlots;
 
+    @Column(name = "max_seats")
+    private Integer maxSeats;
+
+    @Version
+    private Long version;
+
     @PrePersist
     public void prePersist() {
-        if (isOrgAssociated == null){
+        if (isOrgAssociated == null) {
             isOrgAssociated = false;
         }
     }

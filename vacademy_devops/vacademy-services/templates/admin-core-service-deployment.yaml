@@ -20,6 +20,15 @@ spec:
       labels:
         app: admin-core-service
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: admin-core-service
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: admin-core-service
           image: "{{ .Values.services.admin_core_service.image.repository }}:{{ .Values.services.admin_core_service.image.tag }}"
@@ -29,11 +38,11 @@ spec:
                 name: myconfigmapv1.0
           resources:
             requests:
-              cpu: "200m"
-              memory: "450Mi"
+              cpu: "250m"
+              memory: "512Mi"
             limits:
-              cpu: "450m"
-              memory: "600Mi"
+              cpu: "600m"
+              memory: "1Gi"
           livenessProbe:
             httpGet:
               path: /admin-core-service/actuator/health
@@ -41,7 +50,7 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
-            timeoutSeconds: 5
+            timeoutSeconds: 15
             failureThreshold: 5
             successThreshold: 1
           startupProbe:
@@ -51,7 +60,7 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
-            timeoutSeconds: 5
+            timeoutSeconds: 15
             failureThreshold: 30
             successThreshold: 1
           readinessProbe:
@@ -61,7 +70,7 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
-            timeoutSeconds: 5
+            timeoutSeconds: 15
             failureThreshold: 5
             successThreshold: 1
           ports:

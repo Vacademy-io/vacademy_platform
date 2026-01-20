@@ -87,6 +87,12 @@ public class LearnerEnrollRequestService {
 
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
+        return recordLearnerRequest(learnerEnrollRequestDTO, Map.of());
+    }
+
+    @Transactional
+    public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO,
+            Map<String, Object> extraData) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
             boolean sendCredentials = getSendCredentialsFlag(
@@ -175,7 +181,7 @@ public class LearnerEnrollRequestService {
                 } else {
                     // At least one is allowed - filter out blocked ones
                     log.info("Filtering out {} blocked package sessions due to gap violation. " +
-                                    "Proceeding with {} allowed package sessions.",
+                            "Proceeding with {} allowed package sessions.",
                             gapValidationResult.getBlockedPackageSessions().size(),
                             gapValidationResult.getAllowedPackageSessionIds().size());
 
@@ -200,7 +206,8 @@ public class LearnerEnrollRequestService {
                 enrollDTO,
                 enrollInvite,
                 paymentOption,
-                userPlan);
+                userPlan,
+                extraData);
         // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)
         // For PAID enrollments, notifications will be sent after webhook confirms
         // payment
@@ -319,7 +326,8 @@ public class LearnerEnrollRequestService {
             LearnerPackageSessionsEnrollDTO enrollDTO,
             EnrollInvite enrollInvite,
             PaymentOption paymentOption,
-            UserPlan userPlan) {
+            UserPlan userPlan,
+            Map<String, Object> extraData) {
         PaymentOptionOperationStrategy strategy = paymentOptionOperationFactory
                 .getStrategy(PaymentOptionType.fromString(paymentOption.getType()));
 
@@ -330,7 +338,7 @@ public class LearnerEnrollRequestService {
                 enrollInvite,
                 paymentOption,
                 userPlan,
-                Map.of(), // optional extra data,
+                extraData, // passes the data from arguments
                 learnerEnrollRequestDTO.getLearnerExtraDetails());
     }
 

@@ -15,65 +15,79 @@ import java.util.List;
 @Repository
 public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> {
 
-    @Query("SELECT pl FROM PaymentLog pl WHERE pl.userPlan.id = :userPlanId ORDER BY pl.createdAt DESC")
+  @Query(value = "SELECT * FROM payment_log WHERE CAST(payment_specific_data AS TEXT) LIKE %:orderId%", nativeQuery = true)
+  List<PaymentLog> findAllByOrderIdInJson(@Param("orderId") String orderId);
+
+  /**
+   * Find all payment logs where the orderId matches within the
+   * originalRequest.order_id JSON path.
+   * This is more specific than findAllByOrderIdInJson and ensures exact matching
+   * of the order_id field.
+   * Note: Using CAST() instead of ::text because JPA interprets : as named
+   * parameter prefix.
+   */
+  @Query(value = "SELECT * FROM payment_log WHERE CAST(payment_specific_data AS TEXT) LIKE CONCAT('%\"order_id\":\"', :orderId, '\"%')", nativeQuery = true)
+  List<PaymentLog> findAllByOrderIdInOriginalRequest(@Param("orderId") String orderId);
+
+  @Query("SELECT pl FROM PaymentLog pl WHERE pl.userPlan.id = :userPlanId ORDER BY pl.createdAt DESC")
     List<PaymentLog> findByUserPlanIdOrderByCreatedAtDesc(@Param("userPlanId") String userPlanId);    @Query(value = """
-SELECT DISTINCT pl FROM PaymentLog pl
-JOIN FETCH pl.userPlan up
-JOIN FETCH up.enrollInvite ei
-LEFT JOIN FETCH up.paymentOption po
-LEFT JOIN FETCH up.paymentPlan pp
-WHERE ei.instituteId = :instituteId
-  AND pl.createdAt >= :startDate
-  AND pl.createdAt <= :endDate
+      SELECT DISTINCT pl FROM PaymentLog pl
+      JOIN FETCH pl.userPlan up
+      JOIN FETCH up.enrollInvite ei
+      LEFT JOIN FETCH up.paymentOption po
+      LEFT JOIN FETCH up.paymentPlan pp
+      WHERE ei.instituteId = :instituteId
+        AND pl.createdAt >= :startDate
+        AND pl.createdAt <= :endDate
 
-  AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty() ? 1 : 0} = 1 OR pl.paymentStatus IN (:paymentStatuses))
+        AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty() ? 1 : 0} = 1 OR pl.paymentStatus IN (:paymentStatuses))
 
-  AND (:#{#userPlanStatuses == null || #userPlanStatuses.isEmpty() ? 1 : 0} = 1 OR up.status IN (:userPlanStatuses))
+        AND (:#{#userPlanStatuses == null || #userPlanStatuses.isEmpty() ? 1 : 0} = 1 OR up.status IN (:userPlanStatuses))
 
-  AND (:#{#sources == null || #sources.isEmpty() ? 1 : 0} = 1 OR up.source IN (:sources))
+        AND (:#{#sources == null || #sources.isEmpty() ? 1 : 0} = 1 OR up.source IN (:sources))
 
-  AND (:#{#enrollInviteIds == null || #enrollInviteIds.isEmpty() ? 1 : 0} = 1 OR ei.id IN (:enrollInviteIds))
+        AND (:#{#enrollInviteIds == null || #enrollInviteIds.isEmpty() ? 1 : 0} = 1 OR ei.id IN (:enrollInviteIds))
 
-  AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty() ? 1 : 0} = 1 OR EXISTS (
-        SELECT 1
-        FROM PackageSessionLearnerInvitationToPaymentOption psli
-        WHERE psli.enrollInvite.id = ei.id
-          AND psli.status = 'ACTIVE'
-          AND psli.packageSession.id IN (:packageSessionIds)
-      ))
-ORDER BY pl.createdAt DESC
+        AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty() ? 1 : 0} = 1 OR EXISTS (
+              SELECT 1
+              FROM PackageSessionLearnerInvitationToPaymentOption psli
+              WHERE psli.enrollInvite.id = ei.id
+                AND psli.status = 'ACTIVE'
+                AND psli.packageSession.id IN (:packageSessionIds)
+            ))
+      ORDER BY pl.createdAt DESC
 """,
         countQuery = """
-SELECT COUNT(pl) FROM PaymentLog pl
-JOIN pl.userPlan up
-JOIN up.enrollInvite ei
-WHERE ei.instituteId = :instituteId
-  AND pl.createdAt >= :startDate
-  AND pl.createdAt <= :endDate
-  AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty() ? 1 : 0} = 1 OR pl.paymentStatus IN (:paymentStatuses))
-  AND (:#{#userPlanStatuses == null || #userPlanStatuses.isEmpty() ? 1 : 0} = 1 OR up.status IN (:userPlanStatuses))
-  AND (:#{#sources == null || #sources.isEmpty() ? 1 : 0} = 1 OR up.source IN (:sources))
-  AND (:#{#enrollInviteIds == null || #enrollInviteIds.isEmpty() ? 1 : 0} = 1 OR ei.id IN (:enrollInviteIds))
-  AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty() ? 1 : 0} = 1 OR EXISTS (
-        SELECT 1
-        FROM PackageSessionLearnerInvitationToPaymentOption psli
-        WHERE psli.enrollInvite.id = ei.id
-          AND psli.status = 'ACTIVE'
-          AND psli.packageSession.id IN (:packageSessionIds)
-      ))
-""")
-    Page<PaymentLog> findPaymentLogIdsWithFilters(
-        @Param("instituteId") String instituteId,
-        @Param("startDate") LocalDateTime startDate,
-        @Param("endDate") LocalDateTime endDate,
-        @Param("paymentStatuses") List<String> paymentStatuses,
-        @Param("userPlanStatuses") List<String> userPlanStatuses,
-        @Param("sources") List<String> sources,
-        @Param("enrollInviteIds") List<String> enrollInviteIds,
-        @Param("packageSessionIds") List<String> packageSessionIds,
-        Pageable pageable);
+      SELECT COUNT(pl) FROM PaymentLog pl
+      JOIN pl.userPlan up
+      JOIN up.enrollInvite ei
+      WHERE ei.instituteId = :instituteId
+        AND pl.createdAt >= :startDate
+        AND pl.createdAt <= :endDate
+        AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty() ? 1 : 0} = 1 OR pl.paymentStatus IN (:paymentStatuses))
+        AND (:#{#userPlanStatuses == null || #userPlanStatuses.isEmpty() ? 1 : 0} = 1 OR up.status IN (:userPlanStatuses))
+        AND (:#{#sources == null || #sources.isEmpty() ? 1 : 0} = 1 OR up.source IN (:sources))
+        AND (:#{#enrollInviteIds == null || #enrollInviteIds.isEmpty() ? 1 : 0} = 1 OR ei.id IN (:enrollInviteIds))
+        AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty() ? 1 : 0} = 1 OR EXISTS (
+              SELECT 1
+              FROM PackageSessionLearnerInvitationToPaymentOption psli
+              WHERE psli.enrollInvite.id = ei.id
+                AND psli.status = 'ACTIVE'
+                AND psli.packageSession.id IN (:packageSessionIds)
+            ))
+      """)
+  Page<PaymentLog> findPaymentLogIdsWithFilters(
+      @Param("instituteId") String instituteId,
+      @Param("startDate") LocalDateTime startDate,
+      @Param("endDate") LocalDateTime endDate,
+      @Param("paymentStatuses") List<String> paymentStatuses,
+      @Param("userPlanStatuses") List<String> userPlanStatuses,
+      @Param("sources") List<String> sources,
+      @Param("enrollInviteIds") List<String> enrollInviteIds,
+      @Param("packageSessionIds") List<String> packageSessionIds,
+      Pageable pageable);
 
-    @Query("""
+  @Query("""
       SELECT DISTINCT pl FROM PaymentLog pl
       LEFT JOIN FETCH pl.userPlan up
       LEFT JOIN FETCH up.paymentOption po
@@ -81,14 +95,14 @@ WHERE ei.instituteId = :instituteId
       WHERE pl.id IN :ids
       ORDER BY pl.createdAt DESC
       """)
-    List<PaymentLog> findPaymentLogsWithRelationshipsByIds(@Param("ids") List<String> ids);
+  List<PaymentLog> findPaymentLogsWithRelationshipsByIds(@Param("ids") List<String> ids);
 
 
-    /**
-     * NATIVE QUERY REPLACEMENT for the Specification
-     * This query finds paginated payment logs based on a set of dynamic filters.
-     */
-    @Query(value = """
+  /**
+   * NATIVE QUERY REPLACEMENT for the Specification
+   * This query finds paginated payment logs based on a set of dynamic filters.
+   */
+  @Query(value = """
       SELECT
         pl.id AS id,
         pl.status AS status,
@@ -179,14 +193,14 @@ WHERE ei.instituteId = :instituteId
                 AND psli.package_session_id IN (:packageSessionIds)
             ))
       """, nativeQuery = true)
-    Page<PaymentLogWithUserPlanProjection> findPaymentLogsByFiltersNative(
-        @Param("instituteId") String instituteId,
-        @Param("startDate") LocalDateTime startDate,
-        @Param("endDate") LocalDateTime endDate,
-        @Param("paymentStatuses") List<String> paymentStatuses,
-        @Param("userPlanStatuses") List<String> userPlanStatuses,
-        @Param("enrollInviteIds") List<String> enrollInviteIds,
-        @Param("packageSessionIds") List<String> packageSessionIds,
-        Pageable pageable);
+  Page<PaymentLogWithUserPlanProjection> findPaymentLogsByFiltersNative(
+      @Param("instituteId") String instituteId,
+      @Param("startDate") LocalDateTime startDate,
+      @Param("endDate") LocalDateTime endDate,
+      @Param("paymentStatuses") List<String> paymentStatuses,
+      @Param("userPlanStatuses") List<String> userPlanStatuses,
+      @Param("enrollInviteIds") List<String> enrollInviteIds,
+      @Param("packageSessionIds") List<String> packageSessionIds,
+      Pageable pageable);
 
 }

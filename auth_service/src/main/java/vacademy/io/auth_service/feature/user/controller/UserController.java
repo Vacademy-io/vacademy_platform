@@ -157,4 +157,10 @@ public class UserController {
         return ResponseEntity.ok(userService.autoSuggestUsers(instituteId, roles, query));
     }
 
+    @PostMapping("/internal/users-with-children")
+    public ResponseEntity<List<ParentWithChildDTO>> getUsersWithChildren(
+            @RequestBody List<String> userIds) {
+        return ResponseEntity.ok(userService.getUsersWithChildren(userIds));
+    }
+
 }

@@ -98,10 +98,10 @@ public class PhonePeWebHookService {
 
         if ("checkout.order.completed".equals(event) || "COMPLETED".equalsIgnoreCase(state)) {
             log.info("Payment completed for order: {}", merchantOrderId);
-            paymentLogService.updatePaymentLog(merchantOrderId, PaymentStatusEnum.PAID.name(), instituteId);
+            paymentLogService.updatePaymentLogsByOrderId(merchantOrderId, PaymentStatusEnum.PAID.name(), instituteId);
         } else if ("checkout.order.failed".equals(event) || "FAILED".equalsIgnoreCase(state)) {
             log.warn("Payment failed for order: {}", merchantOrderId);
-            paymentLogService.updatePaymentLog(merchantOrderId, PaymentStatusEnum.FAILED.name(), instituteId);
+            paymentLogService.updatePaymentLogsByOrderId(merchantOrderId, PaymentStatusEnum.FAILED.name(), instituteId);
         } else if ("pg.refund.completed".equals(event)) {
             log.info("Refund completed for order: {}", merchantOrderId);
             // Implement refund status update if needed

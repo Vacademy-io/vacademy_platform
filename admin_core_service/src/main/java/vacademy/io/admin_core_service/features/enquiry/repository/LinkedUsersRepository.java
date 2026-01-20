@@ -10,7 +10,6 @@ import java.util.UUID;
 
 @Repository
 public interface LinkedUsersRepository extends JpaRepository<LinkedUsers, UUID> {
-    List<LinkedUsers> findBySourceAndSourceId(String source, String sourceId);
 
     boolean existsBySourceAndSourceIdAndUserId(String source, String sourceId, String userId);
 

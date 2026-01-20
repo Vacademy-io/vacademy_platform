@@ -559,4 +559,47 @@ public class UserService {
         return users.stream().map(UserDTO::new).collect(Collectors.toList());
     }
 
+    /**
+     * Get users with their linked children.
+     * For each parent user ID provided, fetches the parent and their linked child
+     * (if any).
+     * 
+     * @param parentUserIds List of parent user IDs to fetch
+     * @return List of ParentWithChildDTO containing parent and child user
+     *         information
+     */
+    public List<ParentWithChildDTO> getUsersWithChildren(List<String> parentUserIds) {
+        if (parentUserIds == null || parentUserIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Fetch all parent users
+        List<User> parents = userRepository.findByIdIn(parentUserIds);
+        Map<String, User> parentMap = parents.stream()
+                .collect(Collectors.toMap(User::getId, user -> user, (a, b) -> a));
+
+        // Fetch all children linked to these parents
+        List<User> children = userRepository.findByLinkedParentIdIn(parentUserIds);
+        Map<String, User> childByParentId = children.stream()
+                .filter(child -> child.getLinkedParentId() != null)
+                .collect(Collectors.toMap(User::getLinkedParentId, child -> child, (a, b) -> a));
+
+        // Build ParentWithChildDTO for each requested parent ID
+        List<ParentWithChildDTO> result = new ArrayList<>();
+        for (String parentId : parentUserIds) {
+            User parent = parentMap.get(parentId);
+            if (parent != null) {
+                User child = childByParentId.get(parentId);
+                ParentWithChildDTO dto = ParentWithChildDTO.builder()
+                        .parent(new UserDTO(parent))
+                        .child(child != null ? new UserDTO(child) : null)
+                        .build();
+                result.add(dto);
+            }
+        }
+
+        log.info("Fetched {} parents with children for {} requested IDs", result.size(), parentUserIds.size());
+        return result;
+    }
+
 }

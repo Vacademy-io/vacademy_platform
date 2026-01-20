@@ -100,7 +100,15 @@ public class PaymentLog {
                         .path("response")
                         .path("response_data")
                         .path("transactionId")
-                        .asText(null); // default to null if missing
+                        .asText(null);
+                // If still null, try to get orderId from originalRequest which we always
+                // populate
+                if (txnId == null) {
+                    txnId = root
+                            .path("originalRequest")
+                            .path("order_id")
+                            .asText(null);
+                }
 
                 paymentLogDTO.setTransactionId(txnId);
             } catch (Exception e) {

@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.payments.service;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import lombok.extern.slf4j.Slf4j;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
@@ -25,12 +27,14 @@ import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.dto.PhonePeStatusResponseDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+@Slf4j
 @Service
 @Transactional
 public class PaymentService {
@@ -66,6 +70,11 @@ public class PaymentService {
                         UserPlan userPlan) {
 
                 PaymentInitiationRequestDTO request = enrollDTO.getPaymentInitiationRequest();
+                if (request == null) {
+                        log.error("handlePayment aborted: PaymentInitiationRequest is null");
+                        throw new VacademyException("Payment initiation request is missing");
+                }
+                log.info("handlePayment: amount={}, orderId={}", request.getAmount(), request.getOrderId());
 
                 String paymentLogId = createPaymentLogHelper(
                                 user.getId(),
@@ -73,9 +82,12 @@ public class PaymentService {
                                 enrollInvite.getVendor(),
                                 enrollInvite.getVendorId(),
                                 enrollInvite.getCurrency(),
-                                userPlan);
+                                userPlan,
+                                request.getOrderId());
 
-                request.setOrderId(paymentLogId);
+                if (!StringUtils.hasText(request.getOrderId())) {
+                        request.setOrderId(paymentLogId);
+                }
 
                 UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
                                 instituteId,
@@ -99,6 +111,53 @@ public class PaymentService {
 
                 updatePaymentLogHelper(paymentLogId, response, request);
 
+                // CRITICAL: Always set the payment log ID in the response
+                // This is needed for multi-package enrollments to link child logs
+                response.setOrderId(paymentLogId);
+
+                return response;
+        }
+
+        /**
+         * Handles payment log creation without initiating gateway call.
+         * Used for multi-package enrollments where one payment covers multiple plans.
+         */
+        public PaymentResponseDTO handlePaymentWithoutGateway(UserDTO user,
+                        LearnerPackageSessionsEnrollDTO enrollDTO,
+                        String instituteId,
+                        EnrollInvite enrollInvite,
+                        UserPlan userPlan) {
+
+                PaymentInitiationRequestDTO request = enrollDTO.getPaymentInitiationRequest();
+
+                String paymentLogId = createPaymentLogHelper(
+                                user.getId(),
+                                request.getAmount(),
+                                enrollInvite.getVendor(),
+                                enrollInvite.getVendorId(),
+                                enrollInvite.getCurrency(),
+                                userPlan,
+                                request.getOrderId());
+
+                if (!StringUtils.hasText(request.getOrderId())) {
+                        request.setOrderId(paymentLogId);
+                }
+
+                // Skip gateway interactions, just save plan
+                userPlan.setJsonPaymentDetails(JsonUtil
+                                .toJson(Map.of("linkedToParentPayment", true, "paymentLogId", paymentLogId)));
+                userPlanService.save(userPlan);
+
+                // Create dummy response
+                PaymentResponseDTO response = new PaymentResponseDTO();
+                response.setOrderId(paymentLogId);
+                response.setMessage("Payment Log Created (Gateway Skipped)");
+                Map<String, Object> responseData = new HashMap<>();
+                responseData.put("paymentStatus", PaymentStatusEnum.PAYMENT_PENDING.name());
+                response.setResponseData(responseData);
+
+                updatePaymentLogHelper(paymentLogId, response, request);
+
                 return response;
         }
 
@@ -114,7 +173,8 @@ public class PaymentService {
                                 request.getVendor(),
                                 request.getVendorId(),
                                 request.getCurrency(),
-                                null);
+                                null,
+                                request.getOrderId());
 
                 request.setOrderId(paymentLogId);
 
@@ -172,7 +232,8 @@ public class PaymentService {
                                 request.getVendor(),
                                 request.getVendorId(),
                                 request.getCurrency(),
-                                userPlan);
+                                userPlan,
+                                request.getOrderId());
 
                 request.setOrderId(paymentLogId);
 
@@ -226,7 +287,8 @@ public class PaymentService {
                                 request.getVendor(),
                                 request.getVendorId(),
                                 request.getCurrency(),
-                                userPlan);
+                                userPlan,
+                                request.getOrderId());
 
                 request.setOrderId(paymentLogId);
 
@@ -343,7 +405,8 @@ public class PaymentService {
 
                         // Update payment log based on status
                         if ("COMPLETED".equalsIgnoreCase(status.getState())) {
-                                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(), instituteId);
+                                paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.PAID.name(),
+                                                instituteId);
                         } else if ("FAILED".equalsIgnoreCase(status.getState())) {
                                 paymentLogService.updatePaymentLog(orderId, PaymentStatusEnum.FAILED.name(),
                                                 instituteId);
@@ -370,14 +433,15 @@ public class PaymentService {
          * Helper method to create payment log with consistent parameters.
          */
         private String createPaymentLogHelper(String userId, Double amount, String vendor, String vendorId,
-                        String currency, UserPlan userPlan) {
+                        String currency, UserPlan userPlan, String orderId) {
                 return paymentLogService.createPaymentLog(
                                 userId,
                                 amount,
                                 vendor,
                                 vendorId,
                                 currency,
-                                userPlan);
+                                userPlan,
+                                orderId);
         }
 
         /**
@@ -385,12 +449,24 @@ public class PaymentService {
          */
         private void updatePaymentLogHelper(String paymentLogId, PaymentResponseDTO response,
                         PaymentInitiationRequestDTO request) {
+                Map<String, Object> logData = new HashMap<>();
+                logData.put("response", response);
+                if (request != null) {
+                        logData.put("originalRequest", request);
+                }
+
+                String paymentStatus = null;
+                if (response.getResponseData() != null) {
+                        paymentStatus = (String) response.getResponseData().get("paymentStatus");
+                }
+                if (!StringUtils.hasText(paymentStatus)) {
+                        paymentStatus = PaymentStatusEnum.PAYMENT_PENDING.name();
+                }
+
                 paymentLogService.updatePaymentLog(
                                 paymentLogId,
                                 PaymentLogStatusEnum.ACTIVE.name(),
-                                (String) response.getResponseData().get("paymentStatus"),
-                                JsonUtil.toJson(Map.of(
-                                                "response", response,
-                                                "originalRequest", request)));
+                                paymentStatus,
+                                JsonUtil.toJson(logData));
         }
 }

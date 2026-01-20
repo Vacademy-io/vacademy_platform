@@ -58,15 +58,23 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
             UserPlan userPlan,
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         String learnerSessionStatus = null;
-        if (paymentOption.isRequireApproval()) {
+        if (extraData.containsKey("ENROLLMENT_STATUS")) {
+            learnerSessionStatus = (String) extraData.get("ENROLLMENT_STATUS");
+            log.info("Using enrollment status override: {}", learnerSessionStatus);
+        } else if (paymentOption.isRequireApproval()) {
             learnerSessionStatus = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
         } else {
             learnerSessionStatus = LearnerStatusEnum.INVITED.name();
         }
+        PaymentPlan paymentPlan = userPlan.getPaymentPlan();
+        if (Objects.isNull(paymentPlan)) {
+            throw new VacademyException("Payment plan is null");
+        }
+
         List<InstituteStudentDetails> instituteStudentDetails = buildInstituteStudentDetails(
                 instituteId,
                 learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
-                userPlan.getPaymentPlan().getValidityInDays(),
+                paymentPlan.getValidityInDays(),
                 learnerSessionStatus,
                 userPlan);
 
@@ -78,14 +86,25 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
                 extraData, learnerExtraDetails, enrollInvite, userPlan);
 
-        PaymentPlan paymentPlan = userPlan.getPaymentPlan();
-        if (Objects.isNull(paymentPlan)) {
-            throw new VacademyException("Payment plan is null");
-        }
-
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
-            log.info("Setting payment amount to {} from plan {}", paymentPlan.getActualPrice(), paymentPlan.getId());
-            learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
+            if (extraData.containsKey("OVERRIDE_TOTAL_AMOUNT")) {
+                Object amountObj = extraData.get("OVERRIDE_TOTAL_AMOUNT");
+                if (amountObj instanceof Number) {
+                    Double amount = ((Number) amountObj).doubleValue();
+                    log.info("Overriding payment amount to {} from extraData", amount);
+                    learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(amount);
+                }
+            } else {
+                log.info("Setting payment amount to {} from plan {}", paymentPlan.getActualPrice(),
+                        paymentPlan.getId());
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
+            }
+
+            if (extraData.containsKey("PARENT_PAYMENT_LOG_ID")) {
+                String parentLogId = (String) extraData.get("PARENT_PAYMENT_LOG_ID");
+                log.info("Linking to parent payment log ID: {}", parentLogId);
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setOrderId(parentLogId);
+            }
         }
         // Process referral request if present
         List<PaymentLogLineItemDTO> referralLineItems = new ArrayList<>();
@@ -105,14 +124,27 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
             PaymentInitiationRequestDTO paymentInitiationRequestDTO = learnerPackageSessionsEnrollDTO
                     .getPaymentInitiationRequest();
-            log.info("Initiating payment through PaymentService for user: {}", user.getId());
-            PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
-                    user,
-                    learnerPackageSessionsEnrollDTO,
-                    instituteId,
-                    enrollInvite,
-                    userPlan);
-            learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+
+            if (extraData.containsKey("SKIP_PAYMENT_INITIATION")
+                    && Boolean.TRUE.equals(extraData.get("SKIP_PAYMENT_INITIATION"))) {
+                log.info("Skipping payment initiation for user: {}", user.getId());
+                PaymentResponseDTO paymentResponseDTO = paymentService.handlePaymentWithoutGateway(
+                        user,
+                        learnerPackageSessionsEnrollDTO,
+                        instituteId,
+                        enrollInvite,
+                        userPlan);
+                learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+            } else {
+                log.info("Initiating payment through PaymentService for user: {}", user.getId());
+                PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
+                        user,
+                        learnerPackageSessionsEnrollDTO,
+                        instituteId,
+                        enrollInvite,
+                        userPlan);
+                learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+            }
         } else {
             throw new VacademyException("PaymentInitiationRequest is null");
         }

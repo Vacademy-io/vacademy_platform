@@ -10,7 +10,7 @@ import vacademy.io.admin_core_service.features.enquiry.dto.LinkCounselorDTO;
 import vacademy.io.admin_core_service.features.enquiry.service.EnquiryService;
 
 @RestController
-@RequestMapping("/admin-core-service/internal/enquiry")
+@RequestMapping("/admin-core-service/enquiry")
 public class EnquiryInternalController {
 
     @Autowired

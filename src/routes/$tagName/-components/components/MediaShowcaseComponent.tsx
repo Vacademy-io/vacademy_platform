@@ -2,6 +2,7 @@ import React, { useState, useEffect ,useMemo} from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { Play } from "lucide-react";
 
 interface MediaItem {
   type: "image" | "video";
@@ -27,45 +28,114 @@ interface MediaItemComponentProps {
   roundedEdges: boolean;
 }
 
+// Utility function to check if URL is a YouTube URL
+const isYouTubeUrl = (url: string): boolean => {
+  if (!url) return false;
+  return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(url);
+};
+
+// Utility function to extract YouTube video ID
+const extractYouTubeVideoId = (url: string): string | null => {
+  if (!url) return null;
+  const regExp =
+    /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|live\/))([a-zA-Z0-9_-]{11})/;
+  const match = url.match(regExp);
+  return match ? match[1] : null;
+};
+
+// Utility function to convert YouTube URL to embed URL
+const convertToYouTubeEmbedUrl = (url: string): string => {
+  const videoId = extractYouTubeVideoId(url);
+  if (!videoId) return url;
+
+  // YouTube embed parameters
+  const params = new URLSearchParams({
+    modestbranding: '1',
+    rel: '0',
+    fs: '1',
+    playsinline: '1',
+  });
+
+  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+};
+
+// Check if URL is a valid video URL (not a placeholder)
+const isValidVideoUrl = (url: string): boolean => {
+  if (!url) return false;
+  if (url.includes('/api/placeholder/')) return false;
+  if (url.trim() === '') return false;
+  if (url === 'null' || url === 'undefined') return false;
+  return true;
+};
+
 const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEdges }) => {
-  // Initialize with placeholder to prevent flickering
-  const [resolvedUrl, setResolvedUrl] = useState<string>("/api/placeholder/400/300");
+  const [resolvedUrl, setResolvedUrl] = useState<string>("");
   const [hasTriedLoading, setHasTriedLoading] = useState(false);
+  const [videoLoadError, setVideoLoadError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
-    
-    // If we've already tried loading this URL and it failed, don't try again
-    if (hasTriedLoading) {
-      return;
-    }
-    
+
+    if (hasTriedLoading) return;
+
     const loadUrl = async () => {
-      if (!item.url || 
-          item.url === null || 
-          item.url === undefined ||
-          item.url.includes('/api/placeholder/') || 
-          item.url.trim() === '' ||
-          item.url === 'null' ||
-          item.url === 'undefined') {
+      // Check if it's a YouTube URL first - use it directly
+      if (item.url && isYouTubeUrl(item.url)) {
         if (isMounted) {
-          setResolvedUrl("/api/placeholder/400/300");
+          setResolvedUrl(item.url);
           setHasTriedLoading(true);
+          setIsLoading(false);
         }
         return;
       }
 
+      // Check if URL is invalid
+      if (!item.url ||
+        item.url === null ||
+        item.url === undefined ||
+        item.url.includes('/api/placeholder/') ||
+        item.url.trim() === '' ||
+        item.url === 'null' ||
+        item.url === 'undefined') {
+        if (isMounted) {
+          setResolvedUrl("");
+          setHasTriedLoading(true);
+          setIsLoading(false);
+          setVideoLoadError(true);
+        }
+        return;
+      }
+
+      // Check if it's already a full URL
+      if (item.url.startsWith('http://') || item.url.startsWith('https://')) {
+        if (isMounted) {
+          setResolvedUrl(item.url);
+          setHasTriedLoading(true);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // Resolve file ID to URL
       try {
         const url = await getPublicUrlWithoutLogin(item.url);
         if (isMounted) {
-          setResolvedUrl(url);
+          if (url && isValidVideoUrl(url)) {
+            setResolvedUrl(url);
+          } else {
+            setVideoLoadError(true);
+          }
           setHasTriedLoading(true);
+          setIsLoading(false);
         }
       } catch (error) {
         console.error("Error loading media URL:", error);
         if (isMounted) {
-          setResolvedUrl("/api/placeholder/400/300");
+          setResolvedUrl("");
           setHasTriedLoading(true);
+          setIsLoading(false);
+          setVideoLoadError(true);
         }
       }
     };
@@ -74,50 +144,107 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
     return () => { isMounted = false; };
   }, [item.url, hasTriedLoading]);
 
-  // Remove loading state to prevent flickering
-  // if (loading) {
-  //   return (
-  //     <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
-  //       <div className="text-gray-400 text-sm">Loading...</div>
-  //     </div>
-  //   );
-  // }
+  // Render YouTube video player
+  const renderYouTubePlayer = () => {
+    const embedUrl = convertToYouTubeEmbedUrl(resolvedUrl);
+    return (
+      <div className={`relative w-full h-64 bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+        <iframe
+          src={embedUrl}
+          title={item.caption || "Video"}
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+          allowFullScreen
+          className="absolute inset-0 w-full h-full"
+          loading="lazy"
+        />
+      </div>
+    );
+  };
+
+  // Render native video player for uploaded videos
+  const renderNativeVideoPlayer = () => {
+    return (
+      <div className={`relative w-full h-64 bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+        <video
+          src={resolvedUrl}
+          controls
+          controlsList="nodownload noremoteplayback"
+          disablePictureInPicture
+          className="w-full h-full object-contain"
+          onError={() => {
+            console.warn("Native video failed to load:", resolvedUrl);
+            setVideoLoadError(true);
+          }}
+          onLoadedData={() => {
+            setVideoLoadError(false);
+          }}
+        >
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    );
+  };
+
+  // Render video fallback (placeholder with play icon)
+  const renderVideoFallback = () => {
+    return (
+      <div className={`relative w-full h-64 bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+        <div className="flex flex-col items-center justify-center text-white/70">
+          <Play className="w-16 h-16 mb-2 opacity-50" />
+          <p className="text-sm">Video unavailable</p>
+        </div>
+      </div>
+    );
+  };
+
+  // Render image
+  const renderImage = () => {
+    const imageSrc = resolvedUrl || "/api/placeholder/400/300";
+    return (
+      <img
+        src={imageSrc}
+        alt={item.caption}
+        className={`w-full h-64 object-cover shadow-lg ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}
+        onError={(e) => {
+          if (!hasTriedLoading) {
+            e.currentTarget.src = "/api/placeholder/400/300";
+          }
+        }}
+        onLoad={() => {
+          setHasTriedLoading(true);
+        }}
+      />
+    );
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className={`relative w-full h-64 bg-gray-200 animate-pulse flex items-center justify-center ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+        <div className="text-gray-400 text-sm">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative group">
       {item.type === "video" ? (
-        <video
-          src={resolvedUrl || "/api/placeholder/400/300"}
-          controls
-          className={`w-full h-64 object-cover shadow-lg ${
-            roundedEdges ? 'rounded-lg' : 'rounded-none'
-          }`}
-          poster="/api/placeholder/400/300"
-        >
-          Your browser does not support the video tag.
-        </video>
+        <>
+          {/* Check if it's a YouTube URL */}
+          {resolvedUrl && isYouTubeUrl(resolvedUrl) ? (
+            renderYouTubePlayer()
+          ) : resolvedUrl && !videoLoadError ? (
+            renderNativeVideoPlayer()
+          ) : (
+            renderVideoFallback()
+          )}
+        </>
       ) : (
-        <img
-          src={resolvedUrl || "/api/placeholder/400/300"}
-          alt={item.caption}
-          className={`w-full h-64 object-cover shadow-lg ${
-            roundedEdges ? 'rounded-lg' : 'rounded-none'
-          }`}
-          onError={(e) => {
-            // Only set placeholder if we haven't already tried loading
-            if (!hasTriedLoading) {
-              e.currentTarget.src = "/api/placeholder/400/300";
-            }
-          }}
-          onLoad={() => {
-            // Mark as successfully loaded
-            setHasTriedLoading(true);
-          }}
-        />
+        renderImage()
       )}
-      <div className={`absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-4 ${
-        roundedEdges ? 'rounded-b-lg' : 'rounded-b-none'
-      }`}>
+      <div className={`absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-4 ${roundedEdges ? 'rounded-b-lg' : 'rounded-b-none'
+        }`}>
         <p className="text-sm font-medium">{item.caption}</p>
       </div>
     </div>

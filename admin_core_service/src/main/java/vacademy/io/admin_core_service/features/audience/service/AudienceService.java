@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRespo
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.common.auth.dto.ParentWithChildDTO;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
@@ -1959,14 +1960,20 @@ public class AudienceService {
                 .filter(StringUtils::hasText)
                 .collect(Collectors.toSet());
 
-        // Batch fetch users (same as /leads API)
-        Map<String, UserDTO> userIdToUser = userIds.isEmpty() ? Collections.emptyMap()
-                : authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds))
+        // Batch fetch users WITH their linked children (parent-child relationship)
+        Map<String, ParentWithChildDTO> userIdToParentWithChild = userIds.isEmpty()
+                ? Collections.emptyMap()
+                : authService.getUsersWithChildren(new ArrayList<>(userIds))
                         .stream()
                         .filter(Objects::nonNull)
-                        .collect(Collectors.toMap(UserDTO::getId, u -> u, (a, b) -> a));
+                        .filter(pwc -> pwc.getParent() != null)
+                        .collect(Collectors.toMap(
+                                pwc -> pwc.getParent().getId(),
+                                pwc -> pwc,
+                                (a, b) -> a));
 
-        logger.info("Fetched {} users for {} enquiries", userIdToUser.size(), enquiries.getContent().size());
+        logger.info("Fetched {} users with children for {} enquiries",
+                userIdToParentWithChild.size(), enquiries.getContent().size());
 
         // Batch fetch custom field values for all audience responses (optimization)
         List<String> responseIds = audienceResponses.stream()
@@ -1987,7 +1994,20 @@ public class AudienceService {
             logger.info("Fetched custom fields for {} responses", customFieldsMap.size());
         }
 
-        // Build DTOs (same pattern as /leads API)
+        // Batch fetch assigned counsellors from linked_users table
+        Map<String, String> enquiryToCounsellorMap = enquiryIds.isEmpty() ? Collections.emptyMap()
+                : linkedUsersRepository.findBySourceAndSourceIdIn("ENQUIRY", enquiryIds)
+                        .stream()
+                        .filter(lu -> StringUtils.hasText(lu.getUserId()))
+                        .collect(Collectors.toMap(
+                                LinkedUsers::getSourceId,
+                                LinkedUsers::getUserId,
+                                (a, b) -> a));
+
+        logger.info("Fetched {} assigned counsellors for {} enquiries", 
+                enquiryToCounsellorMap.size(), enquiryIds.size());
+
+        // Build DTOs with parent and child user information
         List<EnquiryWithResponseDTO> dtos = enquiries.getContent().stream()
                 .map(enquiry -> {
                     AudienceResponse audienceResponse = responseMap.get(enquiry.getId().toString());
@@ -1997,15 +2017,22 @@ public class AudienceService {
                         return buildEnquiryOnlyDTO(enquiry);
                     }
 
-                    // Get user from map (same as /leads)
-                    UserDTO userDTO = StringUtils.hasText(audienceResponse.getUserId())
-                            ? userIdToUser.get(audienceResponse.getUserId())
-                            : null;
+                    // Get parent and child from map
+                    vacademy.io.common.auth.dto.ParentWithChildDTO parentWithChild = StringUtils
+                            .hasText(audienceResponse.getUserId())
+                                    ? userIdToParentWithChild.get(audienceResponse.getUserId())
+                                    : null;
+
+                    UserDTO userDTO = parentWithChild != null ? parentWithChild.getParent() : null;
+                    UserDTO childUserDTO = parentWithChild != null ? parentWithChild.getChild() : null;
 
                     // Get custom fields from map (same as /leads)
                     Map<String, String> customFields = customFieldsMap.getOrDefault(
                             audienceResponse.getId(),
                             Collections.emptyMap());
+
+                    // Get assigned counsellor from map
+                    String assignedCounsellorId = enquiryToCounsellorMap.get(enquiry.getId().toString());
 
                     return EnquiryWithResponseDTO.builder()
                             // Enquiry fields
@@ -2033,9 +2060,12 @@ public class AudienceService {
                             .parentEmail(audienceResponse.getParentEmail())
                             .parentMobile(audienceResponse.getParentMobile())
                             .submittedAt(audienceResponse.getSubmittedAt())
-                            // User and custom fields
-                            .user(userDTO)
+                            // User (parent) and linked child user
+                            .parentUser(userDTO)
+                            .childUser(childUserDTO)
                             .customFields(customFields)
+                            // Assigned counsellor
+                            .assignedCounsellorId(assignedCounsellorId)
                             .build();
                 })
                 .collect(Collectors.toList());

@@ -19,4 +19,10 @@ public interface LinkedUsersRepository extends JpaRepository<LinkedUsers, UUID> 
     boolean existsBySourceAndSourceId(String source, String sourceId);
 
     void deleteBySourceAndSourceId(String source, String sourceId);
+
+    /**
+     * Find all linked users for a source type and list of source IDs (batch fetch).
+     * Used to fetch assigned counsellors for multiple enquiries at once.
+     */
+    List<LinkedUsers> findBySourceAndSourceIdIn(String source, List<String> sourceIds);
 }

@@ -37,7 +37,7 @@ public class EnquiryWithResponseDTO {
     private Integer interestScore;
     private String notes;
     private Timestamp enquiryCreatedAt;
-    
+
     // Audience Response fields
     private String audienceResponseId;
     private String audienceId;
@@ -48,10 +48,16 @@ public class EnquiryWithResponseDTO {
     private String parentEmail;
     private String parentMobile;
     private Timestamp submittedAt;
-    
+
     // User details
-    private UserDTO user;
-    
+    private UserDTO parentUser;
+
+    // Linked child user details (if parent-child relationship exists)
+    private UserDTO childUser;
+
     // Custom fields as Map
     private Map<String, String> customFields;
+
+    // Assigned counsellor user ID from linked_users table
+    private String assignedCounsellorId;
 }

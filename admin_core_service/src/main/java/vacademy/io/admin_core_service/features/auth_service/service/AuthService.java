@@ -211,12 +211,13 @@ public class AuthService {
         }
     }
 
-    public List<UserDTO> createMultipleUsers(List<UserDTO> userDTOs, String instituteId,boolean toNotifiy) {
+    public List<UserDTO> createMultipleUsers(List<UserDTO> userDTOs, String instituteId, boolean toNotifiy) {
         if (userDTOs == null || userDTOs.isEmpty()) {
             throw new VacademyException("User DTOs list cannot be null or empty");
         }
         try {
-            String endpoint = AuthServiceRoutes.CREATE_MULTIPLE_USERS + "?instituteId=" + instituteId + "&isNotify=" + toNotifiy;
+            String endpoint = AuthServiceRoutes.CREATE_MULTIPLE_USERS + "?instituteId=" + instituteId + "&isNotify="
+                    + toNotifiy;
             ObjectMapper objectMapper = new ObjectMapper();
 
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
@@ -226,9 +227,40 @@ public class AuthService {
                     endpoint,
                     userDTOs);
 
-            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {});
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
+            });
         } catch (Exception e) {
             throw new VacademyException("Failed to create multiple users: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Fetch users with their linked children from auth_service.
+     * 
+     * @param userIds List of parent user IDs to fetch
+     * @return List of ParentWithChildDTO containing parent and child user
+     *         information
+     */
+    public List<vacademy.io.common.auth.dto.ParentWithChildDTO> getUsersWithChildren(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        try {
+            String endpoint = AuthServiceRoutes.GET_USERS_WITH_CHILDREN;
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    userIds);
+
+            return objectMapper.readValue(response.getBody(),
+                    new TypeReference<List<vacademy.io.common.auth.dto.ParentWithChildDTO>>() {
+                    });
+        } catch (Exception e) {
+            throw new VacademyException("Failed to get users with children: " + e.getMessage());
         }
     }
 

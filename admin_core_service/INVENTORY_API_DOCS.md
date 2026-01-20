@@ -2,7 +2,7 @@
 
 This document outlines the API endpoints for managing the inventory (seats/slots) of Package Sessions.
 
-**Base URL**: `/admin-core/v1/package-session/{packageSessionId}/inventory`
+**Base URL**: `/admin-core-service/package-session/{packageSessionId}/inventory`
 
 ## Table of Contents
 

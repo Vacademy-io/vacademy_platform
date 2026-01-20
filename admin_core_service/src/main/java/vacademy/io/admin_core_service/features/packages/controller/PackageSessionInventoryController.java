@@ -10,7 +10,7 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/admin-core/v1/package-session/{packageSessionId}/inventory")
+@RequestMapping("/admin-core-service/package-session/{packageSessionId}/inventory")
 @RequiredArgsConstructor
 public class PackageSessionInventoryController {
 

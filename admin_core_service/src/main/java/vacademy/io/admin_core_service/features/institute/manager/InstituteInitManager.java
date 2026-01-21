@@ -158,6 +158,7 @@ public class InstituteInitManager {
                                 () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
                                                 activeStatuses));
 
+                                                      
                 // Batch query to get all read times at once (eliminates N+1 query problem)
                 List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
 
@@ -191,6 +192,8 @@ public class InstituteInitManager {
                                                         .stream().map(SubjectDTO::new).toList()));
                         dto.setSessionExpiryDays(List.of(30, 180, 360));
                 }
+                 
+                dto.setSubModules(new ArrayList<>());
 
                 return dto;
         }

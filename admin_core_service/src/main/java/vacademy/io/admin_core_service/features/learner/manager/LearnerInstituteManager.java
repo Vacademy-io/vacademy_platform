@@ -63,7 +63,7 @@ public class LearnerInstituteManager {
         instituteInfoDTO.setAddress(institute.get().getAddress());
         instituteInfoDTO.setState(institute.get().getState());
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
-
+        instituteInfoDTO.setSubModules(new ArrayList<>());
         if (includeBatches) {
             instituteInfoDTO.setBatchesForSessions(
                     packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(),

@@ -21,7 +21,7 @@ public class InstitutePaymentGatewayMappingService {
     private ObjectMapper objectMapper;
 
     public Map<String, Object> findInstitutePaymentGatewaySpecifData(String vendor, String instituteId) {
-       InstitutePaymentGatewayMapping institutePaymentGatewayMapping = institutePaymentGatewayMappingRepository
+        InstitutePaymentGatewayMapping institutePaymentGatewayMapping = institutePaymentGatewayMappingRepository
                 .findByInstituteIdAndVendorAndStatusIn(instituteId, vendor, List.of(StatusEnum.ACTIVE.name()))
                 .orElseThrow(() -> {
                     return new VacademyException("No configurartion found for this payment gateway type");
@@ -90,5 +90,40 @@ public class InstitutePaymentGatewayMappingService {
         return Map.of(
                 "encryptionKey", encryptionKey,
                 "publicKey", publicKey);
+    }
+
+    /**
+     * Data class to hold vendor information for EnrollInvite entries.
+     */
+    public static class VendorInfo {
+        private final String vendor;
+        private final String vendorId;
+
+        public VendorInfo(String vendor, String vendorId) {
+            this.vendor = vendor;
+            this.vendorId = vendorId;
+        }
+
+        public String getVendor() {
+            return vendor;
+        }
+
+        public String getVendorId() {
+            return vendorId;
+        }
+    }
+
+    /**
+     * Get the latest payment gateway vendor info for an institute.
+     * If no mapping exists, fallback to STRIPE as default.
+     * 
+     * @param instituteId The institute ID
+     * @return VendorInfo containing vendor name and mapping ID (vendorId)
+     */
+    public VendorInfo getLatestVendorInfoForInstitute(String instituteId) {
+        return institutePaymentGatewayMappingRepository
+                .findFirstByInstituteIdAndStatusInOrderByCreatedAtDesc(instituteId, List.of(StatusEnum.ACTIVE.name()))
+                .map(mapping -> new VendorInfo(mapping.getVendor(), mapping.getVendor()))
+                .orElseGet(() -> new VendorInfo(PaymentGateway.STRIPE.name(), PaymentGateway.STRIPE.name()));
     }
 }

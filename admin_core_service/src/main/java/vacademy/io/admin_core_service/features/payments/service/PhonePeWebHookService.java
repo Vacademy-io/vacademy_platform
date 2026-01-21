@@ -11,7 +11,7 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.common.payment.dto.PhonePeWebHookDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
-
+ 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Map;
@@ -96,10 +96,12 @@ public class PhonePeWebHookService {
 
         log.info("Handling PhonePe event: {} for order: {} with state: {}", event, merchantOrderId, state);
 
-        if ("checkout.order.completed".equals(event) || "COMPLETED".equalsIgnoreCase(state)) {
+        if ("checkout.order.completed".equals(event) || "pg.order.completed".equals(event)
+                || "COMPLETED".equalsIgnoreCase(state)) {
             log.info("Payment completed for order: {}", merchantOrderId);
             paymentLogService.updatePaymentLogsByOrderId(merchantOrderId, PaymentStatusEnum.PAID.name(), instituteId);
-        } else if ("checkout.order.failed".equals(event) || "FAILED".equalsIgnoreCase(state)) {
+        } else if ("checkout.order.failed".equals(event) || "pg.order.failed".equals(event)
+                || "FAILED".equalsIgnoreCase(state)) {
             log.warn("Payment failed for order: {}", merchantOrderId);
             paymentLogService.updatePaymentLogsByOrderId(merchantOrderId, PaymentStatusEnum.FAILED.name(), instituteId);
         } else if ("pg.refund.completed".equals(event)) {

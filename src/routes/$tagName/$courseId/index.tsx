@@ -13,12 +13,13 @@ export const Route = createFileRoute("/$tagName/$courseId/")({
     packageSessionId: (search.packageSessionId as string) || undefined,
     bannerImage: (search.bannerImage as string) || undefined,
     level: (search.level as string) || undefined,
+    price: (search.price as string) || undefined,
   }),
 });
 
 function RouteComponent() {
   const { courseId, tagName } = Route.useParams() as { courseId: string; tagName: string };
-  const { enrollInviteId, packageSessionId, bannerImage, level } = Route.useSearch();
+  const { enrollInviteId, packageSessionId, bannerImage, level, price } = Route.useSearch();
   const domainRouting = useDomainRouting();
   const [hasRetried, setHasRetried] = useState(false);
 
@@ -99,6 +100,7 @@ function RouteComponent() {
       packageSessionId={packageSessionId}
       bannerImage={bannerImage}
       level={level}
+      price={price}
     />
   );
 }

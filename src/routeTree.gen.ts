@@ -25,6 +25,7 @@ import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as LiveClassGuestIndexRouteImport } from './routes/live-class-guest/index'
 import { Route as LearnerInvitationResponseIndexRouteImport } from './routes/learner-invitation-response/index'
 import { Route as InstituteSelectionIndexRouteImport } from './routes/institute-selection/index'
+import { Route as EnquiryResponseIndexRouteImport } from './routes/enquiry-response/index'
 import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
@@ -150,6 +151,11 @@ const LearnerInvitationResponseIndexRoute =
 const InstituteSelectionIndexRoute = InstituteSelectionIndexRouteImport.update({
   id: '/institute-selection/',
   path: '/institute-selection/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnquiryResponseIndexRoute = EnquiryResponseIndexRouteImport.update({
+  id: '/enquiry-response/',
+  path: '/enquiry-response/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeleteUserIndexRoute = DeleteUserIndexRouteImport.update({
@@ -417,6 +423,7 @@ export interface FileRoutesByFullPath {
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
+  '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
   '/learner-invitation-response': typeof LearnerInvitationResponseIndexRoute
   '/live-class-guest': typeof LiveClassGuestIndexRoute
@@ -480,6 +487,7 @@ export interface FileRoutesByTo {
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
+  '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
   '/learner-invitation-response': typeof LearnerInvitationResponseIndexRoute
   '/live-class-guest': typeof LiveClassGuestIndexRoute
@@ -544,6 +552,7 @@ export interface FileRoutesById {
   '/courses/': typeof CoursesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/delete-user/': typeof DeleteUserIndexRoute
+  '/enquiry-response/': typeof EnquiryResponseIndexRoute
   '/institute-selection/': typeof InstituteSelectionIndexRoute
   '/learner-invitation-response/': typeof LearnerInvitationResponseIndexRoute
   '/live-class-guest/': typeof LiveClassGuestIndexRoute
@@ -609,6 +618,7 @@ export interface FileRouteTypes {
     | '/courses'
     | '/dashboard'
     | '/delete-user'
+    | '/enquiry-response'
     | '/institute-selection'
     | '/learner-invitation-response'
     | '/live-class-guest'
@@ -672,6 +682,7 @@ export interface FileRouteTypes {
     | '/courses'
     | '/dashboard'
     | '/delete-user'
+    | '/enquiry-response'
     | '/institute-selection'
     | '/learner-invitation-response'
     | '/live-class-guest'
@@ -735,6 +746,7 @@ export interface FileRouteTypes {
     | '/courses/'
     | '/dashboard/'
     | '/delete-user/'
+    | '/enquiry-response/'
     | '/institute-selection/'
     | '/learner-invitation-response/'
     | '/live-class-guest/'
@@ -799,6 +811,7 @@ export interface RootRouteChildren {
   CoursesIndexRoute: typeof CoursesIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
+  EnquiryResponseIndexRoute: typeof EnquiryResponseIndexRoute
   InstituteSelectionIndexRoute: typeof InstituteSelectionIndexRoute
   LearnerInvitationResponseIndexRoute: typeof LearnerInvitationResponseIndexRoute
   LiveClassGuestIndexRoute: typeof LiveClassGuestIndexRoute
@@ -966,6 +979,13 @@ declare module '@tanstack/react-router' {
       path: '/institute-selection'
       fullPath: '/institute-selection'
       preLoaderRoute: typeof InstituteSelectionIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/enquiry-response/': {
+      id: '/enquiry-response/'
+      path: '/enquiry-response'
+      fullPath: '/enquiry-response'
+      preLoaderRoute: typeof EnquiryResponseIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/delete-user/': {
@@ -1295,6 +1315,7 @@ const rootRouteChildren: RootRouteChildren = {
   CoursesIndexRoute: CoursesIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DeleteUserIndexRoute: DeleteUserIndexRoute,
+  EnquiryResponseIndexRoute: EnquiryResponseIndexRoute,
   InstituteSelectionIndexRoute: InstituteSelectionIndexRoute,
   LearnerInvitationResponseIndexRoute: LearnerInvitationResponseIndexRoute,
   LiveClassGuestIndexRoute: LiveClassGuestIndexRoute,

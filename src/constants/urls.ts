@@ -142,7 +142,6 @@ export const LIVE_SESSION_ATTENDANCE_REPORT_BY_STUDENT = `${BASE_URL}/admin-core
 export const GET_BATCH_LIST = `${BASE_URL}/admin-core-service/batch/v1/batches-by-session`;
 export const GET_COURSE_BATCHES = `${BASE_URL}/admin-core-service/course/v1`;
 
-
 // Push notifications
 export const PUSH_REGISTER_URL = `${BASE_URL}/notification-service/push-notifications/register`;
 export const PUSH_DEACTIVATE_URL = `${BASE_URL}/notification-service/push-notifications/deactivate`;
@@ -172,6 +171,7 @@ export const GET_CUSTOM_FIELDS = `${BASE_URL}/admin-core-service/open/common/cus
 // Audience campaign API endpoint
 export const GET_AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/open/v1/audience/campaign`;
 export const SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
+export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 
 // Sub-Organization Learner Management API endpoints
 export const SUB_ORG_MEMBER_ADMIN_DETAILS = `${BASE_URL}/admin-core-service/sub-org/v1/member-admin-details`;

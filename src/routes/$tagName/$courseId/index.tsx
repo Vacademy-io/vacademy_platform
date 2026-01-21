@@ -47,15 +47,15 @@ function RouteComponent() {
   // Only render after domain routing has resolved to ensure instituteId is available
   if (!isCourseId) {
     // Wait for domain routing before rendering subpage
-    if (domainRouting.isLoading || (!domainRouting.instituteId && !hasRetried)) {
+    if (domainRouting.isLoading) {
       return <DashboardLoader />;
     }
+    // If no institute ID after loading, pass empty string (subpage will handle it)
     return <CourseSubPage tagName={tagName} page={courseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />;
   }
 
   // Show loading while domain routing is resolving
-  // Also show loading if we are in the process of retrying (isLoading might be false momentarily before retry starts)
-  if (domainRouting.isLoading || (!domainRouting.instituteId && !hasRetried)) {
+  if (domainRouting.isLoading) {
     return <DashboardLoader />;
   }
 

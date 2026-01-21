@@ -93,6 +93,11 @@ const isAuthenticated = async () => {
 
 // Helper function to check if a route is public
 const isPublicRoute = (pathname: string): boolean => {
+  // Explicitly exclude /my-files routes - they always require authentication
+  if (pathname.startsWith("/my-files")) {
+    return false;
+  }
+
   // Check for exact matches and startsWith matches
   const directMatch = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 

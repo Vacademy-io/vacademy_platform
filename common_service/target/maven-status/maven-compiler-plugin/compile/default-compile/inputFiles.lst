@@ -146,6 +146,7 @@
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/notification/dto/Media.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/tracing/TracingProperties.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/VacademyException.java
+/Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/ParentWithChildDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/UserPermissionRequestDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/learner/LearnerPackageSessionsEnrollDTO.java
 /Users/shreyashjain/code_repos/vacademy_platform/common_service/src/main/java/vacademy/io/common/db_logging/repository/SystemAlertLogRepository.java

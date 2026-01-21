@@ -33,7 +33,19 @@ function RouteComponent() {
 
   // Get and decode the folder name from URL
   const params = Route.useParams();
-  const folderName = params.folderName || "";
+  
+  // Sometimes during SPA navigation, params might be undefined momentarily
+  // In that case, fall back to parsing the URL directly
+  let folderName = params.folderName || "";
+  
+  if (!folderName) {
+    // Fallback: Parse params from URL directly
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    // URL structure: /my-files/$folderName
+    if (pathParts.length >= 2 && pathParts[0] === 'my-files') {
+      folderName = pathParts[1] || "";
+    }
+  }
   
   // Safely decode the folder name
   let decodedFolderName: string;
@@ -43,6 +55,16 @@ function RouteComponent() {
     console.error("Error decoding folder name:", error);
     decodedFolderName = folderName; // Fallback to raw value
   }
+
+  // Query must be called unconditionally (React hooks rule)
+  // Use enabled option to skip the query when folderName is empty
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["my-files", decodedFolderName],
+    queryFn: () => getMyFiles({}),
+    retry: 1,
+    retryDelay: 1000,
+    enabled: !!folderName, // Only run query when we have a folder name
+  });
 
   // If no folder name, redirect back
   useEffect(() => {
@@ -54,13 +76,6 @@ function RouteComponent() {
   if (!folderName) {
     return <DashboardLoader />;
   }
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["my-files", decodedFolderName],
-    queryFn: () => getMyFiles({}),
-    retry: 1,
-    retryDelay: 1000,
-  });
 
   const formatDate = (isoDate: string) => {
     const date = new Date(isoDate);

@@ -2098,4 +2098,339 @@ public class AudienceService {
                 .build();
     }
 
+    /**
+     * Update an existing lead with enquiry information
+     * Supports partial updates - only provided fields will be updated
+     * 
+     * @param audienceResponseId ID of the audience response to update
+     * @param requestDTO         Update request with optional fields
+     * @return Response with update results
+     */
+    @Transactional
+    public UpdateLeadWithEnquiryResponseDTO updateLeadWithEnquiry(
+            String audienceResponseId,
+            UpdateLeadWithEnquiryRequestDTO requestDTO) {
+
+        logger.info("Updating lead with enquiry for audience response: {}", audienceResponseId);
+
+        // STEP 1: Fetch and validate audience response
+        AudienceResponse response = audienceResponseRepository.findById(audienceResponseId)
+                .orElseThrow(() -> new VacademyException("Audience response not found"));
+
+        // STEP 2: Get institute ID for validation
+        Audience audience = audienceRepository.findById(response.getAudienceId())
+                .orElseThrow(() -> new VacademyException("Audience not found"));
+        String instituteId = audience.getInstituteId();
+
+        // Track updated components
+        Map<String, Object> updatedFields = new HashMap<>();
+        List<String> audienceResponseUpdates = new ArrayList<>();
+        List<String> enquiryUpdates = new ArrayList<>();
+        List<String> parentUserUpdates = new ArrayList<>();
+        List<String> childUserUpdates = new ArrayList<>();
+        List<String> customFieldUpdates = new ArrayList<>();
+
+        // STEP 3: Update Audience Response fields
+        boolean audienceResponseModified = false;
+        if (requestDTO.getDestinationPackageSessionId() != null) {
+            response.setDestinationPackageSessionId(requestDTO.getDestinationPackageSessionId());
+            audienceResponseUpdates.add("destination_package_session_id");
+            audienceResponseModified = true;
+        }
+        if (requestDTO.getParentName() != null) {
+            response.setParentName(requestDTO.getParentName());
+            audienceResponseUpdates.add("parent_name");
+            audienceResponseModified = true;
+        }
+        if (requestDTO.getParentEmail() != null) {
+            response.setParentEmail(requestDTO.getParentEmail());
+            audienceResponseUpdates.add("parent_email");
+            audienceResponseModified = true;
+        }
+        if (requestDTO.getParentMobile() != null) {
+            response.setParentMobile(requestDTO.getParentMobile());
+            audienceResponseUpdates.add("parent_mobile");
+            audienceResponseModified = true;
+        }
+
+        if (audienceResponseModified) {
+            audienceResponseRepository.save(response);
+            logger.info("Updated audience response fields: {}", audienceResponseUpdates);
+        }
+
+        // STEP 4: Update Enquiry (if provided and exists)
+        UUID enquiryId = null;
+        if (requestDTO.getEnquiry() != null && StringUtils.hasText(response.getEnquiryId())) {
+            try {
+                enquiryId = UUID.fromString(response.getEnquiryId());
+                Optional<Enquiry> enquiryOpt = enquiryRepository.findById(enquiryId);
+
+                if (enquiryOpt.isPresent()) {
+                    Enquiry enquiry = enquiryOpt.get();
+                    EnquiryDTO enquiryDTO = requestDTO.getEnquiry();
+
+                    // Update only non-null fields
+                    if (enquiryDTO.getChecklist() != null) {
+                        enquiry.setChecklist(enquiryDTO.getChecklist());
+                        enquiryUpdates.add("checklist");
+                    }
+                    if (enquiryDTO.getEnquiryStatus() != null) {
+                        enquiry.setEnquiryStatus(enquiryDTO.getEnquiryStatus());
+                        enquiryUpdates.add("enquiry_status");
+                    }
+                    if (enquiryDTO.getConvertionStatus() != null) {
+                        enquiry.setConvertionStatus(enquiryDTO.getConvertionStatus());
+                        enquiryUpdates.add("convertion_status");
+                    }
+                    if (enquiryDTO.getReferenceSource() != null) {
+                        enquiry.setReferenceSource(enquiryDTO.getReferenceSource());
+                        enquiryUpdates.add("reference_source");
+                    }
+                    if (enquiryDTO.getFeeRangeExpectation() != null) {
+                        enquiry.setFeeRangeExpectation(enquiryDTO.getFeeRangeExpectation());
+                        enquiryUpdates.add("fee_range_expectation");
+                    }
+                    if (enquiryDTO.getTransportRequirement() != null) {
+                        enquiry.setTransportRequirement(enquiryDTO.getTransportRequirement());
+                        enquiryUpdates.add("transport_requirement");
+                    }
+                    if (enquiryDTO.getMode() != null) {
+                        enquiry.setMode(enquiryDTO.getMode());
+                        enquiryUpdates.add("mode");
+                    }
+                    if (enquiryDTO.getEnquiryTrackingId() != null) {
+                        enquiry.setEnquiryTrackingId(enquiryDTO.getEnquiryTrackingId());
+                        enquiryUpdates.add("enquiry_tracking_id");
+                    }
+                    if (enquiryDTO.getInterestScore() != null) {
+                        enquiry.setInterestScore(enquiryDTO.getInterestScore());
+                        enquiryUpdates.add("interest_score");
+                    }
+                    if (enquiryDTO.getNotes() != null) {
+                        enquiry.setNotes(enquiryDTO.getNotes());
+                        enquiryUpdates.add("notes");
+                    }
+
+                    if (!enquiryUpdates.isEmpty()) {
+                        enquiryRepository.save(enquiry);
+                        logger.info("Updated enquiry fields: {}", enquiryUpdates);
+                    }
+                } else {
+                    logger.warn("Enquiry not found for ID: {}, skipping enquiry update", enquiryId);
+                }
+            } catch (IllegalArgumentException e) {
+                logger.warn("Invalid enquiry ID format: {}, skipping enquiry update", response.getEnquiryId());
+            }
+        }
+
+        // STEP 5: Update Parent and Child Users
+        String parentUserId = response.getUserId();
+        String childUserId = null;
+
+        if (requestDTO.getParentUserDTO() != null || requestDTO.getChildUserDTO() != null) {
+            // Fetch parent and child users in one call
+            List<vacademy.io.common.auth.dto.ParentWithChildDTO> parentWithChildren = authService
+                    .getUsersWithChildren(List.of(parentUserId));
+
+            if (!parentWithChildren.isEmpty()) {
+                vacademy.io.common.auth.dto.ParentWithChildDTO parentWithChild = parentWithChildren.get(0);
+                UserDTO existingParent = parentWithChild.getParent();
+                UserDTO existingChild = parentWithChild.getChild();
+
+                // Update Parent User
+                if (requestDTO.getParentUserDTO() != null) {
+                    UserDTO mergedParent = mergeUserDTO(existingParent, requestDTO.getParentUserDTO());
+                    authService.updateUser(mergedParent, parentUserId);
+
+                    // Track which fields were updated
+                    if (requestDTO.getParentUserDTO().getFullName() != null)
+                        parentUserUpdates.add("full_name");
+                    if (requestDTO.getParentUserDTO().getEmail() != null)
+                        parentUserUpdates.add("email");
+                    if (requestDTO.getParentUserDTO().getMobileNumber() != null)
+                        parentUserUpdates.add("mobile_number");
+                    if (requestDTO.getParentUserDTO().getAddressLine() != null)
+                        parentUserUpdates.add("address_line");
+                    if (requestDTO.getParentUserDTO().getCity() != null)
+                        parentUserUpdates.add("city");
+                    if (requestDTO.getParentUserDTO().getPinCode() != null)
+                        parentUserUpdates.add("pin_code");
+                    if (requestDTO.getParentUserDTO().getDateOfBirth() != null)
+                        parentUserUpdates.add("date_of_birth");
+                    if (requestDTO.getParentUserDTO().getGender() != null)
+                        parentUserUpdates.add("gender");
+
+                    logger.info("Updated parent user fields: {}", parentUserUpdates);
+                }
+
+                // Update Child User (if exists)
+                if (requestDTO.getChildUserDTO() != null && existingChild != null) {
+                    UserDTO mergedChild = mergeUserDTO(existingChild, requestDTO.getChildUserDTO());
+                    authService.updateUser(mergedChild, existingChild.getId());
+                    childUserId = existingChild.getId();
+
+                    // Track which fields were updated
+                    if (requestDTO.getChildUserDTO().getFullName() != null)
+                        childUserUpdates.add("full_name");
+                    if (requestDTO.getChildUserDTO().getEmail() != null)
+                        childUserUpdates.add("email");
+                    if (requestDTO.getChildUserDTO().getDateOfBirth() != null)
+                        childUserUpdates.add("date_of_birth");
+                    if (requestDTO.getChildUserDTO().getGender() != null)
+                        childUserUpdates.add("gender");
+
+                    logger.info("Updated child user fields: {}", childUserUpdates);
+                } else if (requestDTO.getChildUserDTO() != null) {
+                    logger.warn("Child user not found for parent {}, skipping child update", parentUserId);
+                }
+            }
+        }
+
+        // STEP 6: Update Custom Field Values (Upsert strategy)
+        if (requestDTO.getCustomFieldValues() != null && !requestDTO.getCustomFieldValues().isEmpty()) {
+            // Fetch existing custom field values
+            List<CustomFieldValues> existingValues = customFieldValuesRepository
+                    .findBySourceTypeAndSourceId("AUDIENCE_RESPONSE", audienceResponseId);
+
+            Map<String, CustomFieldValues> existingMap = existingValues.stream()
+                    .collect(Collectors.toMap(
+                            cfv -> {
+                                // Get field key from custom field
+                                CustomFields cf = customFieldRepository.findById(cfv.getCustomFieldId()).orElse(null);
+                                return cf != null ? cf.getFieldKey() : "";
+                            },
+                            cfv -> cfv,
+                            (a, b) -> a));
+
+            // Upsert custom field values
+            for (Map.Entry<String, String> entry : requestDTO.getCustomFieldValues().entrySet()) {
+                String fieldKey = entry.getKey();
+                String fieldValue = entry.getValue();
+
+                if (existingMap.containsKey(fieldKey)) {
+                    // Update existing value
+                    CustomFieldValues existing = existingMap.get(fieldKey);
+                    existing.setValue(fieldValue);
+                    customFieldValuesRepository.save(existing);
+                    customFieldUpdates.add(fieldKey + " (updated)");
+                } else {
+                    // Create new custom field value
+                    // Find custom field by key and institute (to avoid duplicate field_key across
+                    // institutes)
+                    Optional<CustomFields> customFieldOpt = customFieldRepository
+                            .findByFieldKeyAndInstituteId(fieldKey, instituteId);
+
+                    if (customFieldOpt.isPresent()) {
+                        CustomFieldValues newValue = CustomFieldValues.builder()
+                                .sourceType("AUDIENCE_RESPONSE")
+                                .sourceId(audienceResponseId)
+                                .customFieldId(customFieldOpt.get().getId())
+                                .value(fieldValue)
+                                .build();
+                        customFieldValuesRepository.save(newValue);
+                        customFieldUpdates.add(fieldKey + " (added)");
+                    } else {
+                        logger.warn("Custom field not found for key: {}, skipping", fieldKey);
+                    }
+                }
+            }
+
+            if (!customFieldUpdates.isEmpty()) {
+                logger.info("Updated custom field values: {}", customFieldUpdates);
+            }
+        }
+
+        // STEP 7: Update Counselor Assignment
+        String updatedCounsellorId = null;
+        if (requestDTO.getCounsellorId() != null && !requestDTO.getCounsellorId().isEmpty()
+                && StringUtils.hasText(response.getEnquiryId())) {
+
+            try {
+                UUID enquiryIdForCounselor = UUID.fromString(response.getEnquiryId());
+                Optional<Enquiry> enquiryOpt = enquiryRepository.findById(enquiryIdForCounselor);
+
+                if (enquiryOpt.isPresent()) {
+                    Enquiry enquiry = enquiryOpt.get();
+
+                    // Validate counselor
+                    if (validateCounselor(requestDTO.getCounsellorId(), instituteId)) {
+                        // Delete old counselor link
+                        linkedUsersRepository.deleteBySourceAndSourceId("ENQUIRY", response.getEnquiryId());
+
+                        // Create new counselor link
+                        LinkedUsers newLink = LinkedUsers.builder()
+                                .source("ENQUIRY")
+                                .sourceId(response.getEnquiryId())
+                                .userId(requestDTO.getCounsellorId())
+                                .build();
+                        linkedUsersRepository.save(newLink);
+
+                        // Update enquiry flag
+                        enquiry.setAssignedUserId(true);
+                        enquiryRepository.save(enquiry);
+
+                        updatedCounsellorId = requestDTO.getCounsellorId();
+                        logger.info("Updated counselor assignment to: {}", updatedCounsellorId);
+                    } else {
+                        logger.warn("Counselor validation failed for ID: {}, skipping counselor update",
+                                requestDTO.getCounsellorId());
+                    }
+                }
+            } catch (IllegalArgumentException e) {
+                logger.warn("Invalid enquiry ID format for counselor update: {}", response.getEnquiryId());
+            }
+        }
+
+        // STEP 8: Build updated fields map
+        updatedFields.put("audience_response", audienceResponseUpdates);
+        updatedFields.put("enquiry", enquiryUpdates);
+        updatedFields.put("parent_user", parentUserUpdates);
+        updatedFields.put("child_user", childUserUpdates);
+        updatedFields.put("custom_fields", customFieldUpdates);
+        updatedFields.put("counselor", updatedCounsellorId != null);
+
+        // STEP 9: Build and return response
+        return UpdateLeadWithEnquiryResponseDTO.builder()
+                .audienceResponseId(audienceResponseId)
+                .enquiryId(enquiryId)
+                .parentUserId(parentUserId)
+                .childUserId(childUserId)
+                .counsellorId(updatedCounsellorId)
+                .message("Lead and enquiry updated successfully")
+                .updatedFields(updatedFields)
+                .build();
+    }
+
+    /**
+     * Merge user DTO for partial updates
+     * Takes existing user data and overlays update data (only non-null fields)
+     * 
+     * @param existing Existing user data from database
+     * @param updates  Update data from request
+     * @return Merged user DTO with updates applied
+     */
+    private UserDTO mergeUserDTO(UserDTO existing, UserDTO updates) {
+        return UserDTO.builder()
+                .id(existing.getId())
+                .username(existing.getUsername())
+                .email(updates.getEmail() != null ? updates.getEmail() : existing.getEmail())
+                .fullName(updates.getFullName() != null ? updates.getFullName() : existing.getFullName())
+                .addressLine(updates.getAddressLine() != null ? updates.getAddressLine() : existing.getAddressLine())
+                .city(updates.getCity() != null ? updates.getCity() : existing.getCity())
+                .region(updates.getRegion() != null ? updates.getRegion() : existing.getRegion())
+                .pinCode(updates.getPinCode() != null ? updates.getPinCode() : existing.getPinCode())
+                .mobileNumber(
+                        updates.getMobileNumber() != null ? updates.getMobileNumber() : existing.getMobileNumber())
+                .dateOfBirth(updates.getDateOfBirth() != null ? updates.getDateOfBirth() : existing.getDateOfBirth())
+                .gender(updates.getGender() != null ? updates.getGender() : existing.getGender())
+                .isRootUser(existing.isRootUser())
+                .profilePicFileId(updates.getProfilePicFileId() != null ? updates.getProfilePicFileId()
+                        : existing.getProfilePicFileId())
+                .roles(existing.getRoles())
+                .lastLoginTime(existing.getLastLoginTime())
+                .isParent(existing.getIsParent())
+                .linkedParentId(existing.getLinkedParentId())
+                .build();
+    }
+
 }

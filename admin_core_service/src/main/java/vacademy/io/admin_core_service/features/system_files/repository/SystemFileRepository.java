@@ -20,4 +20,11 @@ public interface SystemFileRepository extends JpaRepository<SystemFile, String> 
             String createdByUserId, 
             String instituteId, 
             List<String> statuses);
+    
+    // Query email assets by institute (folder_name = "email-assets" and media_type = "image")
+    List<SystemFile> findByInstituteIdAndFolderNameAndMediaTypeAndStatus(
+            String instituteId, 
+            String folderName, 
+            String mediaType, 
+            String status);
 }

@@ -432,6 +432,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
     if (book.packageSessionId) searchParams.set("packageSessionId", book.packageSessionId);
     if (book.thumbnail) searchParams.set("bannerImage", book.thumbnail);
     if (book.level) searchParams.set("level", book.level);
+    if (book.price !== undefined && book.price !== null) searchParams.set("price", book.price.toString());
 
     navigate({
       to: `/${tagName}/${book.id}`,

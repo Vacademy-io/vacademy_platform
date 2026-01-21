@@ -20,6 +20,7 @@ interface CourseDetailsPageProps {
   packageSessionId?: string;
   bannerImage?: string;
   level?: string;
+  price?: string;
 }
 
 interface CourseData {
@@ -71,6 +72,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   packageSessionId,
   bannerImage,
   level,
+  price,
 }) => {
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
@@ -268,9 +270,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           thumbnailUrl = thumbnailField || "/api/placeholder/800/400";
         }
 
-        // For now, set price to 0 (free) since init API doesn't have pricing info
-        // TODO: Implement pricing logic if needed
-        let finalPrice = 0;
+        // Map price from API response, fallback to prop price from URL
+        let finalPrice =
+          price ? parseFloat(price) :
+            course.min_plan_actual_price ||       0;
 
         // Parse HTML content safely
         const parseHtmlContent = (htmlString: string) => {
@@ -324,9 +327,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           duration: courseResponse.sessions?.[0]?.level_with_details?.[0]
             ?.read_time_in_minutes
             ? getBackendCourseDuration(
-                courseResponse.sessions[0].level_with_details[0]
-                  .read_time_in_minutes
-              )
+              courseResponse.sessions[0].level_with_details[0]
+                .read_time_in_minutes
+            )
             : null,
           instructor:
             courseResponse.sessions?.[0]?.level_with_details?.[0]
@@ -338,14 +341,14 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           // Add fields for hero section - use placeholder if no valid image
           previewImage:
             course.course_preview_image_media_id &&
-            course.course_preview_image_media_id !== null &&
-            course.course_preview_image_media_id !== "null"
+              course.course_preview_image_media_id !== null &&
+              course.course_preview_image_media_id !== "null"
               ? course.course_preview_image_media_id
               : "/api/placeholder/400/300",
           bannerImage:
             course.course_banner_media_id &&
-            course.course_banner_media_id !== null &&
-            course.course_banner_media_id !== "null"
+              course.course_banner_media_id !== null &&
+              course.course_banner_media_id !== "null"
               ? course.course_banner_media_id
               : "/api/placeholder/400/300",
           fullDescription:
@@ -589,17 +592,17 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                       {/* Price - Only show if payment is enabled */}
                       {catalogueData?.globalSettings?.payment?.enabled !==
                         false && (
-                        <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
-                          <span className="text-xs font-medium text-primary-700">
-                            Price
-                          </span>
-                          <span className="text-lg font-bold text-primary-800">
-                            {courseData.price === 0
-                              ? "Free"
-                              : `$${courseData.price}`}
-                          </span>
-                        </div>
-                      )}
+                          <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
+                            <span className="text-xs font-medium text-primary-700">
+                              Price
+                            </span>
+                            <span className="text-lg font-bold text-primary-800">
+                              {courseData.price === 0
+                                ? "Free"
+                                : `$${courseData.price}`}
+                            </span>
+                          </div>
+                        )}
 
                       {/* Rating */}
                       <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
@@ -1108,7 +1111,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       {catalogueData &&
         (catalogueData.globalSettings as any).layout?.footer &&
         (catalogueData.globalSettings as any).layout?.footer?.enabled !==
-          false && (
+        false && (
           <JsonRenderer
             page={{
               id: "footer",

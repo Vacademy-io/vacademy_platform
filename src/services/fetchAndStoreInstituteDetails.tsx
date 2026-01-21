@@ -93,11 +93,14 @@ export const fetchAndStoreInstituteDetails = async (
       throw new Error("Invalid response data");
     }
 
-    const instituteDetails: InstituteDetails = instituteDetailsResponse.data;
+    const rawData = instituteDetailsResponse.data;
+    const instituteDetails: InstituteDetails = {
+      ...rawData,
+      sub_modules: rawData.sub_modules || [],
+    };
 
     // Extract and store naming settings if present
-    const settingsJson = (instituteDetailsResponse.data as InstituteDetails)
-      .institute_settings_json;
+    const settingsJson = instituteDetails.institute_settings_json;
     if (settingsJson) {
       try {
         const settingsObj: InstituteSettings = JSON.parse(settingsJson);

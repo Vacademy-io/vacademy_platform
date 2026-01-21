@@ -69,7 +69,7 @@ const InstituteSchema = z.object({
     type: InstituteTypeSchema,
     held_by: z.string().nullable(),
     founded_date: z.string().nullable(),
-    sub_modules: z.array(SubModuleSchema),
+    sub_modules: z.array(SubModuleSchema).optional().nullable(),
     sessions: z.array(SessionSchema),
     batches_for_sessions: z.array(BatchForSessionSchema),
     levels: z.array(LevelSchema),

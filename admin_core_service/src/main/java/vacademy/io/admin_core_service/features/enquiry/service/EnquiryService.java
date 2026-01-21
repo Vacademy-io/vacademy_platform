@@ -44,27 +44,24 @@ public class EnquiryService {
             throw new VacademyException("Only ENQUIRY source type is currently supported");
         }
 
-        // 3. Validate Counselor Existence and Role
-        UserDTO counselor = null;
+        // 3. Validate User Existence (not role)
+        // Design Decision: We only verify that the user exists in the system.
+        // This allows flexibility to assign any registered user (counselors, admins,
+        // managers, etc.)
+        // The calling service is responsible for ensuring the appropriate user is
+        // assigned.
+        UserDTO assignedUser = null;
         try {
             List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(request.getCounselorId()));
             if (users != null && !users.isEmpty()) {
-                counselor = users.get(0);
+                assignedUser = users.get(0);
             }
         } catch (Exception e) {
-            throw new VacademyException("Failed to fetch counselor details: " + e.getMessage());
+            throw new VacademyException("Failed to fetch user details: " + e.getMessage());
         }
 
-        if (counselor == null) {
-            throw new VacademyException("Counselor not found with ID: " + request.getCounselorId());
-        }
-
-        boolean hasCounselorRole = counselor.getRoles() != null &&
-                counselor.getRoles().stream()
-                        .anyMatch(role -> role.equalsIgnoreCase("COUNSELLOR"));
-
-        if (!hasCounselorRole) {
-            throw new VacademyException("User exists but does not have COUNSELOR role");
+        if (assignedUser == null) {
+            throw new VacademyException("User not found with ID: " + request.getCounselorId());
         }
 
         // 4. Check for existing link to avoid duplicates

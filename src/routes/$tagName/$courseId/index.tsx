@@ -31,16 +31,30 @@ function RouteComponent() {
     }
   }, [domainRouting.isLoading, domainRouting.instituteId, hasRetried, domainRouting]);
 
-  // Guard: If route params are not yet available (during transition), show loading
-  // This prevents rendering CourseSubPage with empty params during client-side navigation
-  if (!courseId || !tagName) {
-    console.log("[Course Details] Waiting for route params...", { courseId, tagName });
+  // Get route params from TanStack Router
+  // Sometimes during SPA navigation, params might be undefined momentarily
+  // In that case, fall back to parsing the URL directly
+  let resolvedCourseId = courseId;
+  let resolvedTagName = tagName;
+  
+  if (!resolvedCourseId || !resolvedTagName) {
+    // Fallback: Parse params from URL directly
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    if (pathParts.length >= 2) {
+      resolvedTagName = pathParts[0] || tagName;
+      resolvedCourseId = pathParts[1] || courseId;
+    }
+  }
+
+  // If still no params after URL fallback, show loading (shouldn't happen in normal flow)
+  if (!resolvedCourseId || !resolvedTagName) {
+    console.log("[Course Details] Waiting for route params...", { courseId, tagName, resolvedCourseId, resolvedTagName });
     return <DashboardLoader />;
   }
 
   // Check if courseId looks like a course ID (numeric or UUID)
-  const isNumeric = /^\d+$/.test(courseId);
-  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(courseId);
+  const isNumeric = /^\d+$/.test(resolvedCourseId);
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedCourseId);
   const isCourseId = isNumeric || isUUID;
 
   // If this looks like a page name (not a course ID), render the subpage component
@@ -51,7 +65,7 @@ function RouteComponent() {
       return <DashboardLoader />;
     }
     // If no institute ID after loading, pass empty string (subpage will handle it)
-    return <CourseSubPage tagName={tagName} page={courseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />;
+    return <CourseSubPage tagName={resolvedTagName} page={resolvedCourseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />;
   }
 
   // Show loading while domain routing is resolving
@@ -91,8 +105,8 @@ function RouteComponent() {
 
   return (
     <CourseDetailsPage
-      courseId={courseId}
-      tagName={tagName}
+      courseId={resolvedCourseId}
+      tagName={resolvedTagName}
       instituteId={domainRouting.instituteId}
       instituteThemeCode={domainRouting.instituteThemeCode}
       enrollInviteId={enrollInviteId}

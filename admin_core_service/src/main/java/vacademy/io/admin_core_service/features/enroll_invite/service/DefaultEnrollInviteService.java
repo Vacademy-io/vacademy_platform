@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
+import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.ReferralOption;
@@ -23,7 +24,6 @@ import vacademy.io.common.institute.entity.Level;
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
-import vacademy.io.common.payment.enums.PaymentGateway;
 
 import java.security.SecureRandom;
 import java.sql.Date;
@@ -42,7 +42,7 @@ public class DefaultEnrollInviteService {
 
     @Autowired
     private EnrollInviteCoursePreviewService enrollInviteCoursePreviewService;
-    
+
     @Autowired
     private PaymentOptionService paymentOptionService;
 
@@ -58,6 +58,9 @@ public class DefaultEnrollInviteService {
     @Autowired
     private PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionService packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService;
 
+    @Autowired
+    private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
+
     public void createDefaultEnrollInvite(PackageSession packageSession, String instituteId) {
         EnrollInvite enrollInvite = new EnrollInvite();
         enrollInvite.setName(getNameForDefaultEnrollInvite(packageSession));
@@ -67,20 +70,22 @@ public class DefaultEnrollInviteService {
         enrollInvite.setStatus(StatusEnum.ACTIVE.name());
         enrollInvite.setInstituteId(instituteId);
 
-        // TODO: vendor id and vendor name
-        enrollInvite.setVendor(PaymentGateway.STRIPE.name());
-        enrollInvite.setVendorId(PaymentGateway.STRIPE.name());
+        // Get vendor info from InstitutePaymentGatewayMapping (latest by createdAt),
+        // fallback to STRIPE
+        InstitutePaymentGatewayMappingService.VendorInfo vendorInfo = institutePaymentGatewayMappingService
+                .getLatestVendorInfoForInstitute(instituteId);
+
+        enrollInvite.setVendor(vendorInfo.getVendor());
+        enrollInvite.setVendorId(vendorInfo.getVendorId());
         enrollInvite.setTag(EnrollInviteTag.DEFAULT.name());
-        enrollInvite.setWebPageMetaDataJson(enrollInviteCoursePreviewService.createPreview(packageSession.getId(),instituteId));
-
-
+        enrollInvite.setWebPageMetaDataJson(
+                enrollInviteCoursePreviewService.createPreview(packageSession.getId(), instituteId));
 
         Optional<PaymentOption> optionalPaymentOption = paymentOptionService.getPaymentOption(
                 PaymentOptionSource.INSTITUTE.name(),
                 instituteId,
                 PaymentOptionTag.DEFAULT.name(),
-                List.of(StatusEnum.ACTIVE.name())
-        );
+                List.of(StatusEnum.ACTIVE.name()));
 
         if (optionalPaymentOption.isPresent()) {
             repository.save(enrollInvite);
@@ -88,23 +93,33 @@ public class DefaultEnrollInviteService {
             if (paymentOption.getPaymentPlans() != null && !paymentOption.getPaymentPlans().isEmpty()) {
                 enrollInvite.setCurrency(paymentOption.getPaymentPlans().get(0).getCurrency());
             }
-            PackageSessionLearnerInvitationToPaymentOption packageSessionEnrollInviteToPaymentOption = new PackageSessionLearnerInvitationToPaymentOption(enrollInvite, packageSession, paymentOption,StatusEnum.ACTIVE.name());
-            packageSessionEnrollInviteToPaymentOption = packageSessionEnrollInviteToPaymentOptionService.create(packageSessionEnrollInviteToPaymentOption);
-            addDefaultReferralOption(packageSessionEnrollInviteToPaymentOption, instituteId,paymentOption);
+            PackageSessionLearnerInvitationToPaymentOption packageSessionEnrollInviteToPaymentOption = new PackageSessionLearnerInvitationToPaymentOption(
+                    enrollInvite, packageSession, paymentOption, StatusEnum.ACTIVE.name());
+            packageSessionEnrollInviteToPaymentOption = packageSessionEnrollInviteToPaymentOptionService
+                    .create(packageSessionEnrollInviteToPaymentOption);
+            addDefaultReferralOption(packageSessionEnrollInviteToPaymentOption, instituteId, paymentOption);
         }
     }
 
-    private void addDefaultReferralOption(PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption, String instituteId,PaymentOption paymentOption) {
-        Optional<ReferralOption>optionalReferralOption = referralOptionService.getReferralOptionBySourceAndSourceIdAndTag(ReferralOptionSource.INSTITUTE.name(),instituteId, ReferralOptionTag.DEFAULT.name());
+    private void addDefaultReferralOption(
+            PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption,
+            String instituteId, PaymentOption paymentOption) {
+        Optional<ReferralOption> optionalReferralOption = referralOptionService
+                .getReferralOptionBySourceAndSourceIdAndTag(ReferralOptionSource.INSTITUTE.name(), instituteId,
+                        ReferralOptionTag.DEFAULT.name());
         List<PaymentPlan> paymentPlans = paymentOption.getPaymentPlans();
         if (optionalReferralOption.isPresent() && paymentPlans != null && !paymentPlans.isEmpty()) {
-            List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption>packageSessionEnrollInvitePaymentOptionPlanToReferralOptions = new ArrayList<>();
+            List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> packageSessionEnrollInvitePaymentOptionPlanToReferralOptions = new ArrayList<>();
             ReferralOption referralOption = optionalReferralOption.get();
             for (PaymentPlan paymentPlan : paymentPlans) {
-                PackageSessionEnrollInvitePaymentOptionPlanToReferralOption packageSessionEnrollInvitePaymentOptionPlanToReferralOption = new PackageSessionEnrollInvitePaymentOptionPlanToReferralOption(packageSessionLearnerInvitationToPaymentOption,referralOption,paymentPlan, StatusEnum.ACTIVE.name());
-                packageSessionEnrollInvitePaymentOptionPlanToReferralOptions.add(packageSessionEnrollInvitePaymentOptionPlanToReferralOption);
+                PackageSessionEnrollInvitePaymentOptionPlanToReferralOption packageSessionEnrollInvitePaymentOptionPlanToReferralOption = new PackageSessionEnrollInvitePaymentOptionPlanToReferralOption(
+                        packageSessionLearnerInvitationToPaymentOption, referralOption, paymentPlan,
+                        StatusEnum.ACTIVE.name());
+                packageSessionEnrollInvitePaymentOptionPlanToReferralOptions
+                        .add(packageSessionEnrollInvitePaymentOptionPlanToReferralOption);
             }
-            packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService.saveInBulk(packageSessionEnrollInvitePaymentOptionPlanToReferralOptions);
+            packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService
+                    .saveInBulk(packageSessionEnrollInvitePaymentOptionPlanToReferralOptions);
         }
     }
 
@@ -114,7 +129,7 @@ public class DefaultEnrollInviteService {
         Session session = packageSession.getSession();
         PackageEntity packageEntity = packageSession.getPackageEntity();
         StringBuilder sb = new StringBuilder();
-        if(level != null && !level.getId().equalsIgnoreCase("DEFAULT")) {
+        if (level != null && !level.getId().equalsIgnoreCase("DEFAULT")) {
             sb.append(level.getLevelName() + " ");
         }
         if (packageEntity != null && !packageEntity.getId().equalsIgnoreCase("DEFAULT")) {

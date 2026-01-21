@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollIn
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteCoursePreviewService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.learner_invitation.util.LearnerInvitationDefaultFormGenerator;
@@ -42,7 +43,6 @@ import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.PackageInstitute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.session.Session;
-import vacademy.io.common.payment.enums.PaymentGateway;
 
 import java.security.SecureRandom;
 import java.sql.Date;
@@ -72,9 +72,12 @@ public class BulkCourseService {
     private final PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
     private final EnrollInviteCoursePreviewService enrollInviteCoursePreviewService;
     private final LearnerInvitationService learnerInvitationService;
+    private final InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
 
     private static final String DEFAULT_LEVEL_ID = "DEFAULT";
     private static final String DEFAULT_SESSION_ID = "DEFAULT";
+    private static final String INVITED_LEVEL_ID = "INVITED";
+    private static final String INVITED_SESSION_ID = "INVITED";
 
     /**
      * Process bulk course creation request.
@@ -164,6 +167,9 @@ public class BulkCourseService {
 
             // 2. Create PackageInstitute mapping
             createPackageInstitute(packageEntity, instituteId);
+
+            // 2.5. Create INVITED PackageSession for the package
+            createInvitedPackageSession(packageEntity);
 
             // 3. Create or get Payment Option
             PaymentOption paymentOption = resolveOrCreatePaymentOption(effectivePaymentConfig, instituteId, courseName);
@@ -269,6 +275,26 @@ public class BulkCourseService {
                     .orElseThrow(() -> new RuntimeException("Institute not found: " + instituteId)));
             packageInstituteRepository.save(packageInstitute);
         }
+    }
+
+    /**
+     * Creates an INVITED PackageSession for the package.
+     * This is similar to PackageSessionService.addInvitedPackageSessionForPackage()
+     * and is used to track learners who are invited but not yet enrolled in a
+     * specific batch.
+     */
+    private void createInvitedPackageSession(PackageEntity packageEntity) {
+        Session session = new Session();
+        Level level = new Level();
+        session.setId(INVITED_SESSION_ID);
+        level.setId(INVITED_LEVEL_ID);
+
+        PackageSession packageSession = new PackageSession();
+        packageSession.setSession(session);
+        packageSession.setLevel(level);
+        packageSession.setPackageEntity(packageEntity);
+        packageSession.setStatus(PackageSessionStatusEnum.INVITED.name());
+        packageSessionRepository.save(packageSession);
     }
 
     private PackageSession createPackageSession(PackageEntity packageEntity,
@@ -403,8 +429,13 @@ public class BulkCourseService {
         enrollInvite.setInviteCode(generateInviteCode());
         enrollInvite.setStatus(StatusEnum.ACTIVE.name());
         enrollInvite.setInstituteId(instituteId);
-        enrollInvite.setVendor(PaymentGateway.STRIPE.name());
-        enrollInvite.setVendorId(PaymentGateway.STRIPE.name());
+
+        // Get vendor info from InstitutePaymentGatewayMapping (latest by createdAt),
+        // fallback to STRIPE
+        InstitutePaymentGatewayMappingService.VendorInfo vendorInfo = institutePaymentGatewayMappingService
+                .getLatestVendorInfoForInstitute(instituteId);
+        enrollInvite.setVendor(vendorInfo.getVendor());
+        enrollInvite.setVendorId(vendorInfo.getVendorId());
         enrollInvite.setTag(EnrollInviteTag.DEFAULT.name());
 
         // Set currency from payment plan if available

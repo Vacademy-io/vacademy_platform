@@ -124,7 +124,8 @@ const isPublicRoute = (pathname: string): boolean => {
     !pathname.startsWith("/user-profile") &&
     !pathname.startsWith("/study-library") &&
     !pathname.startsWith("/Coursetile") &&
-    !pathname.startsWith("/planning");
+    !pathname.startsWith("/planning") &&
+    !pathname.startsWith("/my-files");
 
   // Course details dynamic routes - /{tagName}/{courseId}
   // Check if it's exactly two path segments and not a system route
@@ -152,7 +153,8 @@ const isPublicRoute = (pathname: string): boolean => {
     !pathname.startsWith("/homework") &&
     !pathname.startsWith("/learning-centre") &&
     !pathname.startsWith("/user-profile") &&
-    !pathname.startsWith("/planning");
+    !pathname.startsWith("/planning") &&
+    !pathname.startsWith("/my-files");
 
   const result =
     directMatch ||

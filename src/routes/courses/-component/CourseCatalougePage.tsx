@@ -68,6 +68,7 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
 
     const fetchPackages = async (search = "") => {
         try {
+            console.log("[CourseCatalougePage] Fetching packages for instituteId:", instituteId);
             const response = await axios.post(
                 urlCourseDetails,
                 {
@@ -92,16 +93,20 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                     },
                 }
             );
+            console.log("[CourseCatalougePage] Successfully fetched packages:", response.data.content?.length || 0);
             setCourseData(response.data.content);
         } catch (error) {
-            console.error("Error fetching packages:", error);
+            console.error("[CourseCatalougePage] Error fetching packages:", error);
         }
     };
 
     useEffect(() => {
         // Only fetch packages when instituteId is available
         if (instituteId) {
+            console.log("[CourseCatalougePage] Starting package fetch");
             fetchPackages(searchTerm);
+        } else {
+            console.log("[CourseCatalougePage] Waiting for instituteId before fetching packages");
         }
     }, [searchTerm, sortOption, instituteId]);
 

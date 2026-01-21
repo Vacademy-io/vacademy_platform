@@ -71,10 +71,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   // Fetch course catalogue data
   useEffect(() => {
     const fetchCatalogueData = async () => {
+      // Reset error state when starting a new fetch
+      setError(null);
+
       try {
         setIsLoading(true);
+        console.log("[CourseCataloguePage] Fetching catalogue data for:", { instituteId, tagName });
+
         const data = await CourseCatalogueService.getCourseCatalogueByTag(instituteId, tagName);
 
+        console.log("[CourseCataloguePage] Successfully fetched catalogue data");
         setCatalogueData(data);
 
         // Check if intro page should be shown based on localStorage
@@ -107,21 +113,30 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           setShowLeadCollection(true);
         }
       } catch (err) {
+        console.error("[CourseCataloguePage] Error fetching catalogue data:", err);
         setError("Failed to load course catalogue");
       } finally {
         setIsLoading(false);
       }
     };
 
-    if (instituteId && tagName) {
+    // Only fetch if we have valid instituteId and tagName
+    // This prevents premature API calls before domain routing completes
+    if (instituteId && tagName && !isCheckingAuth) {
+      console.log("[CourseCataloguePage] Starting catalogue data fetch");
       fetchCatalogueData();
     } else {
-      console.warn("[CourseCataloguePage] Missing required data:", {
-        instituteId,
-        tagName,
+      console.log("[CourseCataloguePage] Waiting for required data:", {
+        hasInstituteId: !!instituteId,
+        hasTagName: !!tagName,
+        isCheckingAuth,
       });
+      // Keep loading state true while waiting for instituteId
+      if (!instituteId || !tagName) {
+        setIsLoading(true);
+      }
     }
-  }, [instituteId, tagName]);
+  }, [instituteId, tagName, isCheckingAuth]);
 
   useEffect(() => {
     const fonts = catalogueData?.globalSettings?.fonts;

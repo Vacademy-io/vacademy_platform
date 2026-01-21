@@ -27,6 +27,7 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.ReenrollmentGapValidationService;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
@@ -78,6 +79,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private ReenrollmentGapValidationService reenrollmentGapValidationService;
+
+    @Autowired
+    private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
 
     @Autowired
     private InstituteRepository instituteRepository;
@@ -212,20 +216,40 @@ public class LearnerEnrollRequestService {
         // For PAID enrollments, notifications will be sent after webhook confirms
         // payment
         if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
-            log.info("FREE enrollment completed. Sending enrollment notifications for user: {}",
-                    learnerEnrollRequestDTO.getUser().getId());
-            sendDynamicNotificationForEnrollment(
-                    learnerEnrollRequestDTO.getInstituteId(),
-                    learnerEnrollRequestDTO.getUser(),
-                    paymentOption,
-                    enrollInvite,
-                    enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
-            );
+            // Check if workflow is configured for the package session
+            // If workflow exists, skip notifications - workflow will handle them
+            boolean hasWorkflow = false;
+            for (String packageSessionId : enrollDTO.getPackageSessionIds()) {
+                PackageSession ps = packageSessionRepository.findById(packageSessionId).orElse(null);
+                if (ps != null && learnerEnrollmentEntryService.hasWorkflowConfiguration(ps)) {
+                    hasWorkflow = true;
+                    log.info(
+                            "Workflow configured for package session {}. Skipping notifications - workflow will handle.",
+                            packageSessionId);
+                    break;
+                }
+            }
 
-            sendReferralInvitationEmail(
-                    learnerEnrollRequestDTO.getInstituteId(),
-                    learnerEnrollRequestDTO.getUser(),
-                    enrollInvite);
+            if (!hasWorkflow) {
+                log.info("FREE enrollment completed. Sending enrollment notifications for user: {}",
+                        learnerEnrollRequestDTO.getUser().getId());
+                sendDynamicNotificationForEnrollment(
+                        learnerEnrollRequestDTO.getInstituteId(),
+                        learnerEnrollRequestDTO.getUser(),
+                        paymentOption,
+                        enrollInvite,
+                        enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
+                );
+
+                sendReferralInvitationEmail(
+                        learnerEnrollRequestDTO.getInstituteId(),
+                        learnerEnrollRequestDTO.getUser(),
+                        enrollInvite);
+            } else {
+                log.info(
+                        "FREE enrollment with workflow. Notifications skipped for user: {}. Workflow will handle enrollment.",
+                        learnerEnrollRequestDTO.getUser().getId());
+            }
         } else if (UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
             log.info(
                     "Stacked enrollment created with PENDING status for user: {}. Skipping notifications and session mapping.",

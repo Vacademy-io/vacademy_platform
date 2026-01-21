@@ -8,8 +8,11 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -41,6 +44,9 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
+
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
             LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
@@ -50,20 +56,55 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
             UserPlan userPlan,
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         log.info("Processing FREE enrollment for user: {}", userDTO.getEmail());
+
         // Use startDate from DTO if provided, otherwise default to current date
         Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
                 ? learnerPackageSessionsEnrollDTO.getStartDate()
                 : new Date();
 
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
+        List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
+
+        // Step 1: For each package session, create ONLY_DETAILS_FILL entry first
+        // and mark previous entries as DELETED
+        for (String actualPackageSessionId : packageSessionIds) {
+            // Find the INVITED package session for this actual package session
+            PackageSession invitedPackageSession = learnerEnrollmentEntryService
+                    .findInvitedPackageSession(actualPackageSessionId);
+
+            PackageSession actualPackageSession = packageSessionRepository.findById(actualPackageSessionId)
+                    .orElseThrow(() -> new VacademyException("Package session not found: " + actualPackageSessionId));
+
+            // Mark previous ONLY_DETAILS_FILL and PAYMENT_FAILED entries as DELETED
+            learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                    userDTO.getId(),
+                    invitedPackageSession.getId(),
+                    actualPackageSessionId,
+                    instituteId);
+
+            // Create ONLY_DETAILS_FILL entry
+            learnerEnrollmentEntryService.createOnlyDetailsFilledEntry(
+                    userDTO.getId(),
+                    invitedPackageSession,
+                    actualPackageSession,
+                    instituteId,
+                    userPlan.getId());
+
+            log.info("Created ONLY_DETAILS_FILL entry for user {} in package session {}",
+                    userDTO.getId(), actualPackageSessionId);
+        }
+
+        //workflow
+
+        // Step 3: No workflow - proceed with current enrollment flow
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
-            for (String packageSessionId : learnerPackageSessionsEnrollDTO.getPackageSessionIds()) {
+            for (String packageSessionId : packageSessionIds) {
                 Optional<PackageSession> invitedPackageSession = packageSessionRepository
                         .findInvitedPackageSessionForPackage(
                                 packageSessionId,
-                                "INVITED", // levelId (placeholder — ensure correct value)
-                                "INVITED", // sessionId (placeholder — ensure correct value)
+                                "INVITED",
+                                "INVITED",
                                 List.of(PackageSessionStatusEnum.INVITED.name()),
                                 List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                                 List.of(PackageStatusEnum.ACTIVE.name()));
@@ -88,7 +129,6 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
         } else {
             String status = LearnerStatusEnum.ACTIVE.name();
             Integer accessDays = enrollInvite.getLearnerAccessDays();
-            List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
             for (String packageSessionId : packageSessionIds) {
                 InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId,
                         packageSessionId, null, status, enrollmentDate, null,
@@ -96,9 +136,23 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }
+
         UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId,
                 instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData,
                 learnerExtraDetails, enrollInvite, userPlan);
+
+        // Step 4: Mark the ONLY_DETAILS_FILL entries as DELETED since enrollment is
+        // complete
+        for (String actualPackageSessionId : packageSessionIds) {
+            PackageSession invitedPackageSession = learnerEnrollmentEntryService
+                    .findInvitedPackageSession(actualPackageSessionId);
+
+            learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                    user.getId(),
+                    invitedPackageSession.getId(),
+                    actualPackageSessionId,
+                    instituteId);
+        }
 
         // Process referral request if present - for free payments, benefits are
         // activated immediately

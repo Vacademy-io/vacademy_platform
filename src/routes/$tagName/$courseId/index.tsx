@@ -31,13 +31,25 @@ function RouteComponent() {
     }
   }, [domainRouting.isLoading, domainRouting.instituteId, hasRetried, domainRouting]);
 
+  // Guard: If route params are not yet available (during transition), show loading
+  // This prevents rendering CourseSubPage with empty params during client-side navigation
+  if (!courseId || !tagName) {
+    console.log("[Course Details] Waiting for route params...", { courseId, tagName });
+    return <DashboardLoader />;
+  }
+
   // Check if courseId looks like a course ID (numeric or UUID)
   const isNumeric = /^\d+$/.test(courseId);
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(courseId);
   const isCourseId = isNumeric || isUUID;
 
   // If this looks like a page name (not a course ID), render the subpage component
+  // Only render after domain routing has resolved to ensure instituteId is available
   if (!isCourseId) {
+    // Wait for domain routing before rendering subpage
+    if (domainRouting.isLoading || (!domainRouting.instituteId && !hasRetried)) {
+      return <DashboardLoader />;
+    }
     return <CourseSubPage tagName={tagName} page={courseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />;
   }
 

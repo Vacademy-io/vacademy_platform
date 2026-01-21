@@ -34,16 +34,26 @@ export const useDomainRouting = () => {
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
 
-  const [state, setState] = useState<DomainRoutingState>({
-    isLoading: true,
-    instituteId: null,
-    instituteName: null,
-    instituteLogoFileId: null,
-    instituteThemeCode: null,
-    redirectPath: "/login",
-    error: null,
-    homeIconClickRoute: null,
-    convertUsernamePasswordToLowercase: null,
+  const [state, setState] = useState<DomainRoutingState>(() => {
+    // Initialize from cached global state if available to prevent flash on navigation
+    if (globalDomainRoutingState && globalDomainRoutingState.instituteId) {
+      return {
+        ...globalDomainRoutingState,
+        isLoading: false,
+      };
+    }
+    // Default initial state
+    return {
+      isLoading: true,
+      instituteId: null,
+      instituteName: null,
+      instituteLogoFileId: null,
+      instituteThemeCode: null,
+      redirectPath: "/login",
+      error: null,
+      homeIconClickRoute: null,
+      convertUsernamePasswordToLowercase: null,
+    };
   });
 
   const applyInstituteTheme = (themeCode: string | null) => {

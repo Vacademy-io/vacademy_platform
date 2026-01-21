@@ -3,7 +3,7 @@ import CourseCatalougePage from "./-component/CourseCatalougePage";
 // Removed legacy institute resolution in favor of domain routing
 // import { useSuspenseQuery } from "@tanstack/react-query";
 // import { handleGetInstituteIdWithLocalStorageCheck } from "./-services/courses-services";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import RootNotFoundComponent from "@/components/core/default-not-found";
 import { Preferences } from "@capacitor/preferences";
@@ -24,6 +24,8 @@ function CoursesContainerComponent() {
     const navigate = useNavigate();
     const domainRouting = useDomainRouting();
 
+
+    const [hasRetried, setHasRetried] = useState(false);
 
     useEffect(() => {
         const redirectToDashboardIfAuthenticated = async () => {
@@ -62,7 +64,16 @@ function CoursesContainerComponent() {
         redirectToDashboardIfAuthenticated();
     }, [navigate]);
 
-    if (domainRouting.isLoading) return <DashboardLoader />;
+    // Handle retry logic if domain routing fails initially
+    useEffect(() => {
+        if (!domainRouting.isLoading && !domainRouting.instituteId && !hasRetried) {
+            console.log("[Courses Index] Domain routing failed, attempting retry...");
+            setHasRetried(true);
+            domainRouting.resolveRouting();
+        }
+    }, [domainRouting.isLoading, domainRouting.instituteId, hasRetried, domainRouting]);
+
+    if (domainRouting.isLoading || (!domainRouting.instituteId && !hasRetried)) return <DashboardLoader />;
 
     // If we couldn't resolve any instituteId, show not found
     if (!domainRouting.instituteId) {

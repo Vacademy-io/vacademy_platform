@@ -3,7 +3,7 @@ import { CourseCataloguePage } from "./-components/CourseCataloguePage";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/$tagName/")({
   component: RouteComponent,
@@ -12,12 +12,12 @@ export const Route = createFileRoute("/$tagName/")({
 //console.log("[Course Catalogue] Route file loaded");
 
 function RouteComponent() {
-  try {
-   // console.log("[Course Catalogue] RouteComponent function called");
-    const { tagName } = Route.useParams() as { tagName: string };
-    const domainRouting = useDomainRouting();
+  // console.log("[Course Catalogue] RouteComponent function called");
+  const { tagName } = Route.useParams() as { tagName: string };
+  const domainRouting = useDomainRouting();
     
-   // console.log("[Course Catalogue] RouteComponent mounted with tagName:", tagName);
+  // console.log("[Course Catalogue] RouteComponent mounted with tagName:", tagName);
+  const [hasRetried, setHasRetried] = useState(false);
 
   // Debug logging to track domain routing
   // useEffect(() => {
@@ -30,8 +30,18 @@ function RouteComponent() {
   //   });
   // }, [domainRouting]);
 
+  // Handle retry logic if domain routing fails initially
+  useEffect(() => {
+    if (!domainRouting.isLoading && !domainRouting.instituteId && !hasRetried) {
+      console.log("[Course Catalogue] Domain routing failed, attempting retry...");
+      setHasRetried(true);
+      domainRouting.resolveRouting();
+    }
+  }, [domainRouting.isLoading, domainRouting.instituteId, hasRetried, domainRouting]);
+
   // Show loading while domain routing is resolving
-  if (domainRouting.isLoading) {
+  // Also show loading if we are in the process of retrying
+  if (domainRouting.isLoading || (!domainRouting.instituteId && !hasRetried)) {
    // console.log("[Course Catalogue] Domain routing in progress...");
     return <DashboardLoader />;
   }
@@ -78,8 +88,4 @@ function RouteComponent() {
       instituteThemeCode={domainRouting.instituteThemeCode}
     />
   );
-  } catch (error) {
-    //console.error("[Course Catalogue] Error in RouteComponent:", error);
-    return <RootNotFoundComponent />;
-  }
 }

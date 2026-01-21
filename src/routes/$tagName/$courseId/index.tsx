@@ -4,7 +4,7 @@ import { CourseSubPage } from "../-components/CourseSubPage";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/$tagName/$courseId/")({
   component: RouteComponent,
@@ -20,6 +20,16 @@ function RouteComponent() {
   const { courseId, tagName } = Route.useParams() as { courseId: string; tagName: string };
   const { enrollInviteId, packageSessionId, bannerImage, level } = Route.useSearch();
   const domainRouting = useDomainRouting();
+  const [hasRetried, setHasRetried] = useState(false);
+
+  // Handle retry logic if domain routing fails initially
+  useEffect(() => {
+    if (!domainRouting.isLoading && !domainRouting.instituteId && !hasRetried) {
+      console.log("[Course Details] Domain routing failed, attempting retry...");
+      setHasRetried(true);
+      domainRouting.resolveRouting();
+    }
+  }, [domainRouting.isLoading, domainRouting.instituteId, hasRetried, domainRouting]);
 
   // Check if courseId looks like a course ID (numeric or UUID)
   const isNumeric = /^\d+$/.test(courseId);
@@ -31,9 +41,9 @@ function RouteComponent() {
     return <CourseSubPage tagName={tagName} page={courseId} instituteId={domainRouting.instituteId || ''} instituteThemeCode={domainRouting.instituteThemeCode} />;
   }
 
-
   // Show loading while domain routing is resolving
-  if (domainRouting.isLoading) {
+  // Also show loading if we are in the process of retrying (isLoading might be false momentarily before retry starts)
+  if (domainRouting.isLoading || (!domainRouting.instituteId && !hasRetried)) {
     return <DashboardLoader />;
   }
 
@@ -60,9 +70,9 @@ function RouteComponent() {
     );
   }
 
-  // If no institute ID found after domain routing completes, show not found
+  // If no institute ID found after domain routing completes (and retry), show not found
   if (!domainRouting.instituteId) {
-    console.warn("[Course Details] No institute ID found after domain routing");
+    console.warn("[Course Details] No institute ID found after domain routing (and retry)");
     return <RootNotFoundComponent />;
   }
 

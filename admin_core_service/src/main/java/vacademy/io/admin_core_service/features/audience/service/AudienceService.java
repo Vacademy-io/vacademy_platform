@@ -1036,31 +1036,33 @@ public class AudienceService {
     }
 
     /**
-     * Validate counselor exists, belongs to institute, and has valid role
+     * Validate that the assigned user exists in the system
+     * 
+     * Design Decision: We only verify user existence, not role.
+     * This allows any registered user (counselors, admins, managers, etc.) to be
+     * assigned to enquiries.
+     * The calling service is responsible for ensuring the appropriate user is
+     * assigned.
      */
     private boolean validateCounselor(String counselorId, String instituteId) {
         if (!StringUtils.hasText(counselorId)) {
-            logger.warn("Counselor ID is null or empty");
+            logger.warn("User ID is null or empty");
             return false;
         }
 
-        // TEMPORARILY DISABLED: Validation causes JDBC error due to cross-service table
-        // access
-        // boolean isValid = userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(
-        // counselorId,
-        // instituteId,
-        // "COUNSELOR");
-
-        // if (!isValid) {
-        // logger.warn(
-        // "Counselor {} validation failed. User does not exist, does not belong to
-        // institute {}, is inactive, or is not a COUNSELOR.",
-        // counselorId, instituteId);
-        // return false;
-        // }
-
-        logger.debug("Counselor {} validation passed (DISABLED)", counselorId);
-        return true;
+        // Verify user exists via AuthService
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(counselorId));
+            if (users == null || users.isEmpty()) {
+                logger.warn("User {} not found in auth service", counselorId);
+                return false;
+            }
+            logger.debug("User {} validation passed - user exists", counselorId);
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to validate user {}: {}", counselorId, e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -2004,7 +2006,7 @@ public class AudienceService {
                                 LinkedUsers::getUserId,
                                 (a, b) -> a));
 
-        logger.info("Fetched {} assigned counsellors for {} enquiries", 
+        logger.info("Fetched {} assigned counsellors for {} enquiries",
                 enquiryToCounsellorMap.size(), enquiryIds.size());
 
         // Build DTOs with parent and child user information

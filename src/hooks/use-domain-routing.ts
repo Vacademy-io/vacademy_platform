@@ -425,10 +425,14 @@ export const useDomainRouting = () => {
       const isOnLiveClassDynamicRoute =
         /^\/study-library\/live-class\/[^/]+\/?$/.test(currentPath);
 
+      // Don't redirect if we're on my-files routes
+      const isOnMyFilesRoute = currentPath.startsWith("/my-files");
+
       if (
         isOnPublicRoute ||
         isOnCourseDetailsPage ||
-        isOnLiveClassDynamicRoute
+        isOnLiveClassDynamicRoute ||
+        isOnMyFilesRoute
       ) {
         return;
       }
@@ -457,6 +461,7 @@ export const useDomainRouting = () => {
         !currentPathForRedirect.startsWith('/homework') &&
         !currentPathForRedirect.startsWith('/learning-centre') &&
         !currentPathForRedirect.startsWith('/user-profile') &&
+        !currentPathForRedirect.startsWith('/my-files') &&
         !currentPathForRedirect.startsWith('/Coursetile');
 
       if (window.location.pathname !== "/" && !isPublicRouteForRedirect) {

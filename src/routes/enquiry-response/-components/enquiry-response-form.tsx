@@ -134,8 +134,13 @@ const AudienceResponseForm = ({
     fetchPackageSessions();
   }, [instituteId]);
 
-  // Create dynamic schema
-  const zodSchema = getDynamicSchema(formFields);
+  // Create dynamic schema and extend it with additional fields
+  const baseSchema = getDynamicSchema(formFields);
+  const zodSchema = baseSchema.extend({
+    parentMobile: z.string().min(1, "Mobile number is required"),
+    gender: z.string().optional(),
+    packageSessionId: z.string().min(1, "Class is required"),
+  });
   type FormValues = z.infer<typeof zodSchema>;
 
   // Initialize form with default values
@@ -175,7 +180,11 @@ const AudienceResponseForm = ({
       }
       return defaults;
     },
-    {},
+    {
+      parentMobile: "",
+      gender: "",
+      packageSessionId: "",
+    } as any,
   );
 
   const form = useForm<FormValues>({
@@ -313,12 +322,7 @@ const AudienceResponseForm = ({
         customFieldsOrder,
       );
 
-      console.log("Submitting enquiry with payload:", payload);
-
-      // Submit using the new API endpoint
-      const response = await submitEnquiryWithLead(payload);
-
-      console.log("Enquiry submitted successfully:", response);
+      await submitEnquiryWithLead(payload);
 
       // Show success state
       setIsSubmitted(true);
@@ -563,7 +567,7 @@ const AudienceResponseForm = ({
                       { label: "Other", value: "OTHER", _id: "OTHER" },
                     ]}
                     control={form.control}
-                    required={true}
+                    required={false}
                     className="!w-full"
                   />
 
@@ -577,7 +581,7 @@ const AudienceResponseForm = ({
                         _id: session.package_session_id,
                       }))}
                       control={form.control}
-                      required={false}
+                      required={true}
                       className="!w-full"
                     />
                   )}

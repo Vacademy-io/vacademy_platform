@@ -153,19 +153,14 @@ public class PhonePePaymentManager implements PaymentServiceStrategy {
         // Use the same base URL pattern as auth-service
         // In production/stage: https://backend-stage.vacademy.io
         // In local dev: http://localhost:8072
-        String baseUrl = System.getenv("AUTH_SERVER_BASE_URL");
-
-        if (baseUrl == null || baseUrl.isEmpty()) {
-            // Fallback for local development
-            baseUrl = "http://localhost:8072";
-            logger.warn("AUTH_SERVER_BASE_URL not set, using fallback: {}", baseUrl);
-        }
-
+        // String baseUrl = System.getenv("AUTH_SERVER_BASE_URL");
+         String baseUrl = "https://backend-stage.vacademy.io" ;
         // Construct webhook URL
         // Format:
         // {baseUrl}/admin-core-service/payments/webhook/callback/phonepe?instituteId={instituteId}
         String webhookUrl = baseUrl + "/admin-core-service/payments/webhook/callback/phonepe?instituteId="
                 + instituteId;
+                logger.info("PhonePe Callback URL being sent: {}", webhookUrl);
 
         return webhookUrl;
     }

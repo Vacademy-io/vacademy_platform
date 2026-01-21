@@ -35,6 +35,9 @@ import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.logging.SentryLogger;
 
 import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.*;
 import java.time.LocalDateTime;
@@ -65,6 +68,12 @@ public class PaymentLogService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
+
+    @Autowired
+    private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
+
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
             UserPlan userPlan) {
@@ -264,12 +273,23 @@ public class PaymentLogService {
 
     /**
      * Refactored logic to handle actions after status update.
+     * Handles both PAID and FAILED statuses for ONLY_DETAILS_FILL entry management.
      */
     private void handlePostPaymentLogic(PaymentLog paymentLog, String paymentStatus, String instituteId) {
+        // Handle payment failure - create PAYMENT_FAILED entry
+        if (PaymentStatusEnum.FAILED.name().equals(paymentStatus)) {
+            log.info("Payment FAILED for log {}, handling failure flow", paymentLog.getId());
+            handlePaymentFailure(paymentLog, instituteId);
+            return;
+        }
+
         if (!PaymentStatusEnum.PAID.name().equals(paymentStatus)) {
             log.info("Payment status is {}, skipping post-payment logic for log {}", paymentStatus, paymentLog.getId());
             return;
         }
+
+        // Handle payment success - mark ONLY_DETAILS_FILL as DELETED
+        handlePaymentSuccessEntryCleanup(paymentLog, instituteId);
 
         // Check if this is a donation (null user plan ID)
         if (paymentLog.getUserPlan() == null) {
@@ -794,6 +814,123 @@ public class PaymentLogService {
                 childLog.setPaymentSpecificData(sharedData);
                 paymentLogRepository.saveAndFlush(childLog);
             });
+        }
+    }
+
+    /**
+     * Handles payment failure by marking ONLY_DETAILS_FILL entries as DELETED
+     * and creating PAYMENT_FAILED entries in the INVITED session.
+     */
+    private void handlePaymentFailure(PaymentLog paymentLog, String instituteId) {
+        try {
+            UserPlan userPlan = paymentLog.getUserPlan();
+            if (userPlan == null) {
+                log.warn("UserPlan is null for payment log {}, skipping failure handling", paymentLog.getId());
+                return;
+            }
+
+            String userId = paymentLog.getUserId();
+            if (userId == null) {
+                log.warn("UserId is null for payment log {}, skipping failure handling", paymentLog.getId());
+                return;
+            }
+
+            // Get package session IDs from user plan's enroll invite
+            // This needs to be retrieved from the session mappings associated with this
+            // user plan
+            List<vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping> mappings = learnerEnrollmentEntryService
+                    .findOnlyDetailsFilledEntriesForUserPlan(userId, userPlan.getId(), instituteId);
+
+            for (var mapping : mappings) {
+                if (mapping.getDestinationPackageSession() == null || mapping.getPackageSession() == null) {
+                    continue;
+                }
+
+                String actualPackageSessionId = mapping.getDestinationPackageSession().getId();
+                String invitedPackageSessionId = mapping.getPackageSession().getId();
+
+                // Mark ONLY_DETAILS_FILL entries as DELETED
+                learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                        userId,
+                        invitedPackageSessionId,
+                        actualPackageSessionId,
+                        instituteId);
+
+                // Create PAYMENT_FAILED entry
+                PackageSession invitedSession = mapping.getPackageSession();
+                PackageSession actualSession = mapping.getDestinationPackageSession();
+
+                learnerEnrollmentEntryService.createPaymentFailedEntry(
+                        userId,
+                        invitedSession,
+                        actualSession,
+                        instituteId,
+                        userPlan.getId());
+
+                log.info("Created PAYMENT_FAILED entry for user {} in package session {}",
+                        userId, actualPackageSessionId);
+            }
+
+            // Update UserPlan status to PAYMENT_FAILED
+            userPlan.setStatus(UserPlanStatusEnum.PAYMENT_FAILED.name());
+            userPlanRepository.save(userPlan);
+            log.info("Updated UserPlan {} status to PAYMENT_FAILED", userPlan.getId());
+
+        } catch (Exception e) {
+            log.error("Error handling payment failure for log {}: {}", paymentLog.getId(), e.getMessage(), e);
+            SentryLogger.logError(e, "Payment failure handling error", Map.of(
+                    "payment.log.id", paymentLog.getId(),
+                    "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown"));
+        }
+    }
+
+    /**
+     * Handles payment success by marking ONLY_DETAILS_FILL entries as DELETED.
+     * The actual ACTIVE entries are created by
+     * UserPlanService.applyOperationsOnFirstPayment().
+     */
+    private void handlePaymentSuccessEntryCleanup(PaymentLog paymentLog, String instituteId) {
+        try {
+            UserPlan userPlan = paymentLog.getUserPlan();
+            if (userPlan == null) {
+                log.debug("UserPlan is null for payment log {}, no entry cleanup needed", paymentLog.getId());
+                return;
+            }
+
+            String userId = paymentLog.getUserId();
+            if (userId == null) {
+                log.warn("UserId is null for payment log {}, skipping success entry cleanup", paymentLog.getId());
+                return;
+            }
+
+            // Get ONLY_DETAILS_FILL entries for this user plan
+            List<vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping> mappings = learnerEnrollmentEntryService
+                    .findOnlyDetailsFilledEntriesForUserPlan(userId, userPlan.getId(), instituteId);
+
+            for (var mapping : mappings) {
+                if (mapping.getDestinationPackageSession() == null || mapping.getPackageSession() == null) {
+                    continue;
+                }
+
+                String actualPackageSessionId = mapping.getDestinationPackageSession().getId();
+                String invitedPackageSessionId = mapping.getPackageSession().getId();
+
+                // Mark ONLY_DETAILS_FILL and PAYMENT_FAILED entries as DELETED
+                learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                        userId,
+                        invitedPackageSessionId,
+                        actualPackageSessionId,
+                        instituteId);
+
+                log.info(
+                        "Marked ONLY_DETAILS_FILL entries as DELETED for user {} in package session {} on payment success",
+                        userId, actualPackageSessionId);
+            }
+
+        } catch (Exception e) {
+            log.error("Error cleaning up entries on payment success for log {}: {}", paymentLog.getId(), e.getMessage(),
+                    e);
+            // Don't throw - allow the rest of the payment success flow to continue
         }
     }
 }

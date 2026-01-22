@@ -104,6 +104,21 @@ public class Institute {
     @Column(name = "cover_text_json")
     private String coverTextJson;
 
+    @Column(name = "board")
+    private String board;
+
+    @Column(name = "gst_details")
+    private String gstDetails;
+
+    @Column(name = "affiliation_number")
+    private String affiliationNumber;
+
+    @Column(name = "staff_strength")
+    private Integer staffStrength;
+
+    @Column(name = "school_strength")
+    private Integer schoolStrength;
+
     @PrePersist
     @PreUpdate
     private void normalizeEmails() {

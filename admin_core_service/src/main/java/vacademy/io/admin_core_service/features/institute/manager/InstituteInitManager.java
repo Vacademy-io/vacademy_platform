@@ -125,6 +125,13 @@ public class InstituteInitManager {
                 dto.setCoverTextJson(institute.getCoverTextJson());
                 dto.setSetting(institute.getSetting());
 
+                // School-specific fields
+                dto.setBoard(institute.getBoard());
+                dto.setGstDetails(institute.getGstDetails());
+                dto.setAffiliationNumber(institute.getAffiliationNumber());
+                dto.setStaffStrength(institute.getStaffStrength());
+                dto.setSchoolStrength(institute.getSchoolStrength());
+
                 // Private fields (email, phone, etc.)
                 if (includePrivateFields) {
                         dto.setEmail(institute.getEmail());

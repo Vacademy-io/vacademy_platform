@@ -158,8 +158,16 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
     }
   };
 
+  // Check if page has a header component to add appropriate top padding
+  const hasHeader = page.components.some(
+    (component) => component.type === 'header' && component.enabled !== false
+  );
+
   return (
-    <div className="page w-full" data-page-id={page.id}>
+    <div 
+      className={`page w-full ${hasHeader ? 'pt-16 md:pt-20' : ''}`} 
+      data-page-id={page.id}
+    >
       {page.components.map(renderComponent)}
     </div>
   );

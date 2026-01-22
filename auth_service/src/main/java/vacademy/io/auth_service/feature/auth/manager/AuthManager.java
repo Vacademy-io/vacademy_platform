@@ -47,6 +47,9 @@ import java.util.*;
 
 import static vacademy.io.auth_service.feature.auth.constants.AuthConstants.ADMIN_ROLE;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @Component
 public class AuthManager {
 
@@ -94,8 +97,25 @@ public class AuthManager {
             throw new VacademyException("Invalid Request");
 
         InstituteInfoDTO instituteInfoDTO = registerRequest.getInstitute();
+
+        // Log the incoming InstituteInfoDTO with all fields including new
+        // school-specific fields
+        log.info("=== REGISTER ROOT USER: Incoming InstituteInfoDTO ===");
+        log.info("Institute Name: {}", instituteInfoDTO.getInstituteName());
+        log.info("Board: {}", instituteInfoDTO.getBoard());
+        log.info("GST Details: {}", instituteInfoDTO.getGstDetails());
+        log.info("Affiliation Number: {}", instituteInfoDTO.getAffiliationNumber());
+        log.info("Staff Strength: {}", instituteInfoDTO.getStaffStrength());
+        log.info("School Strength: {}", instituteInfoDTO.getSchoolStrength());
+        log.info("Full InstituteInfoDTO: {}", instituteInfoDTO);
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(),
                 adminCoreServiceBaseUrl, AuthConstants.CREATE_INSTITUTES_PATH, instituteInfoDTO);
+
+        // Log the response from admin_core_service
+        log.info("=== REGISTER ROOT USER: Response from admin_core_service ===");
+        log.info("Response Status: {}", response.getStatusCode());
+        log.info("Response Body: {}", response.getBody());
 
         ObjectMapper objectMapper = new ObjectMapper();
         InstituteIdAndNameDTO customUserDetails;
@@ -103,6 +123,8 @@ public class AuthManager {
         try {
             customUserDetails = objectMapper.readValue(response.getBody(), new TypeReference<InstituteIdAndNameDTO>() {
             });
+            log.info("Parsed InstituteIdAndNameDTO - ID: {}, Name: {}",
+                    customUserDetails.getInstituteId(), customUserDetails.getInstituteName());
 
         } catch (JsonProcessingException e) {
             throw new VacademyException(HttpStatus.INTERNAL_SERVER_ERROR,

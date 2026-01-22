@@ -22,6 +22,8 @@ import java.util.List;
 @RequestMapping("/admin-core-service/institute/v1")
 public class UserInstituteController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(UserInstituteController.class);
+
     @Autowired
     private UserInstituteService instituteService;
 
@@ -30,6 +32,18 @@ public class UserInstituteController {
 
     @PostMapping("/internal/create")
     public ResponseEntity<InstituteIdAndNameDTO> registerUserInstitutes(@RequestBody InstituteInfoDTO request) {
+        // Debug logging for institute fields - to trace production issues
+        log.info("[ADMIN-CORE-SERVICE] /internal/create - Received InstituteInfoDTO:");
+        log.info("[ADMIN-CORE-SERVICE] board: {}", request != null ? request.getBoard() : "null (request is null)");
+        log.info("[ADMIN-CORE-SERVICE] gstDetails: {}",
+                request != null ? request.getGstDetails() : "null (request is null)");
+        log.info("[ADMIN-CORE-SERVICE] affiliationNumber: {}",
+                request != null ? request.getAffiliationNumber() : "null (request is null)");
+        log.info("[ADMIN-CORE-SERVICE] staffStrength: {}",
+                request != null ? request.getStaffStrength() : "null (request is null)");
+        log.info("[ADMIN-CORE-SERVICE] schoolStrength: {}",
+                request != null ? request.getSchoolStrength() : "null (request is null)");
+        log.info("[ADMIN-CORE-SERVICE] Full InstituteInfoDTO: {}", request);
 
         InstituteIdAndNameDTO institutes = instituteService.saveInstitute(request);
         return ResponseEntity.ok(institutes);

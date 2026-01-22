@@ -89,11 +89,28 @@ public class AuthManager {
     @Autowired
     private OAuth2VendorToUserDetailService oAuth2VendorToUserDetailService;
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthManager.class);
+
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
         if (Objects.isNull(registerRequest))
             throw new VacademyException("Invalid Request");
 
         InstituteInfoDTO instituteInfoDTO = registerRequest.getInstitute();
+
+        // Debug logging for institute fields - to trace production issues
+        log.info("[AUTH-SERVICE] registerRootUser - Institute fields before sending to admin service:");
+        log.info("[AUTH-SERVICE] board: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getBoard() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] gstDetails: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getGstDetails() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] affiliationNumber: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getAffiliationNumber() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] staffStrength: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getStaffStrength() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] schoolStrength: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getSchoolStrength() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] Full InstituteInfoDTO: {}", instituteInfoDTO);
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(),
                 adminCoreServiceBaseUrl, AuthConstants.CREATE_INSTITUTES_PATH, instituteInfoDTO);
 

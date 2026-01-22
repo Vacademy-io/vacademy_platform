@@ -32,6 +32,8 @@ export type StudentDashboardWidgetId =
   | "thisWeekAttendance"
   | "referAFriend"
   | "myClasses"
+  | "myMembership"
+  | "myBooks"
   | "custom";
 
 export interface StudentDashboardWidgetConfig {

@@ -71,7 +71,8 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
 
   return useMemo(() => {
     const heroTitle = courseData?.title || left?.title || "";
-    const heroDescription = (courseData?.description?.trim()) ? courseData.description : "";
+    // Use courseData.description first, then fallback to left.description
+    const heroDescription = (courseData?.description?.trim()) ? courseData.description : (left?.description?.trim() || "");
     const heroImage = courseData?.previewImage || courseData?.bannerImage || right?.image || "";
     const heroImageAlt = right?.alt || courseData?.title || "Course preview";
     const isHeroImagePlaceholder = isPlaceholderImage(heroImage);

@@ -236,6 +236,49 @@ class S3Service:
         
         return uploaded_urls
     
+    def download_file(self, s3_url: str, local_path: Path) -> bool:
+        """
+        Download a file from S3 to a local path.
+        
+        Args:
+            s3_url: Public S3 URL
+            local_path: Local path where file should be saved
+            
+        Returns:
+            True if downloaded successfully
+        """
+        if not self.public_bucket:
+            return False
+        
+        try:
+            # Extract key from URL
+            # Format: https://{bucket}.s3.amazonaws.com/{key}
+            if self.public_bucket not in s3_url:
+                return False
+            
+            parts = s3_url.split(f"{self.public_bucket}.s3.amazonaws.com/")
+            if len(parts) != 2:
+                return False
+            
+            s3_key = parts[1]
+            
+            # Ensure parent directory exists
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Download file
+            self.s3_client.download_file(
+                str(self.public_bucket),
+                s3_key,
+                str(local_path)
+            )
+            return True
+        
+        except (ClientError, ValueError, Exception) as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to download {s3_url} to {local_path}: {e}")
+            return False
+    
     def delete_file(self, s3_url: str) -> bool:
         """
         Delete a file from S3 using its public URL.

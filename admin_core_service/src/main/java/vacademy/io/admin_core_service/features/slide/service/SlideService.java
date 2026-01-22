@@ -785,6 +785,7 @@ public class SlideService {
             newSlide.setAiGenVideoId(htmlVideoSlide.getAiGenVideoId());
             newSlide.setUrl(htmlVideoSlide.getUrl());
             newSlide.setVideoLengthInMillis(htmlVideoSlide.getVideoLengthInMillis());
+            newSlide.setCodeEditorConfig(htmlVideoSlide.getCodeEditorConfig());
             newSlide = htmlVideoSlideRepository.save(newSlide);
             return newSlide.getId();
         }

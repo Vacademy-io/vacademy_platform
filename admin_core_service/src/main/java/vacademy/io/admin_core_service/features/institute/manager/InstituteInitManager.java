@@ -23,7 +23,6 @@ import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
-
 import vacademy.io.common.tracing.PerformanceTracer;
 
 import java.util.ArrayList;
@@ -77,7 +76,8 @@ public class InstituteInitManager {
          *                             subjects, etc.)
          * @return Populated InstituteInfoDTO
          */
-        private InstituteInfoDTO buildInstituteInfoDTO(String instituteId, boolean includePrivateFields, boolean includeBatches) {
+        private InstituteInfoDTO buildInstituteInfoDTO(String instituteId, boolean includePrivateFields,
+                        boolean includeBatches) {
                 // Trace the main database lookup
                 Institute institute = PerformanceTracer.traceDbQuery(
                                 "instituteRepository.findById",
@@ -116,6 +116,13 @@ public class InstituteInitManager {
                 dto.setCoverTextJson(institute.getCoverTextJson());
                 dto.setSetting(institute.getSetting());
 
+                // School-specific fields
+                dto.setBoard(institute.getBoard());
+                dto.setGstDetails(institute.getGstDetails());
+                dto.setAffiliationNumber(institute.getAffiliationNumber());
+                dto.setStaffStrength(institute.getStaffStrength());
+                dto.setSchoolStrength(institute.getSchoolStrength());
+
                 // Private fields (email, phone, etc.)
                 if (includePrivateFields) {
                         dto.setEmail(institute.getEmail());
@@ -126,7 +133,6 @@ public class InstituteInitManager {
                 // Fetch related data from repositories - TRACE EACH QUERY
                 String instId = institute.getId();
                 List<String> activeStatuses = List.of(PackageSessionStatusEnum.ACTIVE.name());
-
 
                 // Trace tags lookup
                 dto.setTags(PerformanceTracer.traceDbQuery(
@@ -153,35 +159,32 @@ public class InstituteInitManager {
                                 () -> packageGroupMappingRepository.findAllByInstituteId(instId)
                                                 .stream().map(obj -> obj.mapToDTO()).toList()));
 
-                if(includeBatches){
-                         // OPTIMIZATION: Fetch all package sessions first, then batch query read times
-                List<PackageSession> packageSessions = PerformanceTracer.traceDbQuery(
-                                "packageSessionRepository.findPackageSessionsByInstituteId",
-                                () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
-                                                activeStatuses));
+                if (includeBatches) {
+                        // OPTIMIZATION: Fetch all package sessions first, then batch query read times
+                        List<PackageSession> packageSessions = PerformanceTracer.traceDbQuery(
+                                        "packageSessionRepository.findPackageSessionsByInstituteId",
+                                        () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
+                                                        activeStatuses));
 
-                                                      
-                // Batch query to get all read times at once (eliminates N+1 query problem)
-                List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
+                        // Batch query to get all read times at once (eliminates N+1 query problem)
+                        List<String> sessionIds = packageSessions.stream().map(PackageSession::getId).toList();
 
-                // This is likely the SLOWEST operation - trace it carefully
-                Map<String, Double> readTimeMap = PerformanceTracer.trace(
-                                "compute.heavy",
-                                "slideService.calculateReadTimesForPackageSessions",
-                                () -> slideService.calculateReadTimesForPackageSessions(sessionIds));
+                        // This is likely the SLOWEST operation - trace it carefully
+                        Map<String, Double> readTimeMap = PerformanceTracer.trace(
+                                        "compute.heavy",
+                                        "slideService.calculateReadTimesForPackageSessions",
+                                        () -> slideService.calculateReadTimesForPackageSessions(sessionIds));
 
-                // Map package sessions to DTOs with read times from the batch result
-                dto.setBatchesForSessions(packageSessions.stream()
-                                .map(obj -> new PackageSessionDTO(obj,
-                                                readTimeMap.getOrDefault(obj.getId(), 0.0).doubleValue()))
-                                .toList());
+                        // Map package sessions to DTOs with read times from the batch result
+                        dto.setBatchesForSessions(packageSessions.stream()
+                                        .map(obj -> new PackageSessionDTO(obj,
+                                                        readTimeMap.getOrDefault(obj.getId(), 0.0).doubleValue()))
+                                        .toList());
 
-                }
-                else{
+                } else {
                         dto.setBatchesForSessions(List.of());
                 }
 
-               
                 // Private fields that require additional queries
                 if (includePrivateFields) {
                         dto.setGenders(Stream.of(Gender.values()).map(Enum::name).toList());
@@ -194,7 +197,7 @@ public class InstituteInitManager {
                                                         .stream().map(SubjectDTO::new).toList()));
                         dto.setSessionExpiryDays(List.of(30, 180, 360));
                 }
-                 
+
                 dto.setSubModules(new ArrayList<>());
 
                 return dto;

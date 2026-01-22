@@ -324,19 +324,19 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             />
           )}
 
-          {/* Header Section with Theme Colors - Only show if title exists in JSON */}
+          {/* Page Title Header - Professional styling */}
           {currentPage?.title && (
             <div
-              className="w-full py-0 text-center text-white"
+              className="w-full py-5 sm:py-6 lg:py-8"
               style={{
                 backgroundColor: domainRouting.instituteThemeCode ?
                   `hsl(var(--primary))` :
-                  '#3b82f6' // fallback blue
+                  '#3b82f6'
               }}
             >
               <div className="w-full px-4 sm:px-6 lg:px-8">
-                <h1 className="text-xl sm:text-4xl lg:text-5xl font-bold mb-0">
-                  {currentPage.title} {currentPage.title == "Your Cart" ? "🛒" : ""}
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-white text-center">
+                  {currentPage.title} {currentPage.title === "Your Cart" ? "🛒" : ""}
                 </h1>
               </div>
             </div>

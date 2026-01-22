@@ -16,7 +16,24 @@ export const Route = createFileRoute(
 });
 
 function UnsubscribeCommunicationPage() {
-  const { channel, username, category } = Route.useParams();
+  const params = Route.useParams();
+
+  // Sometimes during SPA navigation, params might be undefined momentarily
+  // In that case, fall back to parsing the URL directly
+  let channel = params.channel || '';
+  let username = params.username || '';
+  let category = params.category || '';
+  
+  if (!channel || !username || !category) {
+    // Fallback: Parse params from URL directly
+    // URL structure: /un/$channel/$username/$category
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    if (pathParts.length >= 4 && pathParts[0] === 'un') {
+      channel = channel || pathParts[1] || '';
+      username = username || pathParts[2] || '';
+      category = category || pathParts[3] || '';
+    }
+  }
 
   const domainRouting = useDomainRouting();
   const { setPrimaryColor } = useTheme();

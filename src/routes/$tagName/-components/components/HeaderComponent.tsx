@@ -4,11 +4,10 @@ import { HeaderProps } from "../../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { RouteMatcher } from "../../-services/route-matcher";
-import { CourseCatalogueData } from "../../-types/course-catalogue-types";
+import { CourseCatalogueData, Component as PageComponent } from "../../-types/course-catalogue-types";
 import { useState, useEffect } from "react";
-import { Search, ShoppingCart, X } from "lucide-react";
+import { Search, ShoppingCart } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { isIOSPlatform } from "@/hooks/useIsIOS";
 
 export const HeaderComponent: React.FC<HeaderProps & {
@@ -17,9 +16,6 @@ export const HeaderComponent: React.FC<HeaderProps & {
   catalogueData?: CourseCatalogueData;
   tagName?: string;
 }> = ({
-  logoUrl,
-  menus,
-  actionButton,
   navigation = [],
   authLinks = [],
   catalogueData,
@@ -35,16 +31,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
       const levelFilter = sessionStorage.getItem('levelFilter') || '';
       return levelFilter.includes('Rent') ? 'rent' : 'buy';
     });
-    const isMobile = useIsMobile();
     const [instituteLogoUrl, setInstituteLogoUrl] = useState<string | null>(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [mobileMenuRef, setMobileMenuRef] = useState<HTMLDivElement | null>(null);
     const [hamburgerButtonRef, setHamburgerButtonRef] = useState<HTMLButtonElement | null>(null);
-    const [isGenreDropdownOpen, setIsGenreDropdownOpen] = useState(false);
-    const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [searchInputRef, setSearchInputRef] = useState<HTMLInputElement | null>(null);
-    const [searchBarRef, setSearchBarRef] = useState<HTMLDivElement | null>(null);
     const isIOS = isIOSPlatform();
 
     // Calculate cart item count based on current mode (Buy or Rent)
@@ -113,8 +103,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
       updateCountFromStore();
     }, [items, getItemCountByMode]);
 
-    // Check if header styles.enabled is true
-    const isHeaderStylesEnabled = !!(catalogueData?.globalSettings?.layout?.header?.styles?.enabled);
+    // Check if courseCatalogeType.enabled is true
+    const isCourseCatalogeTypeEnabled = !!(catalogueData?.globalSettings?.courseCatalogeType?.enabled);
     const handleInstituteLogoClick = () => {
       if (domainRouting.homeIconClickRoute) {
         window.location.href = domainRouting.homeIconClickRoute;
@@ -159,74 +149,6 @@ export const HeaderComponent: React.FC<HeaderProps & {
       };
     }, [isMobileMenuOpen, mobileMenuRef, hamburgerButtonRef]);
 
-    // Handle outside click to close search bar
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (isSearchOpen && searchBarRef && !searchBarRef.contains(event.target as Node)) {
-          // Don't close if clicking on the search button
-          const target = event.target as HTMLElement;
-          if (target.closest('button[aria-label="Search"]')) {
-            return;
-          }
-          setIsSearchOpen(false);
-          setSearchTerm("");
-        }
-      };
-
-      if (isSearchOpen) {
-        document.addEventListener('mousedown', handleClickOutside);
-      }
-
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }, [isSearchOpen, searchBarRef]);
-
-    // Handle Escape key to close search
-    useEffect(() => {
-      const handleEscape = (event: KeyboardEvent) => {
-        if (event.key === 'Escape' && isSearchOpen) {
-          setIsSearchOpen(false);
-          setSearchTerm("");
-        }
-      };
-
-      if (isSearchOpen) {
-        document.addEventListener('keydown', handleEscape);
-      }
-
-      return () => {
-        document.removeEventListener('keydown', handleEscape);
-      };
-    }, [isSearchOpen]);
-
-    // Focus search input when search bar opens
-    useEffect(() => {
-      if (isSearchOpen && searchInputRef) {
-        searchInputRef.focus();
-      }
-    }, [isSearchOpen, searchInputRef]);
-
-    // Handle search submission
-    const handleSearch = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (searchTerm.trim()) {
-        // Navigate to homepage with search term
-        const currentPath = location.pathname;
-        const pathSegments = currentPath.split('/').filter(Boolean);
-        const currentTagName = pathSegments[0] || tagName;
-
-        // Store search term in sessionStorage for filtering
-        sessionStorage.setItem('searchTerm', searchTerm.trim());
-
-        // Navigate to homepage
-        navigate({ to: `/${currentTagName}` });
-
-        // Close search bar
-        setIsSearchOpen(false);
-        setSearchTerm("");
-      }
-    };
 
     // Helper function to check if a navigation item is active
     const isActiveRoute = (route: string, label: string) => {
@@ -329,8 +251,6 @@ export const HeaderComponent: React.FC<HeaderProps & {
     };
 
 
-    // Check if courseCatalogeType.enabled is true
-    const isCourseCatalogeTypeEnabled = !!(catalogueData?.globalSettings?.courseCatalogeType?.enabled);
 
     // Check if logo from JSON should be used (when courseCatalogeType.enabled is true and layout.header.props.logo exists)
     const jsonLogoUrl = isCourseCatalogeTypeEnabled && catalogueData?.globalSettings?.layout?.header?.props?.logo
@@ -377,7 +297,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
           if (isCurrentPage && page.components) {
             const hasBuyRentSection = page.components.some(
-              (component: any) => component.type === 'buyRentSection' && (component.enabled === true || component.enabled === "true")
+              (component: PageComponent) => component.type === 'buyRentSection' && (component.enabled === true || String(component.enabled) === "true")
             );
             if (hasBuyRentSection) {
               return true;
@@ -391,88 +311,104 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     const hideSearchAndCart = shouldHideSearchAndCart();
 
+    // Consistent header height using design tokens
+    const headerHeight = 'h-14 md:h-16';
+    const headerTopOffset = isIOS ? 'pt-8' : '';
+
     return (
-      <header className={`fixed top-0 left-0 right-0 z-50 bg-white shadow-sm border-b w-full ${isIOS ? 'pt-8' : ''}`}>
-        <div className={`w-full ${isHeaderStylesEnabled && !isMobile ? 'px-20' : 'px-4 sm:px-6 lg:px-8'}`}>
-          <div className={`flex items-center pt-2 pb-2 ${isCourseCatalogeTypeEnabled ? 'md:justify-between h-14' : 'justify-between  h-19'}  `}>
+      <header 
+        className={`fixed top-0 left-0 right-0 z-[var(--catalogue-z-fixed)] bg-white border-b border-[hsl(var(--catalogue-border-subtle))] w-full ${headerTopOffset}`}
+        style={{ 
+          '--header-height': 'var(--catalogue-header-height)',
+          '--header-height-mobile': 'var(--catalogue-header-height-mobile)'
+        } as React.CSSProperties}
+      >
+        {/* Container with consistent responsive padding */}
+        <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12">
+          <div className={`flex items-center justify-between ${headerHeight}`}>
+            {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
             {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
             {isCourseCatalogeTypeEnabled && (
               <button
                 ref={setHamburgerButtonRef}
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden p-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 flex-shrink-0 transition-all duration-300 ease-in-out"
+                className="md:hidden p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] flex-shrink-0 transition-colors duration-200"
                 aria-label="Toggle menu"
               >
                 <div className="relative w-5 h-5 flex flex-col justify-center items-center">
                   <span
-                  className={`absolute block h-0.5 w-5 bg-current transform transition-all duration-300 ease-in-out ${
-                    isMobileMenuOpen ? 'rotate-45 translate-y-0' : '-translate-y-1.5'
-                      }`}
+                    className={`absolute block h-0.5 w-5 bg-current transform transition-transform duration-200 ${
+                      isMobileMenuOpen ? 'rotate-45 translate-y-0' : '-translate-y-1.5'
+                    }`}
                   />
                   <span
-                  className={`absolute block h-0.5 w-5 bg-current transform transition-all duration-300 ease-in-out ${
-                    isMobileMenuOpen ? 'opacity-0' : 'opacity-100'
-                      }`}
+                    className={`absolute block h-0.5 w-5 bg-current transition-opacity duration-200 ${
+                      isMobileMenuOpen ? 'opacity-0' : 'opacity-100'
+                    }`}
                   />
                   <span
-                  className={`absolute block h-0.5 w-5 bg-current transform transition-all duration-300 ease-in-out ${
-                    isMobileMenuOpen ? '-rotate-45 translate-y-0' : 'translate-y-1.5'
-                      }`}
+                    className={`absolute block h-0.5 w-5 bg-current transform transition-transform duration-200 ${
+                      isMobileMenuOpen ? '-rotate-45 translate-y-0' : 'translate-y-1.5'
+                    }`}
                   />
                 </div>
               </button>
             )}
 
-            {/* Institute Logo and Name */}
-            <div className={`flex items-center space-x-3 sm:space-x-4 ${isCourseCatalogeTypeEnabled ? 'flex-1 md:flex-none justify-center md:justify-start' : ''}`}>
-              {/* Show JSON logo in rectangular format if courseCatalogeType.enabled is true and logo exists */}
+            {/* Logo and Brand */}
+            <div className={`flex items-center gap-3 ${isCourseCatalogeTypeEnabled ? 'flex-1 md:flex-none justify-center md:justify-start' : ''}`}>
+              {/* JSON logo (rectangular) when courseCatalogeType is enabled */}
               {jsonLogoUrl ? (
                 <img
                   src={jsonLogoUrl}
                   alt="Logo"
                   onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                  className={`${isCourseCatalogeTypeEnabled ? "sm:h-14" : "sm:h-20"}  h-10  w-auto object-contain rounded-lg shadow-sm transition-all duration-300 hover:scale-105${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
-
+                  className={`h-10 md:h-12 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${
+                    domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                  }`}
                   onError={(e) => {
                     e.currentTarget.style.display = "none";
                   }}
                 />
               ) : (
                 <>
+                  {/* Institute circular logo */}
                   {instituteLogoUrl && (
                     <img
                       src={instituteLogoUrl}
                       alt="Institute Logo"
                       onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                      className={`h-12 w-12 sm:h-14 sm:w-14 rounded-full object-cover${domainRouting.homeIconClickRoute ? " cursor-pointer" : ""}`}
+                      className={`h-10 w-10 md:h-11 md:w-11 rounded-full object-cover border border-[hsl(var(--catalogue-border))] ${
+                        domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                      }`}
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
                     />
                   )}
-                  <div className="text-base sm:text-xl font-semibold text-gray-900 truncate">
+                  {/* Institute name */}
+                  <span className="text-base md:text-lg font-semibold text-[hsl(var(--catalogue-text-primary))] truncate max-w-[200px] md:max-w-none">
                     {domainRouting.instituteName || "Learning Platform"}
-                  </div>
+                  </span>
                 </>
               )}
             </div>
 
-            {/* Navigation Menu */}
+            {/* Desktop Navigation */}
             {navigation.length > 0 && (
-              <nav className="hidden md:flex items-center space-x-6">
+              <nav className="hidden md:flex items-center gap-1">
                 {navigation.map((item, index) => {
                   const isActive = isActiveRoute(item.route, item.label);
-                  // Explicitly handle openInSameTab - convert to boolean if needed
                   const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                   return (
                     <button
                       key={index}
                       onClick={() => handleNavigation(item.route, item.label, openInSameTab)}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      isActive 
-                        ? 'text-primary-600 border-b-2 border-primary-200'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                        }`}
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
+                        isActive 
+                          ? 'text-primary-500 bg-primary-50'
+                          : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
+                      }`}
                     >
                       {item.label}
                     </button>
@@ -481,40 +417,39 @@ export const HeaderComponent: React.FC<HeaderProps & {
               </nav>
             )}
 
-            {/* Right side buttons */}
-            <div className={`flex items-center space-x-2 sm:space-x-4 ${isCourseCatalogeTypeEnabled ? 'flex-shrink-0' : ''}`}>
-              {/* Mobile menu button - Right side when courseCatalogeType.enabled is false */}
+            {/* Right side actions */}
+            <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+              {/* Mobile menu button - Right side when courseCatalogeType is disabled */}
               {!isCourseCatalogeTypeEnabled && navigation.length > 0 && (
                 <button
                   ref={setHamburgerButtonRef}
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  className="md:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  className="md:hidden p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
+                  aria-label="Toggle menu"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
                 </button>
               )}
 
-              {/* Search and Cart Icons - Only for hero section header */}
+              {/* Search and Cart Icons */}
               {isCourseCatalogeTypeEnabled && !hideSearchAndCart && (
-                <div className="flex items-center space-x-3 sm:space-x-4">
+                <div className="flex items-center gap-1">
                   {/* Search Icon */}
                   <button
                     onClick={() => {
                       const newToggleState = !togle;
                       settogle(newToggleState);
-                      // Dispatch custom event to open search bar in BookCatalogueComponent
                       window.dispatchEvent(new CustomEvent('toggleSearchBar', {
                         detail: { isOpen: newToggleState }
                       }));
-                      // Also store in sessionStorage for persistence
                       sessionStorage.setItem('searchBarOpen', String(newToggleState));
                     }}
-                    className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-all duration-200 ease-in-out"
+                    className="p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
                     aria-label="Search"
                   >
-                    <Search className="w-5 h-5 sm:w-6 sm:h-6" />
+                    <Search className="w-5 h-5" />
                   </button>
 
                   {/* Cart Icon */}
@@ -525,12 +460,12 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       const currentTagName = pathSegments[0] || tagName;
                       navigate({ to: `/${currentTagName}/cart` });
                     }}
-                    className="relative p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-all duration-200 ease-in-out"
+                    className="relative p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
                     aria-label="Shopping Cart"
                   >
-                    <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+                    <ShoppingCart className="w-5 h-5" />
                     {cartItemCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center text-[10px] min-w-[20px]">
+                      <span className="absolute -top-0.5 -right-0.5 bg-primary-500 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                         {cartItemCount > 99 ? '99+' : cartItemCount}
                       </span>
                     )}
@@ -538,83 +473,66 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 </div>
               )}
 
-              {/* Auth Links - Hidden on mobile */}
-              <div className="hidden md:flex items-center space-x-2">
-                {authLinks.map((link, index) => {
-
-                  return (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        // Use absolute paths for login/signup
-                        if (link.route === 'login' || link.route === 'signup') {
-                          window.location.href = `/${link.route}`;
-                        } else if (link.route === '' || link.route === 'get-started') {
-                          // Empty route or get-started should open lead collection
-                          window.dispatchEvent(new CustomEvent('openLeadCollection'));
-                        } else {
-                          navigate({ to: link.route });
-                        }
-                      }}
-                    className={`px-4 py-2 sm:px-6 sm:py-2.5 rounded-md text-sm sm:text-base font-semibold transition-colors min-w-[80px] ${
+              {/* Auth Links - Desktop only */}
+              <div className="hidden md:flex items-center gap-2">
+                {authLinks.map((link, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      if (link.route === 'login' || link.route === 'signup') {
+                        window.location.href = `/${link.route}`;
+                      } else if (link.route === '' || link.route === 'get-started') {
+                        window.dispatchEvent(new CustomEvent('openLeadCollection'));
+                      } else {
+                        navigate({ to: link.route });
+                      }
+                    }}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
                       index === 0
-                        ? "text-white shadow-sm"
-                        : "border-2 hover:bg-opacity-10"
-                        }`}
-                      style={{
-                        color: index === 0 ? 'white' : domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#2563eb',
-                        backgroundColor: index === 0 ? (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#2563eb') : 'transparent',
-                        borderColor: index === 0 ? 'transparent' : (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#2563eb')
-                      }}
-                    >
-                      {link.label}
-                    </button>
-                  );
-                })}
+                        ? 'text-white bg-primary-500 hover:bg-primary-400'
+                        : 'text-primary-500 border border-primary-500 hover:bg-primary-50'
+                    }`}
+                  >
+                    {link.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
           {/* Mobile Navigation Menu */}
           {isCourseCatalogeTypeEnabled ? (
-            // Enhanced menu for courseCatalogeType.enabled = true
             <div
               ref={setMobileMenuRef}
-            className={`md:hidden fixed top-[60px] left-0 right-0 z-[60] bg-white shadow-lg transition-all duration-500 ease-in-out ${
-              isMobileMenuOpen 
-                ? 'max-h-[500px] opacity-100 border-t border-gray-200'
-                : 'max-h-0 opacity-0 border-t-0 pointer-events-none'
-                }`}
+              className={`md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] bg-white border-b border-[hsl(var(--catalogue-border))] transition-all duration-300 ease-out ${
+                isMobileMenuOpen 
+                  ? 'opacity-100 visible'
+                  : 'opacity-0 invisible pointer-events-none'
+              }`}
+              style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
             >
-            <div className={`transform transition-transform duration-500 ease-in-out ${
-              isMobileMenuOpen ? 'translate-y-0' : '-translate-y-full'
-                }`}>
-                <div className="px-4 pt-2 pb-6 space-y-0">
-                  {/* Login */}
+              <div className={`transform transition-transform duration-300 ease-out ${
+                isMobileMenuOpen ? 'translate-y-0' : '-translate-y-4'
+              }`}>
+                <div className="px-4 py-4 space-y-3">
+                  {/* Login Button */}
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
                       navigate({ to: '/login' });
                     }}
-                    className="group relative w-full text-left px-5 py-3.5 rounded-xl text-base font-semibold text-white overflow-hidden transition-all duration-300 ease-in-out transform hover:scale-[1.02] hover:shadow-lg active:scale-[0.98]"
-                    style={{
-                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#2563eb'
-                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-primary-500 hover:bg-primary-400 transition-colors duration-200"
                   >
-                    <span className="relative z-10 flex items-center justify-between">
-                      <span>Login</span>
-                      <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                      </svg>
-                    </span>
-                    <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity duration-300" />
+                    <span>Login</span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
                   </button>
 
-                  {/* Customer Services */}
+                  {/* Customer Services Button */}
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
-                      // Navigate to customer services or open support link
                       const customerServiceLink = authLinks.find(link =>
                         link.label.toLowerCase().includes('support') ||
                         link.label.toLowerCase().includes('customer') ||
@@ -628,23 +546,20 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           navigate({ to: customerServiceLink.route });
                         }
                       } else {
-                        // Default customer service action - you can customize this
                         window.open('https://chat.whatsapp.com/Kvh1fsDcL1GFCBrIveQ8q8', '_blank', 'noopener,noreferrer');
                       }
                     }}
-                    className="group w-full text-left px-5 py-3.5 rounded-xl text-base font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-[hsl(var(--catalogue-text-secondary))] bg-[hsl(var(--catalogue-bg-subtle))] hover:bg-[hsl(var(--catalogue-interactive-hover))] border border-[hsl(var(--catalogue-border))] transition-colors duration-200"
                   >
-                    <span className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
-                        </svg>
-                        Customer Services
-                      </span>
-                      <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    <span className="flex items-center gap-3">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
                       </svg>
+                      Customer Services
                     </span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
                   </button>
 
                   {/* Genre Dropdown */}
@@ -706,17 +621,17 @@ export const HeaderComponent: React.FC<HeaderProps & {
               </div>
             </div>
           ) : (
-            // Original menu for courseCatalogeType.enabled = false
+            // Standard mobile menu
             isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
               <div
                 ref={setMobileMenuRef}
-                className="md:hidden fixed top-[60px] left-0 right-0 z-[60] border-t border-gray-200 bg-white shadow-lg"
+                className="md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] border-t border-[hsl(var(--catalogue-border-subtle))] bg-white"
+                style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
               >
-                <div className="px-2 pt-1 pb-3 space-y-1">
+                <div className="px-4 py-3 space-y-1">
                   {/* Navigation Links */}
                   {navigation.map((item, index) => {
                     const isActive = isActiveRoute(item.route, item.label);
-                    // Explicitly handle openInSameTab - convert to boolean if needed
                     const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
                     return (
                       <button
@@ -725,11 +640,11 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           setIsMobileMenuOpen(false);
                           handleNavigation(item.route, item.label, openInSameTab);
                         }}
-                    className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-colors ${
-                      isActive 
-                          ? 'text-primary-600 border-b-2 border-primary-200'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                          }`}
+                        className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${
+                          isActive 
+                            ? 'text-primary-500 bg-primary-50'
+                            : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
+                        }`}
                       >
                         {item.label}
                       </button>
@@ -738,16 +653,14 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
                   {/* Auth Links */}
                   {authLinks.length > 0 && (
-                    <div className="border-t border-gray-200 pt-2 mt-2">
+                    <div className="border-t border-[hsl(var(--catalogue-border-subtle))] pt-3 mt-3 space-y-2">
                       {authLinks.map((link, index) => (
                         <button
                           key={`auth-${index}`}
                           onClick={() => {
-                            // Handle different types of routes
                             if (link.route === 'login' || link.route === 'signup') {
                               navigate({ to: `/${link.route}` });
                             } else if (link.route === 'getStarted' || link.label.toLowerCase().includes('get started')) {
-                              // Dispatch custom event to open lead collection
                               const event = new CustomEvent('openLeadCollection', {
                                 detail: { source: 'mobileMenu' }
                               });
@@ -757,15 +670,11 @@ export const HeaderComponent: React.FC<HeaderProps & {
                             }
                             setIsMobileMenuOpen(false);
                           }}
-                      className={`block w-full text-left px-4 py-3 rounded-md text-base font-semibold transition-colors ${
-                        index === 0
-                            ? "text-white hover:opacity-90"
-                            : "hover:bg-opacity-10"
-                            }`}
-                          style={{
-                            color: index === 0 ? 'white' : domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#2563eb',
-                            backgroundColor: index === 0 ? (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#2563eb') : 'transparent'
-                          }}
+                          className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${
+                            index === 0
+                              ? 'text-white bg-primary-500 hover:bg-primary-400'
+                              : 'text-primary-500 hover:bg-primary-50'
+                          }`}
                         >
                           {link.label}
                         </button>

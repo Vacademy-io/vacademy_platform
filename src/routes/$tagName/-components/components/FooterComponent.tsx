@@ -2,9 +2,7 @@ import React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { FooterProps } from "../../-types/course-catalogue-types";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
-import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { RouteMatcher } from "../../-services/route-matcher";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 export const FooterComponent: React.FC<FooterProps & {
   catalogueData?: CourseCatalogueData;
@@ -23,64 +21,47 @@ export const FooterComponent: React.FC<FooterProps & {
   tagName = "home"
 }) => {
   const navigate = useNavigate();
-  const domainRouting = useDomainRouting();
-  const isMobile = useIsMobile();
-  
-  // Check if footer styles.enabled is true
-  const isFooterStylesEnabled = !!(catalogueData?.globalSettings?.layout?.footer?.styles?.enabled);
   
   // Helper function to handle footer link navigation
   const handleLinkNavigation = (route: string, openInSameTab: boolean = false) => {
-    // Check if route is external
     if (RouteMatcher.isExternalLink(route)) {
       if (openInSameTab) {
-        // Open in same tab
         window.location.href = route;
       } else {
-        // Open in new tab (default behavior)
         window.open(route, '_blank');
       }
       return;
     }
 
-    // If catalogueData is available, try to match the route with pages
     if (catalogueData && catalogueData.pages) {
       const matchedPage = RouteMatcher.findMatchingPage(route, catalogueData.pages);
-
       if (matchedPage) {
-        // Get the proper navigation route for this page
         const navigationRoute = RouteMatcher.getPageNavigationRoute(matchedPage, tagName);
         navigate({ to: navigationRoute });
         return;
       }
     }
 
-    // Handle special routes
     const normalizedRoute = RouteMatcher.normalizeRoute(route);
-
     if (normalizedRoute === 'home' || normalizedRoute === '') {
       navigate({ to: `/${tagName}` });
       return;
     }
 
-    // Navigate as regular internal link
     navigate({ to: route });
   };
 
-  // Helper function to handle social link navigation
   const handleSocialLinkNavigation = (url: string, openInSameTab: boolean = false) => {
     if (openInSameTab) {
-      // Open in same tab
       window.location.href = url;
     } else {
-      // Open in new tab (default behavior)
       window.open(url, '_blank');
     }
   };
 
   // Get social media icon component
   const getSocialIcon = (iconName: string) => {
-    const iconProps = { className: "w-6 h-6", fill: "currentColor" };
+    const iconProps = { className: "w-5 h-5", fill: "currentColor" };
     
     switch (iconName.toLowerCase()) {
       case "facebook":
@@ -128,9 +109,7 @@ export const FooterComponent: React.FC<FooterProps & {
         );
     }
   };
-  
 
-  
   // Determine grid columns based on layout
   const getGridCols = () => {
     switch (layout) {
@@ -144,32 +123,29 @@ export const FooterComponent: React.FC<FooterProps & {
     }
   };
 
-  return (
-    <footer
-      className="text-gray-800"
-      style={{
-        backgroundColor: domainRouting.instituteThemeCode ?
-          `hsl(var(--primary-200))` :
-          '#e5e7eb' ,// gray-200 fallback,
-        ...(isFooterStylesEnabled && !isMobile ? { padding: '5px 80px 5px 100px' } : {}),
-      }}
-      
-    >
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-12">
-        <div className={`grid ${getGridCols()} gap-8 lg:gap-12`}>
-          {/* Left Section - Company Info */}
-          <div className={layout === "four-column" ? "" : ""}>
-            <h3 className="text-lg font-semibold mb-4 text-gray-900">{leftSection.title}</h3>
-            <p className="text-gray-700 mb-4">{leftSection.text}</p>
+  // Link styles - neutral with primary accent on hover
+  const linkClasses = "text-sm text-gray-600 hover:text-primary-600 transition-colors cursor-pointer";
+  const linkClassesLeft = "text-sm text-gray-600 hover:text-primary-600 transition-colors cursor-pointer text-left";
 
-            {/* Social Media Links in Left Section */}
+  return (
+    <footer className="border-t border-gray-200 bg-gray-50">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
+        <div className={`grid ${getGridCols()} gap-6 lg:gap-8`}>
+          {/* Left Section - Company Info */}
+          <div>
+            {/* PRIMARY ACCENT: Section title uses primary color */}
+            <h3 className="text-sm font-semibold mb-3 text-primary-700">{leftSection.title}</h3>
+            {/* NEUTRAL: Body text */}
+            <p className="text-sm text-gray-600 mb-3">{leftSection.text}</p>
+
+            {/* Social Media Links - PRIMARY ACCENT on hover */}
             {leftSection.socials && leftSection.socials.length > 0 && (
-              <div className="flex space-x-4 mt-4">
+              <div className="flex gap-3 mt-3">
                 {leftSection.socials.map((social, linkIndex) => (
                   <button
                     key={linkIndex}
                     onClick={() => handleSocialLinkNavigation(social.url, social.openInSameTab)}
-                    className="text-gray-700 hover:text-gray-900 transition-colors"
+                    className="text-gray-500 hover:text-primary-600 transition-colors"
                     title={social.platform}
                   >
                     {getSocialIcon(social.icon)}
@@ -178,16 +154,16 @@ export const FooterComponent: React.FC<FooterProps & {
               </div>
             )}
 
-            {/* Legacy Social Media Section (for backward compatibility) */}
+            {/* Legacy Social Media Section */}
             {socialsSection && !leftSection.socials && (
-              <div className="mt-6">
-                <h4 className="text-md font-semibold mb-3 text-gray-900">{socialsSection.title}</h4>
-                <div className="flex space-x-4">
+              <div className="mt-4">
+                <h4 className="text-sm font-medium mb-2 text-gray-800">{socialsSection.title}</h4>
+                <div className="flex gap-3">
                   {socialsSection.links.map((social, linkIndex) => (
                     <a
                       key={linkIndex}
                       href={social.url}
-                      className="text-gray-700 hover:text-gray-900 transition-colors"
+                      className="text-gray-500 hover:text-primary-600 transition-colors"
                       target="_blank"
                       rel="noopener noreferrer"
                       title={social.platform}
@@ -203,14 +179,15 @@ export const FooterComponent: React.FC<FooterProps & {
           {/* Right Section 1 */}
           {rightSection1 && (
             <div>
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">{rightSection1.title}</h3>
-              <ul className="space-y-2">
+              {/* PRIMARY ACCENT: Section title */}
+              <h3 className="text-sm font-semibold mb-3 text-primary-700">{rightSection1.title}</h3>
+              <ul className="space-y-1.5">
                 {rightSection1.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
                     {RouteMatcher.isExternalLink(link.route) ? (
                       <a
                         href={link.route}
-                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                        className={linkClasses}
                         target={link.openInSameTab ? "_self" : "_blank"}
                         rel={!link.openInSameTab ? "noopener noreferrer" : undefined}
                       >
@@ -219,7 +196,7 @@ export const FooterComponent: React.FC<FooterProps & {
                     ) : (
                       <button
                         onClick={() => handleLinkNavigation(link.route, link.openInSameTab)}
-                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                        className={linkClassesLeft}
                       >
                         {link.label}
                       </button>
@@ -233,14 +210,14 @@ export const FooterComponent: React.FC<FooterProps & {
           {/* Right Section 2 */}
           {rightSection2 && (
             <div>
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">{rightSection2.title}</h3>
-              <ul className="space-y-2">
+              <h3 className="text-sm font-semibold mb-3 text-primary-700">{rightSection2.title}</h3>
+              <ul className="space-y-1.5">
                 {rightSection2.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
                     {RouteMatcher.isExternalLink(link.route) ? (
                       <a
                         href={link.route}
-                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                        className={linkClasses}
                         target={link.openInSameTab ? "_self" : "_blank"}
                         rel={!link.openInSameTab ? "noopener noreferrer" : undefined}
                       >
@@ -249,7 +226,7 @@ export const FooterComponent: React.FC<FooterProps & {
                     ) : (
                       <button
                         onClick={() => handleLinkNavigation(link.route, link.openInSameTab)}
-                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                        className={linkClassesLeft}
                       >
                         {link.label}
                       </button>
@@ -263,14 +240,14 @@ export const FooterComponent: React.FC<FooterProps & {
           {/* Right Section 3 */}
           {rightSection3 && (
             <div>
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">{rightSection3.title}</h3>
-              <ul className="space-y-2">
+              <h3 className="text-sm font-semibold mb-3 text-primary-700">{rightSection3.title}</h3>
+              <ul className="space-y-1.5">
                 {rightSection3.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
                     {RouteMatcher.isExternalLink(link.route) ? (
                       <a
                         href={link.route}
-                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                        className={linkClasses}
                         target={link.openInSameTab ? "_self" : "_blank"}
                         rel={!link.openInSameTab ? "noopener noreferrer" : undefined}
                       >
@@ -279,7 +256,7 @@ export const FooterComponent: React.FC<FooterProps & {
                     ) : (
                       <button
                         onClick={() => handleLinkNavigation(link.route, link.openInSameTab)}
-                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                        className={linkClassesLeft}
                       >
                         {link.label}
                       </button>
@@ -293,14 +270,14 @@ export const FooterComponent: React.FC<FooterProps & {
           {/* Legacy Support - Single Right Section */}
           {rightSection && !rightSection1 && !rightSection2 && !rightSection3 && (
             <div>
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">{rightSection.title}</h3>
-              <ul className="space-y-2">
+              <h3 className="text-sm font-semibold mb-3 text-primary-700">{rightSection.title}</h3>
+              <ul className="space-y-1.5">
                 {rightSection.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
                     {RouteMatcher.isExternalLink(link.route) ? (
                       <a
                         href={link.route}
-                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                        className={linkClasses}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
@@ -309,7 +286,7 @@ export const FooterComponent: React.FC<FooterProps & {
                     ) : (
                       <button
                         onClick={() => handleLinkNavigation(link.route)}
-                        className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                        className={linkClassesLeft}
                       >
                         {link.label}
                       </button>
@@ -325,14 +302,14 @@ export const FooterComponent: React.FC<FooterProps & {
             <>
               {rightSections.map((section, sectionIndex) => (
                 <div key={sectionIndex}>
-                  <h3 className="text-lg font-semibold mb-4 text-gray-900">{section.title}</h3>
-                  <ul className="space-y-2">
+                  <h3 className="text-sm font-semibold mb-3 text-primary-700">{section.title}</h3>
+                  <ul className="space-y-1.5">
                     {section.links.map((link, linkIndex) => (
                       <li key={linkIndex}>
                         {RouteMatcher.isExternalLink(link.route) ? (
                           <a
                             href={link.route}
-                            className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer"
+                            className={linkClasses}
                             target="_blank"
                             rel="noopener noreferrer"
                           >
@@ -341,7 +318,7 @@ export const FooterComponent: React.FC<FooterProps & {
                         ) : (
                           <button
                             onClick={() => handleLinkNavigation(link.route)}
-                            className="text-gray-700 hover:text-gray-900 transition-colors cursor-pointer text-left"
+                            className={linkClassesLeft}
                           >
                             {link.label}
                           </button>
@@ -355,8 +332,9 @@ export const FooterComponent: React.FC<FooterProps & {
           )}
         </div>
 
-        <div className="border-t border-gray-400 mt-8 pt-8 text-center">
-          <p className="text-gray-600 text-sm">
+        {/* Bottom Note - NEUTRAL with subtle primary accent */}
+        <div className="border-t border-gray-200 mt-6 pt-6 text-center">
+          <p className="text-gray-500 text-xs">
             {bottomNote}
           </p>
         </div>

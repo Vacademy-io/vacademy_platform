@@ -279,10 +279,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
 }) => {
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
-  const {
-    backgroundColor = "#f0f9ff",
-    roundedEdges = true,
-  } = styles;
+  const { roundedEdges = true } = styles;
 
   // Determine which format to use
   const isSliderFormat = layout === "slider" && slides && slides.length > 0;
@@ -661,18 +658,17 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
   
   return (
     <section
-      className={`w-full py-12 ${roundedEdges ? "rounded-lg" : ""}`}
-      style={{ backgroundColor }}
+      className={`w-full py-6 sm:py-8 ${roundedEdges ? "rounded-lg" : ""} bg-[hsl(var(--catalogue-bg-subtle))]`}
     >
-      <div className="container mx-auto px-4">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         {/* Header */}
         {headerText && (
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+          <div className="text-center mb-6">
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-[hsl(var(--catalogue-text-primary))] mb-2">
               {headerText}
             </h2>
             {description && (
-              <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              <p className="text-sm text-[hsl(var(--catalogue-text-secondary))] max-w-2xl mx-auto">
                 {description}
               </p>
             )}
@@ -700,17 +696,17 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
               <>
                 <button
                   onClick={prevSlide}
-                  className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 rounded-full shadow-lg transition-all"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white border border-[hsl(var(--catalogue-border))] text-[hsl(var(--catalogue-text-secondary))] p-1.5 rounded-full hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
                 <button
                   onClick={nextSlide}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 rounded-full shadow-lg transition-all"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white border border-[hsl(var(--catalogue-border))] text-[hsl(var(--catalogue-text-secondary))] p-1.5 rounded-full hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
@@ -719,15 +715,15 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
 
             {/* Dots Indicator */}
             {mediaToUse.length > 1 && (
-              <div className="flex justify-center mt-4 space-x-2">
+              <div className="flex justify-center mt-4 gap-1.5">
                 {mediaToUse.map((_, index) => (
                   <button
                     key={index}
                     onClick={() => setCurrentIndex(index)}
-                    className={`w-3 h-3 rounded-full transition-all ${
+                    className={`w-2 h-2 rounded-full transition-all ${
                       index === currentIndex
-                        ? "bg-primary-600"
-                        : "bg-gray-300 hover:bg-gray-400"
+                        ? "bg-primary-500 w-4"
+                        : "bg-[hsl(var(--catalogue-border))]"
                     }`}
                   />
                 ))}
@@ -736,7 +732,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
           </div>
         ) : (
           /* Grid Layout */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {mediaToUse.map((item, index) => renderMediaItem(item, index))}
           </div>
         )}

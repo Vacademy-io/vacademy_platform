@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useDomainRouting } from "@/hooks/use-domain-routing";
-// import { useTheme } from "@/hooks/use-theme"; // Not available
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface HeroSectionProps {
@@ -38,258 +36,157 @@ interface HeroSectionProps {
     instructor?: string;
   };
 }
+
 // Centralized enabled check - defaults to false if not provided
-// Only returns true if enabled is explicitly true (boolean or string "true")
 const isHeroButtonEnabled = (button?: { enabled?: boolean | string | number }) => {
   if (!button) return false;
   const { enabled } = button;
-  // Default to false if not provided (consistent with JsonRenderer)
-  if (enabled === undefined || enabled === null) {
-    return false;
-  }
-  if (typeof enabled === "string") {
-    return enabled.toLowerCase() === "true";
-  }
-  if (typeof enabled === "number") {
-    return enabled !== 0;
-  }
+  if (enabled === undefined || enabled === null) return false;
+  if (typeof enabled === "string") return enabled.toLowerCase() === "true";
+  if (typeof enabled === "number") return enabled !== 0;
   return enabled === true;
 };
+
+// Check if image URL is a placeholder or invalid
+const isPlaceholderImage = (imageUrl?: string | null): boolean => {
+  if (!imageUrl) return true;
+  const trimmed = imageUrl.trim();
+  if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') return true;
+  if (trimmed.includes('/api/placeholder/')) return true;
+  if (['course_banner_media_id', 'course_preview_image_media_id', 'thumbnail_file_id'].includes(trimmed)) return true;
+  // Raw media ID check (contains underscores, no http/https, no slashes)
+  if (trimmed.includes('_') && !trimmed.includes('http') && !trimmed.includes('/')) return true;
+  return false;
+};
+
 export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
   layout,
   backgroundImage,
-  backgroundColor: jsonBackgroundColor, // Rename to avoid confusion
   left,
   right,
   styles = {},
   courseData,
 }) => {
-  const domainRouting = useDomainRouting();
-  // const { primaryColor } = useTheme(); // Not available
-  const primaryColor = "primary"; // Default theme color
-  const {
-    padding = "40px",
-    roundedEdges = true,
-    textAlign = "left",
-  } = styles;
+  const { roundedEdges = false, textAlign = "left" } = styles;
 
-  // Memoize the component to prevent unnecessary re-renders
   return useMemo(() => {
-  // Use course data if available, otherwise fall back to props
-  const heroTitle = courseData?.title || left?.title || "";
-    // Only use courseData.description if it's explicitly provided and not empty, otherwise don't show description
-    const heroDescription = (courseData?.description && courseData.description.trim() !== "") ? courseData.description : "";
-    
-  const heroImage = courseData?.previewImage || courseData?.bannerImage || right?.image || "";
-  const heroImageAlt = right?.alt || courseData?.title || "Course preview";
-  const heroBackgroundImage = backgroundImage;
+    const heroTitle = courseData?.title || left?.title || "";
+    const heroDescription = (courseData?.description?.trim()) ? courseData.description : "";
+    const heroImage = courseData?.previewImage || courseData?.bannerImage || right?.image || "";
+    const heroImageAlt = right?.alt || courseData?.title || "Course preview";
+    const isHeroImagePlaceholder = isPlaceholderImage(heroImage);
+    const isBackgroundImagePlaceholder = isPlaceholderImage(backgroundImage);
 
+    const commonProps = {
+      layout,
+      left,
+      right,
+      courseData,
+      heroTitle,
+      heroDescription,
+      heroImageAlt,
+      roundedEdges,
+      textAlign,
+    };
 
-
-    // Check if images are placeholders or invalid URLs
-    const isHeroImagePlaceholder = !heroImage || 
-      heroImage === null || 
-      heroImage === undefined ||
-      heroImage.includes('/api/placeholder/') || 
-      heroImage.trim() === '' ||
-      heroImage === 'null' ||
-      heroImage === 'undefined' ||
-      // Check if it looks like a raw media ID (contains underscores, no http/https, no slashes)
-      (heroImage.includes('_') && !heroImage.includes('http') && !heroImage.includes('/'));
-
-    const isBackgroundImagePlaceholder = !heroBackgroundImage || 
-      heroBackgroundImage === null || 
-      heroBackgroundImage === undefined ||
-      heroBackgroundImage.includes('/api/placeholder/') || 
-      heroBackgroundImage.trim() === '' ||
-      heroBackgroundImage === 'null' ||
-      heroBackgroundImage === 'undefined' ||
-      heroBackgroundImage === 'course_banner_media_id' ||
-      heroBackgroundImage === 'course_preview_image_media_id' ||
-      heroBackgroundImage === 'thumbnail_file_id' ||
-      // Check if it looks like a raw media ID (contains underscores, no http/https, no slashes)
-      (heroBackgroundImage.includes('_') && !heroBackgroundImage.includes('http') && !heroBackgroundImage.includes('/'));
-
-
-
-    // If hero image is a placeholder, render directly without any state management
-    // (We don't need to check background image since we're not using it for now)
     if (isHeroImagePlaceholder) {
-      return <HeroSectionPlaceholder 
-        layout={layout}
-        left={left}
-        right={right}
-        styles={styles}
-        courseData={courseData}
-        heroTitle={heroTitle}
-        heroDescription={heroDescription}
-        heroImageAlt={heroImageAlt}
-        domainRouting={domainRouting}
-        primaryColor={primaryColor}
-        padding={padding}
-        roundedEdges={roundedEdges}
-        textAlign={textAlign}
-      />;
+      return <HeroSectionPlaceholder {...commonProps} />;
     }
 
-    // For valid images, use the full component with state management
-    return <HeroSectionWithState 
-      layout={layout}
-      backgroundImage={backgroundImage}
-      backgroundColor={jsonBackgroundColor}
-      left={left}
-      right={right}
-      styles={styles}
-      courseData={courseData}
-      heroImage={heroImage}
-      heroImageAlt={heroImageAlt}
-      heroBackgroundImage={heroBackgroundImage}
-      isHeroImagePlaceholder={isHeroImagePlaceholder}
-      isBackgroundImagePlaceholder={isBackgroundImagePlaceholder}
-      domainRouting={domainRouting}
-      primaryColor={primaryColor}
-      padding={padding}
-      roundedEdges={roundedEdges}
-      textAlign={textAlign}
-    />;
-  }, [
-    layout,
-    backgroundImage,
-    jsonBackgroundColor,
-    left,
-    right,
-    styles,
-    courseData,
-    domainRouting,
-    primaryColor,
-    padding,
-    roundedEdges,
-    textAlign
-  ]);
+    return (
+      <HeroSectionWithState 
+        {...commonProps}
+        heroImage={heroImage}
+        heroBackgroundImage={backgroundImage}
+        isHeroImagePlaceholder={isHeroImagePlaceholder}
+        isBackgroundImagePlaceholder={isBackgroundImagePlaceholder}
+      />
+    );
+  }, [layout, backgroundImage, left, right, courseData, roundedEdges, textAlign]);
 };
 
-// Placeholder component - no state management, direct rendering
-const HeroSectionPlaceholder: React.FC<any> = ({
+// Placeholder component - no state management
+const HeroSectionPlaceholder: React.FC<{
+  layout: "split" | "centered";
+  left?: HeroSectionProps['left'];
+  heroTitle: string;
+  heroDescription: string;
+  heroImageAlt: string;
+  roundedEdges: boolean;
+  textAlign: "left" | "center" | "right";
+  right?: HeroSectionProps['right'];
+  courseData?: HeroSectionProps['courseData'];
+}> = ({
   layout,
   left,
-  right,
   courseData,
   heroTitle,
   heroDescription,
-  heroImageAlt,
-  domainRouting,
-  primaryColor,
-  padding,
   roundedEdges,
   textAlign,
 }) => {
   const navigate = useNavigate();
-  
-  // Force theme color - ignore JSON backgroundColor completely
-  const finalBackgroundColor = primaryColor !== "neutral" ? `hsl(var(--primary) / 0.2)` : "rgb(191 219 254)";
 
-  const handleButtonClick = (button: { text: string; action: string; target: string }) => {
-    switch (button.action) {
-      case "navigate":
-        if (button.target) {
-          navigate({ to: button.target });
-        }
-        break;
-      case "openLeadCollection":
-        // Dispatch custom event to open lead collection
-        const event = new CustomEvent('openLeadCollection', {
-          detail: { source: 'heroSection' }
-        });
-        window.dispatchEvent(event);
-        break;
-      default:
-        break;
+  const handleButtonClick = (button: { action: string; target: string }) => {
+    if (button.action === "navigate" && button.target) {
+      navigate({ to: button.target });
+    } else if (button.action === "openLeadCollection") {
+      window.dispatchEvent(new CustomEvent('openLeadCollection', { detail: { source: 'heroSection' } }));
     }
   };
 
   return (
     <section
-      className={`w-full min-h-[400px] ${roundedEdges ? "rounded-lg" : ""} overflow-hidden flex items-center justify-center`}
-      style={{
-        padding,
-        backgroundColor: finalBackgroundColor,
-        textAlign,
-      }}
+      className={`w-full py-8 md:py-12 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden bg-gray-50`}
+      style={{ textAlign }}
     >
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Compact container padding */}
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
-          /* Split Layout */
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
             {/* Left Content */}
             {(left || courseData) && (
-              <div className="space-y-6">
+              <div className="space-y-3">
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 leading-tight">
                     {heroTitle}
                   </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-lg sm:text-xl text-gray-600 leading-relaxed">
+                  <p className="text-base sm:text-lg text-gray-600 leading-relaxed line-clamp-3">
                     {heroDescription}
                   </p>
                 )}
-                {isHeroButtonEnabled(left?.button) && (
+                {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
-                    onClick={() => handleButtonClick(left!.button!)}
-                    className="text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-                    style={{
-                      backgroundColor: left.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
-                    }}
-                    onMouseEnter={(e) => {
-                      if (left.button?.backgroundColor) {
-                        e.currentTarget.style.opacity = "0.9";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (left.button?.backgroundColor) {
-                        e.currentTarget.style.opacity = "1";
-                      }
-                    }}
+                    onClick={() => handleButtonClick(left.button!)}
+                    className="mt-2 px-5 py-2.5 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
                   >
                     {left.button.text}
                   </button>
                 )}
               </div>
             )}
-
-            {/* Right Content - Don't render image if no valid image */}
-            {/* Note: This section is intentionally left empty to avoid showing placeholder images */}
           </div>
         ) : (
           /* Centered Layout */
-          <div className="text-center space-y-6">
+          <div className="text-center space-y-3 max-w-3xl mx-auto">
             {(left || courseData) && (
               <>
-                <h1 className="text-4xl lg:text-5xl font-bold text-gray-900">
-                  {heroTitle}
-                </h1>
+                {heroTitle && (
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
+                    {heroTitle}
+                  </h1>
+                )}
                 {heroDescription && (
-                  <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+                  <p className="text-base sm:text-lg text-gray-600 line-clamp-3">
                     {heroDescription}
                   </p>
                 )}
-                {isHeroButtonEnabled(left?.button) && (
+                {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
-                    onClick={() => handleButtonClick(left!.button!)}
-                    className="text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
-                    style={{
-                      backgroundColor: left.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
-                    }}
-                    onMouseEnter={(e) => {
-                      if (left.button?.backgroundColor) {
-                        e.currentTarget.style.opacity = "0.9";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (left.button?.backgroundColor) {
-                        e.currentTarget.style.opacity = "1";
-                      }
-                    }}
+                    onClick={() => handleButtonClick(left.button!)}
+                    className="mt-2 px-6 py-2.5 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
                   >
                     {left.button.text}
                   </button>
@@ -303,41 +200,42 @@ const HeroSectionPlaceholder: React.FC<any> = ({
   );
 };
 
-// State management component - only for valid images
-const HeroSectionWithState: React.FC<any> = ({
+// State management component - for valid images
+const HeroSectionWithState: React.FC<{
+  layout: "split" | "centered";
+  left?: HeroSectionProps['left'];
+  right?: HeroSectionProps['right'];
+  courseData?: HeroSectionProps['courseData'];
+  heroImage: string;
+  heroImageAlt: string;
+  heroBackgroundImage?: string;
+  isHeroImagePlaceholder: boolean;
+  isBackgroundImagePlaceholder: boolean;
+  roundedEdges: boolean;
+  textAlign: "left" | "center" | "right";
+  heroTitle: string;
+  heroDescription: string;
+}> = ({
   layout,
   left,
   right,
   courseData,
   heroImage,
   heroImageAlt,
-  heroBackgroundImage,
   isHeroImagePlaceholder,
   isBackgroundImagePlaceholder,
-  domainRouting,
-  primaryColor,
-  padding,
+  heroBackgroundImage,
   roundedEdges,
   textAlign,
+  heroTitle,
+  heroDescription,
 }) => {
   const navigate = useNavigate();
- 
-  // State for resolved URLs - only needed for valid images
-  const [resolvedImageUrl, setResolvedImageUrl] = useState<string>("/api/placeholder/400/300");
+  const [resolvedImageUrl, setResolvedImageUrl] = useState<string>(heroImage);
 
-  // Use course data if available, otherwise fall back to props
-  const heroTitle = courseData?.title || left?.title || "";
-  const heroDescription = (courseData?.description && courseData.description.trim() !== "") ? courseData.description : "";
-
-  // Force theme color - ignore JSON backgroundColor completely
-  const finalBackgroundColor = primaryColor !== "neutral" ? `hsl(var(--primary) / 0.2)` : "rgb(191 219 254)";
-
-  // Resolve image URLs - only for valid images
+  // Resolve image URLs
   useEffect(() => {
-    // If both images are placeholders, don't run the effect
-    if (isHeroImagePlaceholder && isBackgroundImagePlaceholder) {
-      return;
-    }
+    if (isHeroImagePlaceholder && isBackgroundImagePlaceholder) return;
 
     let isMounted = true;
     
@@ -345,27 +243,20 @@ const HeroSectionWithState: React.FC<any> = ({
       if (!imageUrl || imageUrl.includes('/api/placeholder/') || imageUrl.includes('http')) {
         return imageUrl;
       }
-      
       try {
         const resolvedUrl = await getPublicUrlWithoutLogin(imageUrl);
         return resolvedUrl || imageUrl;
-      } catch (error) {
-        console.error("Error resolving image URL:", error);
+      } catch {
         return imageUrl;
       }
     };
 
     const loadImages = async () => {
-      // Handle hero image - only if it's not a placeholder
       if (!isHeroImagePlaceholder) {
         const resolvedUrl = await resolveImageUrl(heroImage);
-        if (isMounted) {
-          setResolvedImageUrl(resolvedUrl);
-        }
+        if (isMounted) setResolvedImageUrl(resolvedUrl);
       }
-
-      // Handle background image - only if it's not a placeholder
-      if (!isBackgroundImagePlaceholder) {
+      if (!isBackgroundImagePlaceholder && heroBackgroundImage) {
         await resolveImageUrl(heroBackgroundImage);
       }
     };
@@ -374,68 +265,40 @@ const HeroSectionWithState: React.FC<any> = ({
     return () => { isMounted = false; };
   }, [heroImage, heroBackgroundImage, isHeroImagePlaceholder, isBackgroundImagePlaceholder]);
 
-  const handleButtonClick = (button: { text: string; action: string; target: string }) => {
-    switch (button.action) {
-      case "navigate":
-        if (button.target) {
-        navigate({ to: button.target });
-        }
-        break;
-      case "openLeadCollection":
-        // Dispatch custom event to open lead collection
-        const event = new CustomEvent('openLeadCollection', {
-          detail: { source: 'heroSection' }
-        });
-        window.dispatchEvent(event);
-        break;
-      default:
-        break;
+  const handleButtonClick = (button: { action: string; target: string }) => {
+    if (button.action === "navigate" && button.target) {
+      navigate({ to: button.target });
+    } else if (button.action === "openLeadCollection") {
+      window.dispatchEvent(new CustomEvent('openLeadCollection', { detail: { source: 'heroSection' } }));
     }
   };
 
   return (
     <section
-      className={`w-full min-h-[calc(100vh-5rem)] ${roundedEdges ? "rounded-lg" : ""} overflow-hidden flex items-center justify-center md:min-h-screen`}
-      style={{
-        padding,
-        backgroundColor: finalBackgroundColor,
-        textAlign,
-      }}
+      className={`w-full py-8 md:py-12 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden bg-gray-50`}
+      style={{ textAlign }}
     >
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Compact container padding */}
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
-          /* Split Layout */
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
             {/* Left Content */}
             {(left || courseData) && (
-              <div className="space-y-6">
+              <div className="space-y-3">
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
-                  {heroTitle}
-                </h1>
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 leading-tight">
+                    {heroTitle}
+                  </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-lg sm:text-xl text-gray-600 leading-relaxed">
-                  {heroDescription}
-                </p>
+                  <p className="text-base sm:text-lg text-gray-600 leading-relaxed line-clamp-3">
+                    {heroDescription}
+                  </p>
                 )}
-                {isHeroButtonEnabled(left?.button) && (
+                {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
-                    onClick={() => handleButtonClick(left!.button!)}
-                    className="text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-                    style={{
-                      backgroundColor: left.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
-                    }}
-                    onMouseEnter={(e) => {
-                      if (left.button?.backgroundColor) {
-                        e.currentTarget.style.opacity = "0.9";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (left.button?.backgroundColor) {
-                        e.currentTarget.style.opacity = "1";
-                      }
-                    }}
+                    onClick={() => handleButtonClick(left.button!)}
+                    className="mt-2 px-5 py-2.5 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
                   >
                     {left.button.text}
                   </button>
@@ -443,50 +306,39 @@ const HeroSectionWithState: React.FC<any> = ({
               </div>
             )}
 
-            {/* Right Content - Only render if we have a valid image */}
+            {/* Right Content - Image */}
             {(right || courseData) && heroImage && !isHeroImagePlaceholder && (
-              <div className="flex justify-center">
-                  <img
+              <div className="flex justify-center lg:justify-end">
+                <img
                   src={resolvedImageUrl || heroImage}
-                    alt={heroImageAlt}
-                    className="max-w-full h-auto rounded-lg"
-                    onError={() => {
-                      // Don't show placeholder on error, just hide the image
-                    }}
-                  />
+                  alt={heroImageAlt}
+                  className="max-w-full h-auto max-h-[280px] lg:max-h-[320px] rounded-lg object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
               </div>
             )}
           </div>
         ) : (
           /* Centered Layout */
-          <div className="text-center space-y-6">
+          <div className="text-center space-y-3 max-w-3xl mx-auto">
             {(left || courseData) && (
               <>
-                <h1 className="text-4xl lg:text-5xl font-bold text-gray-900">
-                  {heroTitle}
-                </h1>
-                {heroDescription && (
-                  <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-                  {heroDescription}
-                </p>
+                {heroTitle && (
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
+                    {heroTitle}
+                  </h1>
                 )}
-                {isHeroButtonEnabled(left?.button) && (
+                {heroDescription && (
+                  <p className="text-base sm:text-lg text-gray-600 line-clamp-3">
+                    {heroDescription}
+                  </p>
+                )}
+                {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
-                    onClick={() => handleButtonClick(left!.button!)}
-                    className="text-white px-8 py-4 rounded-lg font-semibold text-lg transition-colors"
-                    style={{
-                      backgroundColor: left.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
-                    }}
-                    onMouseEnter={(e) => {
-                      if (left.button?.backgroundColor) {
-                        e.currentTarget.style.opacity = "0.9";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (left.button?.backgroundColor) {
-                        e.currentTarget.style.opacity = "1";
-                      }
-                    }}
+                    onClick={() => handleButtonClick(left.button!)}
+                    className="mt-2 px-6 py-2.5 rounded-md text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors duration-200"
                   >
                     {left.button.text}
                   </button>

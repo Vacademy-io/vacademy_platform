@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Testimonial {
   name: string;
@@ -21,112 +22,82 @@ interface TestimonialSectionProps {
   };
 }
 
-const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect: string }> = ({
+const TestimonialCard: React.FC<{ testimonial: Testimonial }> = ({
   testimonial,
-  hoverEffect 
 }) => {
-  // Initialize with placeholder to prevent flickering
-  const [avatarUrl, setAvatarUrl] = useState<string>("/api/placeholder/60/60");
-  const [loadingAvatar, setLoadingAvatar] = useState(false);
-  const [hasTriedLoading, setHasTriedLoading] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
     
-    // If we've already tried loading this URL and it failed, don't try again
-    if (hasTriedLoading) {
-      return;
-    }
-    
     const loadAvatar = async () => {
-      console.log("[TestimonialCard] Loading avatar with URL:", testimonial.avatar);
-      
       if (!testimonial.avatar || 
-          testimonial.avatar === null || 
-          testimonial.avatar === undefined ||
           testimonial.avatar.includes('/api/placeholder/') || 
           testimonial.avatar.trim() === '' ||
           testimonial.avatar === 'null' ||
           testimonial.avatar === 'undefined') {
-        console.log("[TestimonialCard] Using placeholder - no valid avatar URL");
-        if (isMounted) {
-          setLoadingAvatar(false);
-          setAvatarUrl("/api/placeholder/60/60");
-          setHasTriedLoading(true);
-        }
         return;
       }
 
-      // Check if it's already a public URL
       if (testimonial.avatar.startsWith('http://') || testimonial.avatar.startsWith('https://')) {
-        console.log("[TestimonialCard] Using public URL directly:", testimonial.avatar);
-        if (isMounted) {
-          setLoadingAvatar(false);
-          setAvatarUrl(testimonial.avatar);
-          setHasTriedLoading(true);
-        }
+        if (isMounted) setAvatarUrl(testimonial.avatar);
         return;
       }
 
-      setLoadingAvatar(true);
       try {
-        console.log("[TestimonialCard] Calling getPublicUrlWithoutLogin with:", testimonial.avatar);
         const url = await getPublicUrlWithoutLogin(testimonial.avatar);
-        console.log("[TestimonialCard] Got URL from API:", url);
-        if (isMounted) {
-          setAvatarUrl(url);
-          setHasTriedLoading(true);
-        }
-      } catch (error) {
-        console.error("[TestimonialCard] Error loading avatar:", error);
-        if (isMounted) {
-          setAvatarUrl("/api/placeholder/60/60");
-          setHasTriedLoading(true);
-        }
-      } finally {
-        if (isMounted) {
-          setLoadingAvatar(false);
-        }
+        if (isMounted && url) setAvatarUrl(url);
+      } catch {
+        // Silently fail - will show initials instead
       }
     };
 
     loadAvatar();
     return () => { isMounted = false; };
-  }, [testimonial.avatar, hasTriedLoading]);
+  }, [testimonial.avatar]);
 
-  const getHoverClass = () => {
-    switch (hoverEffect) {
-      case "lift":
-        return "hover:-translate-y-2";
-      case "scale":
-        return "hover:scale-105";
-      case "shadow":
-        return "hover:shadow-lg";
-      default:
-        return "";
-    }
+  // Get initials for fallback
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
   return (
-    <div className={`bg-white p-6 rounded-lg shadow-md transition-all duration-300 ${getHoverClass()}`}>
-      <div className="flex items-start space-x-4">
+    // NEUTRAL: Card background with subtle border
+    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors">
+      <div className="flex items-start gap-3">
+        {/* Avatar - PRIMARY ACCENT for initials background */}
         <div className="flex-shrink-0">
-          <img
-            src={avatarUrl || "/api/placeholder/60/60"}
-            alt={testimonial.name}
-            className="w-12 h-12 rounded-full object-cover"
-            onError={(e) => {
-              e.currentTarget.src = "/api/placeholder/60/60";
-            }}
-          />
+          {avatarUrl && !hasError ? (
+            <img
+              src={avatarUrl}
+              alt={testimonial.name}
+              className="w-10 h-10 rounded-full object-cover"
+              onError={() => setHasError(true)}
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
+              <span className="text-sm font-medium text-primary-700">
+                {getInitials(testimonial.name)}
+              </span>
+            </div>
+          )}
         </div>
-        <div className="flex-1">
-          <blockquote className="text-gray-700 mb-4 italic">
+        
+        {/* Content - NEUTRAL text */}
+        <div className="flex-1 min-w-0">
+          <blockquote className="text-sm text-gray-600 mb-2 line-clamp-3">
             "{testimonial.feedback}"
           </blockquote>
           <div>
-            <div className="font-semibold text-gray-900">{testimonial.name}</div>
-            <div className="text-sm text-gray-600 whitespace-pre-line">{testimonial.role}</div>
+            {/* Name - slightly darker for emphasis */}
+            <div className="text-sm font-medium text-gray-800">
+              {testimonial.name}
+            </div>
+            {/* Role - muted */}
+            <div className="text-xs text-gray-500 line-clamp-1">
+              {testimonial.role}
+            </div>
           </div>
         </div>
       </div>
@@ -139,15 +110,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
   description,
   layout,
   testimonials,
-  styles = {},
 }) => {
-  const {
-    backgroundColor = "#f9fafb",
-    roundedEdges = true,
-    cardHoverEffect = "lift",
-    scrollEnabled = true,
-  } = styles;
-
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const nextTestimonial = () => {
@@ -158,75 +121,72 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
     setCurrentIndex((prev) => (prev - 1 + testimonials.length) % testimonials.length);
   };
 
+  // Carousel Layout
   if (layout === "carousel") {
     return (
-      <section
-        className={`w-full py-12 ${roundedEdges ? "rounded-lg" : ""}`}
-        style={{ backgroundColor }}
-      >
-        <div className="container mx-auto px-4">
+      // NEUTRAL: Section background
+      <section className="w-full py-6 sm:py-8 bg-gray-50">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           {/* Header */}
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+          <div className="text-center mb-6">
+            {/* Heading - dark neutral for readability */}
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-2">
               {headerText}
             </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            {/* Description - NEUTRAL */}
+            <p className="text-sm text-gray-600 max-w-2xl mx-auto">
               {description}
             </p>
           </div>
 
           {/* Carousel */}
-          <div className="relative">
+          <div className="relative max-w-2xl mx-auto">
             <div className="overflow-hidden">
               <div
-                className="flex transition-transform duration-300 ease-in-out"
+                className="flex transition-transform duration-300 ease-out"
                 style={{ transform: `translateX(-${currentIndex * 100}%)` }}
               >
                 {testimonials.map((testimonial, index) => (
-                  <div key={index} className="w-full flex-shrink-0 px-4">
-                    <TestimonialCard 
-                      testimonial={testimonial} 
-                      hoverEffect={cardHoverEffect} 
-                    />
+                  <div key={index} className="w-full flex-shrink-0 px-2">
+                    <TestimonialCard testimonial={testimonial} />
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Navigation Buttons */}
+            {/* Navigation - NEUTRAL with PRIMARY on hover */}
             {testimonials.length > 1 && (
               <>
                 <button
                   onClick={prevTestimonial}
-                  className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 rounded-full shadow-lg transition-all"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-white border border-gray-200 text-gray-500 p-1.5 rounded-full hover:text-primary-600 hover:border-primary-300 transition-colors"
+                  aria-label="Previous testimonial"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
+                  <ChevronLeft className="w-4 h-4" />
                 </button>
                 <button
                   onClick={nextTestimonial}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 rounded-full shadow-lg transition-all"
+                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 bg-white border border-gray-200 text-gray-500 p-1.5 rounded-full hover:text-primary-600 hover:border-primary-300 transition-colors"
+                  aria-label="Next testimonial"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+                  <ChevronRight className="w-4 h-4" />
                 </button>
               </>
             )}
 
-            {/* Dots Indicator */}
+            {/* Dots - PRIMARY for active, NEUTRAL for inactive */}
             {testimonials.length > 1 && (
-              <div className="flex justify-center mt-6 space-x-2">
+              <div className="flex justify-center mt-4 gap-1.5">
                 {testimonials.map((_, index) => (
                   <button
                     key={index}
                     onClick={() => setCurrentIndex(index)}
-                    className={`w-3 h-3 rounded-full transition-all ${
+                    className={`w-2 h-2 rounded-full transition-all ${
                       index === currentIndex
-                        ? "bg-primary-600"
-                        : "bg-gray-300 hover:bg-gray-400"
+                        ? "bg-primary-500 w-4"
+                        : "bg-gray-300"
                     }`}
+                    aria-label={`Go to testimonial ${index + 1}`}
                   />
                 ))}
               </div>
@@ -237,65 +197,26 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
     );
   }
 
-  if (layout === "grid-scroll") {
-    return (
-      <section
-        className={`w-full py-12 ${roundedEdges ? "rounded-lg" : ""}`}
-        style={{ backgroundColor }}
-      >
-        <div className="container mx-auto px-4">
-          {/* Header */}
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              {headerText}
-            </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              {description}
-            </p>
-          </div>
-
-          {/* Scrollable Grid */}
-          <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${
-            scrollEnabled ? "overflow-x-auto scrollbar-hide" : ""
-          }`}>
-            {testimonials.map((testimonial, index) => (
-              <TestimonialCard 
-                key={index} 
-                testimonial={testimonial} 
-                hoverEffect={cardHoverEffect} 
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  // Default grid layout
+  // Grid or Grid-Scroll Layout
   return (
-    <section
-      className={`w-full py-12 ${roundedEdges ? "rounded-lg" : ""}`}
-      style={{ backgroundColor }}
-    >
-      <div className="container mx-auto px-4">
+    <section className="w-full py-6 sm:py-8 bg-gray-50">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+        <div className="text-center mb-6">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-2">
             {headerText}
           </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+          <p className="text-sm text-gray-600 max-w-2xl mx-auto">
             {description}
           </p>
         </div>
 
         {/* Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 ${
+          layout === "grid-scroll" ? "overflow-x-auto scrollbar-hide" : ""
+        }`}>
           {testimonials.map((testimonial, index) => (
-            <TestimonialCard 
-              key={index} 
-              testimonial={testimonial} 
-              hoverEffect={cardHoverEffect} 
-            />
+            <TestimonialCard key={index} testimonial={testimonial} />
           ))}
         </div>
       </div>

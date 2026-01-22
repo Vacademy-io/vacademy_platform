@@ -9,9 +9,11 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.institute.entity.InstitutePaymentGatewayMapping;
@@ -64,6 +66,7 @@ public class MigrationV2Service {
     private final PaymentLogRepository paymentLogRepository;
     private final CustomFieldRepository customFieldRepository;
     private final CustomFieldValuesRepository customFieldValuesRepository;
+    private final InstituteCustomFieldRepository instituteCustomFieldRepository;
     private final UserInstitutePaymentGatewayMappingRepository userGatewayMappingRepository;
     private final InstitutePaymentGatewayMappingRepository instituteGatewayMappingRepository;
     private final TagRepository tagRepository;
@@ -222,6 +225,10 @@ public class MigrationV2Service {
         userDTO.setMobileNumber(item.getPhone());
         userDTO.setPassword(item.getPassword() != null ? item.getPassword() : generateRandomPassword());
         userDTO.setRoles(item.getEffectiveRoles());
+        // Set address fields so they are saved in the users table
+        userDTO.setAddressLine(item.getAddressLine());
+        userDTO.setCity(item.getCity());
+        userDTO.setPinCode(item.getPinCode());
 
         return authService.createUserFromAuthService(userDTO, instituteId, false);
     }
@@ -267,8 +274,19 @@ public class MigrationV2Service {
             return field.isPresent() ? cf.getCustomFieldId() : null;
         }
 
-        // Priority 2: Field key
+        // Priority 2: Field key - search within institute's custom fields
         if (StringUtils.hasText(cf.getFieldKey())) {
+            // Find custom field by field_key that is linked to this institute
+            List<Object[]> results = instituteCustomFieldRepository.findAllActiveCustomFieldsWithDetailsByInstituteId(instituteId);
+            for (Object[] row : results) {
+                InstituteCustomField icf = (InstituteCustomField) row[0];
+                CustomFields customField = (CustomFields) row[1];
+                if (cf.getFieldKey().equals(customField.getFieldKey()) && 
+                    StatusEnum.ACTIVE.name().equals(icf.getStatus())) {
+                    return customField.getId();
+                }
+            }
+            // Fallback: try global search if not found in institute
             Optional<CustomFields> field = customFieldRepository.findByFieldKey(cf.getFieldKey());
             return field.map(CustomFields::getId).orElse(null);
         }
@@ -507,17 +525,48 @@ public class MigrationV2Service {
             return EnrollmentImportResultDTO.failed(index, null, "Email is required");
         }
 
-        // Find user by looking up via student email
+        // Find user by email - try multiple approaches
+        String userId = null;
+        UserDTO user = null;
+        
+        // Approach 1: Try to find student with SSIGM (for users already enrolled in this institute)
         Optional<Student> studentOpt = studentRepository.findTopStudentByEmailAndInstituteIdOrderByMappingCreatedAtDesc(
                 item.getEmail(), instituteId);
-        if (studentOpt.isEmpty()) {
-            return EnrollmentImportResultDTO.failed(index, item.getEmail(),
-                    "User not found with email: " + item.getEmail());
+        if (studentOpt.isPresent()) {
+            userId = studentOpt.get().getUserId();
+            user = new UserDTO();
+            user.setId(userId);
+            user.setEmail(item.getEmail());
+        } else {
+            // Approach 2: Find student directly by email (for users created via bulk import but not yet enrolled)
+            // Convert Iterable to List and find by email
+            List<Student> allStudents = new ArrayList<>();
+            studentRepository.findAll().forEach(allStudents::add);
+            
+            Optional<Student> studentByEmailOpt = allStudents.stream()
+                    .filter(s -> s.getEmail() != null && s.getEmail().equalsIgnoreCase(item.getEmail()))
+                    .max((s1, s2) -> {
+                        if (s1.getCreatedAt() != null && s2.getCreatedAt() != null) {
+                            return s1.getCreatedAt().compareTo(s2.getCreatedAt());
+                        }
+                        return 0;
+                    });
+            
+            if (studentByEmailOpt.isPresent()) {
+                Student student = studentByEmailOpt.get();
+                userId = student.getUserId();
+                if (userId != null) {
+                    user = new UserDTO();
+                    user.setId(userId);
+                    user.setEmail(item.getEmail());
+                }
+            }
         }
-        String userId = studentOpt.get().getUserId();
-        UserDTO user = new UserDTO();
-        user.setId(userId);
-        user.setEmail(item.getEmail());
+        
+        if (userId == null || user == null) {
+            return EnrollmentImportResultDTO.failed(index, item.getEmail(),
+                    "User not found with email: " + item.getEmail() + ". Please ensure the user was created via bulk user import API first.");
+        }
 
         // Resolve package session
         String packageSessionId = resolvePackageSessionId(item, request.getEffectiveDefaults());
@@ -871,7 +920,12 @@ public class MigrationV2Service {
             log.setPaymentAmount(payment.getAmount() != null ? payment.getAmount().doubleValue() : null);
             log.setDate(payment.getDate() != null ? payment.getDate() : new Date());
             log.setPaymentStatus(payment.getEffectiveStatus());
-            log.setVendor(payment.getEffectiveVendor());
+            String vendor = payment.getEffectiveVendor();
+            log.setVendor(vendor);
+            // Set vendorId to same as vendor
+            log.setVendorId(vendor);
+            // Set currency from DTO
+            log.setCurrency(payment.getEffectiveCurrency());
             log.setStatus("ACTIVE");
 
             // Store transaction ID in payment specific data

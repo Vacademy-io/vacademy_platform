@@ -11,6 +11,9 @@ import vacademy.io.admin_core_service.features.session.dto.BatchInstituteProject
 import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -26,6 +29,82 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
         List<PackageSession> findPackageSessionsByInstituteId(
                         @Param("instituteId") String instituteId,
                         @Param("statuses") List<String> statuses);
+
+        /**
+         * Paginated query to fetch package sessions by institute with optional filters.
+         * Supports filtering by session ID, level ID, package ID, status, and search.
+         * Search performs case-insensitive partial matching on package name, level
+         * name, and session name.
+         * Supports sorting by package_name, level_name, session_name, or created_at.
+         */
+        @Query(value = "SELECT ps.* " +
+                        "FROM package_session ps " +
+                        "JOIN package_institute pi ON ps.package_id = pi.package_id " +
+                        "JOIN package p ON ps.package_id = p.id " +
+                        "JOIN level l ON ps.level_id = l.id " +
+                        "JOIN session s ON ps.session_id = s.id " +
+                        "WHERE pi.institute_id = :instituteId " +
+                        "AND ps.status IN (:statuses) " +
+                        "AND (:sessionId IS NULL OR ps.session_id = :sessionId) " +
+                        "AND (:levelId IS NULL OR ps.level_id = :levelId) " +
+                        "AND (:packageId IS NULL OR ps.package_id = :packageId) " +
+                        "AND (:search IS NULL OR :search = '' OR " +
+                        "     LOWER(p.package_name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                        "     LOWER(l.level_name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                        "     LOWER(s.session_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+                        "AND (:packageSessionIds IS NULL OR ps.id IN (:packageSessionIds)) " +
+                        "ORDER BY " +
+                        "CASE WHEN :sortBy = 'package_name' AND :sortDirection = 'ASC' THEN p.package_name END ASC, " +
+                        "CASE WHEN :sortBy = 'package_name' AND :sortDirection = 'DESC' THEN p.package_name END DESC, "
+                        +
+                        "CASE WHEN :sortBy = 'level_name' AND :sortDirection = 'ASC' THEN l.level_name END ASC, " +
+                        "CASE WHEN :sortBy = 'level_name' AND :sortDirection = 'DESC' THEN l.level_name END DESC, " +
+                        "CASE WHEN :sortBy = 'session_name' AND :sortDirection = 'ASC' THEN s.session_name END ASC, " +
+                        "CASE WHEN :sortBy = 'session_name' AND :sortDirection = 'DESC' THEN s.session_name END DESC, "
+                        +
+                        "CASE WHEN :sortBy = 'created_at' AND :sortDirection = 'ASC' THEN ps.created_at END ASC, " +
+                        "CASE WHEN :sortBy = 'created_at' AND :sortDirection = 'DESC' THEN ps.created_at END DESC, " +
+                        "ps.created_at DESC", countQuery = "SELECT COUNT(ps.id) " +
+                                        "FROM package_session ps " +
+                                        "JOIN package_institute pi ON ps.package_id = pi.package_id " +
+                                        "JOIN package p ON ps.package_id = p.id " +
+                                        "JOIN level l ON ps.level_id = l.id " +
+                                        "JOIN session s ON ps.session_id = s.id " +
+                                        "WHERE pi.institute_id = :instituteId " +
+                                        "AND ps.status IN (:statuses) " +
+                                        "AND (:sessionId IS NULL OR ps.session_id = :sessionId) " +
+                                        "AND (:levelId IS NULL OR ps.level_id = :levelId) " +
+                                        "AND (:packageId IS NULL OR ps.package_id = :packageId) " +
+                                        "AND (:search IS NULL OR :search = '' OR " +
+                                        "     LOWER(p.package_name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                                        "     LOWER(l.level_name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+                                        "     LOWER(s.session_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+                                        "AND (:packageSessionIds IS NULL OR ps.id IN (:packageSessionIds))", nativeQuery = true)
+        Page<PackageSession> findPackageSessionsByInstituteIdPaginated(
+                        @Param("instituteId") String instituteId,
+                        @Param("statuses") List<String> statuses,
+                        @Param("sessionId") String sessionId,
+                        @Param("levelId") String levelId,
+                        @Param("packageId") String packageId,
+                        @Param("search") String search,
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("sortBy") String sortBy,
+                        @Param("sortDirection") String sortDirection,
+                        Pageable pageable);
+
+        /**
+         * Fetch package sessions by specific IDs for batch lookup.
+         * Used for ID resolution (displaying selected filter badges, showing batch
+         * names in tables).
+         */
+        @Query(value = "SELECT ps.* " +
+                        "FROM package_session ps " +
+                        "JOIN package_institute pi ON ps.package_id = pi.package_id " +
+                        "WHERE pi.institute_id = :instituteId " +
+                        "AND ps.id IN (:ids)", nativeQuery = true)
+        List<PackageSession> findPackageSessionsByInstituteIdAndIds(
+                        @Param("instituteId") String instituteId,
+                        @Param("ids") List<String> ids);
 
         @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id, ps.group_id, ps.is_org_associated, ps.available_slots "
                         +

@@ -312,7 +312,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const hideSearchAndCart = shouldHideSearchAndCart();
 
     // Consistent header height using design tokens
-    const headerHeight = 'h-14 md:h-16';
+    const headerHeight = 'h-16 md:h-20';
     const headerTopOffset = isIOS ? 'pt-8' : '';
 
     return (
@@ -363,7 +363,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   src={jsonLogoUrl}
                   alt="Logo"
                   onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                  className={`h-10 md:h-12 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${
+                  className={`max-h-12 md:max-h-16 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${
                     domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
                   }`}
                   onError={(e) => {

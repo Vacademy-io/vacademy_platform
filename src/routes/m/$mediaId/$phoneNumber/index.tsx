@@ -12,7 +12,20 @@ export const Route = createFileRoute("/m/$mediaId/$phoneNumber/")({
 });
 
 function PublicMediaPage() {
-    const { mediaId, phoneNumber: _phoneNumber } = Route.useParams();
+    const params = Route.useParams();
+    
+    // Sometimes during SPA navigation, params might be undefined momentarily
+    // In that case, fall back to parsing the URL directly
+    let mediaId = params.mediaId || '';
+    
+    if (!mediaId) {
+        // Fallback: Parse params from URL directly
+        // URL structure: /m/$mediaId/$phoneNumber
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        if (pathParts.length >= 2 && pathParts[0] === 'm') {
+            mediaId = pathParts[1] || '';
+        }
+    }
 
     const {
         data: mediaDetails,
@@ -23,6 +36,7 @@ function PublicMediaPage() {
         queryFn: () => getPublicMediaDetails(mediaId),
         staleTime: 1000 * 60 * 5, // 5 minutes
         retry: 2,
+        enabled: !!mediaId, // Only run query when we have a mediaId
     });
 
     // Loading state - minimal centered loader (fixed fullscreen)

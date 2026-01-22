@@ -26,9 +26,22 @@ export const Route = createFileRoute("/study-library/live-class/$username/")({
 });
 
 function RouteComponent() {
-  const { username } = Route.useParams();
+  const params = Route.useParams();
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
+
+  // Sometimes during SPA navigation, params might be undefined momentarily
+  // In that case, fall back to parsing the URL directly
+  let username = params.username || '';
+  
+  if (!username) {
+    // Fallback: Parse params from URL directly
+    // URL structure: /study-library/live-class/$username
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    if (pathParts.length >= 3 && pathParts[0] === 'study-library' && pathParts[1] === 'live-class') {
+      username = pathParts[2] || '';
+    }
+  }
 
   const [authState, setAuthState] = useState<
     "loading" | "authenticated" | "unauthenticated"

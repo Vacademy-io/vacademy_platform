@@ -12,7 +12,21 @@ export const Route = createFileRoute("/my-reports/$processId/")({
 
 function RouteComponent() {
   const navigate = useNavigate();
-  const { processId } = Route.useParams();
+  const params = Route.useParams();
+  
+  // Sometimes during SPA navigation, params might be undefined momentarily
+  // In that case, fall back to parsing the URL directly
+  let processId = params.processId || '';
+  
+  if (!processId) {
+    // Fallback: Parse params from URL directly
+    // URL structure: /my-reports/$processId
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    if (pathParts.length >= 2 && pathParts[0] === 'my-reports') {
+      processId = pathParts[1] || '';
+    }
+  }
+  
   const { permissions, isLoading: permissionsLoading } =
     useStudentPermissions();
   const { selectedReport } = useReportStore();

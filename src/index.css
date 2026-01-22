@@ -1,3 +1,6 @@
+/* Catalogue Design Tokens - Clean, minimal design system */
+@import './styles/catalogue-tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

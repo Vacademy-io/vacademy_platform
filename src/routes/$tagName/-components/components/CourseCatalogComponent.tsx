@@ -92,23 +92,22 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
   // Show loading placeholder while loading
   if (loadingImage && !courseImageUrl) {
     return (
-      <div className="aspect-w-16 aspect-h-9">
-        <div className="w-full h-full bg-gray-200 animate-pulse rounded-lg flex items-center justify-center">
-          <div className="text-gray-400 text-sm">Loading...</div>
+      <div className="aspect-video">
+        <div className="w-full h-full bg-[hsl(var(--catalogue-bg-muted))] animate-pulse rounded-md flex items-center justify-center">
+          <div className="text-[hsl(var(--catalogue-text-muted))] text-xs">Loading...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="aspect-w-16 aspect-h-9">
+    <div className="aspect-video">
       <img
         src={courseImageUrl}
         alt={alt}
         className={className}
         loading="lazy"
         onError={() => {
-          // Don't show placeholder on error, just hide the component
           setImageError(true);
           setCourseImageUrl("");
         }}
@@ -117,7 +116,7 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
         }}
         style={{
           opacity: 1,
-          transition: 'opacity 0.3s ease'
+          transition: 'opacity 0.2s ease'
         }}
       />
     </div>
@@ -173,33 +172,32 @@ const FilterSection: React.FC<FilterSectionProps> = ({
     canExpand && !isExpanded ? items.slice(0, initialDisplayCount) : items;
 
   return (
-    <div className="mb-4 sm:mb-6">
-      <h3 className="text-base sm:text-lg font-semibold text-gray-700 mb-2 sm:mb-3">{title}</h3>
-      <div className="space-y-2">
+    <div className="mb-4">
+      <h3 className="text-sm font-medium text-gray-800 mb-2">{title}</h3>
+      <div className="space-y-1.5">
         {items.length === 0 && !disabled && (
-          <p className="text-sm text-gray-500">
+          <p className="text-xs text-gray-500">
             No {title.toLowerCase()} available.
           </p>
         )}
         {disabled && (
-          <p className="text-sm text-gray-500">
+          <p className="text-xs text-gray-500">
             {title} filters are currently unavailable.
           </p>
         )}
         {itemsToDisplay.map((item) => (
           <label
             key={item.id}
-            className={`flex items-center text-gray-600 hover:text-gray-800 ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-              }`}
+            className={`flex items-center text-gray-600 hover:text-gray-900 ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
           >
             <input
               type="checkbox"
-              className="form-checkbox h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mr-2"
+              className="form-checkbox h-3.5 w-3.5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 mr-2"
               checked={selectedItems.includes(item.id)}
               onChange={() => handleChange(item.id)}
               disabled={disabled}
             />
-            <span className="text-sm sm:text-base">{item.name}</span>
+            <span className="text-sm">{item.name}</span>
           </label>
         ))}
       </div>
@@ -208,20 +206,20 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           disabled={disabled}
-          className={`text-sm mt-2 flex items-center gap-1 ${disabled
-              ? "text-gray-400 cursor-not-allowed"
-              : "text-blue-600 hover:text-blue-800"
-            }`}
+          className={`text-xs mt-1.5 flex items-center gap-1 ${disabled
+            ? "text-gray-400 cursor-not-allowed"
+            : "text-primary-600 hover:text-primary-700"
+          }`}
         >
           {isExpanded ? (
             <>
               Show Less
-              <ChevronUp size={14} />
+              <ChevronUp size={12} />
             </>
           ) : (
             <>
               Show More
-              <ChevronDown size={14} />
+              <ChevronDown size={12} />
             </>
           )}
         </button>
@@ -257,20 +255,18 @@ const CartControls: React.FC<{
   }
 
   if (cartItem && showQuantitySelector) {
-    // Show quantity controls if item is in cart and quantity selector is enabled
     return (
-      <div className="flex items-center gap-1.5 border border-gray-300 rounded-md px-1.5 py-1 bg-white">
+      <div className="flex items-center gap-1 border border-[hsl(var(--catalogue-border))] rounded-md px-1 py-0.5 bg-white">
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0 hover:bg-gray-100"
+          className="h-6 w-6 p-0 hover:bg-[hsl(var(--catalogue-interactive-hover))]"
           onClick={(e) => {
             e.stopPropagation();
             if (cartItem && course.enrollInviteId) {
               if (cartItem.quantity > quantityMin) {
                 updateQuantity(course.enrollInviteId, cartItem.quantity - 1);
               } else {
-                // Remove from cart if quantity reaches minimum
                 removeItem(course.enrollInviteId);
                 toast.success(`${course.title} removed from cart`);
               }
@@ -279,13 +275,13 @@ const CartControls: React.FC<{
         >
           <Minus className="h-3 w-3" />
         </Button>
-        <span className="min-w-[32px] text-center font-medium text-gray-900 text-sm">
+        <span className="min-w-[24px] text-center font-medium text-[hsl(var(--catalogue-text-primary))] text-xs">
           {cartItem.quantity}
         </span>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0 hover:bg-gray-100"
+          className="h-6 w-6 p-0 hover:bg-gray-100"
           onClick={(e) => {
             e.stopPropagation();
             if (cartItem && course.enrollInviteId) {
@@ -298,11 +294,10 @@ const CartControls: React.FC<{
       </div>
     );
   } else if (!cartItem && showAddToCartButton) {
-    // Show Add to Cart button if item is not in cart and button is enabled
     return (
       <Button
         onClick={(e) => {
-          e.stopPropagation(); // Prevent card click
+          e.stopPropagation();
           if (!course.enrollInviteId) {
             toast.error('Cannot add item to cart: missing enroll invite ID');
             return;
@@ -320,11 +315,11 @@ const CartControls: React.FC<{
           });
           toast.success(`${course.title} added to cart!`);
         }}
-        className="bg-primary hover:bg-primary-400 text-white text-sm font-medium rounded-md px-3 py-1.5 flex items-center justify-center gap-2 shadow-sm"
+        className="bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium rounded-md px-2.5 py-1 flex items-center justify-center gap-1.5"
         size="sm"
       >
-        <ShoppingCart className="h-4 w-4" />
-        <span>Add to Cart</span>
+        <ShoppingCart className="h-3.5 w-3.5" />
+        <span>Add</span>
       </Button>
     );
   }
@@ -819,13 +814,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
   if (isLoading) {
     return (
-      <div className="py-12 w-full">
+      <div className="py-6 w-full">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-1/4 mb-8"></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="h-6 bg-[hsl(var(--catalogue-bg-muted))] rounded w-1/4 mb-6"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-gray-200 rounded-lg h-64"></div>
+                <div key={i} className="bg-[hsl(var(--catalogue-bg-muted))] rounded-lg h-56"></div>
               ))}
             </div>
           </div>
@@ -835,36 +830,35 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   }
 
   return (
-    <div ref={scrollRef} className="py-12 bg-gray-50 w-full">
+    <div ref={scrollRef} className="py-6 bg-[hsl(var(--catalogue-bg-subtle))] w-full">
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-8">{title}</h2>
+        <h2 className="text-xl sm:text-2xl font-bold text-[hsl(var(--catalogue-text-primary))] mb-4">{title}</h2>
 
         <div
-          className={`flex flex-col ${shouldRenderFiltersPanel ? "lg:flex-row" : ""} p-2 sm:p-4 lg:p-8 bg-gray-50 min-h-screen`}
+          className={`flex flex-col ${shouldRenderFiltersPanel ? "lg:flex-row" : ""} gap-4 lg:gap-6`}
         >
-          {/* Filter Panel - Full width on mobile, sidebar on desktop */}
           {shouldRenderFiltersPanel && (
-            <div className="w-full lg:w-1/4 lg:pr-8 mb-6 lg:mb-0 order-1">
-              <div className="lg:sticky lg:top-8">
-                <div className="bg-white p-4 sm:p-6 rounded-lg shadow">
-                  {/* Mobile Header - Only visible on mobile */}
-                  <div className="lg:hidden mb-4">
+            <div className="w-full lg:w-64 lg:flex-shrink-0 order-1">
+              <div className="lg:sticky lg:top-20">
+                <div className="bg-white p-3 sm:p-4 rounded-lg border border-[hsl(var(--catalogue-border-subtle))]">
+                  {/* Mobile Header */}
+                  <div className="lg:hidden mb-3">
                     <button
                       onClick={() => setIsMobileFilterExpanded(!isMobileFilterExpanded)}
-                      className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      className="w-full flex items-center justify-between p-2 bg-[hsl(var(--catalogue-bg-subtle))] rounded-md hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors"
                     >
-                      <div className="flex items-center space-x-2">
-                        <Filter size={18} className="text-gray-600" />
-                        <span className="text-sm font-semibold text-gray-900">Filters</span>
+                      <div className="flex items-center gap-2">
+                        <Filter size={16} className="text-[hsl(var(--catalogue-text-secondary))]" />
+                        <span className="text-sm font-medium text-[hsl(var(--catalogue-text-primary))]">Filters</span>
                         {hasActiveFilters && (
-                          <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-1 rounded-full">
+                          <span className="bg-primary-100 text-primary-700 text-xs font-medium px-1.5 py-0.5 rounded-full">
                             {filterBadgeCount}
                           </span>
                         )}
                       </div>
                       <ChevronDown
-                        size={16}
-                        className={`text-gray-500 transition-transform ${isMobileFilterExpanded ? "rotate-180" : ""}`}
+                        size={14}
+                        className={`text-[hsl(var(--catalogue-text-muted))] transition-transform ${isMobileFilterExpanded ? "rotate-180" : ""}`}
                       />
                     </button>
                   </div>
@@ -1026,20 +1020,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             </div>
 
             {/* Course Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               {paginatedCourses.map((course, index) => (
                 <div
                   key={`${course.id}-${index}-${currentPage}`}
-                  className={`bg-white rounded-lg shadow-md overflow-hidden cursor-pointer transition-all duration-300 ${render?.styles?.hoverEffect === 'scale'
-                      ? 'hover:scale-105 hover:shadow-lg'
-                      : render?.styles?.hoverEffect === 'shadow'
-                        ? 'hover:shadow-lg'
-                        : 'hover:shadow-lg'
-                    } ${render?.styles?.roundedEdges ? 'rounded-lg' : 'rounded-none'
-                    }`}
-                  style={{
-                    backgroundColor: render?.styles?.backgroundColor || '#ffffff'
-                  }}
+                  className={`bg-white overflow-hidden cursor-pointer transition-colors duration-200 border border-gray-200 hover:border-gray-300 ${
+                    render?.styles?.roundedEdges !== false ? 'rounded-lg' : 'rounded-none'
+                  }`}
                   onClick={() => handleCourseClick(course)}
                 >
                   {/* Course Thumbnail */}
@@ -1047,70 +1034,64 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     <CourseImage
                       previewImageUrl={course.thumbnail}
                       alt={course.title}
-                      className="w-full h-48 object-cover"
+                      className="w-full h-40 object-cover"
                     />
                   )}
 
-                  <div className="p-4 sm:p-6">
+                  <div className="p-3">
                     {/* Course Title */}
                     {displayTitle && (
-                      <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2 line-clamp-2">
+                      <h3 className="text-base font-semibold text-gray-900 mb-1.5 line-clamp-2">
                         {course.title}
                       </h3>
                     )}
 
                     {/* Course Description */}
                     {displayDescription && (
-                      <p className="text-sm sm:text-base text-gray-600 mb-4 line-clamp-2 sm:line-clamp-3">
+                      <p className="text-sm text-gray-600 mb-2 line-clamp-2">
                         {course.description}
                       </p>
                     )}
 
                     {/* Course Info */}
-                    <div className="flex flex-col gap-3">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-start justify-between gap-3">
-                          {/* Price - Only show if payment is enabled */}
-                          {displayPrice && globalSettings?.payment?.enabled !== false && (
-                            <span className="text-xl sm:text-2xl font-bold text-primary-600">
-                              {course.price === 0 ? "Free" : `₹${course.price.toFixed(2)}`}
-                            </span>
-                          )}
+                    <div className="flex flex-col gap-2">
+                      {/* Price */}
+                      {displayPrice && globalSettings?.payment?.enabled !== false && (
+                        <span className="text-lg font-bold text-primary-600">
+                          {course.price === 0 ? "Free" : `₹${course.price.toFixed(2)}`}
+                        </span>
+                      )}
 
-
-                        </div>
-
-                        {/* Badges */}
-                        {(displayLevel || displayRating) && (
-                          <div className="flex justify-between h-8 gap-2">
+                      {/* Badges and Cart */}
+                      {(displayLevel || displayRating || shouldShowCartControls) && (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             {displayLevel && (
-                              <span className="px-2 py-1 bg-primary-100 text-primary-800 text-xs sm:text-sm rounded-full">
+                              <span className="px-2 py-0.5 bg-primary-50 text-primary-700 text-xs rounded-md">
                                 {course.level}
                               </span>
                             )}
                             {displayRating && course.rating > 0 && (
-                              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs sm:text-sm rounded-full">
+                              <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-xs rounded-md">
                                 ⭐ {course.rating.toFixed(1)}
                               </span>
                             )}
-
-                            {/* Add to Cart Button or Quantity Controls */}
-                            {shouldShowCartControls && (
-                              <div className="flex-shrink-0">
-                                <CartControls
-                                  course={course}
-                                  globalSettings={globalSettings}
-                                  cartButtonConfig={cartButtonConfig}
-                                  addItem={addItem}
-                                  getItemByEnrollInviteId={getItemByEnrollInviteId}
-                                  updateQuantity={updateQuantity}
-                                  removeItem={removeItem}
-                                />
-                              </div>
-                            )}
                           </div>
-                        )}
-                      </div>
+
+                          {/* Add to Cart Button or Quantity Controls */}
+                          {shouldShowCartControls && (
+                            <CartControls
+                              course={course}
+                              globalSettings={globalSettings}
+                              cartButtonConfig={cartButtonConfig}
+                              addItem={addItem}
+                              getItemByEnrollInviteId={getItemByEnrollInviteId}
+                              updateQuantity={updateQuantity}
+                              removeItem={removeItem}
+                            />
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1119,8 +1100,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
             {/* No Results */}
             {filteredCourses.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-gray-500 text-lg">No courses found matching your criteria.</p>
+              <div className="text-center py-8">
+                <p className="text-gray-500 text-base">No courses found matching your criteria.</p>
               </div>
             )}
 

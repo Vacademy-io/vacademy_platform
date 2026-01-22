@@ -13,10 +13,22 @@ export const Route = createFileRoute("/$tagName/")({
 
 function RouteComponent() {
   // console.log("[Course Catalogue] RouteComponent function called");
-  const { tagName } = Route.useParams() as { tagName: string };
+  const params = Route.useParams() as { tagName: string };
   const domainRouting = useDomainRouting();
+  
+  // Sometimes during SPA navigation/redirect, params might be undefined momentarily
+  // In that case, fall back to parsing the URL directly
+  let resolvedTagName = params.tagName || '';
+  
+  if (!resolvedTagName) {
+    // Fallback: Parse params from URL directly
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    if (pathParts.length >= 1) {
+      resolvedTagName = pathParts[0] || '';
+    }
+  }
     
-  // console.log("[Course Catalogue] RouteComponent mounted with tagName:", tagName);
+  // console.log("[Course Catalogue] RouteComponent mounted with tagName:", resolvedTagName);
   const [hasRetried, setHasRetried] = useState(false);
 
   // Debug logging to track domain routing
@@ -38,6 +50,12 @@ function RouteComponent() {
       domainRouting.resolveRouting();
     }
   }, [domainRouting.isLoading, domainRouting.instituteId, hasRetried, domainRouting]);
+
+  // Guard: If tagName is still not available after URL fallback, show loading
+  if (!resolvedTagName) {
+    console.log("[Course Catalogue] Waiting for tagName param...", { tagName: params.tagName, resolvedTagName });
+    return <DashboardLoader />;
+  }
 
   // Show loading while domain routing is resolving
   // Also show loading if we are in the process of retrying
@@ -83,7 +101,7 @@ function RouteComponent() {
 
   return (
     <CourseCataloguePage
-      tagName={tagName}
+      tagName={resolvedTagName}
       instituteId={domainRouting.instituteId}
       instituteThemeCode={domainRouting.instituteThemeCode}
     />

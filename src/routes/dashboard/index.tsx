@@ -63,6 +63,9 @@ import { StatCard } from "./-components/DashboardStatCard";
 import { ContinueLearningCard } from "./-components/DashboardContinueLearningCard";
 import { cn } from "@/lib/utils";
 import { getChatbotSettings } from "@/services/chatbot-settings";
+import { MyMembershipWidget } from "./-components/MyMembershipWidget";
+import { MyBooksWidget } from "./-components/MyBooksWidget";
+import { Preferences } from "@capacitor/preferences";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -581,6 +584,16 @@ export function DashboardComponent() {
                     </Card>
                   ) : null,
                 },
+                {
+                  id: "myMembership" as const,
+                  className: "sm:col-span-2",
+                  render: <MyMembershipWidget />,
+                },
+                {
+                  id: "myBooks" as const,
+                  className: "sm:col-span-2",
+                  render: <MyBooksWidget />,
+                },
               ]
                 .filter((w) => isWidgetVisible(w.id) && w.render)
                 .sort((a, b) => getWidgetOrder(a.id) - getWidgetOrder(b.id))
@@ -608,6 +621,42 @@ export function DashboardComponent() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Explore Buttons Section */}
+            {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+              <div className="flex flex-wrap items-center justify-center gap-3 mt-4 pb-12 px-4">
+                {isWidgetVisible("myMembership") && (
+                  <Button
+                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
+                    onClick={async () => {
+                      sessionStorage.setItem("levelFilter", "rent");
+                      const details = await Preferences.get({ key: "InstituteDetails" });
+                      const themeCode = details.value ? JSON.parse(details.value).institute_theme_code : "";
+                      const tagName = themeCode || "collections";
+                      navigate({ to: "/collections" as never });
+                    }}
+                  >
+                    Explore Memberships
+                    <ChevronRight size={14} />
+                  </Button>
+                )}
+                {isWidgetVisible("myBooks") && (
+                  <Button
+                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
+                    onClick={async () => {
+                      sessionStorage.setItem("levelFilter", "buy");
+                      const details = await Preferences.get({ key: "InstituteDetails" });
+                      const themeCode = details.value ? JSON.parse(details.value).institute_theme_code : "";
+                      const tagName = themeCode || "collections";
+                      navigate({ to: "/collections" as never });
+                    }}
+                  >
+                    Explore Books
+                    <ChevronRight size={14} />
+                  </Button>
+                )}
+              </div>
             )}
           </>
         )}

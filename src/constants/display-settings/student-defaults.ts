@@ -88,6 +88,8 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
     "thisWeekAttendance",
     "referAFriend",
     "myClasses",
+    "myMembership",
+    "myBooks",
   ];
   return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
 }

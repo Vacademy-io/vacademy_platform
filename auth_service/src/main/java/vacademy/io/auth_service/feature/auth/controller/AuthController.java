@@ -80,4 +80,24 @@ public class AuthController {
     public JwtResponseDto loginViaWhatsAppOtp(@RequestBody AuthRequestDto authRequestDTO) {
         return authManager.loginViaWhatsAppOtp(authRequestDTO);
     }
+
+    /**
+     * Request WhatsApp OTP without user validation.
+     * Use this for generic verification scenarios (guest checkout, lead
+     * verification, etc.)
+     */
+    @PostMapping("/request-generic-whatsapp-otp")
+    public String requestGenericWhatsAppOtp(@RequestBody AuthRequestDto authRequestDTO) {
+        return authManager.requestGenericWhatsAppOtp(authRequestDTO);
+    }
+
+    /**
+     * Verify WhatsApp OTP without user validation or JWT generation.
+     * Returns success/failure status only.
+     */
+    @PostMapping("/verify-generic-whatsapp-otp")
+    public ResponseEntity<Boolean> verifyGenericWhatsAppOtp(@RequestBody AuthRequestDto authRequestDTO) {
+        boolean isValid = authManager.verifyGenericWhatsAppOtp(authRequestDTO);
+        return ResponseEntity.ok(isValid);
+    }
 }

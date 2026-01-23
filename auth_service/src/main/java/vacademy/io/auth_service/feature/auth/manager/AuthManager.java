@@ -383,4 +383,50 @@ public class AuthManager {
         }
     }
 
+    /**
+     * Request WhatsApp OTP without user validation.
+     * Use this for generic verification scenarios (guest checkout, lead
+     * verification, etc.)
+     * Reuses existing notification service flow.
+     */
+    public String requestGenericWhatsAppOtp(AuthRequestDto authRequestDTO) {
+        if (authRequestDTO.getPhoneNumber() == null || authRequestDTO.getInstituteId() == null) {
+            throw new VacademyException("Phone number and Institute ID are required");
+        }
+
+        // Fetch template config (same as login flow)
+        NotificationTemplateConfigDTO templateConfig = notificationService
+                .getTemplateConfig("OTP_REQUEST", authRequestDTO.getInstituteId(), "WHATSAPP");
+
+        // Send WhatsApp OTP via notification service (same as login flow)
+        WhatsAppOTPRequest whatsAppOTPRequest = WhatsAppOTPRequest.builder()
+                .phoneNumber(authRequestDTO.getPhoneNumber())
+                .instituteId(authRequestDTO.getInstituteId())
+                .templateName(templateConfig.getTemplateName())
+                .languageCode(templateConfig.getLanguageCode())
+                .settingJson(templateConfig.getSettingJson())
+                .build();
+
+        notificationService.sendWhatsAppOtp(whatsAppOTPRequest);
+        return "WhatsApp OTP sent to " + authRequestDTO.getPhoneNumber();
+    }
+
+    /**
+     * Verify WhatsApp OTP without user validation or JWT generation.
+     * Returns true if OTP is valid, false otherwise.
+     * Reuses existing notification service verification.
+     */
+    public boolean verifyGenericWhatsAppOtp(AuthRequestDto authRequestDTO) {
+        if (authRequestDTO.getOtp() == null || authRequestDTO.getPhoneNumber() == null) {
+            throw new VacademyException("OTP and phone number are required");
+        }
+
+        WhatsAppOTPVerifyRequest verifyRequest = WhatsAppOTPVerifyRequest.builder()
+                .phoneNumber(authRequestDTO.getPhoneNumber())
+                .otp(authRequestDTO.getOtp())
+                .build();
+
+        return notificationService.verifyWhatsAppOTP(verifyRequest);
+    }
+
 }

@@ -127,7 +127,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
   useEffect(() => {
     const checkLevelFilter = () => {
       const levelFilter = sessionStorage.getItem('levelFilter') || '';
-      const newMode = levelFilter.includes('Rent') ? 'rent' : 'buy';
+      const newMode = levelFilter.toLowerCase().includes('rent') ? 'rent' : 'buy';
       if (newMode !== cartMode) {
         setCartMode(newMode);
         syncCart();

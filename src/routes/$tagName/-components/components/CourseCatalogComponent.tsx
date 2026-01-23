@@ -209,7 +209,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
           className={`text-xs mt-1.5 flex items-center gap-1 ${disabled
             ? "text-gray-400 cursor-not-allowed"
             : "text-primary-600 hover:text-primary-700"
-          }`}
+            }`}
         >
           {isExpanded ? (
             <>
@@ -634,7 +634,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
         // For Buy/Rent filters, also check level_name field directly from API
         // since "Buy" and "Rent" might be stored in level_name
         const isBuyRentFilter = selectedLevels.some(level =>
-          level === "Buy" || level === "Rent"
+          level?.toLowerCase() === "buy" || level?.toLowerCase() === "rent"
         );
 
         if (isBuyRentFilter) {
@@ -1024,9 +1024,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
               {paginatedCourses.map((course, index) => (
                 <div
                   key={`${course.id}-${index}-${currentPage}`}
-                  className={`bg-white overflow-hidden cursor-pointer transition-colors duration-200 border border-gray-200 hover:border-gray-300 ${
-                    render?.styles?.roundedEdges !== false ? 'rounded-lg' : 'rounded-none'
-                  }`}
+                  className={`bg-white overflow-hidden cursor-pointer transition-colors duration-200 border border-gray-200 hover:border-gray-300 ${render?.styles?.roundedEdges !== false ? 'rounded-lg' : 'rounded-none'
+                    }`}
                   onClick={() => handleCourseClick(course)}
                 >
                   {/* Course Thumbnail */}
@@ -1122,8 +1121,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       key={i + 1}
                       onClick={() => setCurrentPage(i + 1)}
                       className={`px-3 py-2 ${currentPage === i + 1
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-white text-gray-700 hover:bg-gray-50'
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
                         }`}
                     >
                       {i + 1}

@@ -3,21 +3,16 @@ import Footer from "./Footer.tsx";
 import CoursesPage from "./CoursesPage.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
 import axios from "axios";
-import { useNavigate } from "@tanstack/react-router";
 import {
     urlInstituteDetails,
     urlCourseDetails,
     urlInstructor,
 } from "@/constants/urls.ts";
 import CourseListHeader from "./CourseListHeader.tsx";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility.ts";
-import { TokenKey } from "@/constants/auth/tokens.ts";
-import { isNullOrEmptyOrUndefined } from "@/lib/utils.ts";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
 import { useTheme } from "@/providers/theme/theme-provider.tsx";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 // Auth modal is controlled within CourseListHeader via URL params
-import { Preferences } from "@capacitor/preferences";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 
 interface CourseCatalougePageProps {
@@ -25,7 +20,6 @@ interface CourseCatalougePageProps {
 }
 
 const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }) => {
-    const navigate = useNavigate();
     const { setCourseData, instituteData, setInstituteData, setInstructors } =
         useCatalogStore();
     const { setPrimaryColor } = useTheme();
@@ -207,37 +201,6 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
         fetchInstructor();
     }, [instituteId]); // ✅ Add dependency
 
-    useEffect(() => {
-        const redirectToDashboardIfAuthenticated = async () => {
-            // CRITICAL FIX: If pending payment exists, do not redirect.
-            // Let CartComponent handle the flow.
-            const pendingOrderId = localStorage.getItem("pendingOrderId");
-            if (pendingOrderId) {
-                console.log("[CourseCataloguePage] Pending payment detected. Skipping auto-redirect.");
-                return;
-            }
-
-            const token = await getTokenFromStorage(TokenKey.accessToken);
-            const studentDetails = await Preferences.get({
-                key: "StudentDetails",
-            });
-            const instituteDetails = await Preferences.get({
-                key: "InstituteDetails",
-            });
-
-            if (
-                !isNullOrEmptyOrUndefined(token) &&
-                !isNullOrEmptyOrUndefined(studentDetails) &&
-                !isNullOrEmptyOrUndefined(instituteDetails)
-            ) {
-                navigate({
-                    to: "/study-library/courses",
-                });
-            }
-        };
-
-        redirectToDashboardIfAuthenticated();
-    }, [navigate]);
 
     // Removed legacy auto-open login timer in favor of URL param based control
 

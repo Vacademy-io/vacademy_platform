@@ -49,7 +49,7 @@ const PLAN_STORAGE_KEY = 'cart_plan';
 const getCartMode = (): 'buy' | 'rent' => {
   if (typeof window === 'undefined') return 'buy';
   const levelFilter = sessionStorage.getItem('levelFilter') || '';
-  return levelFilter.includes('Rent') ? 'rent' : 'buy';
+  return levelFilter.toLowerCase().includes('rent') ? 'rent' : 'buy';
 };
 
 // Get storage key based on mode

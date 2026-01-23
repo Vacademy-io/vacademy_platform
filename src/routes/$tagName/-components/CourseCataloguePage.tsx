@@ -7,9 +7,6 @@ import { JsonRenderer } from "./JsonRenderer";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
-import { Preferences } from "@capacitor/preferences";
-import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -36,37 +33,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [showLeadCollection, setShowLeadCollection] = useState(false);
   const [showIntroPage, setShowIntroPage] = useState(false);
   const [introCompleted, setIntroCompleted] = useState(false);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  // Check if user is authenticated and redirect to login if they are
-  useEffect(() => {
-    const checkAuthentication = async () => {
-      try {
-        const token = await getTokenFromStorage("accessToken");
-        const studentDetails = await Preferences.get({ key: "StudentDetails" });
-        const instituteDetails = await Preferences.get({ key: "InstituteDetails" });
-
-        const hasToken = !isNullOrEmptyOrUndefined(token);
-        const hasStudentDetails = !isNullOrEmptyOrUndefined(studentDetails);
-        const hasInstituteDetails = !isNullOrEmptyOrUndefined(instituteDetails);
-
-        // If user is authenticated, redirect to login page
-        if (hasToken && hasStudentDetails && hasInstituteDetails) {
-          console.log("[CourseCataloguePage] User is authenticated, redirecting to login");
-          navigate({ to: "/login" });
-          return;
-        }
-
-        console.log("[CourseCataloguePage] User is not authenticated, showing catalogue");
-      } catch (error) {
-        console.error("[CourseCataloguePage] Error checking authentication:", error);
-      } finally {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    checkAuthentication();
-  }, [navigate]);
 
   // Fetch course catalogue data
   useEffect(() => {
@@ -122,21 +89,20 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
     // Only fetch if we have valid instituteId and tagName
     // This prevents premature API calls before domain routing completes
-    if (instituteId && tagName && !isCheckingAuth) {
+    if (instituteId && tagName) {
       console.log("[CourseCataloguePage] Starting catalogue data fetch");
       fetchCatalogueData();
     } else {
       console.log("[CourseCataloguePage] Waiting for required data:", {
         hasInstituteId: !!instituteId,
         hasTagName: !!tagName,
-        isCheckingAuth,
       });
       // Keep loading state true while waiting for instituteId
       if (!instituteId || !tagName) {
         setIsLoading(true);
       }
     }
-  }, [instituteId, tagName, isCheckingAuth]);
+  }, [instituteId, tagName]);
 
   useEffect(() => {
     const fonts = catalogueData?.globalSettings?.fonts;
@@ -252,7 +218,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     console.log(`[CourseCataloguePage] Marked intro page as seen (closed): ${introPageSeenKey}`);
   };
 
-  if (isLoading || isCheckingAuth) {
+  if (isLoading) {
     return <DashboardLoader />;
   }
 

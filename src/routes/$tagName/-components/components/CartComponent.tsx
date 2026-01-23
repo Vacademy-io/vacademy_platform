@@ -427,7 +427,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
     const checkLevelFilter = () => {
       const levelFilter = sessionStorage.getItem("levelFilter");
       console.log("[CartComponent] Checking levelFilter:", levelFilter);
-      const isRent = !!(levelFilter && levelFilter.includes("Rent"));
+      const isRent = !!(levelFilter && levelFilter.toLowerCase().includes("rent"));
       setIsRentMode(isRent);
       // Sync cart when mode changes
       syncCart();

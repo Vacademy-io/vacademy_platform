@@ -29,7 +29,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const [cartItemCount, setCartItemCount] = useState(0);
     const [currentMode, setCurrentMode] = useState<'buy' | 'rent'>(() => {
       const levelFilter = sessionStorage.getItem('levelFilter') || '';
-      return levelFilter.includes('Rent') ? 'rent' : 'buy';
+      return levelFilter.toLowerCase().includes('rent') ? 'rent' : 'buy';
     });
     const [instituteLogoUrl, setInstituteLogoUrl] = useState<string | null>(null);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -41,7 +41,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     useEffect(() => {
       const updateCartCount = async () => {
         const levelFilter = sessionStorage.getItem('levelFilter') || '';
-        const isRentMode = levelFilter.includes('Rent');
+        const isRentMode = levelFilter.toLowerCase().includes('rent');
         const mode = isRentMode ? 'rent' : 'buy';
 
         // Update current mode if changed
@@ -95,7 +95,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
     useEffect(() => {
       const updateCountFromStore = async () => {
         const levelFilter = sessionStorage.getItem('levelFilter') || '';
-        const isRentMode = levelFilter.includes('Rent');
+        const isRentMode = levelFilter.toLowerCase().includes('rent');
         const mode = isRentMode ? 'rent' : 'buy';
         const count = await getItemCountByMode(mode);
         setCartItemCount(count);
@@ -316,9 +316,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const headerTopOffset = isIOS ? 'pt-8' : '';
 
     return (
-      <header 
+      <header
         className={`fixed top-0 left-0 right-0 z-[var(--catalogue-z-fixed)] bg-white border-b border-[hsl(var(--catalogue-border-subtle))] w-full ${headerTopOffset}`}
-        style={{ 
+        style={{
           '--header-height': 'var(--catalogue-header-height)',
           '--header-height-mobile': 'var(--catalogue-header-height-mobile)'
         } as React.CSSProperties}
@@ -337,19 +337,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
               >
                 <div className="relative w-5 h-5 flex flex-col justify-center items-center">
                   <span
-                    className={`absolute block h-0.5 w-5 bg-current transform transition-transform duration-200 ${
-                      isMobileMenuOpen ? 'rotate-45 translate-y-0' : '-translate-y-1.5'
-                    }`}
+                    className={`absolute block h-0.5 w-5 bg-current transform transition-transform duration-200 ${isMobileMenuOpen ? 'rotate-45 translate-y-0' : '-translate-y-1.5'
+                      }`}
                   />
                   <span
-                    className={`absolute block h-0.5 w-5 bg-current transition-opacity duration-200 ${
-                      isMobileMenuOpen ? 'opacity-0' : 'opacity-100'
-                    }`}
+                    className={`absolute block h-0.5 w-5 bg-current transition-opacity duration-200 ${isMobileMenuOpen ? 'opacity-0' : 'opacity-100'
+                      }`}
                   />
                   <span
-                    className={`absolute block h-0.5 w-5 bg-current transform transition-transform duration-200 ${
-                      isMobileMenuOpen ? '-rotate-45 translate-y-0' : 'translate-y-1.5'
-                    }`}
+                    className={`absolute block h-0.5 w-5 bg-current transform transition-transform duration-200 ${isMobileMenuOpen ? '-rotate-45 translate-y-0' : 'translate-y-1.5'
+                      }`}
                   />
                 </div>
               </button>
@@ -363,9 +360,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   src={jsonLogoUrl}
                   alt="Logo"
                   onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                  className={`max-h-12 md:max-h-16 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${
-                    domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
-                  }`}
+                  className={`max-h-12 md:max-h-16 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                    }`}
                   onError={(e) => {
                     e.currentTarget.style.display = "none";
                   }}
@@ -378,9 +374,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       src={instituteLogoUrl}
                       alt="Institute Logo"
                       onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                      className={`h-10 w-10 md:h-11 md:w-11 rounded-full object-cover border border-[hsl(var(--catalogue-border))] ${
-                        domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
-                      }`}
+                      className={`h-10 w-10 md:h-11 md:w-11 rounded-full object-cover border border-[hsl(var(--catalogue-border))] ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                        }`}
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
@@ -404,11 +399,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     <button
                       key={index}
                       onClick={() => handleNavigation(item.route, item.label, openInSameTab)}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
-                        isActive 
-                          ? 'text-primary-500 bg-primary-50'
-                          : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
-                      }`}
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${isActive
+                        ? 'text-primary-500 bg-primary-50'
+                        : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
+                        }`}
                     >
                       {item.label}
                     </button>
@@ -487,11 +481,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         navigate({ to: link.route });
                       }
                     }}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
-                      index === 0
-                        ? 'text-white bg-primary-500 hover:bg-primary-400'
-                        : 'text-primary-500 border border-primary-500 hover:bg-primary-50'
-                    }`}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
+                      ? 'text-white bg-primary-500 hover:bg-primary-400'
+                      : 'text-primary-500 border border-primary-500 hover:bg-primary-50'
+                      }`}
                   >
                     {link.label}
                   </button>
@@ -504,16 +497,14 @@ export const HeaderComponent: React.FC<HeaderProps & {
           {isCourseCatalogeTypeEnabled ? (
             <div
               ref={setMobileMenuRef}
-              className={`md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] bg-white border-b border-[hsl(var(--catalogue-border))] transition-all duration-300 ease-out ${
-                isMobileMenuOpen 
-                  ? 'opacity-100 visible'
-                  : 'opacity-0 invisible pointer-events-none'
-              }`}
+              className={`md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] bg-white border-b border-[hsl(var(--catalogue-border))] transition-all duration-300 ease-out ${isMobileMenuOpen
+                ? 'opacity-100 visible'
+                : 'opacity-0 invisible pointer-events-none'
+                }`}
               style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
             >
-              <div className={`transform transition-transform duration-300 ease-out ${
-                isMobileMenuOpen ? 'translate-y-0' : '-translate-y-4'
-              }`}>
+              <div className={`transform transition-transform duration-300 ease-out ${isMobileMenuOpen ? 'translate-y-0' : '-translate-y-4'
+                }`}>
                 <div className="px-4 py-4 space-y-3">
                   {/* Login Button */}
                   <button
@@ -640,11 +631,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           setIsMobileMenuOpen(false);
                           handleNavigation(item.route, item.label, openInSameTab);
                         }}
-                        className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${
-                          isActive 
-                            ? 'text-primary-500 bg-primary-50'
-                            : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
-                        }`}
+                        className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
+                          ? 'text-primary-500 bg-primary-50'
+                          : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
+                          }`}
                       >
                         {item.label}
                       </button>
@@ -670,11 +660,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                             }
                             setIsMobileMenuOpen(false);
                           }}
-                          className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${
-                            index === 0
-                              ? 'text-white bg-primary-500 hover:bg-primary-400'
-                              : 'text-primary-500 hover:bg-primary-50'
-                          }`}
+                          className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
+                            ? 'text-white bg-primary-500 hover:bg-primary-400'
+                            : 'text-primary-500 hover:bg-primary-50'
+                            }`}
                         >
                           {link.label}
                         </button>

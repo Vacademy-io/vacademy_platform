@@ -35,32 +35,10 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const [introCompleted, setIntroCompleted] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  // Check if user is authenticated and redirect to login if they are
+  // Check if user is authenticated - removed previous botched redirect
   useEffect(() => {
-    const checkAuthentication = async () => {
-      try {
-        const token = await getTokenFromStorage("accessToken");
-        const studentDetails = await Preferences.get({ key: "StudentDetails" });
-        const instituteDetails = await Preferences.get({ key: "InstituteDetails" });
-
-        const hasToken = !isNullOrEmptyOrUndefined(token);
-        const hasStudentDetails = !isNullOrEmptyOrUndefined(studentDetails);
-        const hasInstituteDetails = !isNullOrEmptyOrUndefined(instituteDetails);
-
-        // If user is authenticated, redirect to login page
-        if (hasToken && hasStudentDetails && hasInstituteDetails) {
-          navigate({ to: "/login" });
-          return;
-        }
-      } catch (error) {
-        console.error("[CourseSubPage] Error checking authentication:", error);
-      } finally {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    checkAuthentication();
-  }, [navigate]);
+    setIsCheckingAuth(false);
+  }, []);
 
   // Fetch course catalogue data
   useEffect(() => {

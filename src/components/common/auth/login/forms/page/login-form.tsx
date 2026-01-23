@@ -654,8 +654,8 @@ export function LoginForm({
             } else {
               setPrimaryColor(
                 details?.institute_theme_code ??
-                  import.meta.env.VITE_DEFAULT_THEME_COLOR ??
-                  "#E67E22"
+                import.meta.env.VITE_DEFAULT_THEME_COLOR ??
+                "#E67E22"
               );
             }
           } catch (error) {
@@ -695,23 +695,6 @@ export function LoginForm({
     }
   };
 
-  useEffect(() => {
-    const redirectToDashboardIfAuthenticated = async () => {
-      const token = await getTokenFromStorage(TokenKey.accessToken);
-      const studentDetails = await getFromStorage("StudentDetails");
-      const instituteDetails = await getFromStorage("InstituteDetails");
-
-      if (
-        !isNullOrEmptyOrUndefined(token) &&
-        !isNullOrEmptyOrUndefined(studentDetails) &&
-        !isNullOrEmptyOrUndefined(instituteDetails)
-      ) {
-        navigate({ to: "/dashboard" });
-      }
-    };
-
-    redirectToDashboardIfAuthenticated();
-  }, [navigate]);
 
   const handleOAuthLogin = (provider: "google" | "github") => {
     try {
@@ -816,7 +799,7 @@ export function LoginForm({
     <div
       className={`${
         type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
-      } bg-background relative mt-10`}
+        } bg-background relative mt-10`}
     >
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />
@@ -1015,7 +998,7 @@ export function LoginForm({
 
                 {/* Explore Courses (for institutes with public catalog) */}
                 {domainRouting?.redirectPath &&
-                domainRouting.redirectPath !== "/login" ? (
+                  domainRouting.redirectPath !== "/login" ? (
                   <motion.div
                     initial={{ y: 10, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}

@@ -17,6 +17,10 @@ import vacademy.io.notification_service.dto.WhatsAppOTPResponse;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Meta (Facebook) WhatsApp Business API provider implementation.
+ * Expects normalized credentials from Factory: { accessToken, phoneNumberId }
+ */
 @Slf4j
 public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
 
@@ -33,43 +37,14 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
     @Override
     public WhatsAppOTPResponse sendOtp(WhatsAppOTPRequest request, String otp, JsonNode credentials) {
         try {
-            // Extract credentials from the 'meta' node (or fallbacks as per original logic)
-            // The factory will likely pass the 'UTILITY_META_WHATSAPP' node or similar.
-            // But to be safe and match original logic, let's extract access_token and
-            // phone_number_id.
-
-            // Note: The credentials passed here are expected to be the specific
-            // configuration node.
-            // i.e., UTILITY_META_WHATSAPP, or the root if fallback?
-            // To preserve EXACT logic, we should probably do the extraction here if not
-            // done already.
-            // However, the cleanest way is for this class to expect { "meta": {
-            // "accessToken":..., "appId":... } }
-            // or { "provider": "META", "meta": ... }
-
-            String accessToken = null;
-            String phoneNumberId = null;
-
-            if (credentials.has("meta")) {
-                JsonNode metaNode = credentials.get("meta");
-                accessToken = metaNode.path("accessToken").asText();
-                if (accessToken.isEmpty()) {
-                    accessToken = metaNode.path("access_token").asText();
-                }
-                phoneNumberId = metaNode.path("appId").asText();
-                if (phoneNumberId.isEmpty()) {
-                    phoneNumberId = metaNode.path("phone_number_id").asText();
-                }
-            } else {
-                // Fallback for root level checks (legacy support)
-                if (credentials.has("access_token"))
-                    accessToken = credentials.get("access_token").asText();
-                if (credentials.has("phone_number_id"))
-                    phoneNumberId = credentials.get("phone_number_id").asText();
-            }
+            // Extract credentials - Factory provides normalized flat structure
+            String accessToken = credentials.path("accessToken").asText(null);
+            String phoneNumberId = credentials.path("phoneNumberId").asText(null);
 
             if (accessToken == null || accessToken.isEmpty() || phoneNumberId == null || phoneNumberId.isEmpty()) {
-                log.error("Meta credentials not found in node: {}", credentials);
+                log.error("Meta credentials not configured. accessToken present: {}, phoneNumberId present: {}",
+                        accessToken != null && !accessToken.isEmpty(),
+                        phoneNumberId != null && !phoneNumberId.isEmpty());
                 return WhatsAppOTPResponse.builder()
                         .success(false)
                         .message("WhatsApp credentials not configured correctly for Meta.")
@@ -85,17 +60,17 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
                     request.getSettingJson());
 
             // Call Meta API
-            boolean success = callMetaAPI(phoneNumberId, accessToken, payload);
+            boolean success = callMetaAPI(phoneNumberId, accessToken, payload, otp);
 
             if (success) {
-                log.info("WhatsApp OTP sent successfully (Meta) to phone: {}", request.getPhoneNumber());
+                log.info("WhatsApp OTP sent successfully via Meta");
+                // SECURITY: Do not return OTP in response
                 return WhatsAppOTPResponse.builder()
                         .success(true)
                         .message("WhatsApp OTP sent successfully via Meta")
-                        .otp(otp)
                         .build();
             } else {
-                log.error("Failed to send WhatsApp OTP (Meta) to phone: {}", request.getPhoneNumber());
+                log.error("Failed to send WhatsApp OTP via Meta");
                 return WhatsAppOTPResponse.builder()
                         .success(false)
                         .message("Failed to send WhatsApp OTP via Meta")
@@ -163,13 +138,11 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
                     }
                 }
 
-                // Add button component after loop
-                // Always use index "0" for URL buttons as required by Meta API
                 if (!buttonParams.isEmpty()) {
                     components.add(MetaWhatsAppPayload.Component.builder()
                             .type("button")
                             .subType("url")
-                            .index("0") // Meta API requires index 0 for URL buttons
+                            .index("0")
                             .parameters(buttonParams)
                             .build());
                 }
@@ -184,7 +157,6 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
                     .components(components)
                     .build();
 
-            // Build final payload
             return MetaWhatsAppPayload.builder()
                     .messagingProduct("whatsapp")
                     .to(phoneNumber)
@@ -194,7 +166,6 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
 
         } catch (Exception e) {
             log.error("Failed to parse settingJson, using default payload structure: {}", e.getMessage());
-            // Fallback to default structure
             return buildDefaultMetaPayload(phoneNumber, templateName, languageCode, otp);
         }
     }
@@ -204,30 +175,23 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
      */
     private MetaWhatsAppPayload buildDefaultMetaPayload(String phoneNumber, String templateName, String languageCode,
             String otp) {
-        // Build body parameters
         List<MetaWhatsAppPayload.Parameter> bodyParams = new ArrayList<>();
         bodyParams.add(MetaWhatsAppPayload.Parameter.builder()
                 .type("text")
                 .text(otp)
                 .build());
 
-        // Build button parameters
         List<MetaWhatsAppPayload.Parameter> buttonParams = new ArrayList<>();
         buttonParams.add(MetaWhatsAppPayload.Parameter.builder()
                 .type("text")
                 .text(otp)
                 .build());
 
-        // Build components
         List<MetaWhatsAppPayload.Component> components = new ArrayList<>();
-
-        // Body component
         components.add(MetaWhatsAppPayload.Component.builder()
                 .type("body")
                 .parameters(bodyParams)
                 .build());
-
-        // Button component
         components.add(MetaWhatsAppPayload.Component.builder()
                 .type("button")
                 .subType("url")
@@ -235,7 +199,6 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
                 .parameters(buttonParams)
                 .build());
 
-        // Build template
         MetaWhatsAppPayload.Template template = MetaWhatsAppPayload.Template.builder()
                 .name(templateName)
                 .language(MetaWhatsAppPayload.Language.builder()
@@ -244,7 +207,6 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
                 .components(components)
                 .build();
 
-        // Build final payload
         return MetaWhatsAppPayload.builder()
                 .messagingProduct("whatsapp")
                 .to(phoneNumber)
@@ -256,11 +218,14 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
     /**
      * Call Meta WhatsApp API
      */
-    private boolean callMetaAPI(String phoneNumberId, String accessToken, MetaWhatsAppPayload payload) {
+    private boolean callMetaAPI(String phoneNumberId, String accessToken, MetaWhatsAppPayload payload, String otp) {
         try {
             String url = metaApiBaseUrl + "/" + phoneNumberId + "/messages";
             log.info("Calling Meta API: {}", url);
-            log.info("Meta API Payload: {}", objectMapper.writeValueAsString(payload));
+
+            // SECURITY: Mask OTP in logs
+            String maskedPayload = getMaskedPayloadForLogging(payload, otp);
+            log.info("Meta API Payload (masked): {}", maskedPayload);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -275,11 +240,10 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
                     String.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("Meta API call successful. Response: {}", response.getBody());
+                log.info("Meta API call successful");
                 return true;
             } else {
-                log.error("Meta API call failed. Status: {}, Response: {}", response.getStatusCode(),
-                        response.getBody());
+                log.error("Meta API call failed. Status: {}", response.getStatusCode());
                 return false;
             }
 
@@ -290,6 +254,18 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
                     .withTag("notification.type", "WHATSAPP_OTP")
                     .send();
             return false;
+        }
+    }
+
+    /**
+     * Create masked payload for logging (hides OTP)
+     */
+    private String getMaskedPayloadForLogging(MetaWhatsAppPayload payload, String otp) {
+        try {
+            String json = objectMapper.writeValueAsString(payload);
+            return json.replace(otp, "******");
+        } catch (Exception e) {
+            return "Unable to serialize payload";
         }
     }
 }

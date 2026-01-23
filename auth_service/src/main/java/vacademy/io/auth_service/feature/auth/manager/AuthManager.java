@@ -304,7 +304,8 @@ public class AuthManager {
 
         // Fetch template config from admin service
         NotificationTemplateConfigDTO templateConfig = notificationService
-                .getTemplateConfig("OTP_REQUEST", authRequestDTO.getInstituteId(), "WHATSAPP");
+                .getTemplateConfig("OTP_REQUEST", authRequestDTO.getInstituteId(), "WHATSAPP"); // here hardcoded you
+                                                                                                // can use it anything
 
         // Send WhatsApp OTP via notification service
         WhatsAppOTPRequest whatsAppOTPRequest = WhatsAppOTPRequest.builder()

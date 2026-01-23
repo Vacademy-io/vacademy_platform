@@ -15,3 +15,5 @@ export const ENABLE_LIVE_CLASS_SAFETY_MODAL = false;
  * @default true
  */
 export const EMAIL_OTP_VERIFICATION_ENABLED = false;
+
+export const ENABLE_OTP_FOR_LOGIN_SIGNUP = true;

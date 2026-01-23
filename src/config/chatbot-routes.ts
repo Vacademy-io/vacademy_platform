@@ -20,7 +20,9 @@ export const CHATBOT_DISABLED_ROUTES = [
   "/delete-user",
   "/change-password",
   "/logout",
+  "/dashboard",
   "/learner-invitation-response",
+  "/audience-response",
   // Add other routes here to hide the chatbot
   // "/dashboard", // Example: uncomment to hide on dashboard
 ];

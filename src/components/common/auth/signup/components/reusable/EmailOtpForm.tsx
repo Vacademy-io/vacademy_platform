@@ -29,7 +29,7 @@ import {
   LIVE_SESSION_VERIFY_OTP,
 } from "@/constants/urls";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
+import { ENABLE_OTP_FOR_LOGIN_SIGNUP } from "@/constants/feature-flags";
 
 interface EmailOtpFormData {
   email: string;
@@ -148,7 +148,7 @@ export function EmailOtpForm({
       setIsSubmitting(true);
 
       // If email OTP verification is disabled, skip directly to success
-      if (!EMAIL_OTP_VERIFICATION_ENABLED) {
+      if (!ENABLE_OTP_FOR_LOGIN_SIGNUP) {
         const fullNameToPass = data.fullName || initialFullName || "User";
         await onOtpVerified(data.email, fullNameToPass);
         return;

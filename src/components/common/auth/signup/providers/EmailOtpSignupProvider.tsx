@@ -15,7 +15,7 @@ import { Preferences } from "@capacitor/preferences";
 import axios from "axios";
 import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP } from "@/constants/urls";
 import { checkUserEnrollment } from "@/services/signup-api";
-import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
+import { ENABLE_OTP_FOR_LOGIN_SIGNUP } from "@/constants/feature-flags";
 
 interface EmailOtpSignupProviderProps {
   instituteId: string;
@@ -114,7 +114,7 @@ export function EmailOtpSignupProvider({
       setIsSubmitting(true);
       
       // If email OTP verification is disabled, skip directly to final step
-      if (!EMAIL_OTP_VERIFICATION_ENABLED) {
+      if (!ENABLE_OTP_FOR_LOGIN_SIGNUP) {
         // Check enrollment before proceeding
         const isEnrolled = await checkEnrollment(initialEmail);
         if (isEnrolled) {

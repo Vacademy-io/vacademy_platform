@@ -29,7 +29,7 @@ import { LOGIN_OTP, REQUEST_OTP } from "@/constants/urls";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
+import { ENABLE_OTP_FOR_LOGIN_SIGNUP } from "@/constants/feature-flags";
 
 const emailSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -372,7 +372,7 @@ export function EmailLogin({
             transition={{ duration: 0.2 }}
           >
             {/* Email Service Unavailable Warning */}
-            {!EMAIL_OTP_VERIFICATION_ENABLED && (
+            {!ENABLE_OTP_FOR_LOGIN_SIGNUP && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -420,7 +420,7 @@ export function EmailLogin({
                               className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                               input={field.value}
                               onChangeFunction={field.onChange}
-                              disabled={!EMAIL_OTP_VERIFICATION_ENABLED}
+                              disabled={!ENABLE_OTP_FOR_LOGIN_SIGNUP}
                             />
                             <Mail className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
                           </div>
@@ -438,7 +438,7 @@ export function EmailLogin({
                 >
                   <motion.button
                     type="submit"
-                    disabled={isLoading || !EMAIL_OTP_VERIFICATION_ENABLED}
+                    disabled={isLoading || !ENABLE_OTP_FOR_LOGIN_SIGNUP}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                     className="w-full bg-gray-900 hover:bg-black text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"

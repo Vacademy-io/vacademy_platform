@@ -19,6 +19,8 @@ import vacademy.io.notification_service.features.combot.constants.CombotWebhookK
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateRequest;
 import vacademy.io.notification_service.features.combot.entity.ChannelFlowConfig;
 import vacademy.io.notification_service.features.combot.entity.ChannelToInstituteMapping;
+import vacademy.io.notification_service.features.combot.action.dto.FlowContext;
+import vacademy.io.notification_service.features.combot.action.service.FlowActionRouter;
 import vacademy.io.notification_service.features.combot.enums.CombotNotificationType;
 import vacademy.io.notification_service.features.combot.enums.WhatsAppMessageType;
 import vacademy.io.notification_service.features.combot.repository.ChannelFlowConfigRepository;
@@ -53,6 +55,7 @@ public class CombotWebhookService {
     private final ChannelFlowConfigRepository flowConfigRepository;
     private final ObjectMapper objectMapper;
     private final UserAnnouncementPreferenceService preferenceService;
+    private final FlowActionRouter flowActionRouter;
 
     // --- FIX: CIRCULAR DEPENDENCY BREAKER ---
     // 1. Remove 'final' so Lombok doesn't put it in the constructor
@@ -66,8 +69,8 @@ public class CombotWebhookService {
     // 1️⃣ OUTGOING MESSAGE LOGGING
     // ========================================================================
     @Transactional
-    public NotificationLog logOutgoingMessage(String messageId,String toPhone,String messageBody,String userId,Map<String, Object> rawPayloadSent,String channelId)
-    {
+    public NotificationLog logOutgoingMessage(String messageId, String toPhone, String messageBody, String userId,
+                                              Map<String, Object> rawPayloadSent, String channelId) {
         NotificationLog out = new NotificationLog();
         out.setNotificationType(CombotNotificationType.WHATSAPP_OUTGOING.getType());
         out.setChannelId(toPhone);
@@ -133,7 +136,8 @@ public class CombotWebhookService {
     @Transactional
     public void processMessageStatusFromWebhook(Map<String, Object> value, Map<String, Object> entry) {
         List<Map<String, Object>> statuses = (List<Map<String, Object>>) value.get("statuses");
-        if (statuses == null || statuses.isEmpty()) return;
+        if (statuses == null || statuses.isEmpty())
+            return;
 
         for (Map<String, Object> status : statuses) {
             String messageId = (String) status.get("id");
@@ -224,7 +228,8 @@ public class CombotWebhookService {
 
             // 2. Process Messages
             List<Map<String, Object>> messages = (List<Map<String, Object>>) value.get(CombotWebhookKeys.MESSAGES);
-            if (messages == null) return;
+            if (messages == null)
+                return;
 
             for (Map<String, Object> message : messages) {
                 String userPhone = (String) message.get(CombotWebhookKeys.FROM);
@@ -251,8 +256,7 @@ public class CombotWebhookService {
                 // 3. Find Context & Process Flow (Existing logic)
                 Optional<NotificationLog> lastLogOpt = notificationLogRepository
                         .findTopByChannelIdAndSenderBusinessChannelIdAndNotificationTypeOrderByNotificationDateDesc(
-                                userPhone, receivingPhoneId, CombotNotificationType.WHATSAPP_OUTGOING.getType()
-                        );
+                                userPhone, receivingPhoneId, CombotNotificationType.WHATSAPP_OUTGOING.getType());
 
                 String lastTemplate = CombotConstants.DEFAULT_TEMPLATE;
                 if (lastLogOpt.isPresent()) {
@@ -261,8 +265,7 @@ public class CombotWebhookService {
 
                 Optional<ChannelFlowConfig> flowConfigOpt = flowConfigRepository
                         .findByInstituteIdAndCurrentTemplateNameAndChannelTypeAndIsActiveTrue(
-                                instituteId, lastTemplate, channelType
-                        );
+                                instituteId, lastTemplate, channelType);
 
                 if (flowConfigOpt.isPresent()) {
                     executeFlowRule(flowConfigOpt.get(), userText, userPhone, instituteId);
@@ -274,13 +277,15 @@ public class CombotWebhookService {
     }
 
     private boolean isOptOutKeyword(String text) {
-        if (text == null) return false;
+        if (text == null)
+            return false;
         String normalized = text.trim().toUpperCase();
         return normalized.equals("STOP") || normalized.equals("OPT OUT") || normalized.equals("UNSUBSCRIBE");
     }
 
     private boolean isOptInKeyword(String text) {
-        if (text == null) return false;
+        if (text == null)
+            return false;
         String normalized = text.trim().toUpperCase();
         return normalized.equals("START") || normalized.equals("OPT IN") || normalized.equals("SUBSCRIBE");
     }
@@ -301,10 +306,11 @@ public class CombotWebhookService {
 
             if (userId != null) {
                 // 2. Set Unsubscribed
-                preferenceService.setWhatsAppSubscriptionStatus(userId, instituteId, true,userPhone);
+                preferenceService.setWhatsAppSubscriptionStatus(userId, instituteId, true, userPhone);
 
                 // 3. Send Confirmation (Optional - basic text message)
-                // Note: Standard API allows sending simple text even outside 24h window if user initiated
+                // Note: Standard API allows sending simple text even outside 24h window if user
+                // initiated
                 // For now, we reuse the template mechanism or just log it.
                 // Ideally, send a "You have successfully unsubscribed" message.
                 log.info("Successfully unsubscribed user {} from institute {}", userPhone, instituteId);
@@ -329,7 +335,7 @@ public class CombotWebhookService {
             UserDTO user = objectMapper.convertValue(userObj, UserDTO.class);
             String userId = user.getId();
             if (userId != null) {
-                preferenceService.setWhatsAppSubscriptionStatus(userId, instituteId, false,userPhone);
+                preferenceService.setWhatsAppSubscriptionStatus(userId, instituteId, false, userPhone);
                 log.info("Successfully resubscribed user {} for institute {}", userPhone, instituteId);
             }
         } catch (Exception e) {
@@ -342,19 +348,15 @@ public class CombotWebhookService {
     // ========================================================================
     private void executeFlowRule(ChannelFlowConfig config, String userText, String userPhone, String instituteId) {
         try {
-            // A. Determine Next Template based on Keyword
-            List<String> nextTemplates = determineNextTemplates(config.getResponseTemplateConfig(), userText);
-
-            if (nextTemplates.isEmpty()) return;
-
-            // B. Fetch Dynamic Data from Admin Core
+            // B. Fetch Dynamic Data from Admin Core (moved up for context building)
             Map<String, Object> userDetails = getUserDetailsByPhoneNumber(userPhone);
             Object userObj = userDetails.get("user");
-            
+
             // Handle both existing users and first-time users
             String userId;
             if (userObj == null) {
-                log.info("First-time user or user not found in system for phone {}. Using anonymous user ID.", userPhone);
+                log.info("First-time user or user not found in system for phone {}. Using anonymous user ID.",
+                        userPhone);
                 userId = CombotConstants.ANONYMOUS_USER;
                 // Populate minimal user details for first-time users
                 userDetails.put("phone", userPhone);
@@ -365,23 +367,60 @@ public class CombotWebhookService {
                 userId = user.getId();
             }
 
+            // ========================================================================
+            // A. FIRST: Process action_template_config (NEW - for workflows, verification)
+            // ========================================================================
+            if (config.getActionTemplateConfig() != null && !config.getActionTemplateConfig().isBlank()) {
+                log.debug("Processing action_template_config for phone={}", userPhone);
+
+                FlowContext flowContext = FlowContext.builder()
+                        .phoneNumber(userPhone)
+                        .instituteId(instituteId)
+                        .userId(userId)
+                        .channelType(config.getChannelType())
+                        .messageText(userText)
+                        .userDetails(userDetails)
+                        .build();
+
+                boolean actionsExecuted = flowActionRouter.routeActions(
+                        config.getActionTemplateConfig(),
+                        userText,
+                        flowContext);
+
+                if (actionsExecuted) {
+                    log.info("Actions executed from action_template_config for phone={}", userPhone);
+                }
+            }
+
+            // ========================================================================
+            // B. THEN: Process response_template_config (EXISTING - for templates)
+            // ========================================================================
+            List<String> nextTemplates = determineNextTemplates(config.getResponseTemplateConfig(), userText);
+
+            if (nextTemplates.isEmpty()) {
+                log.debug("No templates to send for phone={}", userPhone);
+                return;
+            }
+
             // C. Send Each Template in Sequence
             Map<String, List<String>> varConfigMap = parseJsonMap(config.getVariableConfig());
-            
+
             // D. Parse Fixed Variables Config (if present)
             Map<String, Map<String, String>> fixedVarsMap = parseFixedVariablesConfig(config.getFixedVariablesConfig());
 
             for (String templateName : nextTemplates) {
                 // Get required variables for this template
                 List<String> requiredVars = varConfigMap.getOrDefault(templateName, Collections.emptyList());
-                
+
                 // Get fixed variables for this template (if any)
-                Map<String, String> fixedVarsForTemplate = fixedVarsMap.getOrDefault(templateName, Collections.emptyMap());
+                Map<String, String> fixedVarsForTemplate = fixedVarsMap.getOrDefault(templateName,
+                        Collections.emptyMap());
 
                 // Map Data to Variables (supports both dynamic and fixed)
                 List<String> paramValues = resolveVariables(requiredVars, userDetails, userPhone, fixedVarsForTemplate);
 
-                log.info("Triggering Auto-Reply: Template={} Params={} for userId={}", templateName, paramValues, userId);
+                log.info("Triggering Auto-Reply: Template={} Params={} for userId={}", templateName, paramValues,
+                        userId);
 
                 // Send Message (pass variable names for media detection)
                 sendAutoReply(instituteId, userPhone, templateName, requiredVars, paramValues, userId);
@@ -410,11 +449,12 @@ public class CombotWebhookService {
                     HttpMethod.GET.name(),
                     adminCoreServiceBaseUrl,
                     "/admin-core-service/internal/user/by-phone?phoneNumber=" + normalizedPhone,
-                    null
-            );
+                    null);
 
-            if (response.getBody() == null) return new HashMap<>();
-            return objectMapper.readValue(response.getBody(), new TypeReference<Map<String, Object>>() {});
+            if (response.getBody() == null)
+                return new HashMap<>();
+            return objectMapper.readValue(response.getBody(), new TypeReference<Map<String, Object>>() {
+            });
 
         } catch (Exception e) {
             log.error("Error fetching user details for phone {}", normalizedPhone, e);
@@ -424,10 +464,11 @@ public class CombotWebhookService {
 
     /**
      * Send Auto Reply via Messaging Service
-     * Supports both text-only templates and media templates (document, image, video)
+     * Supports both text-only templates and media templates (document, image,
+     * video)
      */
-    private void sendAutoReply(String instituteId, String toPhone, String templateName, 
-                              List<String> variableNames, List<String> paramValues, String userId) {
+    private void sendAutoReply(String instituteId, String toPhone, String templateName,
+                               List<String> variableNames, List<String> paramValues, String userId) {
         try {
             WhatsAppTemplateRequest request = new WhatsAppTemplateRequest();
             request.setInstituteId(instituteId);
@@ -468,17 +509,17 @@ public class CombotWebhookService {
      */
     private List<Map<String, Object>> buildTemplateComponents(List<String> variableNames, List<String> paramValues) {
         List<Map<String, Object>> components = new ArrayList<>();
-        
+
         // Detect if this is a media template
         MediaTemplateType mediaType = detectMediaTemplateType(variableNames);
-        
+
         if (mediaType != MediaTemplateType.NONE) {
             // Build header component for media (document/image/video)
             Map<String, Object> headerComponent = buildMediaHeaderComponent(variableNames, paramValues, mediaType);
             if (headerComponent != null) {
                 components.add(headerComponent);
             }
-            
+
             // Add any remaining text parameters to body (if present)
             List<String> remainingTextParams = extractRemainingTextParams(variableNames, paramValues, mediaType);
             if (!remainingTextParams.isEmpty()) {
@@ -488,7 +529,7 @@ public class CombotWebhookService {
             // Standard text-only template - backward compatible
             components.add(buildBodyComponent(paramValues));
         }
-        
+
         return components;
     }
 
@@ -498,10 +539,10 @@ public class CombotWebhookService {
     private MediaTemplateType detectMediaTemplateType(List<String> variableNames) {
         boolean hasLink = false;
         boolean hasFilename = false;
-        
+
         for (String varName : variableNames) {
             String lowerName = varName.toLowerCase().trim();
-            
+
             // Document: requires both 'link' and 'filename'
             if (lowerName.equals("link") || lowerName.equals("document_link")) {
                 hasLink = true;
@@ -509,43 +550,43 @@ public class CombotWebhookService {
             if (lowerName.equals("filename") || lowerName.equals("document_filename")) {
                 hasFilename = true;
             }
-            
+
             // Image: 'image_link' or 'image_url'
             if (lowerName.equals("image_link") || lowerName.equals("image_url") || lowerName.equals("image")) {
                 return MediaTemplateType.IMAGE;
             }
-            
+
             // Video: 'video_link' or 'video_url'
             if (lowerName.equals("video_link") || lowerName.equals("video_url") || lowerName.equals("video")) {
                 return MediaTemplateType.VIDEO;
             }
         }
-        
+
         // Document detected if both link and filename present
         if (hasLink && hasFilename) {
             return MediaTemplateType.DOCUMENT;
         }
-        
+
         return MediaTemplateType.NONE;
     }
 
     /**
      * Build header component for media templates
      */
-    private Map<String, Object> buildMediaHeaderComponent(List<String> variableNames, 
-                                                          List<String> paramValues, 
+    private Map<String, Object> buildMediaHeaderComponent(List<String> variableNames,
+                                                          List<String> paramValues,
                                                           MediaTemplateType mediaType) {
         Map<String, Object> headerComponent = new HashMap<>();
         headerComponent.put(CombotWebhookKeys.TYPE, "header");
-        
+
         List<Map<String, Object>> parameters = new ArrayList<>();
         Map<String, Object> mediaParam = new HashMap<>();
-        
+
         switch (mediaType) {
             case DOCUMENT:
                 mediaParam.put(CombotWebhookKeys.TYPE, "document");
                 Map<String, Object> documentObj = new HashMap<>();
-                
+
                 // Extract link and filename from paramValues
                 for (int i = 0; i < variableNames.size(); i++) {
                     String varName = variableNames.get(i).toLowerCase().trim();
@@ -555,14 +596,14 @@ public class CombotWebhookService {
                         documentObj.put("filename", paramValues.get(i));
                     }
                 }
-                
+
                 mediaParam.put("document", documentObj);
                 break;
-                
+
             case IMAGE:
                 mediaParam.put(CombotWebhookKeys.TYPE, "image");
                 Map<String, Object> imageObj = new HashMap<>();
-                
+
                 // Find image link
                 for (int i = 0; i < variableNames.size(); i++) {
                     String varName = variableNames.get(i).toLowerCase().trim();
@@ -571,14 +612,14 @@ public class CombotWebhookService {
                         break;
                     }
                 }
-                
+
                 mediaParam.put("image", imageObj);
                 break;
-                
+
             case VIDEO:
                 mediaParam.put(CombotWebhookKeys.TYPE, "video");
                 Map<String, Object> videoObj = new HashMap<>();
-                
+
                 // Find video link
                 for (int i = 0; i < variableNames.size(); i++) {
                     String varName = variableNames.get(i).toLowerCase().trim();
@@ -587,17 +628,17 @@ public class CombotWebhookService {
                         break;
                     }
                 }
-                
+
                 mediaParam.put("video", videoObj);
                 break;
-                
+
             default:
                 return null;
         }
-        
+
         parameters.add(mediaParam);
         headerComponent.put(CombotWebhookKeys.PARAMETERS, parameters);
-        
+
         return headerComponent;
     }
 
@@ -607,15 +648,14 @@ public class CombotWebhookService {
     private Map<String, Object> buildBodyComponent(List<String> textParams) {
         Map<String, Object> bodyComponent = new HashMap<>();
         bodyComponent.put(CombotWebhookKeys.TYPE, CombotWebhookKeys.BODY);
-        
+
         List<Map<String, String>> parameters = new ArrayList<>();
         for (String paramVal : textParams) {
             parameters.add(Map.of(
-                CombotWebhookKeys.TYPE, WhatsAppMessageType.TEXT.getType(), 
-                CombotWebhookKeys.TEXT, paramVal
-            ));
+                    CombotWebhookKeys.TYPE, WhatsAppMessageType.TEXT.getType(),
+                    CombotWebhookKeys.TEXT, paramVal));
         }
-        
+
         bodyComponent.put(CombotWebhookKeys.PARAMETERS, parameters);
         return bodyComponent;
     }
@@ -623,20 +663,20 @@ public class CombotWebhookService {
     /**
      * Extract text parameters that are not part of media component
      */
-    private List<String> extractRemainingTextParams(List<String> variableNames, 
-                                                    List<String> paramValues, 
+    private List<String> extractRemainingTextParams(List<String> variableNames,
+                                                    List<String> paramValues,
                                                     MediaTemplateType mediaType) {
         List<String> remainingParams = new ArrayList<>();
-        
+
         for (int i = 0; i < variableNames.size(); i++) {
             String varName = variableNames.get(i).toLowerCase().trim();
-            
+
             // Skip media-specific variables
             boolean isMediaVar = false;
             switch (mediaType) {
                 case DOCUMENT:
                     isMediaVar = varName.equals("link") || varName.equals("filename") ||
-                                varName.equals("document_link") || varName.equals("document_filename");
+                            varName.equals("document_link") || varName.equals("document_filename");
                     break;
                 case IMAGE:
                     isMediaVar = varName.equals("image_link") || varName.equals("image_url") || varName.equals("image");
@@ -645,12 +685,12 @@ public class CombotWebhookService {
                     isMediaVar = varName.equals("video_link") || varName.equals("video_url") || varName.equals("video");
                     break;
             }
-            
+
             if (!isMediaVar) {
                 remainingParams.add(paramValues.get(i));
             }
         }
-        
+
         return remainingParams;
     }
 
@@ -658,19 +698,22 @@ public class CombotWebhookService {
      * Enum for media template types
      */
     private enum MediaTemplateType {
-        NONE,      // Text-only template
-        DOCUMENT,  // Document template (requires link + filename)
-        IMAGE,     // Image template (requires image_link)
-        VIDEO      // Video template (requires video_link)
+        NONE, // Text-only template
+        DOCUMENT, // Document template (requires link + filename)
+        IMAGE, // Image template (requires image_link)
+        VIDEO // Video template (requires video_link)
     }
 
     // --- Data Resolvers ---
 
     /**
-     * Resolve variables with support for both dynamic (user data) and fixed (DB stored) values
-     * Priority: 1) User Direct Fields, 2) User Custom Fields, 3) Fixed Variables, 4) System Defaults
+     * Resolve variables with support for both dynamic (user data) and fixed (DB
+     * stored) values
+     * Priority: 1) User Direct Fields, 2) User Custom Fields, 3) Fixed Variables,
+     * 4) System Defaults
      */
-    private List<String> resolveVariables(List<String> keys, Map<String, Object> userData, String fallbackPhone, Map<String, String> fixedVariables) {
+    private List<String> resolveVariables(List<String> keys, Map<String, Object> userData, String fallbackPhone,
+                                          Map<String, String> fixedVariables) {
         List<String> values = new ArrayList<>();
         for (String key : keys) {
             // 1. Direct Field Match from User Data
@@ -696,7 +739,8 @@ public class CombotWebhookService {
                     values.add(fallbackPhone);
                     break;
                 case CombotConstants.FIELD_INSTITUTE_NAME:
-                    values.add(userData.getOrDefault(CombotConstants.FIELD_INSTITUTE_NAME, CombotConstants.DEFAULT_FALLBACK_INSTITUTE_NAME).toString());
+                    values.add(userData.getOrDefault(CombotConstants.FIELD_INSTITUTE_NAME,
+                            CombotConstants.DEFAULT_FALLBACK_INSTITUTE_NAME).toString());
                     break;
                 default:
                     values.add(CombotConstants.DEFAULT_FALLBACK_NAME); // Fallback
@@ -707,7 +751,8 @@ public class CombotWebhookService {
 
     private List<String> determineNextTemplates(String jsonConfig, String userText) {
         try {
-            Map<String, List<String>> rules = objectMapper.readValue(jsonConfig, new TypeReference<>() {});
+            Map<String, List<String>> rules = objectMapper.readValue(jsonConfig, new TypeReference<>() {
+            });
             String input = userText.trim().toLowerCase();
 
             for (Map.Entry<String, List<String>> entry : rules.entrySet()) {
@@ -735,19 +780,18 @@ public class CombotWebhookService {
             logEntry.setBody(text);
             logEntry.setSenderBusinessChannelId(receivingChannelId);
             logEntry.setNotificationDate(LocalDateTime.now());
-            
+
             // Find last outgoing message to this user to get userId
             Optional<NotificationLog> lastOutgoingOpt = notificationLogRepository
                     .findTopByChannelIdAndSenderBusinessChannelIdAndNotificationTypeOrderByNotificationDateDesc(
-                            fromPhone, receivingChannelId, CombotNotificationType.WHATSAPP_OUTGOING.getType()
-                    );
-            
+                            fromPhone, receivingChannelId, CombotNotificationType.WHATSAPP_OUTGOING.getType());
+
             // Set userId if found from previous outgoing message
             lastOutgoingOpt.ifPresent(outgoing -> {
                 logEntry.setUserId(outgoing.getUserId());
                 log.debug("Associated incoming message with userId: {}", outgoing.getUserId());
             });
-            
+
             notificationLogRepository.save(logEntry);
         } catch (Exception e) {
             log.error("Failed to log incoming message from {}", fromPhone, e);
@@ -763,9 +807,11 @@ public class CombotWebhookService {
     }
 
     private String extractTemplateNameFromPayload(String payloadJson) {
-        if (payloadJson == null) return CombotConstants.DEFAULT_TEMPLATE;
+        if (payloadJson == null)
+            return CombotConstants.DEFAULT_TEMPLATE;
         try {
-            Map<String, Object> payload = objectMapper.readValue(payloadJson, new TypeReference<>() {});
+            Map<String, Object> payload = objectMapper.readValue(payloadJson, new TypeReference<>() {
+            });
             Map<String, Object> template = (Map<String, Object>) payload.get(CombotWebhookKeys.TEMPLATE);
             return (String) template.get(CombotWebhookKeys.NAME);
         } catch (Exception e) {
@@ -776,12 +822,18 @@ public class CombotWebhookService {
     private String extractMessageText(Map<String, Object> message) {
         try {
             String type = (String) message.get(CombotWebhookKeys.TYPE);
-            if (WhatsAppMessageType.TEXT.getType().equals(type)) return (String) ((Map) message.get(WhatsAppMessageType.TEXT.getType())).get(CombotWebhookKeys.BODY);
-            if (WhatsAppMessageType.BUTTON.getType().equals(type)) return (String) ((Map) message.get(WhatsAppMessageType.BUTTON.getType())).get(WhatsAppMessageType.TEXT.getType());
+            if (WhatsAppMessageType.TEXT.getType().equals(type))
+                return (String) ((Map) message.get(WhatsAppMessageType.TEXT.getType())).get(CombotWebhookKeys.BODY);
+            if (WhatsAppMessageType.BUTTON.getType().equals(type))
+                return (String) ((Map) message.get(WhatsAppMessageType.BUTTON.getType()))
+                        .get(WhatsAppMessageType.TEXT.getType());
             if (WhatsAppMessageType.INTERACTIVE.getType().equals(type)) {
-                Map<String, Object> interactive = (Map<String, Object>) message.get(WhatsAppMessageType.INTERACTIVE.getType());
-                if (interactive.containsKey("list_reply")) return (String) ((Map) interactive.get("list_reply")).get("title");
-                if (interactive.containsKey("button_reply")) return (String) ((Map) interactive.get("button_reply")).get("title");
+                Map<String, Object> interactive = (Map<String, Object>) message
+                        .get(WhatsAppMessageType.INTERACTIVE.getType());
+                if (interactive.containsKey("list_reply"))
+                    return (String) ((Map) interactive.get("list_reply")).get("title");
+                if (interactive.containsKey("button_reply"))
+                    return (String) ((Map) interactive.get("button_reply")).get("title");
             }
             return "";
         } catch (Exception e) {
@@ -790,9 +842,11 @@ public class CombotWebhookService {
     }
 
     private Map<String, List<String>> parseJsonMap(String json) {
-        if (json == null || json.isEmpty()) return Collections.emptyMap();
+        if (json == null || json.isEmpty())
+            return Collections.emptyMap();
         try {
-            return objectMapper.readValue(json, new TypeReference<>() {});
+            return objectMapper.readValue(json, new TypeReference<>() {
+            });
         } catch (Exception e) {
             return Collections.emptyMap();
         }
@@ -800,13 +854,16 @@ public class CombotWebhookService {
 
     /**
      * Parse fixed variables config JSON
-     * Expected format: {"template_name": {"var_name": "value", "var_name2": "value2"}}
+     * Expected format: {"template_name": {"var_name": "value", "var_name2":
+     * "value2"}}
      * Returns empty map if null/invalid for backward compatibility
      */
     private Map<String, Map<String, String>> parseFixedVariablesConfig(String json) {
-        if (json == null || json.trim().isEmpty()) return Collections.emptyMap();
+        if (json == null || json.trim().isEmpty())
+            return Collections.emptyMap();
         try {
-            return objectMapper.readValue(json, new TypeReference<>() {});
+            return objectMapper.readValue(json, new TypeReference<>() {
+            });
         } catch (Exception e) {
             log.warn("Failed to parse fixed_variables_config, using empty map", e);
             return Collections.emptyMap();
@@ -817,24 +874,32 @@ public class CombotWebhookService {
 
     private Optional<NotificationLog> findOutgoingByMessageId(String messageId) {
         try {
-            return notificationLogRepository.findTopByNotificationTypeAndSourceIdOrderByNotificationDateDesc(CombotNotificationType.WHATSAPP_OUTGOING.getType(), messageId);
-        } catch (Exception e) { return Optional.empty(); }
+            return notificationLogRepository.findTopByNotificationTypeAndSourceIdOrderByNotificationDateDesc(
+                    CombotNotificationType.WHATSAPP_OUTGOING.getType(), messageId);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
     }
 
     private Optional<NotificationLog> findOutgoingByPhone(String phone) {
         try {
-            return notificationLogRepository.findTopByChannelIdAndNotificationTypeOrderByNotificationDateDesc(phone, CombotNotificationType.WHATSAPP_OUTGOING.getType());
-        } catch (Exception e) { return Optional.empty(); }
+            return notificationLogRepository.findTopByChannelIdAndNotificationTypeOrderByNotificationDateDesc(phone,
+                    CombotNotificationType.WHATSAPP_OUTGOING.getType());
+        } catch (Exception e) {
+            return Optional.empty();
+        }
     }
 
     private String extractErrorCode(Map<String, Object> errorData) {
-        if (errorData == null) return CombotConstants.ERROR_CODE_UNKNOWN;
+        if (errorData == null)
+            return CombotConstants.ERROR_CODE_UNKNOWN;
         Object code = errorData.get(CombotWebhookKeys.CODE);
         return code != null ? code.toString() : CombotConstants.ERROR_CODE_UNKNOWN;
     }
 
     private String extractErrorMessage(Map<String, Object> errorData) {
-        if (errorData == null) return "Unknown error";
+        if (errorData == null)
+            return "Unknown error";
         Object msg = errorData.get("message");
         return msg != null ? msg.toString() : "Unknown error";
     }

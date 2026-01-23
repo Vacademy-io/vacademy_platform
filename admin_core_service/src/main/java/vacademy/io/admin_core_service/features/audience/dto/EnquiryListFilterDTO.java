@@ -20,12 +20,20 @@ import java.sql.Timestamp;
 public class EnquiryListFilterDTO {
 
     private String audienceId;
-    private String status;  // enquiry_status
-    private String source;  // source_type from audience_response
+    private String instituteId; // NEW: For global search when audienceId not provided
+    private String status; // enquiry_status
+    private String source; // source_type from audience_response
     private String destinationPackageSessionId;
     private Timestamp createdFrom;
     private Timestamp createdTo;
-    
+
+    // NEW: Search filters
+    private String searchText; // Unified search across parent_name, parent_email, parent_mobile
+
+    // NEW: Counsellor filters
+    private String counsellorId; // Filter by assigned counsellor user ID
+    private Boolean hasCounsellor; // Filter by whether counsellor is assigned (true/false/null)
+
     // Pagination
     private Integer page;
     private Integer size;

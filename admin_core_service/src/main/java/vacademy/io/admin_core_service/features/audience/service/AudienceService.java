@@ -1930,19 +1930,29 @@ public class AudienceService {
     public Page<EnquiryWithResponseDTO> getEnquiriesWithResponses(EnquiryListFilterDTO filterDTO) {
         logger.info("Fetching enquiries with filters: {}", filterDTO);
 
+        // Validate: Either audienceId OR instituteId must be provided
+        if ((filterDTO.getAudienceId() == null || filterDTO.getAudienceId().isBlank())
+                && (filterDTO.getInstituteId() == null || filterDTO.getInstituteId().isBlank())) {
+            throw new VacademyException("Either audience_id or institute_id is required");
+        }
+
         // Set default pagination if not provided
         int page = filterDTO.getPage() != null ? filterDTO.getPage() : 0;
         int size = filterDTO.getSize() != null ? filterDTO.getSize() : 20;
         Pageable pageable = PageRequest.of(page, size);
 
-        // Fetch enquiries with filters
+        // Fetch enquiries with filters (including new filters)
         Page<Enquiry> enquiries = enquiryRepository.findEnquiriesWithFilters(
                 filterDTO.getAudienceId(),
+                filterDTO.getInstituteId(),
                 filterDTO.getStatus(),
                 filterDTO.getSource(),
                 filterDTO.getDestinationPackageSessionId(),
                 filterDTO.getCreatedFrom(),
                 filterDTO.getCreatedTo(),
+                filterDTO.getSearchText(),
+                filterDTO.getCounsellorId(),
+                filterDTO.getHasCounsellor(),
                 pageable);
 
         logger.info("Found {} enquiries", enquiries.getTotalElements());

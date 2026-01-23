@@ -1,4 +1,5 @@
 package vacademy.io.auth_service.feature.auth.service;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
@@ -32,6 +33,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+
 @Service
 public class AuthService {
     @Autowired
@@ -58,6 +60,7 @@ public class AuthService {
     private InstituteInternalService instituteInternalService;
     @Value("${default.learner.portal.url}")
     private String defaultLearnerPortalUrl;
+
     @Transactional
     public User createUser(RegisterRequest registerRequest, Set<UserRole> roles) {
         boolean isAlreadyPresent = false;
@@ -84,29 +87,44 @@ public class AuthService {
         user.setRoles(roles); // Now set the roles
         user = userRepository.save(user); // Save again with roles
         if (isAlreadyPresent) {
-            sendKeepingCredentialsWelcomeMailToUser(user, registerRequest.getInstitute().getId(),roles);
+            sendKeepingCredentialsWelcomeMailToUser(user, registerRequest.getInstitute().getId(), roles);
         } else {
-            sendWelcomeMailToUser(user, registerRequest.getInstitute().getId(),roles);
+            sendWelcomeMailToUser(user, registerRequest.getInstitute().getId(), roles);
         }
         return user;
     }
+
     @Transactional
     public User createUser(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail) {
         String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
         Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+
+        if (optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
+            optionalUser = userRepository.findByUsername(registerRequest.getUsername());
+        }
+
         boolean isAlreadyPresent = optionalUser.isPresent();
         User user;
         if (isAlreadyPresent) {
             user = optionalUser.get();
-            if (StringUtils.hasText(registerRequest.getFullName())) user.setFullName(registerRequest.getFullName());
-            if (StringUtils.hasText(registerRequest.getAddressLine())) user.setAddressLine(registerRequest.getAddressLine());
-            if (StringUtils.hasText(registerRequest.getCity())) user.setCity(registerRequest.getCity());
-            if (StringUtils.hasText(registerRequest.getPinCode())) user.setPinCode(registerRequest.getPinCode());
-            if (StringUtils.hasText(registerRequest.getMobileNumber())) user.setMobileNumber(registerRequest.getMobileNumber());
-            if (registerRequest.getDateOfBirth() != null) user.setDateOfBirth(registerRequest.getDateOfBirth());
-            if (StringUtils.hasText(registerRequest.getGender())) user.setGender(registerRequest.getGender());
-            if (StringUtils.hasText(registerRequest.getProfilePicFileId())) user.setProfilePicFileId(registerRequest.getProfilePicFileId());
-            if (!user.isRootUser()) user.setRootUser(true);
+            if (StringUtils.hasText(registerRequest.getFullName()))
+                user.setFullName(registerRequest.getFullName());
+            if (StringUtils.hasText(registerRequest.getAddressLine()))
+                user.setAddressLine(registerRequest.getAddressLine());
+            if (StringUtils.hasText(registerRequest.getCity()))
+                user.setCity(registerRequest.getCity());
+            if (StringUtils.hasText(registerRequest.getPinCode()))
+                user.setPinCode(registerRequest.getPinCode());
+            if (StringUtils.hasText(registerRequest.getMobileNumber()))
+                user.setMobileNumber(registerRequest.getMobileNumber());
+            if (registerRequest.getDateOfBirth() != null)
+                user.setDateOfBirth(registerRequest.getDateOfBirth());
+            if (StringUtils.hasText(registerRequest.getGender()))
+                user.setGender(registerRequest.getGender());
+            if (StringUtils.hasText(registerRequest.getProfilePicFileId()))
+                user.setProfilePicFileId(registerRequest.getProfilePicFileId());
+            if (!user.isRootUser())
+                user.setRootUser(true);
             user = userRepository.save(user);
         } else {
             if (!StringUtils.hasText(registerRequest.getUsername())) {
@@ -145,16 +163,18 @@ public class AuthService {
         user = userRepository.save(user);
         if (sendWelcomeMail) {
             if (isAlreadyPresent) {
-                sendKeepingCredentialsWelcomeMailToUser(user, instituteId,userRoleSet);
+                sendKeepingCredentialsWelcomeMailToUser(user, instituteId, userRoleSet);
             } else {
-                sendWelcomeMailToUser(user, instituteId,userRoleSet);
+                sendWelcomeMailToUser(user, instituteId, userRoleSet);
             }
         }
         return user;
     }
+
     private List<Role> getAllUserRoles(List<String> userRoles) {
         return roleRepository.findByNameIn(userRoles);
     }
+
     public JwtResponseDto generateJwtTokenForUser(User user, RefreshToken refreshToken, List<UserRole> userRoles) {
         List<String> userPermissions = userPermissionRepository.findByUserId(user.getId()).stream()
                 .map(UserPermission::getPermissionId).toList();
@@ -165,10 +185,11 @@ public class AuthService {
                 .refreshToken(refreshToken.getToken())
                 .build();
     }
-    public void sendWelcomeMailToUser(User user, String instituteId,Set<UserRole> roles) {
+
+    public void sendWelcomeMailToUser(User user, String instituteId, Set<UserRole> roles) {
         InstituteInfoDTO instituteInfoDTO = null;
         boolean isLearner = false;
-        if (roles != null){
+        if (roles != null) {
             for (UserRole userRole : roles) {
                 if (userRole.getRole().getName().equals("STUDENT")) {
                     isLearner = true;
@@ -185,7 +206,7 @@ public class AuthService {
                 instituteName = instituteInfoDTO.getInstituteName();
             if (instituteInfoDTO.getInstituteThemeCode() != null)
                 theme = instituteInfoDTO.getInstituteThemeCode();
-            if (isLearner){
+            if (isLearner) {
                 if (instituteInfoDTO.getLearnerPortalUrl() != null)
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
@@ -199,13 +220,14 @@ public class AuthService {
         genericEmailRequest.setSubject("Welcome to " + instituteName);
         notificationService.sendGenericHtmlMail(genericEmailRequest, instituteId);
     }
-    public void sendKeepingCredentialsWelcomeMailToUser(User user, String instituteId,Set<UserRole>roles) {
+
+    public void sendKeepingCredentialsWelcomeMailToUser(User user, String instituteId, Set<UserRole> roles) {
         if (user == null || user.getEmail() == null) {
             throw new IllegalArgumentException("User or user email must not be null");
         }
         InstituteInfoDTO instituteInfoDTO = null;
         boolean isLearner = false;
-        if (roles != null){
+        if (roles != null) {
             for (UserRole userRole : roles) {
                 if (userRole.getRole().getName().equals("STUDENT")) {
                     isLearner = true;
@@ -222,7 +244,7 @@ public class AuthService {
                 instituteName = instituteInfoDTO.getInstituteName();
             if (instituteInfoDTO.getInstituteThemeCode() != null)
                 theme = instituteInfoDTO.getInstituteThemeCode();
-            if (isLearner){
+            if (isLearner) {
                 if (instituteInfoDTO.getLearnerPortalUrl() != null)
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
@@ -252,11 +274,11 @@ public class AuthService {
         if (userDTOs == null || userDTOs.isEmpty()) {
             throw new IllegalArgumentException("User DTOs list cannot be null or empty");
         }
-        
+
         if (userDTOs.size() != 2) {
             throw new IllegalArgumentException("Expected exactly 2 users (parent and child)");
         }
-        
+
         UserDTO parentDTO = userDTOs.get(0);
         UserDTO childDTO = userDTOs.get(1);
 
@@ -270,11 +292,11 @@ public class AuthService {
 
         UserDTO parentResponseDTO = convertToUserDto(parentUser);
         UserDTO childResponseDTO = convertToUserDto(childUser);
-        
+
         return List.of(parentResponseDTO, childResponseDTO);
     }
 
-    private UserDTO convertToUserDto(User user){
+    private UserDTO convertToUserDto(User user) {
         UserDTO childResponseDTO = new UserDTO();
         childResponseDTO.setId(user.getId());
         childResponseDTO.setFullName(user.getFullName());

@@ -6,6 +6,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import vacademy.io.admin_core_service.features.slide.dto.HtmlVideoSlideDTO;
 
 import java.sql.Timestamp;
@@ -29,6 +31,10 @@ public class HtmlVideoSlide {
     @Column(name = "video_length")
     private Long videoLengthInMillis;
 
+    @Column(name = "code_editor_config", columnDefinition = "JSON")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String codeEditorConfig;
+
     @Column(name = "created_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp createdAt;
 
@@ -43,5 +49,6 @@ public class HtmlVideoSlide {
         this.aiGenVideoId = dto.getAiGenVideoId();
         this.url = dto.getUrl();
         this.videoLengthInMillis = dto.getVideoLengthInMillis();
+        this.codeEditorConfig = dto.getCodeEditorConfig();
     }
 }

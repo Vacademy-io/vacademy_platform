@@ -11,4 +11,5 @@ public class HtmlVideoSlideDTO {
     private String aiGenVideoId;
     private String url;
     private Long videoLengthInMillis;
+    private String codeEditorConfig;
 }

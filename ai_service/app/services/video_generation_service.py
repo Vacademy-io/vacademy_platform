@@ -280,8 +280,19 @@ class VideoGenerationService:
         }
         
         # Determine start_from and stop_at parameters
+        # When resuming, start_from should be the stage we're resuming FROM (which we've already completed)
+        # The pipeline will skip that stage and continue to the next one
         start_from = stage_config[start_stage_idx]["name"]
         stop_at = stage_config[target_stage_idx]["name"]  # Stop at target stage (e.g., "html")
+        
+        # Special handling: if we're resuming from SCRIPT and want to generate TTS,
+        # we need to ensure script.txt exists in the run directory
+        # The pipeline's logic: if start_from="script", it skips script generation and requires script.txt
+        # Then it checks if do_tts is True (which it should be if stop_at is after tts)
+        # If do_tts is True, it generates TTS; if False, it requires narration_raw.json
+        # So the issue might be that do_tts is incorrectly False
+        # Let's ensure the pipeline understands we want to generate TTS by checking the logic
+        logger.info(f"[VideoGenService] Pipeline stage mapping: start_from={start_from} (stage_idx={start_stage_idx}), stop_at={stop_at} (stage_idx={target_stage_idx})")
         
         # Validate parameters before calling pipeline
         if html_quality not in ["classic", "advanced"]:
@@ -297,6 +308,75 @@ class VideoGenerationService:
             captions_enabled = bool(captions_enabled)
         
         logger.info(f"[VideoGenService] Validated parameters: start_from={start_from}, stop_at={stop_at}, language={language}, captions={captions_enabled}, html_quality={html_quality}")
+        
+        # If resuming, download required files from S3 to work directory
+        # The pipeline expects files from previous stages to exist in the run directory
+        # Pipeline creates run_dir at runs_dir / video_id, where runs_dir = work_dir.parent
+        # So run_dir = work_dir.parent / video_id
+        video_record = self.repository.get_by_video_id(video_id)
+        if video_record and start_stage_idx >= 1:  # Resuming from SCRIPT or later
+            logger.info(f"[VideoGenService] Resuming from stage {start_stage_idx}, downloading required files from S3...")
+            
+            # Pipeline creates run_dir at work_dir.parent / video_id
+            # Create it here to ensure files are in the right place
+            run_dir = work_dir.parent / video_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"[VideoGenService] Using run_dir: {run_dir}")
+            
+            # Always need script.txt if resuming from SCRIPT or later (pipeline skips script generation when resuming)
+            if start_stage_idx >= 1:  # SCRIPT, TTS, WORDS, HTML, or RENDER
+                script_url = video_record.s3_urls.get("script")
+                if script_url:
+                    script_path = run_dir / "script.txt"
+                    if not script_path.exists():
+                        logger.info(f"[VideoGenService] Downloading script.txt from S3...")
+                        if self.s3_service.download_file(script_url, script_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded script.txt")
+                        else:
+                            logger.warning(f"[VideoGenService] Failed to download script.txt from {script_url}")
+            
+            # Need narration_raw.json and narration.mp3 if resuming from WORDS or later
+            if start_stage_idx >= 3:  # WORDS, HTML, or RENDER
+                # Note: narration_raw.json might not be in S3 yet (it's an intermediate file)
+                # We'll try to download it, but if it doesn't exist, the pipeline should generate TTS
+                audio_url = video_record.s3_urls.get("audio")
+                if audio_url:
+                    audio_path = run_dir / "narration.mp3"
+                    if not audio_path.exists():
+                        logger.info(f"[VideoGenService] Downloading narration.mp3 from S3...")
+                        if self.s3_service.download_file(audio_url, audio_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded narration.mp3")
+                        else:
+                            logger.warning(f"[VideoGenService] Failed to download narration.mp3 from {audio_url}")
+                
+                # Try to download narration_raw.json if it exists in S3
+                # This file is saved during TTS generation but might not be in S3 yet
+                # We'll construct the S3 key and try to download it
+                try:
+                    from ..config import get_settings
+                    settings = get_settings()
+                    bucket = settings.aws_bucket_name or settings.aws_s3_public_bucket
+                    narration_raw_key = f"ai-videos/{video_id}/audio/narration_raw.json"
+                    narration_raw_url = f"https://{bucket}.s3.amazonaws.com/{narration_raw_key}"
+                    narration_raw_path = run_dir / "narration_raw.json"
+                    if not narration_raw_path.exists():
+                        logger.info(f"[VideoGenService] Attempting to download narration_raw.json from S3...")
+                        if self.s3_service.download_file(narration_raw_url, narration_raw_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded narration_raw.json")
+                        else:
+                            logger.info(f"[VideoGenService] narration_raw.json not found in S3 (this is OK if TTS needs to be regenerated)")
+                except Exception as e:
+                    logger.warning(f"[VideoGenService] Could not download narration_raw.json: {e}")
+            
+            # Need words files if resuming from HTML or later
+            if start_stage_idx >= 4:  # HTML or RENDER
+                words_url = video_record.s3_urls.get("words")
+                if words_url:
+                    words_path = run_dir / "narration.words.json"
+                    if not words_path.exists():
+                        logger.info(f"[VideoGenService] Downloading narration.words.json from S3...")
+                        if self.s3_service.download_file(words_url, words_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded narration.words.json")
         
         # Calculate percentage per stage
         total_stages = target_stage_idx - start_stage_idx + 1
@@ -344,9 +424,16 @@ class VideoGenerationService:
             # Don't raise yet - try to recover partial files
         
         # Map of expected files for each stage
+        # Format: (output_key_from_pipeline, file_key_for_db_s3, file_name)
+        # file_key is used as the key in s3_urls and file_ids in the database
         file_map = {
             "script": [("script_path", "script", "script.txt")],
-            "tts": [("audio_path", "audio", "narration.mp3")],
+            "tts": [
+                ("audio_path", "audio", "narration.mp3"),
+                # narration_raw.json is uploaded to S3 for resume capability but stored separately
+                # We use "audio" stage but different handling to avoid overwriting narration.mp3
+                (None, None, "narration_raw.json")  # Upload but don't store in main s3_urls (internal file)
+            ],
             "words": [
                 ("words_json", "words", "narration.words.json"),
                 (None, "alignment", "alignment.json")  # alignment.json (not in outputs dict)
@@ -660,6 +747,19 @@ class VideoGenerationService:
                                         else:
                                             logger.info(f"[VideoGenService] No image mappings found, skipping URL update in {file_name}")
                                     
+                                    # Handle files that should be uploaded but not stored in main s3_urls (like narration_raw.json)
+                                    if file_key is None:
+                                        # Upload to S3 for resume capability but don't store in database
+                                        # Use "audio" as stage since it's related to TTS/audio generation
+                                        logger.info(f"[VideoGenService] Uploading internal file {file_name} to S3 (not storing in DB)...")
+                                        s3_url = self.s3_service.upload_video_file(
+                                            file_path=file_path_obj,
+                                            video_id=video_id,
+                                            stage="audio"  # Store in audio directory but don't add to s3_urls
+                                        )
+                                        logger.info(f"[VideoGenService] Uploaded internal file {file_name}: {s3_url} (not stored in DB)")
+                                        continue  # Skip DB update for internal files
+                                    
                                     logger.info(f"[VideoGenService] Uploading {file_key} from {file_path_obj}...")
                                     s3_url = self.s3_service.upload_video_file(
                                         file_path=file_path_obj,
@@ -671,6 +771,10 @@ class VideoGenerationService:
                                     logger.info(f"[VideoGenService] Uploaded {file_key}: {s3_url}")
                                 
                                 # Update DB with this file/directory IMMEDIATELY (with retry for connection errors)
+                                # Skip if file_key is None (internal files)
+                                if file_key is None:
+                                    continue
+                                    
                                 max_db_retries = 3
                                 db_updated = False
                                 for retry in range(max_db_retries):
@@ -712,7 +816,8 @@ class VideoGenerationService:
                                 else:
                                     logger.warning(f"[VideoGenService] DB update returned None for {file_key}")
                             except Exception as e:
-                                logger.error(f"[VideoGenService] Failed to upload {file_key}: {e}", exc_info=True)
+                                file_identifier = file_key if file_key else file_name
+                                logger.error(f"[VideoGenService] Failed to upload {file_identifier}: {e}", exc_info=True)
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Could not process file path {file_path}: {e}")
             

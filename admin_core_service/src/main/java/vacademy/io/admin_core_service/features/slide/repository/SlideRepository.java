@@ -610,7 +610,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     'id', h.id,
                                     'url', h.url,
                                     'video_length_in_millis', h.video_length,
-                                    'ai_gen_video_id', h.ai_gen_video_id
+                                    'ai_gen_video_id', h.ai_gen_video_id,
+                                    'code_editor_config', CASE WHEN h.code_editor_config IS NULL THEN NULL ELSE CAST(h.code_editor_config AS TEXT) END
                                 )
                             ) AS slide_data
                         FROM slide s
@@ -1068,7 +1069,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             'id', h.id,
                             'url', h.url,
                             'video_length_in_millis', h.video_length,
-                            'ai_gen_video_id', h.ai_gen_video_id
+                            'ai_gen_video_id', h.ai_gen_video_id,
+                            'code_editor_config', CASE WHEN h.code_editor_config IS NULL THEN NULL ELSE CAST(h.code_editor_config AS TEXT) END
                         )
                     ) AS slide_data
                 FROM slide s
@@ -1706,7 +1708,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'id', h.id,
                                 'url', h.url,
                                 'video_length_in_millis', h.video_length,
-                                'ai_gen_video_id', h.ai_gen_video_id
+                                'ai_gen_video_id', h.ai_gen_video_id,
+                                'code_editor_config', CASE WHEN h.code_editor_config IS NULL THEN NULL ELSE CAST(h.code_editor_config AS TEXT) END
                             )
                         ) AS slide_data
                     FROM slide s

@@ -105,5 +105,8 @@ public class HtmlVideoSlideService {
         if (StringUtils.hasText(dto.getAiGenVideoId())) {
             htmlVideoSlide.setAiGenVideoId(dto.getAiGenVideoId());
         }
+        if (dto.getCodeEditorConfig() != null) {
+            htmlVideoSlide.setCodeEditorConfig(dto.getCodeEditorConfig());
+        }
     }
 }

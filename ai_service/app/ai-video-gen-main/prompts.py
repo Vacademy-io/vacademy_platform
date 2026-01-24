@@ -322,28 +322,37 @@ Narration: "{text}"
 {style_context}
 {beat_context}
 
+**🚨 MANDATORY COLOR RULES (COPY THESE EXACT VALUES)**:
+Background type: {background_type}
+
+For ALL text elements, use: `color: {text_color}`
+For ALL SVG text: `fill="{text_color}"`
+For ALL SVG strokes/lines/paths: `stroke="{svg_stroke}"`
+For SVG fills (shapes): `fill="{svg_fill}"`
+For annotations: `color: '{annotation_color}'`
+
 **⚠️ EDUCATIONAL VIDEO PATTERN**:
 1. Show 1-2 lines of text (matching narration)
 2. Text appears simply (fade in, NOT flying)
 3. Annotate the key term (underline, circle, highlight)
 4. Draw a diagram if helpful
 
-**EXAMPLE - THE CORRECT PATTERN**:
+**EXAMPLE - THE CORRECT PATTERN FOR {background_type_upper} BACKGROUND**:
 ```html
 <div class="full-screen-center">
   <div class="layout-hero">
     <!-- The text that appears - short, 1-2 lines max -->
-    <p id="main-text" class="text-display" style="opacity:0;">
+    <p id="main-text" class="text-display" style="opacity:0;color:{text_color};">
       An <span id="key-term">API</span> lets programs talk to each other
     </p>
     
     <!-- Optional diagram that draws after text -->
     <svg id="diagram" viewBox="0 0 500 120" style="margin-top:40px;">
-      <rect x="20" y="30" width="100" height="60" fill="#2563eb" rx="8"/>
+      <rect x="20" y="30" width="100" height="60" fill="{svg_fill}" rx="8"/>
       <text x="70" y="65" fill="#fff" text-anchor="middle" font-size="16">App A</text>
-      <path d="M130,60 L370,60" stroke="#0f172a" stroke-width="3" fill="none"/>
-      <polygon points="360,50 380,60 360,70" fill="#0f172a"/>
-      <rect x="380" y="30" width="100" height="60" fill="#2563eb" rx="8"/>
+      <path d="M130,60 L370,60" stroke="{svg_stroke}" stroke-width="3" fill="none"/>
+      <polygon points="360,50 380,60 360,70" fill="{svg_stroke}"/>
+      <rect x="380" y="30" width="100" height="60" fill="{svg_fill}" rx="8"/>
       <text x="430" y="65" fill="#fff" text-anchor="middle" font-size="16">App B</text>
     </svg>
   </div>
@@ -354,7 +363,7 @@ fadeIn('#main-text', 0.5, 0);
 
 // 2. After text appears, annotate key term
 setTimeout(() => {{
-  annotate('#key-term', {{type: 'underline', color: '#dc2626', duration: 600}});
+  annotate('#key-term', {{type: 'underline', color: '{annotation_color}', duration: 600}});
 }}, 800);
 
 // 3. Then draw the diagram
@@ -369,20 +378,21 @@ setTimeout(() => {{
 fadeIn('#text', 0.5, 0);           // Simple fade (most common)
 popIn('#text', 0.4, 0);            // Subtle scale up
 typewriter('#text', 1.5, 0);       // Letter by letter
-showThenAnnotate('#text', '#key', 'underline', '#dc2626', 0, 0.8);  // All-in-one!
+showThenAnnotate('#text', '#key', 'underline', '{annotation_color}', 0, 0.8);  // All-in-one!
 ```
 
 **ANNOTATION TYPES** (hand-drawn style):
-- 'underline' - Teacher's underline
-- 'circle' - Circle around term
+- 'underline' - Teacher's underline (use: {annotation_color})
+- 'circle' - Circle around term (use: {primary_color})
 - 'highlight' - Marker highlight (use yellow: #fef08a)
-- 'box' - Box around content
+- 'box' - Box around content (use: {primary_color})
 
 **DO NOT**:
 - Text flying in from sides
 - Bouncing or spinning text
 - Shadows or blur effects
 - Card-heavy app-like design
+- Use colors that don't contrast with {background_type} background
 
 **Language**: {language}
 

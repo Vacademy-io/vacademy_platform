@@ -1024,7 +1024,15 @@ class VideoGenerationPipeline:
                 style_context=style_context,
                 beat_context=beat_context,
                 safe_area=HTML_GENERATION_SAFE_AREA,
-                language=language
+                language=language,
+                # Color enforcement variables
+                background_type=background_type,
+                background_type_upper=background_type.upper(),
+                text_color=palette.get('text', '#0f172a'),
+                svg_stroke=palette.get('svg_stroke', '#0f172a'),
+                svg_fill=palette.get('svg_fill', '#2563eb'),
+                annotation_color=palette.get('annotation_color', '#dc2626'),
+                primary_color=palette.get('primary', '#2563eb'),
             ).strip()
 
             # Retry logic for robustness against JSON parsing failures
@@ -1461,14 +1469,22 @@ class VideoGenerationPipeline:
         h = max(150, h)
         return x, y, w, h, auto_box
 
-    @staticmethod
-    def _ensure_fonts(html: str) -> str:
+    def _ensure_fonts(self, html: str) -> str:
+        # Get colors based on background_type
+        bg_type = getattr(self, '_current_background_type', 'white')
+        preset = BACKGROUND_PRESETS.get(bg_type, BACKGROUND_PRESETS["white"])
+        
+        text_color = preset["text"]
+        text_secondary = preset["text_secondary"]
+        primary_color = preset["primary"]
+        accent_color = preset["accent"]
+        
         # Common educational styles (Highlighting, Markers)
-        global_css = """<style>
+        global_css = f"""<style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');
             
             /* --- FULL SCREEN CENTER CONTAINER (CRITICAL) --- */
-            .full-screen-center {
+            .full-screen-center {{
               width: 100%;
               height: 100%;
               display: flex;
@@ -1478,144 +1494,144 @@ class VideoGenerationPipeline:
               text-align: center;
               box-sizing: border-box;
               padding: 60px 80px;
-            }
+            }}
             
-            .highlight { 
+            .highlight {{ 
               background: linear-gradient(120deg, rgba(255, 226, 89, 0.6) 0%, rgba(255, 233, 148, 0.4) 100%); 
               padding: 0 4px; border-radius: 4px; display: inline-block; 
               box-decoration-break: clone; -webkit-box-decoration-break: clone;
-            }
-            .emphasis { color: var(--primary-color, #3b82f6); font-weight: bold; }
-            .mermaid { display: flex; justify-content: center; width: 100%; margin: 20px auto; }
+            }}
+            .emphasis {{ color: var(--primary-color, {primary_color}); font-weight: bold; }}
+            .mermaid {{ display: flex; justify-content: center; width: 100%; margin: 20px auto; }}
 
             /* --- LAYOUT UTILITIES --- */
             /* 1. Split Layout (Symetric/Asymetric) */
-            .layout-split { 
+            .layout-split {{ 
               display: grid; grid-template-columns: 1fr 1fr; gap: 60px; 
               width: 90%; max-width: 1700px; align-items: center; justify-items: center; 
               text-align: left; 
-            }
-            .layout-split.reverse { direction: rtl; }
-            .layout-split.reverse > * { direction: ltr; }
-            .layout-split.golden-left { grid-template-columns: 1.2fr 0.8fr; }
-            .layout-split.golden-right { grid-template-columns: 0.8fr 1.2fr; }
+            }}
+            .layout-split.reverse {{ direction: rtl; }}
+            .layout-split.reverse > * {{ direction: ltr; }}
+            .layout-split.golden-left {{ grid-template-columns: 1.2fr 0.8fr; }}
+            .layout-split.golden-right {{ grid-template-columns: 0.8fr 1.2fr; }}
             
             /* 2. Simple content sections (NO card-heavy design) */
-            .layout-bento { 
+            .layout-bento {{ 
               display: grid; grid-template-columns: repeat(2, 1fr); 
               gap: 40px; width: 90%; max-width: 1600px; align-content: center; 
-            }
-            .content-section { 
+            }}
+            .content-section {{ 
               padding: 24px; 
-              color: var(--text-color, #fff);
+              color: {text_color};
               /* NO shadows, NO blur, NO card-like appearance */
-            }
+            }}
             /* Legacy .bento-card for compatibility - simplified */
-            .bento-card { 
+            .bento-card {{ 
               padding: 24px; 
-              border-left: 3px solid var(--primary-color, #3b82f6);
-              color: var(--text-color, #fff);
+              border-left: 3px solid {primary_color};
+              color: {text_color};
               /* NO shadows, NO rounded corners, NO blur */
-            }
-            .bento-card.center { text-align: center; }
+            }}
+            .bento-card.center {{ text-align: center; }}
             
             /* 3. Hero / Center Focus */
-            .layout-hero { 
+            .layout-hero {{ 
               display: flex; flex-direction: column; align-items: center; justify-content: center; 
               text-align: center; width: 80%; max-width: 1200px; gap: 32px; 
-            }
+            }}
             
             /* 4. Code Split */
-            .layout-code-split { 
+            .layout-code-split {{ 
               display: grid; grid-template-columns: 40% 60%; gap: 40px; 
               width: 95%; max-width: 1800px; align-items: center; 
               text-align: left; 
-            }
+            }}
             
-            /* Typography Helpers - use CSS variables for color */
-            .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; color: var(--text-color, #fff); }
-            .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; color: var(--text-color, #fff); }
-            .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; color: var(--text-color, #cbd5e1); line-height: 1.5; }
-            .text-label { font-family: 'Fira Code', monospace; font-size: 18px; color: var(--accent-color, #38bdf8); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: block; }
+            /* Typography Helpers - use dynamic colors */
+            .text-display {{ font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; color: {text_color}; }}
+            .text-h2 {{ font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; color: {text_color}; }}
+            .text-body {{ font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; color: {text_secondary}; line-height: 1.5; }}
+            .text-label {{ font-family: 'Fira Code', monospace; font-size: 18px; color: {accent_color}; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: block; }}
             
             /* --- CLEAN EDUCATIONAL COMPONENTS (NO shadows, NO app-like design) --- */
             
             /* Key Term Highlighting - simple underline */
-            .key-term {
-              color: var(--accent-color, #38bdf8);
+            .key-term {{
+              color: {accent_color};
               font-weight: 700;
-              border-bottom: 3px solid var(--accent-color, #38bdf8);
-            }
+              border-bottom: 3px solid {accent_color};
+            }}
             
             /* Step Numbers - simple inline numbering */
-            .step-number {
+            .step-number {{
               display: inline-flex;
               align-items: center;
               justify-content: center;
               width: 48px;
               height: 48px;
-              background: var(--primary-color, #3b82f6);
+              background: {primary_color};
               color: #fff;
               font-weight: 800;
               font-size: 24px;
               border-radius: 50%;
               margin-right: 16px;
-            }
+            }}
             
-            .step-item {
+            .step-item {{
               display: flex;
               align-items: flex-start;
               margin: 20px 0;
-              color: var(--text-color, #fff);
-            }
+              color: {text_color};
+            }}
             
-            .step-content {
+            .step-content {{
               flex: 1;
-            }
+            }}
             
             /* Simple divider line */
-            .divider {
+            .divider {{
               width: 100%;
               height: 2px;
-              background: var(--primary-color, #3b82f6);
+              background: {primary_color};
               margin: 24px 0;
               opacity: 0.5;
-            }
+            }}
             
             /* Arrow indicator for flow */
-            .arrow-right {
+            .arrow-right {{
               display: inline-block;
               width: 0;
               height: 0;
               border-top: 12px solid transparent;
               border-bottom: 12px solid transparent;
-              border-left: 20px solid var(--primary-color, #3b82f6);
+              border-left: 20px solid {primary_color};
               margin: 0 16px;
-            }
+            }}
             
             /* Simple label tag */
-            .label-tag {
+            .label-tag {{
               display: inline-block;
               padding: 4px 12px;
-              background: var(--primary-color, #3b82f6);
+              background: {primary_color};
               color: #fff;
               font-size: 14px;
               font-weight: 600;
               text-transform: uppercase;
               letter-spacing: 0.05em;
-            }
+            }}
             
             /* Comparison - simple side by side */
-            .comparison {
+            .comparison {{
               display: grid;
               grid-template-columns: 1fr 1fr;
               gap: 60px;
               width: 100%;
-            }
-            .comparison .side {
-              color: var(--text-color, #fff);
-            }
-            .comparison .side-title {
+            }}
+            .comparison .side {{
+              color: {text_color};
+            }}
+            .comparison .side-title {{
               font-size: 18px;
               font-weight: 700;
               text-transform: uppercase;
@@ -1623,48 +1639,48 @@ class VideoGenerationPipeline:
               margin-bottom: 16px;
               padding-bottom: 8px;
               border-bottom: 3px solid currentColor;
-            }
-            .comparison .side.before .side-title { color: #ef4444; }
-            .comparison .side.after .side-title { color: #10b981; }
+            }}
+            .comparison .side.before .side-title {{ color: #ef4444; }}
+            .comparison .side.after .side-title {{ color: #10b981; }}
             
             /* SVG container for diagrams */
-            .svg-diagram {
+            .svg-diagram {{
               width: 100%;
               max-width: 800px;
               margin: 0 auto;
-            }
-            .svg-diagram svg {
+            }}
+            .svg-diagram svg {{
               width: 100%;
               height: auto;
-            }
+            }}
             
             /* Simple bullet list */
-            .simple-list {
+            .simple-list {{
               list-style: none;
               padding: 0;
               margin: 0;
-            }
-            .simple-list li {
+            }}
+            .simple-list li {{
               padding: 12px 0;
               padding-left: 32px;
               position: relative;
               font-size: 24px;
-              color: var(--text-color, #fff);
-            }
-            .simple-list li::before {
+              color: {text_color};
+            }}
+            .simple-list li::before {{
               content: '→';
               position: absolute;
               left: 0;
-              color: var(--primary-color, #3b82f6);
+              color: {primary_color};
               font-weight: bold;
-            }
+            }}
 
-            :host { 
+            :host {{ 
               width: 100%; height: 100%; 
               display: flex; flex-direction: column; align-items: center; justify-content: center; 
               font-family: 'Inter', sans-serif; 
-              color: var(--text-color, #fff);
-            }
+              color: {text_color};
+            }}
             </style>"""
         
         # If the model already imports fonts, trust it.
@@ -1716,14 +1732,23 @@ class VideoGenerationPipeline:
         text = str(seg.get("text", "")).strip()
         words = text.split()
         snippet = " ".join(words[:22]) + ("..." if len(words) > 22 else "")
+        
+        # Get colors based on background_type
+        bg_type = getattr(self, '_current_background_type', 'white')
+        preset = BACKGROUND_PRESETS.get(bg_type, BACKGROUND_PRESETS["white"])
+        
+        bg_color = preset["background"]
+        text_color = preset["text"]
+        label_color = preset["primary"]
+        
         html = (
             "<style>"
             "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Inter:wght@400;600&display=swap');"
             ".fs-container {"
             "  width: 100vw; height: 100vh;"
             "  display: flex; flex-direction: column; align-items: center; justify-content: center;"
-            "  background: #0f172a;"  # Slate 900 solid
-            "  color: #f8fafc;"
+            f"  background: {bg_color};"
+            f"  color: {text_color};"
             "  font-family: 'Inter', sans-serif;"
             "  text-align: center;"
             "  padding: 60px;"
@@ -1734,7 +1759,7 @@ class VideoGenerationPipeline:
             "  font-size: 24px;"
             "  text-transform: uppercase;"
             "  letter-spacing: 0.15em;"
-            "  color: #38bdf8;"  # Sky 400
+            f"  color: {label_color};"
             "  margin-bottom: 32px;"
             "}"
             ".fs-content {"
@@ -1743,6 +1768,7 @@ class VideoGenerationPipeline:
             "  font-weight: 700;"
             "  line-height: 1.1;"
             "  max-width: 1600px;"
+            f"  color: {text_color};"
             "}"
             "</style>"
             "<div class='fs-container'>"

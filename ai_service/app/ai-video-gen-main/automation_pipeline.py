@@ -351,7 +351,7 @@ class VideoGenerationPipeline:
         language: str = "English",
         show_captions: bool = True,
         html_quality: str = "advanced",
-        background_type: str = "black",
+        background_type: str = "white",
     ) -> Dict[str, Any]:
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")

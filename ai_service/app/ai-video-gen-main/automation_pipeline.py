@@ -870,27 +870,35 @@ class VideoGenerationPipeline:
             "palette": {
                 "background": preset["background"],
                 "text": preset["text"],
+                "text_secondary": preset["text_secondary"],
                 "primary": preset["primary"],
                 "secondary": preset["secondary"],
                 "accent": preset["accent"],
+                "svg_stroke": preset["svg_stroke"],
+                "svg_fill": preset["svg_fill"],
                 "card_bg": preset["card_bg"],
                 "card_border": preset["card_border"],
+                "mermaid_node_fill": preset["mermaid_node_fill"],
+                "mermaid_node_stroke": preset["mermaid_node_stroke"],
+                "mermaid_text": preset["mermaid_text"],
+                "annotation_color": preset["annotation_color"],
             },
             "fonts": {
                 "primary": "Montserrat",
                 "secondary": "Inter",
                 "code": "Fira Code"
             },
-            "borderRadius": "24px",
-            "glassmorphism": background_type == "black",
+            "borderRadius": "8px",  # Reduced - less app-like
+            "glassmorphism": False,  # Never use glassmorphism for educational videos
             "mermaid_theme": preset["mermaid_theme"],
             "code_theme": preset["code_theme"],
-            "notes": f"{'Dark tech aesthetic' if background_type == 'black' else 'Clean light aesthetic'} with high contrast text."
+            "notes": f"Clean {'dark' if background_type == 'black' else 'light'} educational style. No shadows. Use Rough Notation for annotations."
         }
         
         # Save for inspection
         (run_dir / "style_guide.json").write_text(json.dumps(style_guide, indent=2))
         print(f"🎨 Using {background_type.upper()} background theme")
+        print(f"   Text color: {preset['text']} | SVG stroke: {preset['svg_stroke']} | Annotation: {preset['annotation_color']}")
         return style_guide
 
     # --- Segmentation + HTML ----------------------------------------------
@@ -935,34 +943,56 @@ class VideoGenerationPipeline:
             background_type = style_guide.get("background_type", "black")
             
             # Get mermaid classDef based on background type
+            mermaid_classdef = f"classDef default fill:{palette.get('mermaid_node_fill', '#1e293b')},stroke:{palette.get('mermaid_node_stroke', '#3b82f6')},stroke-width:2px,color:{palette.get('mermaid_text', '#fff')},rx:8px,ry:8px;"
+            
+            # Build explicit color instructions based on background
             if background_type == "white":
-                mermaid_classdef = "classDef default fill:#f1f5f9,stroke:#2563eb,stroke-width:2px,color:#1e293b,rx:8px,ry:8px;"
+                color_warning = (
+                    "⚠️ **WHITE BACKGROUND DETECTED** - USE DARK COLORS ONLY!\n"
+                    "- ALL text MUST be DARK (black/navy): {text}\n"
+                    "- ALL SVG strokes MUST be DARK: {svg_stroke}\n"
+                    "- NEVER use white, light gray, or light colors for text/strokes!\n"
+                    "- Annotations should be RED for visibility: {annotation}\n"
+                ).format(
+                    text=palette.get('text'),
+                    svg_stroke=palette.get('svg_stroke'),
+                    annotation=palette.get('annotation_color')
+                )
             else:
-                mermaid_classdef = "classDef default fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff,rx:8px,ry:8px;"
+                color_warning = (
+                    "⚠️ **BLACK BACKGROUND DETECTED** - USE LIGHT COLORS ONLY!\n"
+                    "- ALL text MUST be WHITE/LIGHT: {text}\n"
+                    "- ALL SVG strokes MUST be LIGHT: {svg_stroke}\n"
+                    "- NEVER use black or dark colors for text/strokes!\n"
+                ).format(
+                    text=palette.get('text'),
+                    svg_stroke=palette.get('svg_stroke')
+                )
             
             style_context = (
-                f"STYLE GUIDE TO FOLLOW STRICTLY:\n"
-                f"**BACKGROUND TYPE: {background_type.upper()}** - This determines ALL color choices.\n"
-                f"- Background Color: {palette.get('background')} (FIXED - do not change)\n"
-                f"- Text Color: {palette.get('text')} (USE THIS FOR ALL TEXT)\n"
-                f"- Primary/Accent: {palette.get('primary')}, {palette.get('accent')}\n"
-                f"- Card Background: {palette.get('card_bg', 'rgba(30, 41, 59, 0.8)')}\n"
-                f"- Card Border: {palette.get('card_border', 'rgba(255, 255, 255, 0.1)')}\n"
-                f"- Border Radius: {style_guide.get('borderRadius', '12px')}\n"
-                f"- Mermaid classDef: {mermaid_classdef}\n"
-                f"\n**CSS VARIABLES TO USE IN YOUR STYLES**:\n"
-                f"```css\n"
-                f":host {{\n"
-                f"  --bg-color: {palette.get('background')};\n"
-                f"  --text-color: {palette.get('text')};\n"
-                f"  --primary-color: {palette.get('primary')};\n"
-                f"  --accent-color: {palette.get('accent')};\n"
-                f"  --card-bg: {palette.get('card_bg', 'rgba(30, 41, 59, 0.8)')};\n"
-                f"  --card-border: {palette.get('card_border', 'rgba(255, 255, 255, 0.1)')};\n"
-                f"  color: var(--text-color);\n"
-                f"}}\n"
+                f"🎨 **COLOR RULES (CRITICAL - FOLLOW EXACTLY)**:\n"
+                f"{color_warning}\n"
+                f"**EXACT COLORS TO USE**:\n"
+                f"- Text color: {palette.get('text')}\n"
+                f"- Secondary text: {palette.get('text_secondary')}\n"
+                f"- SVG stroke color: {palette.get('svg_stroke')}\n"
+                f"- SVG fill color: {palette.get('svg_fill')}\n"
+                f"- Accent/highlight: {palette.get('accent')}\n"
+                f"- Annotation color: {palette.get('annotation_color')}\n"
+                f"\n**FOR SVG ELEMENTS**:\n"
+                f"```html\n"
+                f"<text fill=\"{palette.get('text')}\">Your text</text>\n"
+                f"<path stroke=\"{palette.get('svg_stroke')}\" fill=\"none\"/>\n"
+                f"<rect fill=\"{palette.get('svg_fill')}\"/>\n"
                 f"```\n"
-                f"**CRITICAL**: Text MUST be {palette.get('text')} to contrast with {palette.get('background')} background.\n"
+                f"\n**MERMAID DIAGRAMS**:\n"
+                f"```\n"
+                f"{mermaid_classdef}\n"
+                f"```\n"
+                f"\n**ROUGH NOTATION** (for annotations):\n"
+                f"```javascript\n"
+                f"RoughNotation.annotate(element, {{type: 'underline', color: '{palette.get('annotation_color')}'}}).show();\n"
+                f"```\n"
             )
 
             # Extract relevant visual ideas from beat outline if available

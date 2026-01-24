@@ -347,7 +347,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     )
 
     # Base content with background color. HTML overlays are transparent.
-    # We also inject educational libraries here (KaTeX, Prism, Mermaid, GSAP).
+    # We inject educational libraries: KaTeX, Prism, Mermaid, GSAP, Vivus, Rough Notation, Howler
     html_content = """
             <!DOCTYPE html>
             <html>
@@ -375,6 +375,16 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 <script src="REPLACE_LIBS/gsap.min.js"></script>
                 <script src="REPLACE_LIBS/TextPlugin.min.js"></script>
                 <script src="REPLACE_LIBS/MotionPathPlugin.min.js"></script>
+                <script src="REPLACE_LIBS/DrawSVGPlugin.min.js"></script>
+
+                <!-- Vivus.js for SVG Path Animations -->
+                <script src="https://cdn.jsdelivr.net/npm/vivus@0.4.6/dist/vivus.min.js"></script>
+
+                <!-- Rough Notation for Hand-drawn Annotations -->
+                <script src="https://unpkg.com/rough-notation/lib/rough-notation.iife.js"></script>
+
+                <!-- Howler.js for Audio Effects -->
+                <script src="https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"></script>
 
                 <style>
                   html, body { margin:0; padding:0; width:100%; height:100%; background:REPLACE_BG; overflow:hidden; }
@@ -400,6 +410,137 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   // we pause the timeline so we can manually seek it in perfect sync with video frames
                   gsap.ticker.remove(gsap.ticker.tick);
                   gsap.globalTimeline.pause();
+
+                  // Helper: Animate SVG with Vivus
+                  window.animateSVG = function(svgId, duration, callback) {
+                    if (window.Vivus) {
+                      new Vivus(svgId, {
+                        duration: duration || 100,
+                        type: 'oneByOne',
+                        animTimingFunction: Vivus.EASE_OUT
+                      }, callback || function() {});
+                    }
+                  };
+
+                  // Helper: Rough Notation annotation
+                  window.annotate = function(selector, options) {
+                    if (window.RoughNotation) {
+                      const el = document.querySelector(selector);
+                      if (el) {
+                        const annotation = RoughNotation.annotate(el, {
+                          type: options.type || 'underline',
+                          color: options.color || '#dc2626',
+                          strokeWidth: options.strokeWidth || 3,
+                          padding: options.padding || 5,
+                          animationDuration: options.duration || 800
+                        });
+                        annotation.show();
+                        return annotation;
+                      }
+                    }
+                    return null;
+                  };
+
+                  // Helper: Play sound effect with Howler
+                  window.playSound = function(soundUrl, volume) {
+                    if (window.Howl) {
+                      const sound = new Howl({
+                        src: [soundUrl],
+                        volume: volume || 0.5
+                      });
+                      sound.play();
+                      return sound;
+                    }
+                    return null;
+                  };
+
+                  // Preloaded sound effects (can be used in animations)
+                  window.sounds = {
+                    pop: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
+                    click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
+                    whoosh: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
+                    success: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3'
+                  };
+
+                  // ========== TEXT APPEARANCE HELPERS ==========
+                  // These mimic how text appears in educational videos like Khan Academy, 3Blue1Brown
+
+                  // 1. FADE IN - Simple fade (most common in learning videos)
+                  window.fadeIn = function(selector, duration, delay) {
+                    gsap.fromTo(selector, 
+                      {opacity: 0}, 
+                      {opacity: 1, duration: duration || 0.5, delay: delay || 0, ease: 'power2.out'}
+                    );
+                  };
+
+                  // 2. TYPEWRITER - Letters appear one by one
+                  window.typewriter = function(selector, duration, delay) {
+                    const el = document.querySelector(selector);
+                    if (!el) return;
+                    const text = el.textContent;
+                    el.textContent = '';
+                    el.style.opacity = '1';
+                    let i = 0;
+                    const speed = (duration || 1) * 1000 / text.length;
+                    setTimeout(() => {
+                      const interval = setInterval(() => {
+                        if (i < text.length) {
+                          el.textContent += text.charAt(i);
+                          i++;
+                        } else {
+                          clearInterval(interval);
+                        }
+                      }, speed);
+                    }, (delay || 0) * 1000);
+                  };
+
+                  // 3. POP IN - Subtle scale effect (professional feel)
+                  window.popIn = function(selector, duration, delay) {
+                    gsap.fromTo(selector,
+                      {opacity: 0, scale: 0.85},
+                      {opacity: 1, scale: 1, duration: duration || 0.4, delay: delay || 0, ease: 'back.out(1.7)'}
+                    );
+                  };
+
+                  // 4. SLIDE UP - Gentle slide from below (subtle)
+                  window.slideUp = function(selector, duration, delay) {
+                    gsap.fromTo(selector,
+                      {opacity: 0, y: 30},
+                      {opacity: 1, y: 0, duration: duration || 0.5, delay: delay || 0, ease: 'power2.out'}
+                    );
+                  };
+
+                  // 5. REVEAL LINE BY LINE - For multi-line text
+                  window.revealLines = function(selector, staggerDelay) {
+                    const el = document.querySelector(selector);
+                    if (!el) return;
+                    const lines = el.querySelectorAll('.line');
+                    if (lines.length === 0) {
+                      // If no .line elements, just fade in the whole thing
+                      fadeIn(selector, 0.5);
+                      return;
+                    }
+                    gsap.fromTo(lines,
+                      {opacity: 0, y: 20},
+                      {opacity: 1, y: 0, duration: 0.4, stagger: staggerDelay || 0.3, ease: 'power2.out'}
+                    );
+                  };
+
+                  // 6. THEN ANNOTATE - Show text, then annotate key part
+                  // This is the pattern: text appears → pause → key term gets annotated
+                  window.showThenAnnotate = function(textSelector, termSelector, annotationType, annotationColor, textDelay, annotationDelay) {
+                    // First show the text
+                    fadeIn(textSelector, 0.5, textDelay || 0);
+                    
+                    // Then annotate the key term
+                    setTimeout(() => {
+                      annotate(termSelector, {
+                        type: annotationType || 'underline',
+                        color: annotationColor || '#dc2626',
+                        duration: 600
+                      });
+                    }, ((textDelay || 0) + (annotationDelay || 0.8)) * 1000);
+                  };
                 </script>
               </body>
             </html>

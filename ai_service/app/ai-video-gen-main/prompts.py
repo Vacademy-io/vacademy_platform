@@ -7,24 +7,38 @@ BACKGROUND_PRESETS = {
     "black": {
         "background": "#000000",
         "text": "#ffffff",
+        "text_secondary": "#cbd5e1",
         "primary": "#3b82f6",
         "secondary": "#1e293b",
         "accent": "#38bdf8",
+        "svg_stroke": "#ffffff",
+        "svg_fill": "#3b82f6",
         "card_bg": "rgba(30, 41, 59, 0.8)",
         "card_border": "rgba(255, 255, 255, 0.1)",
         "mermaid_theme": "dark",
+        "mermaid_node_fill": "#1e293b",
+        "mermaid_node_stroke": "#3b82f6",
+        "mermaid_text": "#ffffff",
         "code_theme": "okaidia",
+        "annotation_color": "#38bdf8",
     },
     "white": {
         "background": "#ffffff",
-        "text": "#1e293b",
+        "text": "#0f172a",  # Very dark for maximum contrast
+        "text_secondary": "#475569",
         "primary": "#2563eb",
-        "secondary": "#f1f5f9",
-        "accent": "#0ea5e9",
-        "card_bg": "rgba(241, 245, 249, 0.9)",
-        "card_border": "rgba(0, 0, 0, 0.1)",
+        "secondary": "#e2e8f0",
+        "accent": "#0369a1",  # Darker cyan for visibility on white
+        "svg_stroke": "#0f172a",  # Dark strokes for visibility
+        "svg_fill": "#2563eb",
+        "card_bg": "rgba(226, 232, 240, 0.9)",
+        "card_border": "rgba(0, 0, 0, 0.15)",
         "mermaid_theme": "default",
+        "mermaid_node_fill": "#e2e8f0",
+        "mermaid_node_stroke": "#2563eb",
+        "mermaid_text": "#0f172a",
         "code_theme": "solarizedlight",
+        "annotation_color": "#dc2626",  # Red for visibility on white (like a teacher's pen)
     },
 }
 
@@ -114,43 +128,89 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "- **ANIMATE CONCEPTS, NOT LAYOUTS** - Use animations to EXPLAIN (draw arrows, build diagrams, show flow).\n"
     "- **CLEAN & MINIMAL** - Like a whiteboard or presentation slide, not a website.\n\n"
     
-    "**PLATFORM CAPABILITIES**:\n"
-    "1. **Math**: Use LaTeX: `$$ E=mc^2 $$` (renders via KaTeX).\n"
-    "2. **Code**: Use `<pre><code class='language-python'>...</code></pre>` (Prism.js).\n"
-    "3. **Diagrams**: Use `<div class='mermaid'>graph TD; A-->B;</div>` (Mermaid.js).\n"
-    "4. **SVG Animations**: **USE THIS FOR EXPLAINING CONCEPTS** - Draw lines, animate icons, show processes.\n"
-    "5. **Images**: Include 1-2 AI images: `<img class='generated-image' data-img-prompt='...' src='placeholder.png' />`.\n\n"
+    "**🛠️ ANIMATION TOOLS AVAILABLE**:\n"
+    "1. **Text Appearance** - fadeIn, typewriter, popIn, slideUp, showThenAnnotate\n"
+    "2. **Vivus.js** - Draw SVG paths (handwriting effect)\n"
+    "3. **Rough Notation** - Hand-drawn annotations (underline, circle, highlight)\n"
+    "4. **GSAP** - General animations\n"
+    "5. **Howler.js** - Sound effects\n"
+    "6. **KaTeX** - Math: `$$ E=mc^2 $$`\n"
+    "7. **Mermaid** - Flowcharts\n\n"
     
-    "**🎬 ANIMATION RULES (CRITICAL)**:\n"
-    "- **DO animate**: SVG paths being drawn, arrows pointing, icons appearing, diagram connections forming.\n"
-    "- **DON'T animate**: Text sliding in, cards bouncing, layouts moving around.\n"
-    "- **Good example**: Draw an arrow from A to B while explaining the relationship.\n"
-    "  ```javascript\n"
-    "  // Draw an SVG arrow to show flow\n"
-    "  gsap.from('#arrow-path', {strokeDashoffset: 500, strokeDasharray: 500, duration: 1.5});\n"
-    "  ```\n"
-    "- **Bad example**: Text flying in from the left with bounce effect.\n\n"
+    "**📝 TEXT APPEARANCE (HOW TEXT SHOWS UP IN LEARNING VIDEOS)**:\n"
+    "In educational videos, text appears SIMPLY (no flying/bouncing), then key parts get annotated.\n\n"
+    "```javascript\n"
+    "// SIMPLE FADE IN (most common - like Khan Academy)\n"
+    "fadeIn('#my-text', 0.5, 0);  // selector, duration, delay\n"
+    "\n"
+    "// TYPEWRITER (letters appear one by one)\n"
+    "typewriter('#my-text', 1.5, 0);  // selector, duration, delay\n"
+    "\n"
+    "// POP IN (subtle scale, professional feel)\n"
+    "popIn('#my-text', 0.4, 0);\n"
+    "\n"
+    "// REVEAL LINES (for multi-line text, each line appears)\n"
+    "revealLines('#my-text', 0.3);  // stagger delay between lines\n"
+    "\n"
+    "// SHOW THEN ANNOTATE (THE PATTERN FOR LEARNING VIDEOS!)\n"
+    "// Text fades in → pause → key term gets underlined/circled\n"
+    "showThenAnnotate('#sentence', '#key-term', 'underline', '#dc2626', 0, 0.8);\n"
+    "```\n\n"
+    
+    "**🎯 THE LEARNING VIDEO PATTERN**:\n"
+    "1. Short text appears (1-2 lines matching narration)\n"
+    "2. Pause briefly\n"
+    "3. Key term gets annotated (underline/circle/highlight)\n"
+    "4. Optional: diagram draws while annotation is visible\n\n"
+    
+    "**🎨 ROUGH NOTATION - USE FOR KEY TERMS (HIGHLY RECOMMENDED)**:\n"
+    "Creates hand-drawn style annotations like a teacher marking up a board!\n"
+    "```javascript\n"
+    "// Underline a key term with hand-drawn style\n"
+    "annotate('#key-term', {type: 'underline', color: '#dc2626', duration: 800});\n"
+    "\n"
+    "// Circle an important element\n"
+    "annotate('#important', {type: 'circle', color: '#2563eb', strokeWidth: 3});\n"
+    "\n"
+    "// Highlight text like a marker\n"
+    "annotate('#highlight-me', {type: 'highlight', color: '#fef08a'});\n"
+    "\n"
+    "// Box around content\n"
+    "annotate('#boxed', {type: 'box', color: '#10b981'});\n"
+    "```\n"
+    "Types: 'underline', 'circle', 'box', 'highlight', 'strike-through', 'crossed-off', 'bracket'\n\n"
+    
+    "**🎬 VIVUS.JS - USE FOR SVG DRAWING ANIMATIONS**:\n"
+    "Draws SVG paths like handwriting!\n"
+    "```html\n"
+    "<svg id='my-diagram' viewBox='0 0 400 200'>\n"
+    "  <path d='M50,100 L350,100' stroke='#0f172a' stroke-width='3' fill='none'/>\n"
+    "</svg>\n"
+    "<script>\n"
+    "animateSVG('my-diagram', 150); // duration in frames\n"
+    "</script>\n"
+    "```\n\n"
+    
+    "**🔊 HOWLER.JS - SOUND EFFECTS (OPTIONAL BUT PROFESSIONAL)**:\n"
+    "```javascript\n"
+    "// Play a 'pop' sound when an element appears\n"
+    "playSound(sounds.pop, 0.3);\n"
+    "\n"
+    "// Available: sounds.pop, sounds.click, sounds.whoosh, sounds.success\n"
+    "```\n\n"
     
     "**🎓 EDUCATIONAL DESIGN PRINCIPLES**:\n"
     "1. **ONE CONCEPT AT A TIME**: Each shot = one idea. No clutter.\n"
-    "2. **VISUAL EXPLANATION**: Use diagrams, flowcharts, SVG animations to SHOW the concept.\n"
-    "3. **SIMPLE TEXT**: Large, readable text. Key term + brief explanation. That's it.\n"
-    "4. **SIGNALING**: Use arrows, circles, highlights to direct attention.\n"
-    "5. **BUILD-UP**: Show a diagram being built piece by piece, not all at once.\n\n"
-    
-    "**🎯 VISUAL ELEMENTS TO USE**:\n"
-    "- **Inline SVG diagrams** with animated paths (flowcharts, arrows, icons)\n"
-    "- **Simple text labels** with `.text-display` or `.text-body` classes\n"
-    "- **Key terms** highlighted with `.key-term` class\n"
-    "- **Mermaid diagrams** for flowcharts and processes\n"
-    "- **AI-generated images** for real-world context\n"
-    "- **Simple dividers/lines** to separate concepts\n\n"
+    "2. **ANNOTATE KEY TERMS**: Use Rough Notation to underline/circle important words.\n"
+    "3. **DRAW, DON'T JUST SHOW**: Use Vivus to draw diagrams as if sketching on a whiteboard.\n"
+    "4. **SIMPLE TEXT**: Large, readable text. Key term + brief explanation. That's it.\n"
+    "5. **SIGNALING**: Use arrows, circles, highlights to direct attention.\n\n"
     
     "**❌ DO NOT USE**:\n"
     "- Shadows (box-shadow, drop-shadow)\n"
     "- Glassmorphism or blur effects\n"
     "- Card-heavy layouts that look like apps\n"
-    "- Fancy entrance animations for text\n"
+    "- Fancy entrance animations for text (no flying/bouncing)\n"
     "- Gradient backgrounds on cards\n"
     "- Rounded card grids that look like mobile UI\n\n"
     
@@ -160,25 +220,37 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "- Use `.layout-hero` for: Single big concept in center\n"
     "- Keep backgrounds clean - solid color from the palette\n\n"
     
-    "**COLOR RULES**:\n"
-    "- Use `var(--text-color)` for ALL text.\n"
-    "- Use `var(--primary-color)` for accents, arrows, highlights.\n"
-    "- Use `var(--accent-color)` for key terms.\n"
-    "- Keep backgrounds solid, no gradients.\n\n"
-    
-    "**SVG ANIMATION EXAMPLES**:\n"
+    "**EXAMPLE: Complete Shot with Annotations**:\n"
     "```html\n"
-    "<svg viewBox='0 0 400 200' style='width:100%;height:auto;'>\n"
-    "  <path id='arrow1' d='M50,100 L350,100' stroke='var(--primary-color)' stroke-width='3' fill='none'/>\n"
-    "  <polygon id='arrowhead' points='340,90 360,100 340,110' fill='var(--primary-color)'/>\n"
-    "</svg>\n"
+    "<div class='full-screen-center'>\n"
+    "  <div class='layout-hero'>\n"
+    "    <h1 class='text-display'>What is an <span id='api-term'>API</span>?</h1>\n"
+    "    <p class='text-body'>A way for programs to <span id='talk-term'>talk to each other</span></p>\n"
+    "    <svg id='api-diagram' viewBox='0 0 500 150' style='margin-top:40px;'>\n"
+    "      <rect x='20' y='50' width='120' height='60' fill='#2563eb' rx='8'/>\n"
+    "      <text x='80' y='85' fill='#fff' text-anchor='middle'>App A</text>\n"
+    "      <path d='M150,80 L350,80' stroke='#0f172a' stroke-width='3' fill='none'/>\n"
+    "      <polygon points='340,70 360,80 340,90' fill='#0f172a'/>\n"
+    "      <rect x='360' y='50' width='120' height='60' fill='#2563eb' rx='8'/>\n"
+    "      <text x='420' y='85' fill='#fff' text-anchor='middle'>App B</text>\n"
+    "    </svg>\n"
+    "  </div>\n"
+    "</div>\n"
     "<script>\n"
-    "gsap.from('#arrow1', {strokeDashoffset: 300, strokeDasharray: 300, duration: 1});\n"
-    "gsap.from('#arrowhead', {opacity: 0, x: -20, duration: 0.3, delay: 0.8});\n"
+    "// Draw the diagram\n"
+    "animateSVG('api-diagram', 120);\n"
+    "\n"
+    "// Annotate key terms after diagram is drawn\n"
+    "setTimeout(() => {\n"
+    "  annotate('#api-term', {type: 'underline', color: '#dc2626', duration: 600});\n"
+    "}, 1500);\n"
+    "setTimeout(() => {\n"
+    "  annotate('#talk-term', {type: 'highlight', color: '#fef08a', duration: 600});\n"
+    "}, 2000);\n"
     "</script>\n"
     "```\n\n"
     
-    "Output JSON with 2-4 'shots' per segment. Each shot: one concept, clean visual, educational focus.\n"
+    "Output JSON with 2-4 'shots' per segment. Each shot: one concept, clean visual, annotations for key terms.\n"
 )
 
 HTML_GENERATION_SYSTEM_PROMPT_CLASSIC = (
@@ -250,56 +322,67 @@ Narration: "{text}"
 {style_context}
 {beat_context}
 
-**⚠️ REMINDER: EDUCATIONAL VIDEO, NOT APP UI**:
-- NO shadows, NO glassmorphism, NO card-heavy design
-- Animate CONCEPTS (SVG diagrams, arrows) NOT text/layouts
-- Clean, minimal, like a whiteboard or Khan Academy
+**⚠️ EDUCATIONAL VIDEO PATTERN**:
+1. Show 1-2 lines of text (matching narration)
+2. Text appears simply (fade in, NOT flying)
+3. Annotate the key term (underline, circle, highlight)
+4. Draw a diagram if helpful
 
-**MANDATORY STRUCTURE**:
+**EXAMPLE - THE CORRECT PATTERN**:
 ```html
 <div class="full-screen-center">
-  <div class="layout-split">
-    <div><!-- Text/explanation --></div>
-    <div class="svg-diagram"><!-- SVG visual that explains the concept --></div>
+  <div class="layout-hero">
+    <!-- The text that appears - short, 1-2 lines max -->
+    <p id="main-text" class="text-display" style="opacity:0;">
+      An <span id="key-term">API</span> lets programs talk to each other
+    </p>
+    
+    <!-- Optional diagram that draws after text -->
+    <svg id="diagram" viewBox="0 0 500 120" style="margin-top:40px;">
+      <rect x="20" y="30" width="100" height="60" fill="#2563eb" rx="8"/>
+      <text x="70" y="65" fill="#fff" text-anchor="middle" font-size="16">App A</text>
+      <path d="M130,60 L370,60" stroke="#0f172a" stroke-width="3" fill="none"/>
+      <polygon points="360,50 380,60 360,70" fill="#0f172a"/>
+      <rect x="380" y="30" width="100" height="60" fill="#2563eb" rx="8"/>
+      <text x="430" y="65" fill="#fff" text-anchor="middle" font-size="16">App B</text>
+    </svg>
   </div>
 </div>
-```
-
-**🎬 WHAT TO CREATE FOR THIS SEGMENT**:
-1. **IDENTIFY THE CONCEPT**: What is being explained in the narration?
-2. **CREATE A VISUAL**: Draw an SVG diagram, flowchart, or icon that SHOWS the concept.
-3. **ANIMATE THE VISUAL**: Use GSAP to draw lines, reveal parts, show flow.
-4. **ADD SIMPLE TEXT**: Key term + brief label. That's it.
-
-**SVG ANIMATION EXAMPLE** (use this pattern):
-```html
-<svg viewBox="0 0 400 200" class="svg-diagram">
-  <text x="50" y="40" fill="var(--text-color)" font-size="24">Input</text>
-  <path id="flow-arrow" d="M100,50 L300,50" stroke="var(--primary-color)" stroke-width="3" fill="none"/>
-  <polygon id="arrow-head" points="290,40 310,50 290,60" fill="var(--primary-color)"/>
-  <text x="320" y="40" fill="var(--text-color)" font-size="24">Output</text>
-</svg>
 <script>
-gsap.from('#flow-arrow', {{strokeDashoffset: 200, strokeDasharray: 200, duration: 1}});
-gsap.from('#arrow-head', {{opacity: 0, x: -10, duration: 0.3, delay: 0.8}});
+// 1. Text fades in simply
+fadeIn('#main-text', 0.5, 0);
+
+// 2. After text appears, annotate key term
+setTimeout(() => {{
+  annotate('#key-term', {{type: 'underline', color: '#dc2626', duration: 600}});
+}}, 800);
+
+// 3. Then draw the diagram
+setTimeout(() => {{
+  animateSVG('diagram', 100);
+}}, 1500);
 </script>
 ```
 
-**VISUAL COMPONENTS**:
-- `<span class="key-term">Term</span>` - Highlight vocabulary
-- `<div class="step-item"><span class="step-number">1</span><div class="step-content">...</div></div>` - Process steps
-- `<div class="comparison"><div class="side before">...</div><div class="side after">...</div></div>` - Compare
-- `<ul class="simple-list"><li>Point 1</li></ul>` - Simple bullet points
-- `<div class="svg-diagram">...</div>` - Container for SVG diagrams
+**TEXT APPEARANCE OPTIONS**:
+```javascript
+fadeIn('#text', 0.5, 0);           // Simple fade (most common)
+popIn('#text', 0.4, 0);            // Subtle scale up
+typewriter('#text', 1.5, 0);       // Letter by letter
+showThenAnnotate('#text', '#key', 'underline', '#dc2626', 0, 0.8);  // All-in-one!
+```
+
+**ANNOTATION TYPES** (hand-drawn style):
+- 'underline' - Teacher's underline
+- 'circle' - Circle around term
+- 'highlight' - Marker highlight (use yellow: #fef08a)
+- 'box' - Box around content
 
 **DO NOT**:
-- Add shadows or blur effects
-- Create app-like card grids
-- Animate text flying/sliding in
-- Use gradients on backgrounds
-
-**AI Images**: Include 1-2 images for real-world context:
-`<img class="generated-image" data-img-prompt="description" src="placeholder.png" style="max-width:400px;" />`
+- Text flying in from sides
+- Bouncing or spinning text
+- Shadows or blur effects
+- Card-heavy app-like design
 
 **Language**: {language}
 

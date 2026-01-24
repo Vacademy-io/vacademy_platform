@@ -1130,6 +1130,7 @@ class VideoGenerationPipeline:
         Fix common LLM artifacts in HTML:
         1. Replace Unicode arrows in Mermaid syntax (→ to -->).
         2. Remove repetitive 'In In In' garbage lines.
+        3. Fix missing animations for opacity:0 elements.
         """
         if not html:
             return ""
@@ -1167,6 +1168,37 @@ class VideoGenerationPipeline:
         # Ideally we allow UTF-8 but LLM outputting corrupted ligatures is the issue.
         # Let's strip non-ascii.
         html = re.sub(r'[^\x00-\x7F]+', ' ', html)
+        
+        # 5. FIX CRITICAL: Ensure elements with opacity:0 have animations
+        # Find all elements with opacity:0 and extract their IDs
+        opacity_zero_ids = re.findall(r'id=["\']([^"\']+)["\'][^>]*style=["\'][^"\']*opacity\s*:\s*0', html)
+        opacity_zero_ids += re.findall(r'style=["\'][^"\']*opacity\s*:\s*0[^"\']*["\'][^>]*id=["\']([^"\']+)["\']', html)
+        
+        # Check if there's a script tag
+        has_script = '<script>' in html.lower() or '<script ' in html.lower()
+        
+        if opacity_zero_ids and not has_script:
+            # No script tag but we have hidden elements - add auto-animation script
+            selectors = ', '.join([f'#{id}' for id in set(opacity_zero_ids)])
+            auto_script = f"""<script>
+// Auto-generated: Animate hidden elements
+gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 0.2, ease: 'power2.out'}});
+</script>"""
+            html = html + auto_script
+        elif opacity_zero_ids and has_script:
+            # Has script but check if IDs are referenced in the script
+            script_match = re.search(r'<script[^>]*>(.*?)</script>', html, re.DOTALL | re.IGNORECASE)
+            if script_match:
+                script_content = script_match.group(1)
+                missing_ids = [id for id in set(opacity_zero_ids) if id not in script_content]
+                if missing_ids:
+                    # Some IDs are not animated - add them
+                    selectors = ', '.join([f'#{id}' for id in missing_ids])
+                    additional_script = f"""<script>
+// Auto-generated: Animate missing hidden elements
+gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 0.2, ease: 'power2.out'}});
+</script>"""
+                    html = html + additional_script
 
         return html 
         if "graph TD" in html or "graph LR" in html:

@@ -398,13 +398,19 @@ showThenAnnotate('#text', '#key', 'underline', '{annotation_color}', 0, 0.8);  /
 - Card-heavy app-like design
 - Use colors that don't contrast with {background_type} background
 - Long setTimeout delays (keep under 3 seconds)
-- Leave elements with opacity:0 without immediate fadeIn/popIn animation
+
+**🚨 CRITICAL: EVERY SHOT MUST HAVE A `<script>` TAG**:
+- If ANY element has `style="opacity:0"`, you MUST include a `<script>` block
+- The script MUST animate those elements to become visible
+- Example: `<script>fadeIn('#text1', 0.5, 0); fadeIn('#text2', 0.5, 0.3);</script>`
+- WITHOUT a script, the content will be INVISIBLE (white screen)
 
 **ANIMATION TIMING RULES**:
 - All animations must START within the first 0.5 seconds of the shot
 - All animations must COMPLETE within 5 seconds
 - If using setTimeout, keep delays under 2 seconds
 - Main text should be visible immediately (use fadeIn with delay:0)
+- ALWAYS include `<script>` tags - never omit them
 
 **Language**: {language}
 

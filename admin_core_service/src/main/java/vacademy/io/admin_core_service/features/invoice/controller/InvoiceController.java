@@ -70,10 +70,27 @@ public class InvoiceController {
     }
 
     /**
+     * Test endpoint: Generate invoice for MULTI-PACKAGE enrollment (v2 API)
+     * This simulates the v2 API scenario where multiple payment logs have the same order ID
+     * and should be grouped into a single invoice with multiple line items
+     *
+     * Usage: POST /admin-core-service/v1/invoices/test/generate-multi-package/{orderId}
+     */
+    @PostMapping("/test/generate-multi-package/{orderId}")
+    public ResponseEntity<String> testGenerateInvoiceMultiPackage(@PathVariable String orderId) {
+        try {
+            return ResponseEntity.ok(invoiceService.testGenerateInvoiceForMultiPackage(orderId));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
      * Test endpoint: Generate invoice for a SINGLE payment log only (no grouping)
      * This bypasses the grouping logic and creates an invoice for just this one payment log
      * Useful for testing single payment log scenarios
-     * 
+     *
      * Usage: POST /admin-core-service/v1/invoices/test/generate-single/{paymentLogId}
      */
     @PostMapping("/test/generate-single/{paymentLogId}")

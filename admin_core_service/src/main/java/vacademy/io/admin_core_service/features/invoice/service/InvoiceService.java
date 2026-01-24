@@ -28,6 +28,10 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentL
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLogLineItem;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.session.dto.BatchInstituteProjection;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogLineItemRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
@@ -74,6 +78,12 @@ public class InvoiceService {
     @Autowired
     private PaymentLogRepository paymentLogRepository;
 
+    @Autowired
+    private StudentSessionRepository studentSessionRepository;
+
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
+
     // PaymentNotificatonService can be used for sending invoice emails in the future
     // @Autowired
     // private PaymentNotificatonService paymentNotificatonService;
@@ -89,7 +99,7 @@ public class InvoiceService {
 
     /**
      * Main method to generate invoice after payment confirmation
-     * This method now supports multiple payment logs for a single invoice
+     * This method supports multiple payment logs for a single invoice (v2 multi-package enrollments)
      */
     @Transactional
     public Invoice generateInvoice(UserPlan userPlan, PaymentLog paymentLog, String instituteId) {
@@ -99,16 +109,16 @@ public class InvoiceService {
 
             // Check if this payment log is already part of an invoice
             if (invoicePaymentLogMappingRepository.existsByPaymentLogId(paymentLog.getId())) {
-                log.info("Payment log {} is already part of an invoice. Skipping invoice generation.", 
+                log.info("Payment log {} is already part of an invoice. Skipping invoice generation.",
                         paymentLog.getId());
                 return findInvoiceByPaymentLogId(paymentLog.getId());
             }
 
-            // NOTE: Currently using single payment log per invoice
-            // The mapping table structure supports multiple payment logs per invoice for future use
-            // TODO: Implement multi-enrollment grouping logic when vendorId is properly set
-            List<PaymentLog> paymentLogs = List.of(paymentLog);
-            log.info("Generating invoice for single payment log: {}", paymentLog.getId());
+            // Check if this is a v2 multi-package enrollment (has shared order ID)
+            List<PaymentLog> paymentLogs = findRelatedPaymentLogsForMultiPackage(paymentLog, instituteId);
+
+            log.info("Generating invoice for {} payment log(s) - {} multi-package enrollment detected",
+                    paymentLogs.size(), paymentLogs.size() > 1 ? "v2" : "single");
 
             // 1. Build invoice data from payment log(s)
             InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(paymentLogs, instituteId);
@@ -130,23 +140,23 @@ public class InvoiceService {
             String pdfFileId = uploadInvoiceToS3(pdfBytes, invoiceNumber, instituteId);
 
             // 7. Save invoice record with payment log(s)
-            Invoice invoice = saveInvoiceWithMultiplePaymentLogs(invoiceData, invoiceNumber, pdfFileId, 
+            Invoice invoice = saveInvoiceWithMultiplePaymentLogs(invoiceData, invoiceNumber, pdfFileId,
                     paymentLogs, instituteId);
 
             // 8. Send email (async - don't fail if email fails)
             try {
                 sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId);
             } catch (Exception e) {
-                log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.", 
+                log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.",
                         invoiceNumber, e);
             }
 
-            log.info("Invoice generated successfully: {} with {} payment log(s)", 
+            log.info("Invoice generated successfully: {} with {} payment log(s)",
                     invoiceNumber, paymentLogs.size());
             return invoice;
 
         } catch (Exception e) {
-            log.error("Error generating invoice for userPlanId: {}, paymentLogId: {}", 
+            log.error("Error generating invoice for userPlanId: {}, paymentLogId: {}",
                     userPlan.getId(), paymentLog.getId(), e);
             throw new VacademyException("Failed to generate invoice: " + e.getMessage());
         }
@@ -167,21 +177,87 @@ public class InvoiceService {
 
     /**
      * Find related payment logs that should be grouped in the same invoice
-     * 
-     * NOTE: Currently disabled - vendorId is dummy/same for all entries
-     * This method is kept for future use when proper vendorId/transaction grouping is implemented
-     * 
-     * TODO: Implement proper grouping logic when:
-     * - vendorId is properly set by payment gateway
-     * - Or parent transaction ID is available in payment_specific_data
-     * - Or webhook event ID groups multiple enrollments
+     * This method detects v2 multi-package enrollments by checking for payment logs with the same order ID
+     *
+     * @param paymentLog The payment log to check for related logs
+     * @param instituteId The institute ID
+     * @return List of payment logs that should be grouped together (single log if no related logs found)
+     */
+    private List<PaymentLog> findRelatedPaymentLogsForMultiPackage(PaymentLog paymentLog, String instituteId) {
+        try {
+            // Check if this payment log has payment_specific_data with order_id
+            String orderId = extractOrderIdFromPaymentLog(paymentLog);
+
+            if (orderId != null && isMultiPackageOrderId(orderId)) {
+                log.debug("Detected v2 multi-package order ID: {} for payment log: {}", orderId, paymentLog.getId());
+
+                // Find all payment logs with the same order ID that are PAID and not already invoiced
+                List<PaymentLog> relatedLogs = paymentLogRepository.findAllByOrderIdInOriginalRequest(orderId);
+
+                // Filter out logs that are already invoiced and ensure they have correct status
+                List<PaymentLog> uninvoicedLogs = relatedLogs.stream()
+                        .filter(log -> !invoicePaymentLogMappingRepository.existsByPaymentLogId(log.getId()))
+                        .filter(log -> "PAID".equals(log.getPaymentStatus())) // Ensure paid status
+                        .collect(Collectors.toList());
+
+                if (uninvoicedLogs.size() > 1) {
+                    log.info("Found {} related payment logs for multi-package invoice with order ID: {}",
+                            uninvoicedLogs.size(), orderId);
+                    return uninvoicedLogs;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error checking for related payment logs: {}", e.getMessage());
+        }
+
+        // Default: return single payment log (backward compatibility)
+        log.debug("Using single payment log (no multi-package grouping): {}", paymentLog.getId());
+        return List.of(paymentLog);
+    }
+
+    /**
+     * Extract order ID from payment log's payment_specific_data
+     */
+    private String extractOrderIdFromPaymentLog(PaymentLog paymentLog) {
+        try {
+            if (paymentLog.getPaymentSpecificData() != null && !paymentLog.getPaymentSpecificData().isEmpty()) {
+                // Parse the JSON payment_specific_data
+                ObjectMapper objectMapper = new ObjectMapper();
+                @SuppressWarnings("unchecked")
+                Map<String, Object> paymentData = objectMapper.readValue(paymentLog.getPaymentSpecificData(), Map.class);
+
+                // Check for originalRequest -> orderId
+                if (paymentData.containsKey("originalRequest")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> originalRequest = (Map<String, Object>) paymentData.get("originalRequest");
+                    if (originalRequest.containsKey("orderId")) {
+                        return (String) originalRequest.get("orderId");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not extract order ID from payment log {}: {}", paymentLog.getId(), e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Check if order ID indicates a v2 multi-package enrollment
+     * v2 API uses order IDs starting with "MP" prefix
+     */
+    private boolean isMultiPackageOrderId(String orderId) {
+        return orderId != null && orderId.startsWith("MP");
+    }
+
+    /**
+     * Find related payment logs that should be grouped in the same invoice
+     *
+     * NOTE: This legacy method is kept for backward compatibility but is now replaced by
+     * findRelatedPaymentLogsForMultiPackage for v2 multi-package support
      */
     @Deprecated
     private List<PaymentLog> findRelatedPaymentLogs(PaymentLog paymentLog, String instituteId) {
-        // Currently returning only the single payment log
-        // Multi-enrollment grouping will be implemented later
-        log.debug("Using single payment log (grouping disabled): {}", paymentLog.getId());
-        return List.of(paymentLog);
+        return findRelatedPaymentLogsForMultiPackage(paymentLog, instituteId);
     }
 
     /**
@@ -342,18 +418,21 @@ public class InvoiceService {
 
     /**
      * Build line items for a single plan (used in multi-payment log scenario)
+     * For multi-package enrollments, creates descriptive line items for each package session
      */
-    private List<InvoiceLineItemData> buildLineItemsForPlan(PaymentPlan paymentPlan, 
+    private List<InvoiceLineItemData> buildLineItemsForPlan(PaymentPlan paymentPlan,
                                                            List<PaymentLogLineItem> paymentLogLineItems,
                                                            String paymentLogId,
                                                            BigDecimal paymentAmount) {
         List<InvoiceLineItemData> lineItems = new ArrayList<>();
 
+        // For multi-package enrollments, try to get package session details
+        String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
+
         // Main plan item - use payment amount from payment log
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
-                .description(paymentPlan.getName() + (paymentPlan.getDescription() != null ? 
-                        " - " + paymentPlan.getDescription() : ""))
+                .description(description)
                 .quantity(1)
                 .unitPrice(paymentAmount)
                 .amount(paymentAmount)
@@ -363,9 +442,9 @@ public class InvoiceService {
 
         // Discount items for this plan
         for (PaymentLogLineItem item : paymentLogLineItems) {
-            if (item.getType() != null && (item.getType().contains("DISCOUNT") || 
+            if (item.getType() != null && (item.getType().contains("DISCOUNT") ||
                 item.getType().contains("COUPON") || item.getType().contains("REFERRAL"))) {
-                
+
                 BigDecimal discountValue = BigDecimal.ZERO;
                 if (item.getAmount() != null) {
                     if (item.getAmount() < 0) {
@@ -378,7 +457,7 @@ public class InvoiceService {
                 if (discountValue.compareTo(BigDecimal.ZERO) > 0) {
                     InvoiceLineItemData discountItem = InvoiceLineItemData.builder()
                             .itemType(item.getType())
-                            .description(item.getSource() != null ? 
+                            .description(item.getSource() != null ?
                                     "Discount: " + item.getSource() : "Discount")
                             .quantity(1)
                             .unitPrice(discountValue.negate())
@@ -391,6 +470,52 @@ public class InvoiceService {
         }
 
         return lineItems;
+    }
+
+    /**
+     * Build descriptive text for package session in invoice line item
+     * For multi-package enrollments, includes level and session information
+     */
+    private String buildPackageSessionDescription(PaymentPlan paymentPlan, String paymentLogId) {
+        try {
+            // Get the payment log to access user plan and session information
+            PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElse(null);
+            if (paymentLog != null && paymentLog.getUserPlan() != null) {
+                UserPlan userPlan = paymentLog.getUserPlan();
+
+                // Get package session information from student session mappings
+                List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
+                        .findAllByUserPlanIdAndStatusIn(userPlan.getId(), List.of("ACTIVE"));
+                if (mappings != null && !mappings.isEmpty()) {
+                    StudentSessionInstituteGroupMapping mapping = mappings.get(0);
+                    if (mapping != null && mapping.getPackageSession() != null) {
+                        String packageSessionId = mapping.getPackageSession().getId();
+
+                        // Get batch/institute info for the package session
+                        Optional<BatchInstituteProjection> batchInfoOpt =
+                                packageSessionRepository.findBatchAndInstituteByPackageSessionId(packageSessionId);
+
+                        if (batchInfoOpt.isPresent()) {
+                            BatchInstituteProjection info = batchInfoOpt.get();
+                            // Format: "Plan Name - Batch Name (Institute Name)"
+                            // Batch name already includes level name from the query: CONCAT(l.level_name, ' ', p.package_name)
+                            String baseDescription = paymentPlan.getName() != null ? paymentPlan.getName() : "Package";
+                            String batchInfo = info.getBatchName() != null ? " - " + info.getBatchName() : "";
+                            String instituteInfo = info.getInstituteName() != null ? " (" + info.getInstituteName() + ")" : "";
+
+                            return baseDescription + batchInfo + instituteInfo;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not build detailed package session description for payment log {}: {}",
+                    paymentLogId, e.getMessage());
+        }
+
+        // Fallback to basic plan description
+        return paymentPlan.getName() + (paymentPlan.getDescription() != null ?
+                " - " + paymentPlan.getDescription() : "");
     }
 
     /**
@@ -1199,6 +1324,92 @@ public class InvoiceService {
         } catch (Exception e) {
             log.error("Test: Failed to generate invoice for payment log: {}", paymentLogId, e);
             throw new VacademyException("Failed to generate invoice: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Test method: Generate invoice for MULTI-PACKAGE enrollment (v2 API)
+     * This method simulates the v2 API scenario where multiple payment logs have the same order ID
+     * and should be grouped into a single invoice with multiple line items
+     */
+    @Transactional
+    public String testGenerateInvoiceForMultiPackage(String orderId) {
+        try {
+            log.info("Test: Generating invoice for multi-package enrollment with order ID: {}", orderId);
+
+            // Find all payment logs with the same order ID
+            List<PaymentLog> paymentLogs = paymentLogRepository.findAllByOrderIdInOriginalRequest(orderId);
+
+            if (paymentLogs.isEmpty()) {
+                return "No payment logs found with order ID: " + orderId;
+            }
+
+            // Filter to only PAID logs that aren't already invoiced
+            List<PaymentLog> eligibleLogs = paymentLogs.stream()
+                    .filter(log -> "PAID".equals(log.getPaymentStatus()))
+                    .filter(log -> !invoicePaymentLogMappingRepository.existsByPaymentLogId(log.getId()))
+                    .collect(Collectors.toList());
+
+            if (eligibleLogs.isEmpty()) {
+                return "No eligible payment logs found (must be PAID and not already invoiced) for order ID: " + orderId;
+            }
+
+            log.info("Found {} eligible payment logs for multi-package invoice", eligibleLogs.size());
+
+            // Use the first payment log to get institute and user info
+            PaymentLog firstPaymentLog = eligibleLogs.get(0);
+
+            if (firstPaymentLog.getUserPlan() == null) {
+                throw new VacademyException("Payment log has no associated user plan");
+            }
+
+            // Get institute ID from user plan
+            String instituteId = firstPaymentLog.getUserPlan().getEnrollInvite() != null ?
+                    firstPaymentLog.getUserPlan().getEnrollInvite().getInstituteId() : null;
+
+            if (instituteId == null) {
+                throw new VacademyException("Could not determine institute ID from payment log");
+            }
+
+            // Build invoice data from multiple payment logs
+            InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(eligibleLogs, instituteId);
+
+            // Generate invoice number
+            String invoiceNumber = generateInvoiceNumber(instituteId);
+            invoiceData.setInvoiceNumber(invoiceNumber);
+
+            // Load template
+            String templateHtml = loadInvoiceTemplate(instituteId);
+
+            // Replace placeholders
+            String filledTemplate = replaceTemplatePlaceholders(templateHtml, invoiceData);
+
+            // Generate PDF
+            byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
+
+            // Upload to S3
+            String pdfFileId = uploadInvoiceToS3(pdfBytes, invoiceNumber, instituteId);
+
+            // Save invoice
+            Invoice invoice = saveInvoiceWithMultiplePaymentLogs(invoiceData, invoiceNumber, pdfFileId,
+                    eligibleLogs, instituteId);
+
+            // Send email
+            try {
+                sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId);
+            } catch (Exception e) {
+                log.error("Failed to send invoice email for multi-package invoice: {}. Invoice generation will continue.",
+                        invoiceNumber, e);
+            }
+
+            String pdfUrl = invoice.getPdfFileId() != null ?
+                    mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId()) : null;
+            return "Multi-package invoice generated successfully! Invoice Number: " + invoice.getInvoiceNumber() +
+                   ", PDF File ID: " + invoice.getPdfFileId() + ", Package Sessions: " + eligibleLogs.size() +
+                   (pdfUrl != null ? ", PDF URL: " + pdfUrl : "");
+        } catch (Exception e) {
+            log.error("Test: Failed to generate multi-package invoice for order ID: {}", orderId, e);
+            throw new VacademyException("Failed to generate multi-package invoice: " + e.getMessage());
         }
     }
 

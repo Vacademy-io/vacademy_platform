@@ -58,7 +58,8 @@ public class WebSecurityConfig {
             // SSE streaming endpoints
             "/notification-service/v1/sse/**",
             "/notification-service/public/**",
-            "/notification-service/health/**"
+            "/notification-service/health/**",
+            "notification-service/webhook/v1/wati/**"
     };
 
     @Autowired

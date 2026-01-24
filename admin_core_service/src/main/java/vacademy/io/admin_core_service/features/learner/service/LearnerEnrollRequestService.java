@@ -36,6 +36,7 @@ import vacademy.io.common.common.dto.CustomFieldValueDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
 
 import java.text.SimpleDateFormat;
 
@@ -88,6 +89,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private WorkflowEngineService workflowEngineService;
 
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
@@ -249,6 +253,46 @@ public class LearnerEnrollRequestService {
                 log.info(
                         "FREE enrollment with workflow. Notifications skipped for user: {}. Workflow will handle enrollment.",
                         learnerEnrollRequestDTO.getUser().getId());
+
+                // Trigger workflow for each package session
+                for (String packageSessionId : enrollDTO.getPackageSessionIds()) {
+                    PackageSession ps = packageSessionRepository.findById(packageSessionId).orElse(null);
+                    if (ps != null) {
+                        List<String> workflowIds = learnerEnrollmentEntryService.getWorkflowIds(ps);
+                        for (String workflowId : workflowIds) {
+                            try {
+                                // Build context for workflow - ONLY essential data
+                                // Template name, language code, and template vars are configured in TRANSFORM
+                                // node
+                                Map<String, Object> workflowContext = new java.util.HashMap<>();
+                                workflowContext.put("instituteIdForWhatsapp", learnerEnrollRequestDTO.getInstituteId());
+                                workflowContext.put("package_session_id", packageSessionId);
+                                workflowContext.put("destination_package_session_id", packageSessionId);
+
+                                // Build users list with essential data only
+                                Map<String, Object> userMap = new java.util.HashMap<>();
+                                userMap.put("phone_number", learnerEnrollRequestDTO.getUser().getMobileNumber());
+                                userMap.put("full_name", learnerEnrollRequestDTO.getUser().getFullName());
+                                userMap.put("username", learnerEnrollRequestDTO.getUser().getEmail() != null
+                                        ? learnerEnrollRequestDTO.getUser().getEmail().split("@")[0]
+                                        : learnerEnrollRequestDTO.getUser().getId());
+                                userMap.put("user_id", learnerEnrollRequestDTO.getUser().getId());
+                                userMap.put("email", learnerEnrollRequestDTO.getUser().getEmail());
+
+                                workflowContext.put("users", List.of(userMap));
+
+                                log.info("Triggering workflow {} for user {} on package session {}",
+                                        workflowId, learnerEnrollRequestDTO.getUser().getId(), packageSessionId);
+
+                                workflowEngineService.run(workflowId, workflowContext);
+
+                            } catch (Exception e) {
+                                log.error("Failed to trigger workflow {} for user {}: {}",
+                                        workflowId, learnerEnrollRequestDTO.getUser().getId(), e.getMessage(), e);
+                            }
+                        }
+                    }
+                }
             }
         } else if (UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
             log.info(

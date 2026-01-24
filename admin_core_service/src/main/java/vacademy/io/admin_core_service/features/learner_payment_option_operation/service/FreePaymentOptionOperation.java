@@ -65,7 +65,7 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
 
-        // Step 1: For each package session, create ONLY_DETAILS_FILL entry first
+        // Step 1: For each package session, create ABANDONED_CART entry first
         // and mark previous entries as DELETED
         for (String actualPackageSessionId : packageSessionIds) {
             // Find the INVITED package session for this actual package session
@@ -75,14 +75,14 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
             PackageSession actualPackageSession = packageSessionRepository.findById(actualPackageSessionId)
                     .orElseThrow(() -> new VacademyException("Package session not found: " + actualPackageSessionId));
 
-            // Mark previous ONLY_DETAILS_FILL and PAYMENT_FAILED entries as DELETED
+            // Mark previous ABANDONED_CART and PAYMENT_FAILED entries as DELETED
             learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
                     userDTO.getId(),
                     invitedPackageSession.getId(),
                     actualPackageSessionId,
                     instituteId);
 
-            // Create ONLY_DETAILS_FILL entry
+            // Create ABANDONED_CART entry
             learnerEnrollmentEntryService.createOnlyDetailsFilledEntry(
                     userDTO.getId(),
                     invitedPackageSession,
@@ -90,13 +90,33 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                     instituteId,
                     userPlan.getId());
 
-            log.info("Created ONLY_DETAILS_FILL entry for user {} in package session {}",
+            log.info("Created ABANDONED_CART entry for user {} in package session {}",
                     userDTO.getId(), actualPackageSessionId);
         }
 
-        //workflow
+        // Step 2: Check if workflow is configured for the destination package session
+        // If workflow exists, return early - only ABANDONED_CART entry should exist
+        boolean hasWorkflow = false;
+        for (String packageSessionId : packageSessionIds) {
+            PackageSession packageSession = packageSessionRepository.findById(packageSessionId).orElse(null);
+            if (packageSession != null && learnerEnrollmentEntryService.hasWorkflowConfiguration(packageSession)) {
+                hasWorkflow = true;
+                log.info("Workflow configuration found for package session: {}. Returning with only ABANDONED_CART entry.",
+                        packageSessionId);
+                break;
+            }
+        }
 
-        // Step 3: No workflow - proceed with current enrollment flow
+        // If workflow exists, return early - workflow will handle the rest
+        if (hasWorkflow) {
+            log.info("Workflow will handle enrollment for user: {}. Only ABANDONED_CART entry created.",
+                    userDTO.getEmail());
+            LearnerEnrollResponseDTO response = new LearnerEnrollResponseDTO();
+            response.setUser(userDTO);
+            return response;
+        }
+
+        // Step 3: No workflow - proceed with current enrollment flow (create ACTIVE entry)
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
             for (String packageSessionId : packageSessionIds) {
@@ -141,8 +161,7 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                 instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData,
                 learnerExtraDetails, enrollInvite, userPlan);
 
-        // Step 4: Mark the ONLY_DETAILS_FILL entries as DELETED since enrollment is
-        // complete
+        // Step 4: Mark the ABANDONED_CART entries as DELETED since enrollment is complete
         for (String actualPackageSessionId : packageSessionIds) {
             PackageSession invitedPackageSession = learnerEnrollmentEntryService
                     .findInvitedPackageSession(actualPackageSessionId);
@@ -154,8 +173,7 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                     instituteId);
         }
 
-        // Process referral request if present - for free payments, benefits are
-        // activated immediately
+        // Process referral request if present - for free payments, benefits are activated immediately
         if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
             referralBenefitOrchestrator.processAllBenefits(
                     learnerPackageSessionsEnrollDTO,

@@ -15,6 +15,8 @@ from .routers.chat_bot import router as chat_bot_router
 from .routers.chat_agent import router as chat_agent_router
 from .routers.validation import router as validation_router
 from .routers.institute_settings import router as institute_settings_router
+from .routers.utils import router as utils_router
+
 
 
 # Configure logging
@@ -69,6 +71,8 @@ def create_app() -> FastAPI:
     app.include_router(chat_agent_router, prefix=settings.api_base_path)
     app.include_router(validation_router, prefix=settings.api_base_path)
     app.include_router(institute_settings_router, prefix=settings.api_base_path)
+    app.include_router(utils_router, prefix=settings.api_base_path)
+
 
 
     return app

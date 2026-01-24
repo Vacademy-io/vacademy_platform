@@ -50,6 +50,7 @@ try:
         HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE,
         HTML_GENERATION_SAFE_AREA,
         HTML_GENERATION_USER_PROMPT_TEMPLATE,
+        BACKGROUND_PRESETS,
     )
 except ImportError:
     # Fallback or error if not found. But since we just created it, it should be fine.
@@ -350,6 +351,7 @@ class VideoGenerationPipeline:
         language: str = "English",
         show_captions: bool = True,
         html_quality: str = "advanced",
+        background_type: str = "black",
     ) -> Dict[str, Any]:
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
@@ -359,6 +361,9 @@ class VideoGenerationPipeline:
         
         if html_quality not in ["classic", "advanced"]:
             raise ValueError(f"Invalid html_quality value: {html_quality}. Must be 'classic' or 'advanced'")
+        
+        if background_type not in ["black", "white"]:
+            raise ValueError(f"Invalid background_type value: {background_type}. Must be 'black' or 'white'")
 
         run_dir = self._resolve_run_dir(run_name, resume_run)
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -374,11 +379,13 @@ class VideoGenerationPipeline:
         print(f"🌍 Language set to: {language}")
         print(f"📝 Captions enabled: {show_captions}")
         print(f"🎨 HTML Quality: {html_quality}")
+        print(f"🖼️  Background Type: {background_type}")
         
         # Store parameters for use in pipeline stages
         self._current_language = language
         self._current_show_captions = show_captions
         self._current_html_quality = html_quality
+        self._current_background_type = background_type
         
         stage_idx = self.STAGE_INDEX[start_from]
         # stop_at means "stop after this stage", so stop_idx is the next stage after stop_at
@@ -448,7 +455,7 @@ class VideoGenerationPipeline:
 
         if do_html:
             print("🎨 Designing Visual Style Guide ...")
-            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir)
+            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type)
             
             print("🧠 Building minute-level segments ...")
             segments = self._segment_words(words)
@@ -464,6 +471,16 @@ class VideoGenerationPipeline:
             timeline_path = self._write_timeline(html_segments, run_dir)
         if do_render:
             print("🎥 Rendering final video with Playwright...")
+            
+            # Get background color from style guide
+            style_guide_path = run_dir / "style_guide.json"
+            if style_guide_path.exists():
+                saved_style = json.loads(style_guide_path.read_text())
+                render_bg_color = saved_style.get("palette", {}).get("background", "#000000")
+            else:
+                # Use preset based on background_type
+                preset = BACKGROUND_PRESETS.get(background_type, BACKGROUND_PRESETS["black"])
+                render_bg_color = preset["background"]
             
             # Check for avatar generation
             avatar_video = None
@@ -481,7 +498,8 @@ class VideoGenerationPipeline:
                 words_json_path=word_outputs["words_json"],
                 run_dir=run_dir,
                 avatar_video_path=avatar_video,
-                show_captions=show_captions
+                show_captions=show_captions,
+                background_color=render_bg_color,
             )
         else:
             video_path = None
@@ -839,45 +857,41 @@ class VideoGenerationPipeline:
         return {"words_json": words_json, "words_csv": words_csv}
 
     # --- Style Generation --------------------------------------------------
-    def _generate_style_guide(self, script_text: str, run_dir: Path) -> Dict[str, Any]:
+    def _generate_style_guide(self, script_text: str, run_dir: Path, background_type: str = "black") -> Dict[str, Any]:
         """
-        Ask the LLM to define a cohesive visual style (colors, fonts, shapes) 
-        based on the script content.
+        Generate a style guide based on background_type (white or black).
+        Uses predefined presets to ensure proper color contrast.
         """
-        system_prompt = STYLE_GUIDE_SYSTEM_PROMPT
-        user_prompt = STYLE_GUIDE_USER_PROMPT_TEMPLATE.format(script_excerpt=script_text[:1000]).strip()
-
-        raw = None
-        try:
-            raw = self.html_client.chat(
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                temperature=0.7,
-                max_tokens=1000,
-            )
-            data = _extract_json_blob(raw)
-            # Save for inspection
-            (run_dir / "style_guide.json").write_text(json.dumps(data, indent=2))
-            return data
-        except Exception as e:
-            print(f"⚠️ Failed to generate style guide, using defaults: {e}")
-            if raw:
-                print(f"    Raw output was: {raw[:200]}...")
-            return {
-                "palette": {
-                    "background": "#0f172a",
-                    "text": "#f8fafc",
-                    "primary": "#3b82f6",
-                    "secondary": "#1e293b",
-                    "accent": "#38bdf8"
-                },
-                "fonts": {
-                    "primary": "Montserrat",
-                    "secondary": "Inter",
-                    "code": "Fira Code"
-                },
-                "borderRadius": "24px",
-                "glassmorphism": True
-            }
+        # Use predefined presets based on background_type
+        preset = BACKGROUND_PRESETS.get(background_type, BACKGROUND_PRESETS["black"])
+        
+        style_guide = {
+            "background_type": background_type,
+            "palette": {
+                "background": preset["background"],
+                "text": preset["text"],
+                "primary": preset["primary"],
+                "secondary": preset["secondary"],
+                "accent": preset["accent"],
+                "card_bg": preset["card_bg"],
+                "card_border": preset["card_border"],
+            },
+            "fonts": {
+                "primary": "Montserrat",
+                "secondary": "Inter",
+                "code": "Fira Code"
+            },
+            "borderRadius": "24px",
+            "glassmorphism": background_type == "black",
+            "mermaid_theme": preset["mermaid_theme"],
+            "code_theme": preset["code_theme"],
+            "notes": f"{'Dark tech aesthetic' if background_type == 'black' else 'Clean light aesthetic'} with high contrast text."
+        }
+        
+        # Save for inspection
+        (run_dir / "style_guide.json").write_text(json.dumps(style_guide, indent=2))
+        print(f"🎨 Using {background_type.upper()} background theme")
+        return style_guide
 
     # --- Segmentation + HTML ----------------------------------------------
     @staticmethod
@@ -918,13 +932,37 @@ class VideoGenerationPipeline:
         def task(seg: Dict[str, Any]) -> List[Dict[str, Any]]:
             # Flatten style guide for prompt
             palette = style_guide.get("palette", {})
+            background_type = style_guide.get("background_type", "black")
+            
+            # Get mermaid classDef based on background type
+            if background_type == "white":
+                mermaid_classdef = "classDef default fill:#f1f5f9,stroke:#2563eb,stroke-width:2px,color:#1e293b,rx:8px,ry:8px;"
+            else:
+                mermaid_classdef = "classDef default fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff,rx:8px,ry:8px;"
+            
             style_context = (
                 f"STYLE GUIDE TO FOLLOW STRICTLY:\n"
-                f"- Colors: Bg={palette.get('background')}, Text={palette.get('text')}, "
-                f"Primary={palette.get('primary')}, Accent={palette.get('accent')}\n"
+                f"**BACKGROUND TYPE: {background_type.upper()}** - This determines ALL color choices.\n"
+                f"- Background Color: {palette.get('background')} (FIXED - do not change)\n"
+                f"- Text Color: {palette.get('text')} (USE THIS FOR ALL TEXT)\n"
+                f"- Primary/Accent: {palette.get('primary')}, {palette.get('accent')}\n"
+                f"- Card Background: {palette.get('card_bg', 'rgba(30, 41, 59, 0.8)')}\n"
+                f"- Card Border: {palette.get('card_border', 'rgba(255, 255, 255, 0.1)')}\n"
                 f"- Border Radius: {style_guide.get('borderRadius', '12px')}\n"
-                f"- Mood: {style_guide.get('notes', 'Clean')}\n"
-                f"- Glassmorphism: {style_guide.get('glassmorphism', False)}\n"
+                f"- Mermaid classDef: {mermaid_classdef}\n"
+                f"\n**CSS VARIABLES TO USE IN YOUR STYLES**:\n"
+                f"```css\n"
+                f":host {{\n"
+                f"  --bg-color: {palette.get('background')};\n"
+                f"  --text-color: {palette.get('text')};\n"
+                f"  --primary-color: {palette.get('primary')};\n"
+                f"  --accent-color: {palette.get('accent')};\n"
+                f"  --card-bg: {palette.get('card_bg', 'rgba(30, 41, 59, 0.8)')};\n"
+                f"  --card-border: {palette.get('card_border', 'rgba(255, 255, 255, 0.1)')};\n"
+                f"  color: var(--text-color);\n"
+                f"}}\n"
+                f"```\n"
+                f"**CRITICAL**: Text MUST be {palette.get('text')} to contrast with {palette.get('background')} background.\n"
             )
 
             # Extract relevant visual ideas from beat outline if available
@@ -1398,19 +1436,33 @@ class VideoGenerationPipeline:
         # Common educational styles (Highlighting, Markers)
         global_css = """<style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');
+            
+            /* --- FULL SCREEN CENTER CONTAINER (CRITICAL) --- */
+            .full-screen-center {
+              width: 100%;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              text-align: center;
+              box-sizing: border-box;
+              padding: 60px 80px;
+            }
+            
             .highlight { 
               background: linear-gradient(120deg, rgba(255, 226, 89, 0.6) 0%, rgba(255, 233, 148, 0.4) 100%); 
               padding: 0 4px; border-radius: 4px; display: inline-block; 
               box-decoration-break: clone; -webkit-box-decoration-break: clone;
             }
-            .emphasis { color: #3b82f6; font-weight: bold; }
+            .emphasis { color: var(--primary-color, #3b82f6); font-weight: bold; }
             .mermaid { display: flex; justify-content: center; width: 100%; margin: 20px auto; }
 
             /* --- LAYOUT UTILITIES --- */
             /* 1. Split Layout (Symetric/Asymetric) */
             .layout-split { 
               display: grid; grid-template-columns: 1fr 1fr; gap: 60px; 
-              width: 90%; max-width: 1700px; height: 100%; align-items: center; justify-content: center; 
+              width: 90%; max-width: 1700px; align-items: center; justify-items: center; 
               text-align: left; 
             }
             .layout-split.reverse { direction: rtl; }
@@ -1418,24 +1470,24 @@ class VideoGenerationPipeline:
             .layout-split.golden-left { grid-template-columns: 1.2fr 0.8fr; }
             .layout-split.golden-right { grid-template-columns: 0.8fr 1.2fr; }
             
-            /* 2. Bento Grid */
+            /* 2. Simple content sections (NO card-heavy design) */
             .layout-bento { 
-              display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); 
-              gap: 24px; width: 90%; max-width: 1700px; height: 80%; align-content: center; 
+              display: grid; grid-template-columns: repeat(2, 1fr); 
+              gap: 40px; width: 90%; max-width: 1600px; align-content: center; 
             }
+            .content-section { 
+              padding: 24px; 
+              color: var(--text-color, #fff);
+              /* NO shadows, NO blur, NO card-like appearance */
+            }
+            /* Legacy .bento-card for compatibility - simplified */
             .bento-card { 
-              background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); 
-              backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); 
-              border-radius: 24px; padding: 32px; 
-              display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; 
-              text-align: left; overflow: hidden; position: relative; 
-              box-shadow: 0 4px 20px rgba(0,0,0,0.2); 
+              padding: 24px; 
+              border-left: 3px solid var(--primary-color, #3b82f6);
+              color: var(--text-color, #fff);
+              /* NO shadows, NO rounded corners, NO blur */
             }
-            .bento-card.dark { background: rgba(0,0,0,0.8); }
-            .bento-card.accent { background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); }
-            .bento-card.center { align-items: center; text-align: center; justify-content: center; }
-            .bento-card.span-2 { grid-column: span 2; }
-            .bento-card.span-row-2 { grid-row: span 2; }
+            .bento-card.center { text-align: center; }
             
             /* 3. Hero / Center Focus */
             .layout-hero { 
@@ -1450,18 +1502,139 @@ class VideoGenerationPipeline:
               text-align: left; 
             }
             
-            /* Typography Helpers */
-            .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; }
-            .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
-            .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; color: #cbd5e1; line-height: 1.5; }
-            .text-label { font-family: 'Fira Code', monospace; font-size: 18px; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: block; }
+            /* Typography Helpers - use CSS variables for color */
+            .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; color: var(--text-color, #fff); }
+            .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; color: var(--text-color, #fff); }
+            .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; color: var(--text-color, #cbd5e1); line-height: 1.5; }
+            .text-label { font-family: 'Fira Code', monospace; font-size: 18px; color: var(--accent-color, #38bdf8); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: block; }
             
-            .glass-panel { 
-              background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); 
-              border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 40px; 
+            /* --- CLEAN EDUCATIONAL COMPONENTS (NO shadows, NO app-like design) --- */
+            
+            /* Key Term Highlighting - simple underline */
+            .key-term {
+              color: var(--accent-color, #38bdf8);
+              font-weight: 700;
+              border-bottom: 3px solid var(--accent-color, #38bdf8);
+            }
+            
+            /* Step Numbers - simple inline numbering */
+            .step-number {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              width: 48px;
+              height: 48px;
+              background: var(--primary-color, #3b82f6);
+              color: #fff;
+              font-weight: 800;
+              font-size: 24px;
+              border-radius: 50%;
+              margin-right: 16px;
+            }
+            
+            .step-item {
+              display: flex;
+              align-items: flex-start;
+              margin: 20px 0;
+              color: var(--text-color, #fff);
+            }
+            
+            .step-content {
+              flex: 1;
+            }
+            
+            /* Simple divider line */
+            .divider {
+              width: 100%;
+              height: 2px;
+              background: var(--primary-color, #3b82f6);
+              margin: 24px 0;
+              opacity: 0.5;
+            }
+            
+            /* Arrow indicator for flow */
+            .arrow-right {
+              display: inline-block;
+              width: 0;
+              height: 0;
+              border-top: 12px solid transparent;
+              border-bottom: 12px solid transparent;
+              border-left: 20px solid var(--primary-color, #3b82f6);
+              margin: 0 16px;
+            }
+            
+            /* Simple label tag */
+            .label-tag {
+              display: inline-block;
+              padding: 4px 12px;
+              background: var(--primary-color, #3b82f6);
+              color: #fff;
+              font-size: 14px;
+              font-weight: 600;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+            }
+            
+            /* Comparison - simple side by side */
+            .comparison {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 60px;
+              width: 100%;
+            }
+            .comparison .side {
+              color: var(--text-color, #fff);
+            }
+            .comparison .side-title {
+              font-size: 18px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.1em;
+              margin-bottom: 16px;
+              padding-bottom: 8px;
+              border-bottom: 3px solid currentColor;
+            }
+            .comparison .side.before .side-title { color: #ef4444; }
+            .comparison .side.after .side-title { color: #10b981; }
+            
+            /* SVG container for diagrams */
+            .svg-diagram {
+              width: 100%;
+              max-width: 800px;
+              margin: 0 auto;
+            }
+            .svg-diagram svg {
+              width: 100%;
+              height: auto;
+            }
+            
+            /* Simple bullet list */
+            .simple-list {
+              list-style: none;
+              padding: 0;
+              margin: 0;
+            }
+            .simple-list li {
+              padding: 12px 0;
+              padding-left: 32px;
+              position: relative;
+              font-size: 24px;
+              color: var(--text-color, #fff);
+            }
+            .simple-list li::before {
+              content: '→';
+              position: absolute;
+              left: 0;
+              color: var(--primary-color, #3b82f6);
+              font-weight: bold;
             }
 
-            :host { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; }
+            :host { 
+              width: 100%; height: 100%; 
+              display: flex; flex-direction: column; align-items: center; justify-content: center; 
+              font-family: 'Inter', sans-serif; 
+              color: var(--text-color, #fff);
+            }
             </style>"""
         
         # If the model already imports fonts, trust it.
@@ -1932,6 +2105,7 @@ class VideoGenerationPipeline:
         run_dir: Path,
         avatar_video_path: Optional[Path] = None,
         show_captions: bool = True,
+        background_color: str = "#000000",
     ) -> Path:
         output_video = run_dir / "output.mp4"
         frames_dir = run_dir / ".render_frames"
@@ -1952,6 +2126,8 @@ class VideoGenerationPipeline:
             str(DEFAULT_BRANDING),
             "--frames-dir",
             str(frames_dir),
+            "--background",
+            background_color,
         ]
         if show_captions:
             cmd.append("--show-captions")
@@ -2000,6 +2176,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--html-model", default="xiaomi/mimo-v2-flash:free", help="Model for HTML generation.")
     parser.add_argument("--voice-id", default="Qggl4b0xRMiqOwhPtVWT", help="ElevenLabs voice ID.")
     parser.add_argument("--voice-model", default="eleven_multilingual_v2", help="ElevenLabs model ID.")
+    parser.add_argument(
+        "--background-type",
+        choices=["black", "white"],
+        default="black",
+        help="Background color type: 'black' for dark theme, 'white' for light theme (default: black)."
+    )
     args = parser.parse_args()
 
     if args.resume_run and args.run_name:
@@ -2033,6 +2215,7 @@ def main() -> None:
         run_name=args.run_name,
         resume_run=args.resume_run,
         start_from=args.start_from,
+        background_type=args.background_type,
     )
     print("\n✅ Pipeline completed successfully!")
     print(f"• Run directory: {outputs['run_dir']}")

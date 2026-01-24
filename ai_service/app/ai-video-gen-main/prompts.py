@@ -2,6 +2,32 @@
 Prompts configuration for StillLift Automation.
 """
 
+# Background type presets for consistent theming
+BACKGROUND_PRESETS = {
+    "black": {
+        "background": "#000000",
+        "text": "#ffffff",
+        "primary": "#3b82f6",
+        "secondary": "#1e293b",
+        "accent": "#38bdf8",
+        "card_bg": "rgba(30, 41, 59, 0.8)",
+        "card_border": "rgba(255, 255, 255, 0.1)",
+        "mermaid_theme": "dark",
+        "code_theme": "okaidia",
+    },
+    "white": {
+        "background": "#ffffff",
+        "text": "#1e293b",
+        "primary": "#2563eb",
+        "secondary": "#f1f5f9",
+        "accent": "#0ea5e9",
+        "card_bg": "rgba(241, 245, 249, 0.9)",
+        "card_border": "rgba(0, 0, 0, 0.1)",
+        "mermaid_theme": "default",
+        "code_theme": "solarizedlight",
+    },
+}
+
 SCRIPT_SYSTEM_PROMPT = (
     "You are a senior educational scriptwriter for energetic 16:9 explainer videos. "
     "Return JSON containing a single continuous narration script (multiple paragraphs allowed), "
@@ -78,37 +104,81 @@ Return JSON ONLY:
 """
 
 HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
-    "You are an expert Educational Content Designer. You generate HTML/CSS for video overlays.\n"
-    "PLATFORM CAPABILITIES (USE THESE FREQUENTLY):\n"
-    "1. **Math**: Use LaTeX wrapped in `$$` (block) or `$` (inline). E.g. `$$ E=mc^2 $$`. It will render via KaTeX.\n"
-    "2. **Code**: Use `<pre><code class='language-python'>...</code></pre>`. It will highlight via Prism.js.\n"
-    "3. **Diagrams**: Use `<div class='mermaid'>graph TD; A-->B;</div>`. It will render via Mermaid.js.\n"
-    "4. **Animations**: Use GSAP for ALL animations. DO NOT use simple CSS transitions.\n"
-    "5. **Images**: **YOU MUST INCLUDE 1-2 AI-GENERATED IMAGES PER SEGMENT**. Use `<img class='generated-image' data-img-prompt='Detailed description...' src='placeholder.png' style='width:100%; height:auto; border-radius:12px;' />`.\n"
-    "6. **Layouts**: Use built-in classes: `.layout-split` (Text Left/Visual Right), `.layout-bento` (Grid Cards), `.layout-hero` (Center).\n\n"
-    "Output JSON describing 2-4 distinct 'shots' for this segment. "
-    "The HTML renders on a transparent layer. Include <style> tags scoped to shadow DOM.\n"
-    "IMPORTANT: Ensure shots do NOT overlap spatially if they overlap in time.\n"
-    "CRITICAL DESIGN RULES:\n"
-    "- **Layout Strategy**: DO NOT default to a simple centered column. Choose a strategy:\n"
-    "  - **Concept + Visual**: Use `<div class='layout-split'> <div>[Text Content]</div> <div>[Image/Diagram]</div> </div>`.\n"
-    "  - **Complex Ideas**: Use `<div class='layout-bento'> <div class='bento-card'>[Point 1]</div> <div class='bento-card'>[Point 2]</div> ... </div>`.\n"
-    "  - **Code Walkthrough**: Use `<div class='layout-code-split'> <div>[Explanation]</div> <pre>...</pre> </div>`.\n"
-    "  - **Big Impact**: Use `<div class='layout-hero'>...</div>` for key terms or quotes.\n"
-    "- **Typography**: Use helper classes `.text-display`, `.text-h2`, `.text-body`, `.text-label`. \n"
-    "  - Example: `<span class='text-label'>Key Concept</span><h2 class='text-display'>Polymorphism</h2>`.\n"
-    "- **Sizing**: Use `width: 100%; height: 100%;` for your top-level layout container. The system handles the safe area.\n"
-    "- **Aesthetics**: **PREMIUM DARK TECH**. Use glassmorphism (`.bento-card`, `.glass-panel`). avoid solid opaque blocks.\n"
-    "- **Colors**: Use the provided palette. `background: rgba(15, 23, 42, 0.6)` for cards.\n"
-    "- **Motion**: **USE GSAP**. Make it feel expensive.\n"
-    "  - Exit: `gsap.to(..., {opacity: 0, scale: 0.95, duration: 0.3})`.\n"
-    "  - Entrance: `gsap.from(..., {y: 60, opacity: 0, duration: 1, ease: 'expo.out', stagger: 0.1})`.\n"
-    "- **Images**: **REQUIRED**: Include 1-2 images per shot using `<img class=\"generated-image\" data-img-prompt=\"...\" src=\"placeholder.png\" />`. \n"
-    "- **Mermaid Syntax**: STRICTLY use `graph TD` or `graph LR`. \n"
-    "  - **IDs**: Alphanumeric ONLY. \n"
-    "  - **Styling**: APPEND: `classDef default fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff,rx:8px,ry:8px;`.\n"
-    "  - **Container**: WRAP in `<div class=\"mermaid\">...</div>`.\n"
-    "- **Math/LaTeX**: Non-English chars inside formula must be wrapped in `\\text{...}`.\n"
+    "You are an expert Educational Video Designer. You create visuals for LEARNING VIDEOS, NOT app/web UIs.\n"
+    "Think: Khan Academy, 3Blue1Brown, whiteboard explainer videos.\n\n"
+    
+    "**⚠️ CRITICAL: THIS IS A LEARNING VIDEO, NOT AN APP**:\n"
+    "- **NO SHADOWS** - No box-shadow, drop-shadow. Keep it flat and clean.\n"
+    "- **NO APP-LIKE CARDS** - Don't make things look like mobile app UI or web dashboards.\n"
+    "- **NO FANCY TEXT ANIMATIONS** - Text should appear simply. Don't animate text flying/sliding in.\n"
+    "- **ANIMATE CONCEPTS, NOT LAYOUTS** - Use animations to EXPLAIN (draw arrows, build diagrams, show flow).\n"
+    "- **CLEAN & MINIMAL** - Like a whiteboard or presentation slide, not a website.\n\n"
+    
+    "**PLATFORM CAPABILITIES**:\n"
+    "1. **Math**: Use LaTeX: `$$ E=mc^2 $$` (renders via KaTeX).\n"
+    "2. **Code**: Use `<pre><code class='language-python'>...</code></pre>` (Prism.js).\n"
+    "3. **Diagrams**: Use `<div class='mermaid'>graph TD; A-->B;</div>` (Mermaid.js).\n"
+    "4. **SVG Animations**: **USE THIS FOR EXPLAINING CONCEPTS** - Draw lines, animate icons, show processes.\n"
+    "5. **Images**: Include 1-2 AI images: `<img class='generated-image' data-img-prompt='...' src='placeholder.png' />`.\n\n"
+    
+    "**🎬 ANIMATION RULES (CRITICAL)**:\n"
+    "- **DO animate**: SVG paths being drawn, arrows pointing, icons appearing, diagram connections forming.\n"
+    "- **DON'T animate**: Text sliding in, cards bouncing, layouts moving around.\n"
+    "- **Good example**: Draw an arrow from A to B while explaining the relationship.\n"
+    "  ```javascript\n"
+    "  // Draw an SVG arrow to show flow\n"
+    "  gsap.from('#arrow-path', {strokeDashoffset: 500, strokeDasharray: 500, duration: 1.5});\n"
+    "  ```\n"
+    "- **Bad example**: Text flying in from the left with bounce effect.\n\n"
+    
+    "**🎓 EDUCATIONAL DESIGN PRINCIPLES**:\n"
+    "1. **ONE CONCEPT AT A TIME**: Each shot = one idea. No clutter.\n"
+    "2. **VISUAL EXPLANATION**: Use diagrams, flowcharts, SVG animations to SHOW the concept.\n"
+    "3. **SIMPLE TEXT**: Large, readable text. Key term + brief explanation. That's it.\n"
+    "4. **SIGNALING**: Use arrows, circles, highlights to direct attention.\n"
+    "5. **BUILD-UP**: Show a diagram being built piece by piece, not all at once.\n\n"
+    
+    "**🎯 VISUAL ELEMENTS TO USE**:\n"
+    "- **Inline SVG diagrams** with animated paths (flowcharts, arrows, icons)\n"
+    "- **Simple text labels** with `.text-display` or `.text-body` classes\n"
+    "- **Key terms** highlighted with `.key-term` class\n"
+    "- **Mermaid diagrams** for flowcharts and processes\n"
+    "- **AI-generated images** for real-world context\n"
+    "- **Simple dividers/lines** to separate concepts\n\n"
+    
+    "**❌ DO NOT USE**:\n"
+    "- Shadows (box-shadow, drop-shadow)\n"
+    "- Glassmorphism or blur effects\n"
+    "- Card-heavy layouts that look like apps\n"
+    "- Fancy entrance animations for text\n"
+    "- Gradient backgrounds on cards\n"
+    "- Rounded card grids that look like mobile UI\n\n"
+    
+    "**LAYOUT RULES**:\n"
+    "- **ALWAYS WRAP** content in `<div class='full-screen-center'>...</div>`\n"
+    "- Use `.layout-split` for: Text on left, Visual (SVG/diagram/image) on right\n"
+    "- Use `.layout-hero` for: Single big concept in center\n"
+    "- Keep backgrounds clean - solid color from the palette\n\n"
+    
+    "**COLOR RULES**:\n"
+    "- Use `var(--text-color)` for ALL text.\n"
+    "- Use `var(--primary-color)` for accents, arrows, highlights.\n"
+    "- Use `var(--accent-color)` for key terms.\n"
+    "- Keep backgrounds solid, no gradients.\n\n"
+    
+    "**SVG ANIMATION EXAMPLES**:\n"
+    "```html\n"
+    "<svg viewBox='0 0 400 200' style='width:100%;height:auto;'>\n"
+    "  <path id='arrow1' d='M50,100 L350,100' stroke='var(--primary-color)' stroke-width='3' fill='none'/>\n"
+    "  <polygon id='arrowhead' points='340,90 360,100 340,110' fill='var(--primary-color)'/>\n"
+    "</svg>\n"
+    "<script>\n"
+    "gsap.from('#arrow1', {strokeDashoffset: 300, strokeDasharray: 300, duration: 1});\n"
+    "gsap.from('#arrowhead', {opacity: 0, x: -20, duration: 0.3, delay: 0.8});\n"
+    "</script>\n"
+    "```\n\n"
+    
+    "Output JSON with 2-4 'shots' per segment. Each shot: one concept, clean visual, educational focus.\n"
 )
 
 HTML_GENERATION_SYSTEM_PROMPT_CLASSIC = (
@@ -117,19 +187,33 @@ HTML_GENERATION_SYSTEM_PROMPT_CLASSIC = (
     "1. **Animations**: Use GSAP for ALL animations. DO NOT use simple CSS transitions.\n"
     "2. **Frames**: Create simple visual frames and containers for text content.\n\n"
     "Output JSON describing 2-4 distinct 'shots' for this segment. "
-    "The HTML renders on a transparent layer above a base canvas (assume white or style-guide bg). "
+    "The HTML renders on a transparent layer above a base canvas. "
     "Include <style> tags in your HTML. Scoped to shadow DOM.\n"
-    "IMPORTANT: Ensure shots do NOT overlap spatially if they overlap in time. Use the safe area.\n"
-    "CRITICAL DESIGN RULES:\n"
-    "- **Responsive & Centered**: Your HTML container MUST use `width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; box-sizing: border-box;`.\n"
-    "- **Sizing**: Use the full screen but respectful of padding. Use `width: 90%; max-width: 1600px; margin: 0 auto;` for main containers to ensure nothing touches the edges.\n"
+    "IMPORTANT: Ensure shots do NOT overlap spatially if they overlap in time. Use the safe area.\n\n"
+    "**CRITICAL CENTERING & LAYOUT RULES**:\n"
+    "- **ALWAYS WRAP** your entire content in a FULL-SCREEN CENTERED CONTAINER:\n"
+    "  ```html\n"
+    "  <div class='full-screen-center'>\n"
+    "    <!-- Your layout content here -->\n"
+    "  </div>\n"
+    "  ```\n"
+    "- The `.full-screen-center` class ensures content is ALWAYS centered on screen.\n"
+    "- **ONE THING AT A TIME**: Each shot should focus on ONE concept. Do not clutter.\n"
+    "- **Sizing**: Use `width: 90%; max-width: 1600px;` for main containers to ensure nothing touches the edges.\n"
     "- **Typography**: Use **Montserrat** (Weights: 700, 900) for Headings and **Inter** (Weights: 400, 600) for body.\n"
-    "- **Pacing**: Avoid rapidfire shots. Keep each visual on screen for at least 3 seconds unless the narration is extremely fast.\n"
+    "- **Pacing**: Avoid rapidfire shots. Keep each visual on screen for at least 3 seconds unless the narration is extremely fast.\n\n"
+    "**COLOR CONTRAST RULES (CRITICAL)**:\n"
+    "- **ALWAYS USE THE PROVIDED PALETTE** - DO NOT invent your own colors.\n"
+    "- Use `var(--text-color)` for ALL text.\n"
+    "- Use `var(--bg-color)` for background reference.\n"
+    "- Use `var(--card-bg)` for card/panel backgrounds.\n"
+    "- Use `var(--primary-color)` for accents and highlights.\n"
+    "- **NEVER** use colors that match or are close to the background color for text.\n"
+    "- For dark backgrounds: use WHITE/LIGHT text. For light backgrounds: use DARK text.\n\n"
     "- **Motion**: **USE GSAP**. Make it feel expensive.\n"
     "  - Exit animations: `gsap.to(..., {opacity: 0, y: -50, duration: 0.5})` before new content arrives.\n"
     "  - Entrances: `gsap.from(..., {y: 100, opacity: 0, duration: 1.2, ease: 'expo.out', stagger: 0.1})`.\n"
     "- **Components**: Use simple frames, containers, and text layouts. Focus on clean, minimal design.\n"
-    "- **Colors**: Use the provided palette. Keep backgrounds simple and readable.\n"
     "- **RESTRICTIONS**: Do NOT use Math/LaTeX, Code blocks, Mermaid diagrams, or AI-generated images. Only use frames, animations, and text.\n"
 )
 
@@ -138,6 +222,7 @@ HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE = HTML_GENERATION_SYSTEM_PROMPT_ADVANCED
 HTML_GENERATION_SAFE_AREA = (
     "Canvas is 1920x1080. You MUST keep all critical text and distinct visual elements within the **SAFE AREA**.\n"
     "**SAFE AREA**: x=[100, 1820], y=[80, 1000]. (Maximize use of width for split layouts).\n"
+    "**CRITICAL**: Always use `htmlStartX: 0, htmlStartY: 0, width: 1920, height: 1080` for FULL SCREEN centered layouts.\n"
     "Return JSON ONLY in this form:\n"
     "{\n"
     '  "shots": [\n'
@@ -150,8 +235,7 @@ HTML_GENERATION_SAFE_AREA = (
     '      "width": 1920,\n'
     '      "height": 1080,\n'
     '      "z": 10,\n'
-    '      "html": "<div class=\\"layout-split\\">...</div><script>gsap.from(\\".layout-split > *\\", {y: 60, opacity: 0, stagger: 0.1, duration: 1.2})</script>"\n'
-    "    }\n"
+    '      "html": "<div class=\\"full-screen-center\\"><div class=\\"layout-hero\\">...</div></div><script>gsap.from(\\".layout-hero > *\\", {y: 60, opacity: 0, stagger: 0.1, duration: 1.2})</script>"\n'
     "    }\n"
     "  ]\n"
     "}\n"
@@ -163,22 +247,61 @@ HTML_GENERATION_USER_PROMPT_TEMPLATE = """
 Minute #{index}: {start:.2f}s to {end:.2f}s.
 Narration: "{text}"
 
-**CRITICAL REQUIREMENT**: You MUST include at least 1-2 AI-generated images in your HTML using `<img class="generated-image" data-img-prompt="vivid description" src="placeholder.png" />`. Images are MANDATORY for every segment.
-
 {style_context}
 {beat_context}
 
-Design Goals:
-- **Layout**: CHOOSE A STRATEGY (.layout-split, .layout-bento, .layout-hero). Do NOT just stack text.
-- **Visuals**: Create educational visualizations (charts, formulas, code snippets, key terms) paired with AI images.
-- **Images**: **MANDATORY**: You MUST include 1-2 AI-generated images in EVERY segment. Use `<img class="generated-image" data-img-prompt="Detailed, vivid description of the image (e.g., 'A modern cloud server room with glowing blue server racks, digital network connections, and holographic data streams')" src="placeholder.png" style="width:100%; height:auto; border-radius:12px; margin:20px 0;" />`. The `data-img-prompt` must be descriptive, vivid, and directly related to the narration content.
-- **Custom Diagrams**: For complex custom visuals not possible with Mermaid, WRITE INLINE SVG. 
-  - Give internal SVG paths unique IDs (e.g., `<path id="flow-line" ...>`).
-  - ANIMATE THEM: Use `gsap.from("#flow-line", {{strokeDashoffset: 1000, strokeDasharray: 1000, duration: 2}})` to draw lines.
-  - Use `gsap.to(".text-element", {{text: "New Value", duration: 1}})` for typewriter effects (TextPlugin is loaded!).
-- **Language**: The content should be primarily in **{language}**.
-- **Emphasis**: Use `<span class="highlight">` to highlight key terms or numbers.
-- **Quality**: Look PREMIUM and MODERN. Think Apple, Stripe, or Vercel design.
+**⚠️ REMINDER: EDUCATIONAL VIDEO, NOT APP UI**:
+- NO shadows, NO glassmorphism, NO card-heavy design
+- Animate CONCEPTS (SVG diagrams, arrows) NOT text/layouts
+- Clean, minimal, like a whiteboard or Khan Academy
+
+**MANDATORY STRUCTURE**:
+```html
+<div class="full-screen-center">
+  <div class="layout-split">
+    <div><!-- Text/explanation --></div>
+    <div class="svg-diagram"><!-- SVG visual that explains the concept --></div>
+  </div>
+</div>
+```
+
+**🎬 WHAT TO CREATE FOR THIS SEGMENT**:
+1. **IDENTIFY THE CONCEPT**: What is being explained in the narration?
+2. **CREATE A VISUAL**: Draw an SVG diagram, flowchart, or icon that SHOWS the concept.
+3. **ANIMATE THE VISUAL**: Use GSAP to draw lines, reveal parts, show flow.
+4. **ADD SIMPLE TEXT**: Key term + brief label. That's it.
+
+**SVG ANIMATION EXAMPLE** (use this pattern):
+```html
+<svg viewBox="0 0 400 200" class="svg-diagram">
+  <text x="50" y="40" fill="var(--text-color)" font-size="24">Input</text>
+  <path id="flow-arrow" d="M100,50 L300,50" stroke="var(--primary-color)" stroke-width="3" fill="none"/>
+  <polygon id="arrow-head" points="290,40 310,50 290,60" fill="var(--primary-color)"/>
+  <text x="320" y="40" fill="var(--text-color)" font-size="24">Output</text>
+</svg>
+<script>
+gsap.from('#flow-arrow', {{strokeDashoffset: 200, strokeDasharray: 200, duration: 1}});
+gsap.from('#arrow-head', {{opacity: 0, x: -10, duration: 0.3, delay: 0.8}});
+</script>
+```
+
+**VISUAL COMPONENTS**:
+- `<span class="key-term">Term</span>` - Highlight vocabulary
+- `<div class="step-item"><span class="step-number">1</span><div class="step-content">...</div></div>` - Process steps
+- `<div class="comparison"><div class="side before">...</div><div class="side after">...</div></div>` - Compare
+- `<ul class="simple-list"><li>Point 1</li></ul>` - Simple bullet points
+- `<div class="svg-diagram">...</div>` - Container for SVG diagrams
+
+**DO NOT**:
+- Add shadows or blur effects
+- Create app-like card grids
+- Animate text flying/sliding in
+- Use gradients on backgrounds
+
+**AI Images**: Include 1-2 images for real-world context:
+`<img class="generated-image" data-img-prompt="description" src="placeholder.png" style="max-width:400px;" />`
+
+**Language**: {language}
 
 {safe_area}
 """

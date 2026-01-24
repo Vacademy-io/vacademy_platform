@@ -19,14 +19,19 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.notification_service.constants.NotificationConstants;
-import vacademy.io.notification_service.features.announcements.service.InstituteAnnouncementSettingsService;
 import vacademy.io.notification_service.features.announcements.dto.EmailConfigDTO;
 import vacademy.io.notification_service.features.announcements.service.EmailConfigurationService;
+import vacademy.io.notification_service.features.announcements.service.InstituteAnnouncementSettingsService;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
+import vacademy.io.common.logging.SentryLogger;
+import vacademy.io.notification_service.features.bounced_emails.service.BouncedEmailService;
+import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
+import vacademy.io.notification_service.util.EmailDomainBlocklistUtil;
 
+import java.time.LocalDateTime;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -35,6 +40,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class EmailService {
@@ -55,18 +61,78 @@ public class EmailService {
     private final EmailConfigurationService emailConfigurationService;
     private final ObjectMapper objectMapper;
     private final InstituteAnnouncementSettingsService instituteAnnouncementSettingsService;
+    private final BouncedEmailService bouncedEmailService;
+    private final NotificationLogRepository notificationLogRepository;
 
     @Autowired
     public EmailService(JavaMailSender mailSender, InstituteInternalService internalService,
-                        ObjectMapper objectMapper, EmailDispatcher emailDispatcher,
-                        InstituteAnnouncementSettingsService instituteAnnouncementSettingsService,
-                        EmailConfigurationService emailConfigurationService) {
+            ObjectMapper objectMapper, EmailDispatcher emailDispatcher,
+            InstituteAnnouncementSettingsService instituteAnnouncementSettingsService,
+            EmailConfigurationService emailConfigurationService,
+            BouncedEmailService bouncedEmailService,
+            NotificationLogRepository notificationLogRepository) {
         this.mailSender = mailSender;
         this.internalService = internalService;
         this.objectMapper = objectMapper;
         this.emailDispatcher = emailDispatcher;
         this.instituteAnnouncementSettingsService = instituteAnnouncementSettingsService;
         this.emailConfigurationService = emailConfigurationService;
+        this.bouncedEmailService = bouncedEmailService;
+        this.notificationLogRepository = notificationLogRepository;
+    }
+
+    /**
+     * Check if an email should be blocked from sending.
+     * Checks both domain blocklist and bounced email blocklist.
+     * 
+     * @param email The email address to check
+     * @return true if the email should be blocked, false otherwise
+     */
+    private boolean isEmailBlocked(String email) {
+        // Check domain blocklist first (faster, static check)
+        if (EmailDomainBlocklistUtil.isEmailDomainBlocked(email)) {
+            logger.info("Email blocked - domain is in blocklist: {}", email);
+            return true;
+        }
+        
+        // Check bounced email blocklist (database check with caching)
+        if (bouncedEmailService.isEmailBlocked(email)) {
+            logger.info("Email blocked - previously bounced: {}", email);
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Save email notification log to database.
+     * This is required for bounce event processing to link bounce events back to original emails.
+     * 
+     * @param to Recipient email address
+     * @param subject Email subject
+     * @param body Email body/content
+     * @param source Source of the email (e.g., "EMAIL_SERVICE", "OTP_SERVICE")
+     * @param sourceId Optional source ID
+     * @param userId Optional user ID
+     */
+    private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId) {
+        try {
+            NotificationLog notificationLog = new NotificationLog();
+            notificationLog.setId(UUID.randomUUID().toString());
+            notificationLog.setNotificationType("EMAIL");
+            notificationLog.setChannelId(to); // Email address
+            notificationLog.setBody(body != null ? body : subject); // Use body if available, otherwise subject
+            notificationLog.setSource(source != null ? source : "EMAIL_SERVICE");
+            notificationLog.setSourceId(sourceId);
+            notificationLog.setUserId(userId);
+            notificationLog.setNotificationDate(LocalDateTime.now());
+            
+            notificationLogRepository.save(notificationLog);
+            logger.debug("Saved email notification log for: {} with ID: {}", to, notificationLog.getId());
+        } catch (Exception e) {
+            // Log error but don't fail email sending if log save fails
+            logger.error("Failed to save email notification log for: {} - Error: {}", to, e.getMessage(), e);
+        }
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -82,6 +148,20 @@ public class EmailService {
         props.put("mail.smtp.auth", "true");
         props.put("mail.smtp.starttls.enable", "true"); // This is the key part
         props.put("mail.debug", "false");
+
+        // Connection timeout settings to prevent [EOF] authentication failures
+        props.put("mail.smtp.connectiontimeout", "10000"); // 10 seconds to establish connection
+        props.put("mail.smtp.timeout", "10000"); // 10 seconds for read operations
+        props.put("mail.smtp.writetimeout", "10000"); // 10 seconds for write operations
+
+        // Prevent using stale connections that cause EOF errors
+        props.put("mail.smtp.ssl.checkserveridentity", "true");
+        props.put("mail.smtp.starttls.required", "true");
+
+        // Connection pool management - close connections after each send to avoid stale
+        // connections
+        props.put("mail.smtp.quitwait", "false"); // Don't wait for server response on QUIT command
+
         mailSender.setJavaMailProperties(props);
         return mailSender;
     }
@@ -99,42 +179,47 @@ public class EmailService {
             try {
                 if (institute != null && institute.getSetting() != null) {
                     JsonNode settings = objectMapper.readTree(institute.getSetting());
-                    
+
                     // Determine which email type to use - default to UTILITY_EMAIL if not specified
-                    String emailTypeToUse = StringUtils.hasText(emailType) ? emailType : NotificationConstants.UTILITY_EMAIL;
-                    
+                    String emailTypeToUse = StringUtils.hasText(emailType) ? emailType
+                            : NotificationConstants.UTILITY_EMAIL;
+
                     JsonNode emailSettingsData = settings
                             .path(NotificationConstants.SETTING)
                             .path(NotificationConstants.EMAIL_SETTING)
                             .path(NotificationConstants.DATA);
-                    
+
                     JsonNode emailConfig = emailSettingsData.path(emailTypeToUse);
 
                     if (!emailConfig.isMissingNode()) {
-                        logger.info("Found email configuration for type: {} in institute: {}", emailTypeToUse, instituteId);
-                        
+                        logger.info("Found email configuration for type: {} in institute: {}", emailTypeToUse,
+                                instituteId);
+
                         // Check if SMTP credentials are real or dummy placeholders
                         String username = emailConfig.path(NotificationConstants.USERNAME).asText("");
                         String password = emailConfig.path(NotificationConstants.PASSWORD).asText("");
-                        
+
                         boolean isDummyCredentials = isDummySMTPCredentials(username, password);
-                        
+
                         if (isDummyCredentials) {
-                            logger.info("Dummy SMTP credentials detected in {}, using default SMTP from environment", emailTypeToUse);
+                            logger.info("Dummy SMTP credentials detected in {}, using default SMTP from environment",
+                                    emailTypeToUse);
                             // Use default mail sender from Spring but override 'from' address from JSON
                             mailSenderToUse = mailSender;
                         } else {
-                            logger.info("Real SMTP credentials found in {}, using custom SMTP configuration", emailTypeToUse);
+                            logger.info("Real SMTP credentials found in {}, using custom SMTP configuration",
+                                    emailTypeToUse);
                             // Use custom SMTP configuration from JSON
                             mailSenderToUse = createCustomMailSender(emailConfig);
                         }
-                        
+
                         // Always use the 'from' address from the email type configuration
                         fromToUse = resolveFromAddress(emailConfig, from);
                         logger.info("Using from address: {} from email type: {}", fromToUse, emailTypeToUse);
-                        
+
                     } else {
-                        logger.warn("Email type {} not found in settings, trying UTILITY_EMAIL fallback", emailTypeToUse);
+                        logger.warn("Email type {} not found in settings, trying UTILITY_EMAIL fallback",
+                                emailTypeToUse);
                         // Fallback to UTILITY_EMAIL if specified type not found
                         if (!emailTypeToUse.equals(NotificationConstants.UTILITY_EMAIL)) {
                             return getMailSenderConfig(instituteId, NotificationConstants.UTILITY_EMAIL);
@@ -143,8 +228,9 @@ public class EmailService {
                     }
                 }
             } catch (Exception e) {
-                logger.error("Error parsing institute email settings", e);
-                throw new VacademyException("Error parsing JSON object for email settings");
+                logger.error("Error parsing institute email settings for instituteId: {}. Using default SMTP.",
+                        instituteId, e);
+                // Continue with default settings instead of throwing
             }
         } else {
             logger.info("No instituteId provided, using default SMTP");
@@ -152,14 +238,14 @@ public class EmailService {
 
         return new AbstractMap.SimpleEntry<>(mailSenderToUse, fromToUse);
     }
-    
+
     /**
      * Legacy method for backward compatibility - uses UTILITY_EMAIL by default
      */
     private AbstractMap.SimpleEntry<JavaMailSender, String> getMailSenderConfig(String instituteId) {
         return getMailSenderConfig(instituteId, null);
     }
-    
+
     /**
      * Check if SMTP credentials are dummy placeholders
      */
@@ -167,32 +253,42 @@ public class EmailService {
         if (!StringUtils.hasText(username) || !StringUtils.hasText(password)) {
             return true;
         }
-        
+
         // List of dummy/placeholder values
         String[] dummyValues = {
-            "SMTP_USERNAME", "SMTP_PASSWORD",
-            "your_username", "your_password",
-            "username", "password",
-            "placeholder", "dummy",
-            "changeme", "change_me",
-            "example", "test"
+                "SMTP_USERNAME", "SMTP_PASSWORD",
+                "your_username", "your_password",
+                "username", "password",
+                "placeholder", "dummy",
+                "changeme", "change_me",
+                "example", "test"
         };
-        
+
         for (String dummy : dummyValues) {
             if (username.equalsIgnoreCase(dummy) || password.equalsIgnoreCase(dummy)) {
                 logger.debug("Detected dummy credential: username={}, password={}", username, password);
                 return true;
             }
         }
-        
+
         return false;
     }
 
+    /**
+     * Determines if SES Configuration Set header should be included for email tracking.
+     * 
+     * The header is included if:
+     * 1. AWS SQS is enabled (required for bounce detection/blocklist feature), OR
+     * 2. The original institute tracking logic allows it (preserves existing business logic)
+     * 
+     * This ensures bounce detection works globally while preserving existing institute preferences.
+     */
     private boolean shouldIncludeSesConfigurationHeader(String instituteId) {
         if (!awsSqsEnabled) {
             return false;
         }
 
+        // Original logic: check institute tracking preferences
         if (!StringUtils.hasText(instituteId)) {
             return true;
         }
@@ -207,6 +303,12 @@ public class EmailService {
 
     public void sendEmail(String to, String subject, String text, String instituteId) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping simple email for blocked email address: {}", to);
+                return;
+            }
+
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
@@ -217,7 +319,7 @@ public class EmailService {
             message.setFrom(new InternetAddress(fromToUse));
             message.setSubject(subject);
             message.setText(text);
-            
+
             // Add SES configuration set header for event tracking
             if (shouldIncludeSesConfigurationHeader(instituteId)) {
                 message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
@@ -227,40 +329,61 @@ public class EmailService {
             logger.info("Email sent successfully to {} using {}", to,
                     StringUtils.hasText(instituteId) ? "custom SMTP" : "default SMTP");
 
+            // Save notification log for bounce event tracking
+            saveEmailNotificationLog(to, subject, text, "EMAIL_SERVICE", null, null);
+
         } catch (Exception e) {
             logger.error("Failed to send email", e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send simple email")
+                    .withTag("notification.type", "EMAIL")
+                    .withTag("email.type", "SIMPLE")
+                    .withTag("recipient.email", to)
+                    .withTag("institute.id", instituteId != null ? instituteId : "unknown")
+                    .withTag("operation", "sendEmail")
+                    .send();
             throw new RuntimeException(e);
         }
     }
 
     public void sendEmailOtp(String to, String subject, String service, String name, String otp, String instituteId) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping OTP email for blocked email address: {}", to);
+                return;
+            }
+
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
-            InstituteInfoDTO instituteInfoDTO=null;
+            InstituteInfoDTO instituteInfoDTO = null;
 
-            if(instituteId!=null && StringUtils.hasText(instituteId))
-               instituteInfoDTO=internalService.getInstituteByInstituteId(instituteId);
+            if (instituteId != null && StringUtils.hasText(instituteId))
+                instituteInfoDTO = internalService.getInstituteByInstituteId(instituteId);
 
-            //default vacademy theme
-            name=name==null?"User":name;
-            String instituteTheme="#ED7424";
-            String instituteName="Vacademy";
-            String instituteUrl="https://dash.vacademy.io";
-            if(instituteInfoDTO!=null) {
+            // default vacademy theme
+            name = name == null ? "User" : name;
+            String instituteTheme = "#ED7424";
+            String instituteName = "Vacademy";
+            String instituteUrl = "https://dash.vacademy.io";
+            if (instituteInfoDTO != null) {
 
-                instituteTheme = instituteInfoDTO.getInstituteThemeCode()!=null?instituteInfoDTO.getInstituteThemeCode():instituteTheme;
-                instituteName=instituteInfoDTO.getInstituteName()!=null?instituteInfoDTO.getInstituteName():instituteName;
-                instituteUrl=instituteInfoDTO.getWebsiteUrl()!=null?instituteInfoDTO.getWebsiteUrl():instituteUrl;
+                instituteTheme = instituteInfoDTO.getInstituteThemeCode() != null
+                        ? instituteInfoDTO.getInstituteThemeCode()
+                        : instituteTheme;
+                instituteName = instituteInfoDTO.getInstituteName() != null ? instituteInfoDTO.getInstituteName()
+                        : instituteName;
+                instituteUrl = instituteInfoDTO.getWebsiteUrl() != null ? instituteInfoDTO.getWebsiteUrl()
+                        : instituteUrl;
             }
 
             final String emailSubject = StringUtils.hasText(subject)
                     ? subject
-                    : "Your One-Time Password (OTP) for "+instituteName+" Access | "+otp;
+                    : "Your One-Time Password (OTP) for " + instituteName + " Access | " + otp;
 
             // Build the HTML body for the OTP email
-            final String emailBody = createEmailBody(name, otp, instituteTheme, instituteName, instituteUrl,fromToUse);
+            final String emailBody = createEmailBody(name, otp, instituteTheme, instituteName, instituteUrl, fromToUse);
 
             final boolean includeSesHeader = shouldIncludeSesConfigurationHeader(instituteId);
 
@@ -272,7 +395,7 @@ public class EmailService {
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
                     message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
-                    
+
                     // Add SES configuration set header for event tracking
                     if (includeSesHeader) {
                         message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
@@ -290,8 +413,19 @@ public class EmailService {
                     mailSenderToUse.send(message);
                     logger.info("OTP email successfully sent to: {}", to);
 
+                    // Save notification log for bounce event tracking
+                    saveEmailNotificationLog(to, emailSubject, emailBody, "OTP_SERVICE", service, null);
+
                 } catch (Exception e) {
                     logger.error("Error while sending OTP email", e);
+                    SentryLogger.SentryEventBuilder.error(e)
+                            .withMessage("Failed to send OTP email")
+                            .withTag("notification.type", "EMAIL")
+                            .withTag("email.type", "OTP")
+                            .withTag("recipient.email", to)
+                            .withTag("institute.id", instituteId != null ? instituteId : "unknown")
+                            .withTag("operation", "sendEmailOtp")
+                            .send();
                     throw new RuntimeException("Failed to send OTP email", e);
                 }
             });
@@ -302,106 +436,120 @@ public class EmailService {
             throw new RuntimeException("Failed to send OTP email due to rate limiting", e);
         } catch (Exception e) {
             logger.error("An error occurred while preparing the OTP email", e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to prepare OTP email")
+                    .withTag("notification.type", "EMAIL")
+                    .withTag("email.type", "OTP")
+                    .withTag("recipient.email", to)
+                    .withTag("institute.id", instituteId != null ? instituteId : "unknown")
+                    .withTag("operation", "prepareEmailOtp")
+                    .send();
             throw new RuntimeException("An error occurred while preparing the OTP email", e);
         }
     }
 
     // Method to create the email body
-    // Method to create the email body with placeholders {{service}}, {{name}}, {{otp}}
-    private String createEmailBody(String name, String otp, String theme, String instituteName, String instituteWebsite,String instituteEmail) {
+    // Method to create the email body with placeholders {{service}}, {{name}},
+    // {{otp}}
+    private String createEmailBody(String name, String otp, String theme, String instituteName, String instituteWebsite,
+            String instituteEmail) {
         String template = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Confirm Email</title>
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        margin: 0;
-                        padding: 0;
-                        background-color: #FFF7E1;
-                    }
-                    .container {
-                        max-width: 600px;
-                        margin: 40px auto;
-                        padding: 20px;
-                        background-color: #FFFFFF;
-                        border: 2px solid {{theme}};
-                        border-radius: 10px;
-                        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-                    }
-                    .content {
-                        padding: 20px;
-                        font-size: 16px;
-                        color: black;
-                        line-height: 1.6;
-                    }
-                    .otp {
-                        font-size: 22px;
-                        font-weight: bold;
-                        color: white;
-                        text-align: center;
-                        padding: 10px;
-                        background-color: {{theme}};
-                        border: 2px solid {{theme}};
-                        border-radius: 5px;
-                        margin: 15px 0;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="content">                        
-                        <p>Dear User,</p>
-                        <p>Your One-Time Password (OTP) to access <b>{{instituteName}}</b> is:</p>
-                        
-                        <div class="otp">{{otp}}</div>
-                        
-                        <p>This OTP is valid for <b>10 minutes</b> and can be used only once.</p>
-                        <p>Please do not share this code with anyone for security reasons.</p>
-                        
-                        <p>If you did not request this code, please ignore this message or 
-                        contact our support team immediately.</p>
-                        
-                        <p>Thank you,</p>
-                        <p><b>{{instituteName}} Team</b></p>
-                        <p>Email: {{instituteEmail}}</p>
-                        <p>Web: <a href="{{instituteWebsite}}" target="_blank">{{instituteWebsite}}</a></p>
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Confirm Email</title>
+                    <style>
+                        body {
+                            font-family: Arial, sans-serif;
+                            margin: 0;
+                            padding: 0;
+                            background-color: #FFF7E1;
+                        }
+                        .container {
+                            max-width: 600px;
+                            margin: 40px auto;
+                            padding: 20px;
+                            background-color: #FFFFFF;
+                            border: 2px solid {{theme}};
+                            border-radius: 10px;
+                            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                        }
+                        .content {
+                            padding: 20px;
+                            font-size: 16px;
+                            color: black;
+                            line-height: 1.6;
+                        }
+                        .otp {
+                            font-size: 22px;
+                            font-weight: bold;
+                            color: white;
+                            text-align: center;
+                            padding: 10px;
+                            background-color: {{theme}};
+                            border: 2px solid {{theme}};
+                            border-radius: 5px;
+                            margin: 15px 0;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="content">
+                            <p>Dear User,</p>
+                            <p>Your One-Time Password (OTP) to access <b>{{instituteName}}</b> is:</p>
+
+                            <div class="otp">{{otp}}</div>
+
+                            <p>This OTP is valid for <b>10 minutes</b> and can be used only once.</p>
+                            <p>Please do not share this code with anyone for security reasons.</p>
+
+                            <p>If you did not request this code, please ignore this message or
+                            contact our support team immediately.</p>
+
+                            <p>Thank you,</p>
+                            <p><b>{{instituteName}} Team</b></p>
+                            <p>Email: {{instituteEmail}}</p>
+                            <p>Web: <a href="{{instituteWebsite}}" target="_blank">{{instituteWebsite}}</a></p>
+                        </div>
                     </div>
-                </div>
-            </body>
-            </html>
-            """;
+                </body>
+                </html>
+                """;
 
         return template
                 .replace("{{name}}", name)
                 .replace("{{otp}}", otp)
                 .replace("{{theme}}", theme)
-                .replace("{{instituteEmail}}",instituteEmail)
+                .replace("{{instituteEmail}}", instituteEmail)
                 .replace("{{instituteName}}", instituteName)
                 .replace("{{instituteWebsite}}", instituteWebsite);
     }
 
-
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId) {
         sendHtmlEmail(to, subject, service, body, instituteId, null, null, null);
     }
-    
-    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId, 
-                             String customFromEmail, String customFromName) {
+
+    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
+            String customFromEmail, String customFromName) {
         sendHtmlEmail(to, subject, service, body, instituteId, customFromEmail, customFromName, null);
     }
-    
-    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId, 
-                             String customFromEmail, String customFromName, String emailType) {
+
+    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
+            String customFromEmail, String customFromName, String emailType) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping HTML email for blocked email address: {}", to);
+                return;
+            }
 
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId, emailType);
             final JavaMailSender finalMailSender = config.getKey();
             String fromEmail = config.getValue();
-            
+
             logger.info("Sending HTML email to: {} using emailType: {} for service: {}", to, emailType, service);
-            
+
             // Determine final from address - custom email takes highest priority
             final String finalFromEmail;
             if (customFromEmail != null && !customFromEmail.trim().isEmpty()) {
@@ -411,9 +559,10 @@ public class EmailService {
                 finalFromEmail = fromEmail;
                 logger.info("Using from email from config: {} for service: {}", fromEmail, service);
             }
-            
+
             // Determine final from name
-            final String finalFromName = (customFromName != null && !customFromName.trim().isEmpty()) ? customFromName : null;
+            final String finalFromName = (customFromName != null && !customFromName.trim().isEmpty()) ? customFromName
+                    : null;
 
             String emailSubject = StringUtils.hasText(subject) ? subject : "This is a very important email";
 
@@ -423,16 +572,16 @@ public class EmailService {
                 try {
                     MimeMessage message = new MimeMessage(Session.getInstance(new Properties()));
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
-                    
+
                     // Set from address with optional display name
                     if (finalFromName != null) {
                         message.setFrom(new InternetAddress(finalFromEmail, finalFromName));
                     } else {
                         message.setFrom(new InternetAddress(finalFromEmail));
                     }
-                    
+
                     message.setSubject(emailSubject);
-                    
+
                     // Add SES configuration set header for event tracking
                     if (includeSesHeader) {
                         message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
@@ -446,8 +595,20 @@ public class EmailService {
                     message.setContent(multipart);
                     finalMailSender.send(message);
 
+                    // Save notification log for bounce event tracking
+                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", null, null);
+
                 } catch (Exception e) {
                     logger.error("Failed to send HTML email to: {}", to, e);
+                    SentryLogger.SentryEventBuilder.error(e)
+                            .withMessage("Failed to send HTML email")
+                            .withTag("notification.type", "EMAIL")
+                            .withTag("email.type", emailType != null ? emailType : "HTML")
+                            .withTag("recipient.email", to)
+                            .withTag("institute.id", instituteId != null ? instituteId : "unknown")
+                            .withTag("service", service != null ? service : "unknown")
+                            .withTag("operation", "sendHtmlEmail")
+                            .send();
                     throw new RuntimeException("Failed to send HTML email", e);
                 }
             });
@@ -461,6 +622,12 @@ public class EmailService {
     public void sendAttachmentEmail(String to, String subject, String service, String body,
             Map<String, byte[]> attachments, String instituteId) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping attachment email for blocked email address: {}", to);
+                return;
+            }
+            
             logger.info("Preparing to send email to: {} with subject: {}", to, subject);
 
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
@@ -483,7 +650,7 @@ public class EmailService {
                     message.setRecipient(Message.RecipientType.TO, new InternetAddress(to));
                     message.setFrom(new InternetAddress(fromToUse));
                     message.setSubject(emailSubject);
-                    
+
                     // Add SES configuration set header for event tracking
                     if (includeSesHeader) {
                         message.setHeader("X-SES-CONFIGURATION-SET", sesConfigurationSet);
@@ -516,8 +683,20 @@ public class EmailService {
                     mailSenderToUse.send(message);
                     logger.info("Email successfully sent to: {}", to);
 
+                    // Save notification log for bounce event tracking
+                    saveEmailNotificationLog(to, emailSubject, emailBody, service != null ? service : "ATTACHMENT_EMAIL_SERVICE", null, null);
+
                 } catch (MessagingException e) {
                     logger.error("Error while preparing or sending the email", e);
+                    SentryLogger.SentryEventBuilder.error(e)
+                            .withMessage("Failed to send email with attachments")
+                            .withTag("notification.type", "EMAIL")
+                            .withTag("email.type", "ATTACHMENT")
+                            .withTag("recipient.email", to)
+                            .withTag("institute.id", instituteId != null ? instituteId : "unknown")
+                            .withTag("attachment.count", String.valueOf(attachments != null ? attachments.size() : 0))
+                            .withTag("operation", "sendAttachmentEmail")
+                            .send();
                     throw new RuntimeException("Failed to send email with attachments", e);
                 }
             });
@@ -528,6 +707,15 @@ public class EmailService {
             throw new RuntimeException("Failed to send email due to rate limiting", e);
         } catch (Exception e) {
             logger.error("An error occurred while preparing the email", e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to prepare attachment email")
+                    .withTag("notification.type", "EMAIL")
+                    .withTag("email.type", "ATTACHMENT")
+                    .withTag("recipient.email", to)
+                    .withTag("institute.id", instituteId != null ? instituteId : "unknown")
+                    .withTag("attachment.count", String.valueOf(attachments != null ? attachments.size() : 0))
+                    .withTag("operation", "prepareAttachmentEmail")
+                    .send();
             throw new RuntimeException("An error occurred while preparing the email", e);
         }
     }
@@ -608,8 +796,10 @@ public class EmailService {
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof EmailSenderInfo that)) return false;
+            if (this == o)
+                return true;
+            if (!(o instanceof EmailSenderInfo that))
+                return false;
             return Objects.equals(emailType, that.emailType) &&
                     Objects.equals(fromAddress, that.fromAddress);
         }

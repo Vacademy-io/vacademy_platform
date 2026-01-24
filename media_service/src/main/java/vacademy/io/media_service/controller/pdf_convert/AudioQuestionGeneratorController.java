@@ -1,159 +1,234 @@
 package vacademy.io.media_service.controller.pdf_convert;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.media.dto.FileDetailsDTO;
-import vacademy.io.media_service.ai.ExternalAIApiService;
-import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
+import vacademy.io.media_service.config.AiModelConfig;
 import vacademy.io.media_service.dto.AutoDocumentSubmitResponse;
-import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
 import vacademy.io.media_service.dto.FileIdSubmitRequest;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskInputTypeEnum;
 import vacademy.io.media_service.enums.TaskStatusTypeEnum;
+import vacademy.io.media_service.exception.FileConversionException;
 import vacademy.io.media_service.service.*;
 
 import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Map;
 
-
+/**
+ * Controller for audio-based question generation.
+ * Supports transcription to questions with model selection.
+ */
+@Slf4j
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/media-service/ai/get-question-audio")
 public class AudioQuestionGeneratorController {
 
-    @Autowired
-    HtmlImageConverter htmlImageConverter;
-    @Autowired
-    ExternalAIApiService deepSeekService;
-    @Autowired
-    DeepSeekAsyncTaskService deepSeekAsyncTaskService;
-    @Autowired
-    TaskStatusService taskStatusService;
-    @Autowired
-    private ObjectMapper objectMapper;
-    @Autowired
-    private FileService fileService;
-    @Autowired
-    private FileConversionStatusService fileConversionStatusService;
-    @Autowired
-    private NewAudioConverterService newAudioConverterService;
+    private final DeepSeekAsyncTaskService deepSeekAsyncTaskService;
+    private final TaskStatusService taskStatusService;
+    private final FileService fileService;
+    private final FileConversionStatusService fileConversionStatusService;
+    private final NewAudioConverterService newAudioConverterService;
+    private final AiModelConfig aiModelConfig;
 
-    public static String removeExtraSlashes(String input) {
-        // Regular expression to match <img src="..."> and replace with <img src="...">
-        String regex = "<img src=\\\\\"(.*?)\\\\\">";
-        String replacement = "<img src=\"$1\">";
+    // Default values
+    private static final String DEFAULT_DIFFICULTY = "hard and medium";
+    private static final String DEFAULT_NUM_QUESTIONS = "20";
+    private static final String DEFAULT_LANGUAGE = "english";
 
-        // Compile the pattern and create a matcher
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(input);
+    // ==================== Audio Upload & Processing ====================
 
-        // Replace all occurrences of the pattern with the replacement string
-        return matcher.replaceAll(replacement);
-    }
-
-
+    /**
+     * Starts audio processing by uploading file.
+     */
     @PostMapping("/audio-parser/start-process-audio")
-    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<AutoDocumentSubmitResponse> startProcessAudio(
+            @RequestParam("file") MultipartFile file) {
 
         try {
             FileDetailsDTO fileDetailsDTO = fileService.uploadFileWithDetails(file);
             if (ObjectUtils.isEmpty(fileDetailsDTO) || !StringUtils.hasText(fileDetailsDTO.getUrl())) {
-                throw new VacademyException("Error uploading file");
+                throw FileConversionException.uploadFailed(file.getOriginalFilename());
             }
-            String pdfId = newAudioConverterService.startProcessing(fileDetailsDTO.getUrl());
-            if (!StringUtils.hasText(pdfId)) {
-                throw new VacademyException("Error processing file");
+
+            String audioId = newAudioConverterService.startProcessing(fileDetailsDTO.getUrl());
+            if (!StringUtils.hasText(audioId)) {
+                throw FileConversionException.conversionFailed(fileDetailsDTO.getId(),
+                        "Failed to start audio processing");
             }
-            fileConversionStatusService.startProcessing(pdfId, "assemblyai", fileDetailsDTO.getId());
 
-            return ResponseEntity.ok(new AutoDocumentSubmitResponse(pdfId));
+            fileConversionStatusService.startProcessing(audioId, "assemblyai", fileDetailsDTO.getId());
 
+            log.info("Started audio processing: audioId={}, fileId={}", audioId, fileDetailsDTO.getId());
+            return ResponseEntity.ok(new AutoDocumentSubmitResponse(audioId));
+
+        } catch (FileConversionException e) {
+            throw e;
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            log.error("Failed to start audio processing: {}", e.getMessage(), e);
+            throw FileConversionException.uploadFailed(file.getOriginalFilename());
         }
     }
 
-
+    /**
+     * Starts audio processing from existing file ID.
+     */
     @PostMapping("/audio-parser/start-process-audio-file-id")
-    public ResponseEntity<AutoDocumentSubmitResponse> startProcessPdf(@RequestBody FileIdSubmitRequest file) {
+    public ResponseEntity<AutoDocumentSubmitResponse> startProcessAudioFromFileId(
+            @RequestBody FileIdSubmitRequest request) {
 
         try {
-            var fileDetailsDTOs = fileService.getMultipleFileDetailsWithExpiryAndId(file.getFileId(), 7);
+            var fileDetailsDTOs = fileService.getMultipleFileDetailsWithExpiryAndId(request.getFileId(), 7);
             if (ObjectUtils.isEmpty(fileDetailsDTOs) || fileDetailsDTOs.isEmpty()) {
-                throw new VacademyException("Error uploading file");
+                throw FileConversionException.uploadFailed(request.getFileId());
             }
-            String pdfId = newAudioConverterService.startProcessing(fileDetailsDTOs.get(0).getUrl());
-            if (!StringUtils.hasText(pdfId)) {
-                throw new VacademyException("Error processing file");
+
+            String audioId = newAudioConverterService.startProcessing(fileDetailsDTOs.get(0).getUrl());
+            if (!StringUtils.hasText(audioId)) {
+                throw FileConversionException.conversionFailed(request.getFileId(), "Failed to start audio processing");
             }
-            fileConversionStatusService.startProcessing(pdfId, "assemblyai", fileDetailsDTOs.get(0).getId());
 
-            return ResponseEntity.ok(new AutoDocumentSubmitResponse(pdfId));
+            fileConversionStatusService.startProcessing(audioId, "assemblyai", fileDetailsDTOs.get(0).getId());
 
+            log.info("Started audio processing from fileId: audioId={}", audioId);
+            return ResponseEntity.ok(new AutoDocumentSubmitResponse(audioId));
+
+        } catch (FileConversionException e) {
+            throw e;
         } catch (Exception e) {
-            throw new VacademyException(e.getMessage());
+            log.error("Failed to start audio processing from fileId: {}", e.getMessage(), e);
+            throw FileConversionException.uploadFailed(request.getFileId());
         }
     }
 
+    // ==================== Question Generation ====================
 
+    /**
+     * Generates questions from audio with optional model selection.
+     */
+    /**
+     * Generates questions from audio with optional model selection.
+     */
     @GetMapping("/audio-parser/audio-to-questions")
-    public ResponseEntity<String> getMathParserPdfHtml(@RequestParam String audioId, @RequestParam(required = false) String numQuestions, @RequestParam(required = false) String prompt, @RequestParam(required = false) String difficulty, @RequestParam(required = false) String language,
-                                                       @RequestParam(name = "taskId", required = false) String taskId,
-                                                       @RequestParam(name = "taskName", required = false) String taskName,
-                                                       @RequestParam(name = "instituteId", required = false) String instituteId) throws IOException {
+    public ResponseEntity<Map<String, Object>> getAudioToQuestions(
+            @RequestParam String audioId,
+            @RequestParam(required = false) String numQuestions,
+            @RequestParam(required = false) String prompt,
+            @RequestParam(required = false) String difficulty,
+            @RequestParam(required = false) String language,
+            @RequestParam(name = "taskId", required = false) String taskId,
+            @RequestParam(name = "taskName", required = false) String taskName,
+            @RequestParam(name = "instituteId", required = false) String instituteId,
+            @RequestParam(name = "preferredModel", required = false) String preferredModel,
+            @RequestParam(name = "generateImage", required = false, defaultValue = "true") Boolean generateImage)
+            throws IOException {
 
-        if (difficulty == null) {
-            difficulty = "hard and medium";
-        }
+        // Apply defaults
+        String actualDifficulty = StringUtils.hasText(difficulty) ? difficulty : DEFAULT_DIFFICULTY;
+        String actualNumQuestions = StringUtils.hasText(numQuestions) ? numQuestions : DEFAULT_NUM_QUESTIONS;
+        String actualPrompt = StringUtils.hasText(prompt) ? prompt : "";
+        String actualLanguage = StringUtils.hasText(language) ? language : DEFAULT_LANGUAGE;
 
-        if (numQuestions == null) {
-            numQuestions = "20";
-        }
+        String model = aiModelConfig.getModelToUse(preferredModel);
 
-        if (prompt == null) {
-            prompt = "";
-        }
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
+                taskId,
+                TaskStatusTypeEnum.AUDIO_TO_QUESTIONS.name(),
+                audioId,
+                TaskInputTypeEnum.AUDIO_ID.name(),
+                taskName,
+                instituteId);
 
-        if (language == null) {
-            language = "english";
-        }
+        deepSeekAsyncTaskService.pollAndProcessAudioToQuestions(
+                taskStatus,
+                audioId,
+                actualPrompt,
+                actualDifficulty,
+                actualLanguage,
+                actualNumQuestions,
+                model,
+                generateImage);
 
-        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(taskId, TaskStatusTypeEnum.AUDIO_TO_QUESTIONS.name(), audioId, TaskInputTypeEnum.AUDIO_ID.name(), taskName, instituteId);
+        log.info("Started audio to questions: taskId={}, audioId={}, model={}",
+                taskStatus.getId(), audioId, model);
 
-        // Background async processing
-        deepSeekAsyncTaskService.pollAndProcessAudioToQuestions(taskStatus, audioId, prompt, difficulty, language, numQuestions);
-        return ResponseEntity.ok(taskStatus.getId());
+        return ResponseEntity.ok(Map.of(
+                "taskId", taskStatus.getId(),
+                "status", "STARTED",
+                "model", model,
+                "numQuestions", actualNumQuestions,
+                "difficulty", actualDifficulty,
+                "language", actualLanguage,
+                "message", "Question generation from audio started"));
     }
 
+    /**
+     * Enhanced endpoint with POST for more options.
+     */
+    @PostMapping("/audio-parser/audio-to-questions")
+    public ResponseEntity<Map<String, Object>> postAudioToQuestions(
+            @RequestBody AudioToQuestionsRequest request) throws IOException {
 
-    public AutoQuestionPaperResponse createAutoQuestionPaperResponse(String htmlResponse) {
-        AutoQuestionPaperResponse autoQuestionPaperResponse = new AutoQuestionPaperResponse();
-        ObjectMapper objectMapper = new ObjectMapper();
+        // Apply defaults
+        String audioId = request.getAudioId();
+        String difficulty = StringUtils.hasText(request.getDifficulty()) ? request.getDifficulty() : DEFAULT_DIFFICULTY;
+        String numQuestions = request.getNumQuestions() != null ? request.getNumQuestions().toString()
+                : DEFAULT_NUM_QUESTIONS;
+        String prompt = StringUtils.hasText(request.getPrompt()) ? request.getPrompt() : "";
+        String language = StringUtils.hasText(request.getLanguage()) ? request.getLanguage() : DEFAULT_LANGUAGE;
+        Boolean generateImage = request.getGenerateImage() == null || request.getGenerateImage();
 
-        try {
-            AiGeneratedQuestionPaperJsonDto response = objectMapper.readValue(htmlResponse, new TypeReference<AiGeneratedQuestionPaperJsonDto>() {
-            });
+        String model = aiModelConfig.getModelToUse(request.getPreferredModel());
 
-            autoQuestionPaperResponse.setQuestions(deepSeekService.formatQuestions(response.getQuestions()));
-            autoQuestionPaperResponse.setTitle(response.getTitle());
-            autoQuestionPaperResponse.setTags(response.getTags());
-            autoQuestionPaperResponse.setClasses(response.getClasses());
-            autoQuestionPaperResponse.setSubjects(response.getSubjects());
-            autoQuestionPaperResponse.setDifficulty(response.getDifficulty());
+        TaskStatus taskStatus = taskStatusService.updateTaskStatusOrCreateNewTask(
+                request.getTaskId(),
+                TaskStatusTypeEnum.AUDIO_TO_QUESTIONS.name(),
+                audioId,
+                TaskInputTypeEnum.AUDIO_ID.name(),
+                request.getTaskName(),
+                request.getInstituteId());
 
-        } catch (IOException e) {
-            throw new VacademyException(e.getMessage());
-        }
+        deepSeekAsyncTaskService.pollAndProcessAudioToQuestions(
+                taskStatus,
+                audioId,
+                prompt,
+                difficulty,
+                language,
+                numQuestions,
+                model,
+                generateImage);
 
-        return autoQuestionPaperResponse;
+        log.info("Started audio to questions (POST): taskId={}, audioId={}, model={}",
+                taskStatus.getId(), audioId, model);
+
+        return ResponseEntity.ok(Map.of(
+                "taskId", taskStatus.getId(),
+                "status", "STARTED",
+                "model", model,
+                "message", "Question generation from audio started"));
     }
 
+    // ==================== Request DTOs ====================
+
+    @lombok.Data
+    @lombok.NoArgsConstructor
+    @lombok.AllArgsConstructor
+    public static class AudioToQuestionsRequest {
+        private String audioId;
+        private Integer numQuestions;
+        private String prompt;
+        private String difficulty;
+        private String language;
+        private String taskId;
+        private String taskName;
+        private String instituteId;
+        private String preferredModel;
+        private Boolean generateImage;
+    }
 }

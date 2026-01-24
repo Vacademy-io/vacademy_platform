@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.util.CollectionUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
@@ -31,8 +33,12 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.logging.SentryLogger;
 
 import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDTO;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.*;
 import java.time.LocalDateTime;
@@ -54,7 +60,8 @@ public class PaymentLogService {
     public UserPlanService userPlanService;
 
     @Autowired
-    public PaymentNotificatonService paymentNotificatonService;    @Autowired
+    public PaymentNotificatonService paymentNotificatonService;
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -66,10 +73,22 @@ public class PaymentLogService {
     @Autowired
     private InvoiceService invoiceService;
 
+    @Autowired
+    private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
+
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
+
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
-                                   UserPlan userPlan) {
-        log.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}", userId, paymentAmount,
-            vendor, currency);
+            UserPlan userPlan) {
+        return createPaymentLog(userId, paymentAmount, vendor, vendorId, currency, userPlan, null);
+    }
+
+    public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
+            UserPlan userPlan, String orderId) {
+        log.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}, providedOrderId={}", userId,
+                paymentAmount,
+                vendor, currency, orderId);
 
         PaymentLog paymentLog = new PaymentLog();
         paymentLog.setStatus(PaymentLogStatusEnum.INITIATED.name());
@@ -81,6 +100,13 @@ public class PaymentLogService {
         paymentLog.setDate(new Date());
         paymentLog.setCurrency(currency);
         paymentLog.setUserPlan(userPlan);
+
+        // If an orderId is provided (e.g. multi-package), store it in a minimal JSON
+        // structure
+        // so it can be searched later.
+        if (StringUtils.hasText(orderId)) {
+            paymentLog.setPaymentSpecificData(JsonUtil.toJson(Map.of("originalRequest", Map.of("order_id", orderId))));
+        }
 
         PaymentLog savedLog = savePaymentLog(paymentLog);
 
@@ -99,11 +125,20 @@ public class PaymentLogService {
 
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElseThrow(() -> {
             log.error("Payment log not found with ID: {}", paymentLogId);
+            SentryLogger.logError(new RuntimeException("Payment log not found with ID: " + paymentLogId),
+                    "Payment log not found during update", Map.of(
+                            "payment.log.id", paymentLogId,
+                            "payment.status", status,
+                            "payment.payment.status", paymentStatus != null ? paymentStatus : "unknown",
+                            "operation", "updatePaymentLog"));
             return new RuntimeException("Payment log not found with ID: " + paymentLogId);
         });
 
         paymentLog.setStatus(status);
-        paymentLog.setPaymentStatus(paymentStatus);
+        if (StringUtils.hasText(paymentStatus)) {
+            paymentLog.setPaymentStatus(paymentStatus);
+        }
+        // Note: If paymentStatus is not provided, keep existing value (including null)
         paymentLog.setPaymentSpecificData(paymentSpecificData);
 
         paymentLogRepository.save(paymentLog);
@@ -111,27 +146,64 @@ public class PaymentLogService {
         log.debug("Payment log updated successfully for ID={}", paymentLogId);
     }
 
+    /**
+     * Legacy method for backward compatibility with existing payment gateways.
+     * Delegates to updatePaymentLogsByOrderId.
+     * 
+     * @param orderId       The order ID from the payment gateway webhook
+     * @param paymentStatus The new payment status to set
+     * @param instituteId   The institute ID for post-payment processing
+     */
     @Transactional
-    public void updatePaymentLog(String paymentLogId, String paymentStatus, String instituteId) {
-        log.info("Attempting to update payment log ID={}, setting paymentStatus={}", paymentLogId, paymentStatus);
+    public void updatePaymentLog(String orderId, String paymentStatus, String instituteId) {
+        updatePaymentLogsByOrderId(orderId, paymentStatus, instituteId);
+    }
 
-        PaymentLog paymentLog = null;
-        int maxRetries = 10; // We will try a total of 3 times
+    /**
+     * Updates all PaymentLog entries where the orderId is found in
+     * payment_specific_data JSON.
+     * This method is specifically designed for webhook callbacks (e.g., PhonePe)
+     * where
+     * the orderId is passed and all related payment logs need to be updated.
+     * 
+     * @param orderId       The order ID from the payment gateway webhook
+     * @param paymentStatus The new payment status to set
+     * @param instituteId   The institute ID for post-payment processing
+     */
+    @Transactional
+    public void updatePaymentLogsByOrderId(String orderId, String paymentStatus, String instituteId) {
+        log.info("Attempting to update payment logs by Order ID={}, setting paymentStatus={}", orderId, paymentStatus);
 
-        // --- NEW: Retry Loop ---
+        List<PaymentLog> paymentLogs = new ArrayList<>();
+        int maxRetries = 10;
+
+        // --- Retry Loop to find by OrderID in JSON or by PK as fallback ---
         for (int i = 0; i < maxRetries; i++) {
-            Optional<PaymentLog> logOpt = paymentLogRepository.findById(paymentLogId);
-            if (logOpt.isPresent()) {
-                paymentLog = logOpt.get();
-                log.info("Found payment log {} on attempt {}/{}", paymentLogId, i + 1, maxRetries);
-                break; // Found it, so we can exit the loop
+            // First check by orderId in originalRequest.order_id JSON path (primary method)
+            paymentLogs = paymentLogRepository.findAllByOrderIdInOriginalRequest(orderId);
+
+            // If not found, try the broader search
+            if (paymentLogs.isEmpty()) {
+                paymentLogs = paymentLogRepository.findAllByOrderIdInJson(orderId);
             }
 
-            // If not found, wait before trying again
+            // If none found by OrderId, check if the input is actually a PK (legacy/default
+            // way)
+            if (paymentLogs.isEmpty()) {
+                Optional<PaymentLog> logOpt = paymentLogRepository.findById(orderId);
+                logOpt.ifPresent(paymentLogs::add);
+            }
+
+            if (!paymentLogs.isEmpty()) {
+                log.info("Found {} payment logs for ID/Order {} on attempt {}/{}", paymentLogs.size(), orderId, i + 1,
+                        maxRetries);
+                break;
+            }
+
             if (i < maxRetries - 1) {
                 try {
-                    log.warn("Payment log {} not found. Retrying in 1 second...", paymentLogId);
-                    Thread.sleep(2000); // Wait for 1 second
+                    log.warn("No payment logs found for {}. Retrying in 2 seconds...", orderId);
+                    Thread.sleep(2000);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("Thread interrupted during payment log retry", e);
@@ -139,25 +211,97 @@ public class PaymentLogService {
             }
         }
 
-        // After the loop, if the log is still not found, then we throw the error.
-        if (paymentLog == null) {
-            log.error("Payment log not found after {} retries: ID={}", maxRetries, paymentLogId);
-            throw new RuntimeException("Payment log not found with ID: " + paymentLogId);
+        // --- Multi-Package Logic: Check for child logs if it's a parent transaction
+        // ---
+        List<PaymentLog> allLogsToUpdate = new ArrayList<>(paymentLogs);
+        for (PaymentLog pLogItem : paymentLogs) {
+            try {
+                if (StringUtils.hasText(pLogItem.getPaymentSpecificData())) {
+                    Map<String, Object> data = JsonUtil.fromJson(pLogItem.getPaymentSpecificData(), Map.class);
+                    if (data != null && data.containsKey("childPaymentLogIds")) {
+                        List<String> childIds = (List<String>) data.get("childPaymentLogIds");
+                        if (childIds != null && !childIds.isEmpty()) {
+                            log.info("Parent log {} has {} child logs. Adding them to update list.", pLogItem.getId(),
+                                    childIds.size());
+                            for (String childId : childIds) {
+                                paymentLogRepository.findById(childId).ifPresent(childLog -> {
+                                    if (!allLogsToUpdate.contains(childLog)) {
+                                        allLogsToUpdate.add(childLog);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Error checking for child logs in payment log {}: {}", pLogItem.getId(), e.getMessage());
+            }
         }
-        paymentLog.setPaymentStatus(paymentStatus);
 
-        paymentLogRepository.save(paymentLog);
+        if (allLogsToUpdate.isEmpty()) {
+            log.error("No payment logs found after {} retries for ID/Order={}", maxRetries, orderId);
+            SentryLogger.SentryEventBuilder.error(new RuntimeException("Payment logs not found after retries"))
+                    .withMessage("Payment logs not found after multiple retries")
+                    .withTag("order.id", orderId)
+                    .withTag("payment.payment.status", paymentStatus)
+                    .send();
+            throw new RuntimeException("Payment log not found with ID/Order: " + orderId);
+        }
 
-        log.info("Payment log saved with new paymentStatus. ID={}", paymentLogId);
+        // --- Atomic Update of ALL found logs (Parent + Children) ---
+        log.info("Starting atomic update for {} total logs (Parent + Children) for ID/Order {}", allLogsToUpdate.size(),
+                orderId);
+        for (PaymentLog paymentLog : allLogsToUpdate) {
+            try {
+                log.info("Updating log {} (UserPlan: {}, Vendor: {}) with status {}",
+                        paymentLog.getId(),
+                        paymentLog.getUserPlan() != null ? paymentLog.getUserPlan().getId() : "N/A",
+                        paymentLog.getVendor(),
+                        paymentStatus);
 
-        if (PaymentStatusEnum.PAID.name().equals(paymentStatus)) {
-            // Check if this is a donation (null user plan ID)
-            if (paymentLog.getUserPlan() == null) {
-                log.info("Payment marked as PAID for donation, sending donation confirmation notification");
-                // Handle donation payment confirmation
-                handleDonationPaymentConfirmation(paymentLog, instituteId);
-            } else {
-                log.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}",
+                paymentLog.setPaymentStatus(paymentStatus);
+                paymentLogRepository.saveAndFlush(paymentLog); // Flush immediately to ensure DB update
+
+                // Trigger post-payment operations if status is PAID
+                handlePostPaymentLogic(paymentLog, paymentStatus, instituteId);
+            } catch (Exception e) {
+                log.error("Failed to process atomic update for log {}: {}. Continuing with remaining logs.",
+                        paymentLog.getId(), e.getMessage());
+                SentryLogger.logError(e, "Post-payment logic failure in atomic update", Map.of(
+                        "payment.log.id", paymentLog.getId(),
+                        "order.id", orderId,
+                        "payment.status", paymentStatus));
+            }
+        }
+    }
+
+    /**
+     * Refactored logic to handle actions after status update.
+     * Handles both PAID and FAILED statuses for ABANDONED_CART entry management.
+     */
+    private void handlePostPaymentLogic(PaymentLog paymentLog, String paymentStatus, String instituteId) {
+        // Handle payment failure - create PAYMENT_FAILED entry
+        if (PaymentStatusEnum.FAILED.name().equals(paymentStatus)) {
+            log.info("Payment FAILED for log {}, handling failure flow", paymentLog.getId());
+            handlePaymentFailure(paymentLog, instituteId);
+            return;
+        }
+
+        if (!PaymentStatusEnum.PAID.name().equals(paymentStatus)) {
+            log.info("Payment status is {}, skipping post-payment logic for log {}", paymentStatus, paymentLog.getId());
+            return;
+        }
+
+        // Handle payment success - mark ABANDONED_CART as DELETED
+        handlePaymentSuccessEntryCleanup(paymentLog, instituteId);
+
+        // Check if this is a donation (null user plan ID)
+        if (paymentLog.getUserPlan() == null) {
+            log.info("Payment marked as PAID for donation, sending donation confirmation notification");
+            // Handle donation payment confirmation
+            handleDonationPaymentConfirmation(paymentLog, instituteId);
+        } else {
+            log.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}",
                     paymentLog.getUserPlan().getId());
                 userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
 
@@ -178,65 +322,102 @@ public class PaymentLogService {
                     }
                 }
 
-                // Parse the paymentSpecificData which now contains both response and original
-                // request
-                Map<String, Object> paymentData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
+            // Parse the paymentSpecificData which now contains both response and original
+            // request
+            Map<String, Object> paymentData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
 
-                if (paymentData == null) {
-                    log.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
-                    return;
-                }
+            if (paymentData == null) {
+                log.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
+                SentryLogger.logError(new IllegalStateException("Payment specific data is null"),
+                        "Failed to parse payment specific data", Map.of(
+                                "payment.log.id", paymentLog.getId(),
+                                "payment.status", PaymentStatusEnum.PAID.name(),
+                                "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown",
+                                "payment.vendor",
+                                paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                "operation", "parsePaymentData"));
+                return;
+            }
 
-                // Extract the response - handle nested response_data structure
-                Object responseObj = paymentData.get("response");
-                PaymentResponseDTO paymentResponseDTO = null;
+            // Extract the response - handle nested response_data structure
+            Object responseObj = paymentData.get("response");
+            PaymentResponseDTO paymentResponseDTO = null;
 
-                if (responseObj != null) {
-                    // First try to parse as PaymentResponseDTO (which has response_data nested)
-                    paymentResponseDTO = JsonUtil.fromJson(
+            if (responseObj != null) {
+                // First try to parse as PaymentResponseDTO (which has response_data nested)
+                paymentResponseDTO = JsonUtil.fromJson(
                         JsonUtil.toJson(responseObj),
                         PaymentResponseDTO.class);
-                    paymentResponseDTO.getResponseData().put("paymentStatus", paymentStatus);
 
-                    // If responseData field is empty but response_data exists, extract it
-                    if (paymentResponseDTO != null &&
-                        (paymentResponseDTO.getResponseData() == null
-                            || paymentResponseDTO.getResponseData().isEmpty())) {
-
-                        Map<String, Object> responseMap = (Map<String, Object>) responseObj;
-                        if (responseMap.containsKey("response_data")) {
-                            // Use the nested response_data as the responseData
-                            paymentResponseDTO.setResponseData((Map<String, Object>) responseMap.get("response_data"));
-                            log.debug("Extracted nested response_data for payment log ID: {}", paymentLog.getId());
-                        }
-                    }
+                if (paymentResponseDTO == null) {
+                    paymentResponseDTO = new PaymentResponseDTO();
                 }
 
-                PaymentInitiationRequestDTO paymentInitiationRequestDTO = JsonUtil.fromJson(
+                if (paymentResponseDTO.getResponseData() == null) {
+                    paymentResponseDTO.setResponseData(new HashMap<>());
+                }
+
+                paymentResponseDTO.getResponseData().put("paymentStatus", paymentStatus);
+
+                // Ensure amount and transactionId are present for notifications
+                if (!paymentResponseDTO.getResponseData().containsKey("amount")) {
+                    paymentResponseDTO.getResponseData().put("amount", paymentLog.getPaymentAmount());
+                }
+                if (!paymentResponseDTO.getResponseData().containsKey("transactionId")) {
+                    paymentResponseDTO.getResponseData().put("transactionId", paymentLog.getId());
+                }
+
+                // If responseData field is empty but response_data exists, extract it
+                if (paymentResponseDTO != null &&
+                        (paymentResponseDTO.getResponseData() == null
+                                || paymentResponseDTO.getResponseData().isEmpty())) {
+
+                    Map<String, Object> responseMap = (Map<String, Object>) responseObj;
+                    if (responseMap.containsKey("response_data")) {
+                        // Use the nested response_data as the responseData
+                        paymentResponseDTO.setResponseData((Map<String, Object>) responseMap.get("response_data"));
+                        log.debug("Extracted nested response_data for payment log ID: {}", paymentLog.getId());
+                    }
+                }
+            }
+
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO = JsonUtil.fromJson(
                     JsonUtil.toJson(paymentData.get("originalRequest")),
                     PaymentInitiationRequestDTO.class);
 
-                if (paymentResponseDTO == null || paymentInitiationRequestDTO == null) {
-                    log.error("Could not parse response or original request for payment log ID: {}",
+            if (paymentResponseDTO == null || paymentInitiationRequestDTO == null) {
+                log.error("Could not parse response or original request for payment log ID: {}",
                         paymentLog.getId());
-                    return;
+                SentryLogger.logError(new IllegalStateException("Failed to parse payment response/request"),
+                        "Could not parse payment response or request data", Map.of(
+                                "payment.log.id", paymentLog.getId(),
+                                "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown",
+                                "payment.vendor",
+                                paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                "has.response", String.valueOf(paymentResponseDTO != null),
+                                "has.request", String.valueOf(paymentInitiationRequestDTO != null),
+                                "operation", "parsePaymentResponseRequest"));
+                // For MultiPackage legacy mapping, ensure instituteId is set
+                if (paymentInitiationRequestDTO != null && paymentInitiationRequestDTO.getInstituteId() == null) {
+                    paymentInitiationRequestDTO.setInstituteId(instituteId);
                 }
-
-                // Handle case where email is null in originalRequest - extract from
-                // gateway-specific request
-                if (paymentInitiationRequestDTO.getEmail() == null) {
-                    String extractedEmail = extractEmailFromGatewayRequest(paymentInitiationRequestDTO,
-                        paymentLog.getId());
-                    if (extractedEmail != null) {
-                        paymentInitiationRequestDTO.setEmail(extractedEmail);
-                        log.debug("Extracted email from payment gateway request: {}", extractedEmail);
-                    }
-                }
-
-                UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
-                paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
-                    paymentInitiationRequestDTO, userDTO);
+                return;
             }
+
+            // Handle case where email is null in originalRequest - extract from
+            // gateway-specific request
+            if (paymentInitiationRequestDTO.getEmail() == null) {
+                String extractedEmail = extractEmailFromGatewayRequest(paymentInitiationRequestDTO,
+                        paymentLog.getId());
+                if (extractedEmail != null) {
+                    paymentInitiationRequestDTO.setEmail(extractedEmail);
+                    log.debug("Extracted email from payment gateway request: {}", extractedEmail);
+                }
+            }
+
+            UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
+            paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
+                    paymentInitiationRequestDTO, userDTO);
         }
     }
 
@@ -250,13 +431,19 @@ public class PaymentLogService {
 
             if (paymentData == null) {
                 log.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
+                SentryLogger.logError(new IllegalStateException("Payment specific data is null for donation"),
+                        "Failed to parse donation payment specific data", Map.of(
+                                "payment.log.id", paymentLog.getId(),
+                                "payment.type", "DONATION",
+                                "payment.vendor", paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                "operation", "parseDonationPaymentData"));
                 return;
             }
 
             // Extract the original request
             PaymentInitiationRequestDTO originalRequest = JsonUtil.fromJson(
-                JsonUtil.toJson(paymentData.get("originalRequest")),
-                PaymentInitiationRequestDTO.class);
+                    JsonUtil.toJson(paymentData.get("originalRequest")),
+                    PaymentInitiationRequestDTO.class);
 
             // Extract the response - handle nested response_data structure
             Object responseObj = paymentData.get("response");
@@ -264,13 +451,13 @@ public class PaymentLogService {
 
             if (responseObj != null) {
                 paymentResponseDTO = JsonUtil.fromJson(
-                    JsonUtil.toJson(responseObj),
-                    PaymentResponseDTO.class);
+                        JsonUtil.toJson(responseObj),
+                        PaymentResponseDTO.class);
 
                 // If responseData field is empty but response_data exists, extract it
                 if (paymentResponseDTO != null &&
-                    (paymentResponseDTO.getResponseData() == null
-                        || paymentResponseDTO.getResponseData().isEmpty())) {
+                        (paymentResponseDTO.getResponseData() == null
+                                || paymentResponseDTO.getResponseData().isEmpty())) {
 
                     Map<String, Object> responseMap = (Map<String, Object>) responseObj;
                     if (responseMap.containsKey("response_data")) {
@@ -282,6 +469,14 @@ public class PaymentLogService {
 
             if (originalRequest == null || paymentResponseDTO == null) {
                 log.error("Could not parse original request or response for payment log ID: {}", paymentLog.getId());
+                SentryLogger.logError(new IllegalStateException("Failed to parse donation payment response/request"),
+                        "Could not parse donation payment response or request", Map.of(
+                                "payment.log.id", paymentLog.getId(),
+                                "payment.type", "DONATION",
+                                "payment.vendor", paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                "has.response", String.valueOf(paymentResponseDTO != null),
+                                "has.request", String.valueOf(originalRequest != null),
+                                "operation", "parseDonationResponseRequest"));
                 return;
             }
 
@@ -296,61 +491,69 @@ public class PaymentLogService {
                 } else {
                     email = "donation@institute.com";
                     log.warn("No email found in original request for donation payment log ID: {}, using default email",
-                        paymentLog.getId());
+                            paymentLog.getId());
                 }
             }
 
             paymentNotificatonService.sendDonationPaymentConfirmationNotification(
-                instituteId,
-                paymentResponseDTO,
-                originalRequest,
-                email);
+                    instituteId,
+                    paymentResponseDTO,
+                    originalRequest,
+                    email);
         } catch (Exception e) {
             log.error("Error sending donation payment confirmation notification for payment log ID: {}",
-                paymentLog.getId(), e);
+                    paymentLog.getId(), e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send donation payment confirmation notification")
+                    .withTag("payment.log.id", paymentLog.getId())
+                    .withTag("payment.type", "DONATION")
+                    .withTag("payment.vendor", paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown")
+                    .withTag("payment.amount", String.valueOf(paymentLog.getPaymentAmount()))
+                    .withTag("operation", "sendDonationNotification")
+                    .send();
         }
     }
 
     public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(
-        PaymentLogFilterRequestDTO filterDTO,
-        int pageNo,
-        int pageSize) {
+            PaymentLogFilterRequestDTO filterDTO,
+            int pageNo,
+            int pageSize) {
 
         validateFilter(filterDTO);
 
         Sort sort = resolveSort(filterDTO);
-        Pageable pageable = PageRequest.of(pageNo, pageSize, sort);        List<String> paymentStatuses = safeList(filterDTO.getPaymentStatuses());
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sort);
+        List<String> paymentStatuses = safeList(filterDTO.getPaymentStatuses());
         List<String> enrollInviteIds = safeList(filterDTO.getEnrollInviteIds());
         List<String> packageSessionIds = safeList(filterDTO.getPackageSessionIds());
         List<String> userPlanStatuses = safeList(filterDTO.getUserPlanStatuses());
         List<String> sources = safeList(filterDTO.getSources());
 
         LocalDateTime startDate = resolveStartDate(filterDTO);
-        LocalDateTime endDate = resolveEndDate(filterDTO);        Page<PaymentLog> paymentLogsPage = paymentLogRepository.findPaymentLogIdsWithFilters(
-            filterDTO.getInstituteId(),
-            startDate,
-            endDate,
-            paymentStatuses,
-            userPlanStatuses,
-            sources,
-            enrollInviteIds,
-            packageSessionIds,
-            pageable
-        );
+        LocalDateTime endDate = resolveEndDate(filterDTO);
+        Page<PaymentLog> paymentLogsPage = paymentLogRepository.findPaymentLogIdsWithFilters(
+                filterDTO.getInstituteId(),
+                startDate,
+                endDate,
+                paymentStatuses,
+                userPlanStatuses,
+                sources,
+                enrollInviteIds,
+                packageSessionIds,
+                pageable);
 
         List<PaymentLog> paymentLogs = paymentLogsPage.getContent();
         Map<String, UserDTO> userMap = fetchUsers(paymentLogs);
         Map<String, Institute> instituteMap = fetchInstitutes(paymentLogs);
 
         List<PaymentLogWithUserPlanDTO> content = paymentLogs.stream()
-            .map(pl -> mapEntityToDTO(pl, userMap, instituteMap))
-            .collect(Collectors.toList());
+                .map(pl -> mapEntityToDTO(pl, userMap, instituteMap))
+                .collect(Collectors.toList());
 
         return new PageImpl<>(content, pageable, paymentLogsPage.getTotalElements());
     }
 
-
-// -------------------- Helper Methods --------------------
+    // -------------------- Helper Methods --------------------
 
     private void validateFilter(PaymentLogFilterRequestDTO filterDTO) {
         if (filterDTO == null || !StringUtils.hasText(filterDTO.getInstituteId())) {
@@ -361,8 +564,8 @@ public class PaymentLogService {
     private Sort resolveSort(PaymentLogFilterRequestDTO filterDTO) {
         Sort sort = ListService.createSortObject(filterDTO.getSortColumns());
         return sort.isUnsorted()
-            ? Sort.by(Sort.Direction.DESC, "createdAt")
-            : sort;
+                ? Sort.by(Sort.Direction.DESC, "createdAt")
+                : sort;
     }
 
     private List<String> safeList(List<String> list) {
@@ -371,33 +574,33 @@ public class PaymentLogService {
 
     private LocalDateTime resolveStartDate(PaymentLogFilterRequestDTO filterDTO) {
         return filterDTO.getStartDateInUtc() != null
-            ? filterDTO.getStartDateInUtc()
-            : LocalDateTime.of(1970, 1, 1, 0, 0);
+                ? filterDTO.getStartDateInUtc()
+                : LocalDateTime.of(1970, 1, 1, 0, 0);
     }
 
     private LocalDateTime resolveEndDate(PaymentLogFilterRequestDTO filterDTO) {
         return filterDTO.getEndDateInUtc() != null
-            ? filterDTO.getEndDateInUtc()
-            : LocalDateTime.now();
-    }    private Map<String, UserDTO> fetchUsers(List<PaymentLog> paymentLogs) {
+                ? filterDTO.getEndDateInUtc()
+                : LocalDateTime.now();
+    }
+
+    private Map<String, UserDTO> fetchUsers(List<PaymentLog> paymentLogs) {
         Set<String> userIds = paymentLogs.stream()
-            .map(PaymentLog::getUserId)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
+                .map(PaymentLog::getUserId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
 
         if (userIds.isEmpty()) {
             return Collections.emptyMap();
         }
 
-        List<UserDTO> users =
-            authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds));
+        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds));
 
         return users.stream()
-            .collect(Collectors.toMap(
-                UserDTO::getId,
-                u -> u,
-                (existing, replacement) -> existing
-            ));
+                .collect(Collectors.toMap(
+                        UserDTO::getId,
+                        u -> u,
+                        (existing, replacement) -> existing));
     }
 
     private Map<String, Institute> fetchInstitutes(List<PaymentLog> paymentLogs) {
@@ -424,11 +627,11 @@ public class PaymentLogService {
                 .collect(Collectors.toMap(
                         Institute::getId,
                         i -> i,
-                        (existing, replacement) -> existing
-                ));
+                        (existing, replacement) -> existing));
     }
 
-    private PaymentLogWithUserPlanDTO mapEntityToDTO(PaymentLog paymentLog, Map<String, UserDTO> userMap, Map<String, Institute> instituteMap) {
+    private PaymentLogWithUserPlanDTO mapEntityToDTO(PaymentLog paymentLog, Map<String, UserDTO> userMap,
+            Map<String, Institute> instituteMap) {
         PaymentLogDTO paymentLogDTO = paymentLog.mapToDTO();
 
         UserPlanDTO userPlanDTO = null;
@@ -446,8 +649,8 @@ public class PaymentLogService {
 
             // Fetch sub-org details from the pre-fetched map
             SubOrgDetailsDTO subOrgDetails = null;
-            if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource()) && 
-                StringUtils.hasText(userPlan.getSubOrgId())) {
+            if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource()) &&
+                    StringUtils.hasText(userPlan.getSubOrgId())) {
                 Institute institute = instituteMap.get(userPlan.getSubOrgId());
                 if (institute != null) {
                     subOrgDetails = SubOrgDetailsDTO.builder()
@@ -456,30 +659,30 @@ public class PaymentLogService {
                             .address(institute.getAddress())
                             .build();
                 } else {
-                    log.warn("Institute not found in map for subOrgId={} in UserPlan ID={}", 
+                    log.warn("Institute not found in map for subOrgId={} in UserPlan ID={}",
                             userPlan.getSubOrgId(), userPlan.getId());
                 }
             }
 
             userPlanDTO = UserPlanDTO.builder()
-                .id(userPlan.getId())
-                .userId(userPlan.getUserId())
-                .paymentPlanId(userPlan.getPaymentPlanId())
-                .appliedCouponDiscountId(userPlan.getAppliedCouponDiscountId())
-                .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
-                .enrollInviteId(userPlan.getEnrollInviteId())
-                .paymentOptionId(userPlan.getPaymentOptionId())
-                .status(userPlan.getStatus())
-                .source(userPlan.getSource())
-                .subOrgDetails(subOrgDetails)
-                .createdAt(userPlan.getCreatedAt())
-                .updatedAt(userPlan.getUpdatedAt())
-                .paymentLogs(null)
-                .enrollInvite(null)
-                .paymentOption(paymentOptionDTO)
-                .paymentPlanDTO(paymentPlanDTO)
-                .enrollInvite(userPlan.getEnrollInvite().toEnrollInviteDTO())
-                .build();
+                    .id(userPlan.getId())
+                    .userId(userPlan.getUserId())
+                    .paymentPlanId(userPlan.getPaymentPlanId())
+                    .appliedCouponDiscountId(userPlan.getAppliedCouponDiscountId())
+                    .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
+                    .enrollInviteId(userPlan.getEnrollInviteId())
+                    .paymentOptionId(userPlan.getPaymentOptionId())
+                    .status(userPlan.getStatus())
+                    .source(userPlan.getSource())
+                    .subOrgDetails(subOrgDetails)
+                    .createdAt(userPlan.getCreatedAt())
+                    .updatedAt(userPlan.getUpdatedAt())
+                    .paymentLogs(null)
+                    .enrollInvite(null)
+                    .paymentOption(paymentOptionDTO)
+                    .paymentPlanDTO(paymentPlanDTO)
+                    .enrollInvite(userPlan.getEnrollInvite().toEnrollInviteDTO())
+                    .build();
         }
 
         UserDTO userDTO = null;
@@ -490,11 +693,11 @@ public class PaymentLogService {
         String currentPaymentStatus = calculateCurrentPaymentStatus(paymentLog);
 
         return PaymentLogWithUserPlanDTO.builder()
-            .paymentLog(paymentLogDTO)
-            .userPlan(userPlanDTO)
-            .currentPaymentStatus(currentPaymentStatus)
-            .user(userDTO)
-            .build();
+                .paymentLog(paymentLogDTO)
+                .userPlan(userPlanDTO)
+                .currentPaymentStatus(currentPaymentStatus)
+                .user(userDTO)
+                .build();
     }
 
     private String calculateCurrentPaymentStatus(PaymentLog paymentLog) {
@@ -510,12 +713,13 @@ public class PaymentLogService {
             UserPlan userPlan = paymentLog.getUserPlan();
             if (userPlan.getEnrollInviteId() != null && userPlan.getUserId() != null) {
                 Optional<UserPlan> subsequentActivePlan = userPlanRepository
-                    .findFirstByUserIdAndEnrollInviteIdAndCreatedAtAfterOrderByCreatedAtAsc(
-                        userPlan.getUserId(),
-                        userPlan.getEnrollInviteId(),
-                        userPlan.getCreatedAt());
+                        .findFirstByUserIdAndEnrollInviteIdAndCreatedAtAfterOrderByCreatedAtAsc(
+                                userPlan.getUserId(),
+                                userPlan.getEnrollInviteId(),
+                                userPlan.getCreatedAt());
 
-                if (subsequentActivePlan.isPresent() && UserPlanStatusEnum.ACTIVE.equals(subsequentActivePlan.get().getStatus())) {
+                if (subsequentActivePlan.isPresent()
+                        && UserPlanStatusEnum.ACTIVE.equals(subsequentActivePlan.get().getStatus())) {
                     return PaymentStatusEnum.PAID.name();
                 }
             }
@@ -533,7 +737,7 @@ public class PaymentLogService {
 
     public PaymentLogDTO getPaymentLog(String paymentLogId) {
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId)
-            .orElseThrow(() -> new RuntimeException("Payment log not found with ID: " + paymentLogId));
+                .orElseThrow(() -> new RuntimeException("Payment log not found with ID: " + paymentLogId));
         return paymentLog.mapToDTO();
     }
 
@@ -546,8 +750,8 @@ public class PaymentLogService {
             // Try Razorpay request
             if (request.getRazorpayRequest() != null) {
                 Map<String, Object> razorpayRequest = (Map<String, Object>) JsonUtil.fromJson(
-                    JsonUtil.toJson(request.getRazorpayRequest()),
-                    Map.class);
+                        JsonUtil.toJson(request.getRazorpayRequest()),
+                        Map.class);
                 if (razorpayRequest != null && razorpayRequest.get("email") != null) {
                     return (String) razorpayRequest.get("email");
                 }
@@ -556,8 +760,8 @@ public class PaymentLogService {
             // Try Stripe request
             if (request.getStripeRequest() != null) {
                 Map<String, Object> stripeRequest = (Map<String, Object>) JsonUtil.fromJson(
-                    JsonUtil.toJson(request.getStripeRequest()),
-                    Map.class);
+                        JsonUtil.toJson(request.getStripeRequest()),
+                        Map.class);
                 if (stripeRequest != null && stripeRequest.get("email") != null) {
                     return (String) stripeRequest.get("email");
                 }
@@ -566,8 +770,8 @@ public class PaymentLogService {
             // Try PayPal request
             if (request.getPayPalRequest() != null) {
                 Map<String, Object> paypalRequest = (Map<String, Object>) JsonUtil.fromJson(
-                    JsonUtil.toJson(request.getPayPalRequest()),
-                    Map.class);
+                        JsonUtil.toJson(request.getPayPalRequest()),
+                        Map.class);
                 if (paypalRequest != null && paypalRequest.get("email") != null) {
                     return (String) paypalRequest.get("email");
                 }
@@ -576,8 +780,8 @@ public class PaymentLogService {
             // Try Eway request
             if (request.getEwayRequest() != null) {
                 Map<String, Object> ewayRequest = (Map<String, Object>) JsonUtil.fromJson(
-                    JsonUtil.toJson(request.getEwayRequest()),
-                    Map.class);
+                        JsonUtil.toJson(request.getEwayRequest()),
+                        Map.class);
                 if (ewayRequest != null && ewayRequest.get("email") != null) {
                     return (String) ewayRequest.get("email");
                 }
@@ -586,8 +790,8 @@ public class PaymentLogService {
             // Try Manual request
             if (request.getManualRequest() != null) {
                 Map<String, Object> manualRequest = (Map<String, Object>) JsonUtil.fromJson(
-                    JsonUtil.toJson(request.getManualRequest()),
-                    Map.class);
+                        JsonUtil.toJson(request.getManualRequest()),
+                        Map.class);
                 if (manualRequest != null && manualRequest.get("email") != null) {
                     return (String) manualRequest.get("email");
                 }
@@ -598,8 +802,156 @@ public class PaymentLogService {
 
         } catch (Exception e) {
             log.warn("Error extracting email from payment gateway request for payment log ID: {}: {}",
-                paymentLogId, e.getMessage());
+                    paymentLogId, e.getMessage());
             return null;
+        }
+    }
+
+    @Transactional
+    public void addChildLogsToPayment(String parentId, List<String> childIds) {
+        PaymentLog parentLog = paymentLogRepository.findById(parentId)
+                .orElseThrow(() -> new RuntimeException("Parent log not found"));
+
+        Map<String, Object> data = new HashMap<>();
+        if (StringUtils.hasText(parentLog.getPaymentSpecificData())) {
+            data = JsonUtil.fromJson(parentLog.getPaymentSpecificData(), Map.class);
+        }
+
+        List<String> existingChildren = (List<String>) data.getOrDefault("childPaymentLogIds", new ArrayList<>());
+        existingChildren.addAll(childIds);
+        data.put("childPaymentLogIds", existingChildren);
+
+        String sharedData = JsonUtil.toJson(data);
+        parentLog.setPaymentSpecificData(sharedData);
+        paymentLogRepository.saveAndFlush(parentLog);
+
+        log.info("Linked {} children to parent {}. Syncing paymentSpecificData to all children.", childIds.size(),
+                parentId);
+
+        // Sync the same data to all children so they are easily discoverable by the
+        // update-by-orderId query
+        for (String childId : childIds) {
+            paymentLogRepository.findById(childId).ifPresent(childLog -> {
+                childLog.setPaymentSpecificData(sharedData);
+                paymentLogRepository.saveAndFlush(childLog);
+            });
+        }
+    }
+
+    /**
+     * Handles payment failure by marking ABANDONED_CART entries as DELETED
+     * and creating PAYMENT_FAILED entries in the INVITED session.
+     */
+    private void handlePaymentFailure(PaymentLog paymentLog, String instituteId) {
+        try {
+            UserPlan userPlan = paymentLog.getUserPlan();
+            if (userPlan == null) {
+                log.warn("UserPlan is null for payment log {}, skipping failure handling", paymentLog.getId());
+                return;
+            }
+
+            String userId = paymentLog.getUserId();
+            if (userId == null) {
+                log.warn("UserId is null for payment log {}, skipping failure handling", paymentLog.getId());
+                return;
+            }
+
+            // Get package session IDs from user plan's enroll invite
+            // This needs to be retrieved from the session mappings associated with this
+            // user plan
+            List<vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping> mappings = learnerEnrollmentEntryService
+                    .findOnlyDetailsFilledEntriesForUserPlan(userId, userPlan.getId(), instituteId);
+
+            for (var mapping : mappings) {
+                if (mapping.getDestinationPackageSession() == null || mapping.getPackageSession() == null) {
+                    continue;
+                }
+
+                String actualPackageSessionId = mapping.getDestinationPackageSession().getId();
+                String invitedPackageSessionId = mapping.getPackageSession().getId();
+
+                // Mark ABANDONED_CART entries as DELETED
+                learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                        userId,
+                        invitedPackageSessionId,
+                        actualPackageSessionId,
+                        instituteId);
+
+                // Create PAYMENT_FAILED entry
+                PackageSession invitedSession = mapping.getPackageSession();
+                PackageSession actualSession = mapping.getDestinationPackageSession();
+
+                learnerEnrollmentEntryService.createPaymentFailedEntry(
+                        userId,
+                        invitedSession,
+                        actualSession,
+                        instituteId,
+                        userPlan.getId());
+
+                log.info("Created PAYMENT_FAILED entry for user {} in package session {}",
+                        userId, actualPackageSessionId);
+            }
+
+            // Update UserPlan status to PAYMENT_FAILED
+            userPlan.setStatus(UserPlanStatusEnum.PAYMENT_FAILED.name());
+            userPlanRepository.save(userPlan);
+            log.info("Updated UserPlan {} status to PAYMENT_FAILED", userPlan.getId());
+
+        } catch (Exception e) {
+            log.error("Error handling payment failure for log {}: {}", paymentLog.getId(), e.getMessage(), e);
+            SentryLogger.logError(e, "Payment failure handling error", Map.of(
+                    "payment.log.id", paymentLog.getId(),
+                    "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown"));
+        }
+    }
+
+    /**
+     * Handles payment success by marking ABANDONED_CART entries as DELETED.
+     * The actual ACTIVE entries are created by
+     * UserPlanService.applyOperationsOnFirstPayment().
+     */
+    private void handlePaymentSuccessEntryCleanup(PaymentLog paymentLog, String instituteId) {
+        try {
+            UserPlan userPlan = paymentLog.getUserPlan();
+            if (userPlan == null) {
+                log.debug("UserPlan is null for payment log {}, no entry cleanup needed", paymentLog.getId());
+                return;
+            }
+
+            String userId = paymentLog.getUserId();
+            if (userId == null) {
+                log.warn("UserId is null for payment log {}, skipping success entry cleanup", paymentLog.getId());
+                return;
+            }
+
+            // Get ABANDONED_CART entries for this user plan
+            List<vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping> mappings = learnerEnrollmentEntryService
+                    .findOnlyDetailsFilledEntriesForUserPlan(userId, userPlan.getId(), instituteId);
+
+            for (var mapping : mappings) {
+                if (mapping.getDestinationPackageSession() == null || mapping.getPackageSession() == null) {
+                    continue;
+                }
+
+                String actualPackageSessionId = mapping.getDestinationPackageSession().getId();
+                String invitedPackageSessionId = mapping.getPackageSession().getId();
+
+                // Mark ABANDONED_CART and PAYMENT_FAILED entries as DELETED
+                learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                        userId,
+                        invitedPackageSessionId,
+                        actualPackageSessionId,
+                        instituteId);
+
+                log.info(
+                        "Marked ABANDONED_CART entries as DELETED for user {} in package session {} on payment success",
+                        userId, actualPackageSessionId);
+            }
+
+        } catch (Exception e) {
+            log.error("Error cleaning up entries on payment success for log {}: {}", paymentLog.getId(), e.getMessage(),
+                    e);
+            // Don't throw - allow the rest of the payment success flow to continue
         }
     }
 }

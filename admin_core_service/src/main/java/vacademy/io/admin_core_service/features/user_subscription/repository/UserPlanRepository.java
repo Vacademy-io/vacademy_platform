@@ -14,6 +14,10 @@ import java.util.Optional;
 import java.time.LocalDateTime;
 
 public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
+
+    @Query("SELECT ei.inviteCode FROM UserPlan up JOIN up.enrollInvite ei WHERE up.id = :userPlanId")
+    Optional<String> findInviteCodeByUserPlanId(@Param("userPlanId") String userPlanId);
+
     @Query(value = """
                 SELECT DISTINCT up FROM UserPlan up
                 JOIN FETCH up.enrollInvite ei
@@ -111,4 +115,57 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
     List<UserPlan> findByIdsWithoutPaymentLogs(@Param("ids") List<String> ids);
 
     Optional<UserPlan> findFirstByUserIdAndPaymentPlanIdAndStatus(String userId, String paymentPlanId, String status);
+
+    List<UserPlan> findAllByStatusIn(List<String> statuses);
+
+    /**
+     * Find active UserPlan for a sub-organization with payment plan loaded
+     * Used to retrieve member count limits for sub-org enrollments
+     */
+    @EntityGraph(attributePaths = {"paymentPlan"})
+    @Query("SELECT up FROM UserPlan up " +
+           "WHERE up.subOrgId = :subOrgId " +
+           "AND up.source = :source " +
+           "AND up.status = :status")
+    Optional<UserPlan> findBySubOrgIdAndSourceAndStatus(
+        @Param("subOrgId") String subOrgId,
+        @Param("source") String source,
+        @Param("status") String status);
+
+    /**
+     * Find UserPlan for ROOT_ADMIN with payment plan loaded
+     * Used to get member count limit from the ROOT_ADMIN who purchased the plan
+     */
+    @EntityGraph(attributePaths = {"paymentPlan"})
+    @Query("SELECT up FROM UserPlan up " +
+           "WHERE up.userId = :userId " +
+           "AND up.subOrgId = :subOrgId " +
+           "AND up.source = :source " +
+           "AND up.status = :status")
+    Optional<UserPlan> findByUserIdAndSubOrgIdAndSourceAndStatus(
+        @Param("userId") String userId,
+        @Param("subOrgId") String subOrgId,
+        @Param("source") String source,
+        @Param("status") String status);
+    Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
+            String userId,
+            String enrollInviteId,
+            List<String> statuses);
+
+    Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByEndDateDesc(
+            String userId,
+            String enrollInviteId,
+            List<String> statuses,
+            List<String> userPlanIds);
+
+    Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByCreatedAtAsc(
+            String userId,
+            String enrollInviteId,
+            List<String> statuses,
+            List<String> userPlanIds);
+
+    Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInOrderByCreatedAtAsc(
+            String userId,
+            String enrollInviteId,
+            List<String> statuses);
 }

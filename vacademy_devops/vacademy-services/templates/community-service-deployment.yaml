@@ -20,10 +20,15 @@ spec:
       labels:
         app: community-service
     spec:
+      # ServiceAccount for diagnostics feature - allows reading K8s resources
+      serviceAccountName: diagnostics-service-account
       containers:
         - name: community-service
           image: {{ .Values.services.community_service.image.repository }}:{{ .Values.services.community_service.image.tag }}
           imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
           resources:
             requests:
               cpu: "100m"

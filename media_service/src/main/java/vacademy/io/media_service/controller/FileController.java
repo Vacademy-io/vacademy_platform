@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.media.dto.FileDetailsDTO;
+import vacademy.io.media_service.config.cache.CacheScope;
+import vacademy.io.media_service.config.cache.ClientCacheable;
 import vacademy.io.media_service.dto.AcknowledgeRequest;
 import vacademy.io.media_service.dto.PreSignedUrlRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
@@ -33,22 +35,16 @@ public class FileController {
     }
 
     @GetMapping("/get-public-url")
+    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE)
     public ResponseEntity<String> getFileUrl(@RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam String fileId,
             @RequestParam(required = false) Integer expiryDays,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
 
-        String url;
-
         // Generate permanent public URL without expiry
-        url = fileService.getPublicUrl(fileId, bucketName);
+        String url = fileService.getPublicUrl(fileId, bucketName);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
-        headers.setPragma("no-cache");
-        headers.setExpires(0);
-
-        return ResponseEntity.ok().headers(headers).body(url);
+        return ResponseEntity.ok(url);
     }
 
     @PostMapping("/acknowledge")

@@ -13,9 +13,13 @@ import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.announcements.service.UserAnnouncementPreferenceService;
 import vacademy.io.notification_service.features.combot.constants.CombotWebhookKeys;
+import vacademy.io.notification_service.features.combot.dto.InactiveUsersRequest;
+import vacademy.io.notification_service.features.combot.dto.LogSequenceRequest;
+import vacademy.io.notification_service.features.combot.dto.UsersByMessagesRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateResponse;
 import vacademy.io.notification_service.features.combot.enums.WhatsAppProvider;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
@@ -35,6 +39,7 @@ public class CombotMessagingService {
     private final InstituteInternalService instituteInternalService;
     private final ObjectMapper objectMapper;
     private final UserAnnouncementPreferenceService preferenceService;
+    private final NotificationLogRepository notificationLogRepository;
 
     /**
      * Send WhatsApp template messages using Com.bot
@@ -246,6 +251,103 @@ public class CombotMessagingService {
                     .fullResponse(Map.of("statusCode", e.getStatusCode().value()))
                     .build();
         }
+    }
+
+    public List<String> filterUsersByStrictSequence(LogSequenceRequest request) {
+        log.info("Filtering users by strict sequence: {} -> {}",
+                request.getAnchorMessageBody(), request.getReactionMessageBody());
+
+        if (request.getAnchorMessageBody() == null || request.getReactionMessageBody() == null) {
+            log.warn("Invalid sequence request: Bodies cannot be null");
+            return Collections.emptyList();
+        }
+
+        return notificationLogRepository.findUserIdsByAdjacentMessagePair(
+                request.getAnchorMessageType(),
+                request.getAnchorMessageBody(),
+                request.getReactionMessageType(),
+                request.getReactionMessageBody()
+        );
+    }
+
+    /**
+     * Find inactive users who received a template but didn't respond within X days
+     * @param request Contains messageType, senderBusinessChannelId, days, templateName
+     * @return List of user IDs who didn't respond
+     */
+    public List<String> findInactiveUsers(InactiveUsersRequest request) {
+        log.info("Finding inactive users for template: {} within {} days on channel: {}",
+                request.getTemplateName(), request.getDays(), request.getSenderBusinessChannelId());
+
+        // Validate request
+        if (request.getMessageType() == null || request.getMessageType().isEmpty()) {
+            log.warn("Invalid request: messageType is required");
+            return Collections.emptyList();
+        }
+        if (request.getSenderBusinessChannelId() == null || request.getSenderBusinessChannelId().isEmpty()) {
+            log.warn("Invalid request: senderBusinessChannelId is required");
+            return Collections.emptyList();
+        }
+        if (request.getDays() == null || request.getDays() <= 0) {
+            log.warn("Invalid request: days must be positive");
+            return Collections.emptyList();
+        }
+        if (request.getTemplateName() == null || request.getTemplateName().isEmpty()) {
+            log.warn("Invalid request: templateName is required");
+            return Collections.emptyList();
+        }
+
+        List<String> inactiveUserIds = notificationLogRepository.findInactiveUsers(
+                request.getMessageType(),
+                request.getSenderBusinessChannelId(),
+                request.getTemplateName(),
+                request.getDays()
+        );
+
+        log.info("Found {} inactive users for template: {}",
+                inactiveUserIds.size(), request.getTemplateName());
+
+        return inactiveUserIds;
+    }
+
+    /**
+     * Find users who have sent ALL messages from the given list
+     * Returns userId from the most recent OUTGOING message
+     * @param request Contains messageList, messageType, senderBusinessChannelId
+     * @return List of user IDs who sent all messages
+     */
+    public List<String> findUsersByAllMessages(UsersByMessagesRequest request) {
+        log.info("Finding users who sent all messages: {} of type: {} on channel: {}",
+                request.getMessageList(), request.getMessageType(), request.getSenderBusinessChannelId());
+
+        // Validate request
+        if (request.getMessageList() == null || request.getMessageList().isEmpty()) {
+            log.warn("Invalid request: messageList is required and cannot be empty");
+            return Collections.emptyList();
+        }
+        if (request.getMessageType() == null || request.getMessageType().isEmpty()) {
+            log.warn("Invalid request: messageType is required");
+            return Collections.emptyList();
+        }
+        if (request.getSenderBusinessChannelId() == null || request.getSenderBusinessChannelId().isEmpty()) {
+            log.warn("Invalid request: senderBusinessChannelId is required");
+            return Collections.emptyList();
+        }
+
+        String[] messageArray = request.getMessageList().toArray(new String[0]);
+        Integer messageCount = request.getMessageList().size();
+
+        List<String> userIds = notificationLogRepository.findUsersByAllMessages(
+                request.getMessageType(),
+                request.getSenderBusinessChannelId(),
+                messageArray,
+                messageCount
+        );
+
+        log.info("Found {} users who sent all {} messages",
+                userIds.size(), messageCount);
+
+        return userIds;
     }
 
     /**

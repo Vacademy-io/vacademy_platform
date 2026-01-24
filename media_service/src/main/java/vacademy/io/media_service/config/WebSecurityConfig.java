@@ -13,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.HmacAuthFilter;
 import vacademy.io.common.auth.filter.JwtAuthFilter;
@@ -22,7 +23,20 @@ import vacademy.io.common.auth.provider.ServiceAuthProvider;
 @Configuration
 public class WebSecurityConfig {
 
-    private static final String[] ALLOWED_PATHS = {"/media-service/convert-presentations/**", "/media-service/ai/presentation/regenerateASlide" ,"/media-service/ai/presentation/generateFromData", "/media-service/ai/ll/**", "/media-service/ai/question-metadata/**", "/media-service/ai/get-question/math-parser/**", "/media-service/ai/get-question-pdf/math-parser/**", "/auth/**", "/media-service/ai/get-question/from-html", "/media-service/ai/get-question/from-text", "/media-service/ai/get-question/from-not-html", "/media-service/actuator/**", "/media-service/convert/doc-to-html", "/media-service/ai/retry/**", "/media-service/internal/**", "/internal/**", "/verify/id", "/media-service/swagger-ui.html", "/media-service/api-docs/**", "/swagger-ui.html", "/media-service/swagger-ui/index.html", "/media-service/v3/api-docs/**", "/media-service/swagger-ui/**", "/media-service/webjars/swagger-ui/**", "/media-service/public/**", "/media-service/ai/get-question-audio/**", "/media-service/ai/evaluation-tool/**", "/media-service/ai/chat-with-pdf/**", "/media-service/task-status/**", "/media-service/ai/lecture/**","/media-service/course/ai/v1/**"};
+    private static final String[] ALLOWED_PATHS = { "/media-service/convert-presentations/**",
+            "/media-service/ai/presentation/regenerateASlide", "/media-service/ai/presentation/generateFromData",
+            "/media-service/ai/ll/**", "/media-service/ai/question-metadata/**",
+            "/media-service/ai/get-question/math-parser/**", "/media-service/ai/get-question-pdf/math-parser/**",
+            "/auth/**", "/media-service/ai/get-question/from-html", "/media-service/ai/get-question/from-text",
+            "/media-service/ai/get-question/from-not-html", "/media-service/actuator/**",
+            "/media-service/convert/doc-to-html", "/media-service/ai/retry/**", "/media-service/internal/**",
+            "/internal/**", "/verify/id", "/media-service/swagger-ui.html", "/media-service/api-docs/**",
+            "/swagger-ui.html", "/media-service/swagger-ui/index.html", "/media-service/v3/api-docs/**",
+            "/media-service/swagger-ui/**", "/media-service/webjars/swagger-ui/**", "/media-service/public/**",
+            "/media-service/ai/get-question-audio/**", "/media-service/ai/evaluation-tool/**",
+            "/media-service/ai/evaluate-subjective-answer/**", "/media-service/ai/chat-with-pdf/**",
+            "/media-service/task-status/**", "/media-service/ai/lecture/**",
+            "/media-service/course/ai/v1/**", "/media-service/health/**" };
     @Autowired
     private JwtAuthFilter jwtAuthFilter; // Inject JwtAuthFilter dependency
     @Autowired
@@ -34,18 +48,20 @@ public class WebSecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf().disable() // Disable csrf protection as we're using JWT
-                .authorizeHttpRequests()
-                .requestMatchers(ALLOWED_PATHS) // Allow access to specific paths without authentication
-                .permitAll()
-                .anyRequest()
-                .authenticated() // Require authentication for all other requests
-                .and()
-                .sessionManagement()
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS) // Use stateless JWT based authentication
-                .and()
-                .authenticationProvider(authenticationProvider()) // Use custom authentication provider
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class); // Add JWT filter before username/password filter
+                .csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .authorizeHttpRequests(authz -> {
+                    // Use AntPathRequestMatcher for Ant-style pattern matching (compatible with
+                    // Spring 6)
+                    for (String path : ALLOWED_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).permitAll();
+                    }
+                    authz.anyRequest().authenticated();
+                })
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -56,7 +72,8 @@ public class WebSecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    // Bean for authentication provider using user details service and password encoder
+    // Bean for authentication provider using user details service and password
+    // encoder
     @Bean
     public AuthenticationProvider authenticationProvider() {
         return new ServiceAuthProvider();

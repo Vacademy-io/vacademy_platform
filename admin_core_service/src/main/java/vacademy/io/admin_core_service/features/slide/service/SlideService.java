@@ -28,6 +28,8 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import vacademy.io.admin_core_service.features.slide.repository.HtmlVideoSlideRepository;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -42,6 +44,8 @@ public class SlideService {
     private final AssignmentSlideRepository assignmentSlideRepository;
     private final QuizSlideRepository quizSlideRepository;
     private final VideoSlideQuestionRepository videoSlideQuestionRepository;
+    private final HtmlVideoSlideRepository htmlVideoSlideRepository;
+    private final ScormSlideRepository scormSlideRepository;
     private final SlideNotificationService slideNotificationService;
     private final ObjectMapper objectMapper;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
@@ -175,6 +179,65 @@ public class SlideService {
         return slide.getId();
     }
 
+    @Transactional
+    public String addOrUpdateScormSlide(AddScormSlideDTO addScormSlideDTO,
+            String chapterId,
+            String moduleId,
+            String subjectId,
+            String packageSessionId,
+            String instituteId) {
+        String slideId = addScormSlideDTO.getId();
+        if (addScormSlideDTO.isNewSlide()) {
+            return addScormSlide(addScormSlideDTO, chapterId, instituteId);
+        } else {
+            chapterToSlidesRepository.findByChapterIdAndSlideId(chapterId, addScormSlideDTO.getId())
+                    .map(chapterToSlides -> {
+                        updateChapterToSlides(addScormSlideDTO.getSlideOrder(), addScormSlideDTO.getStatus(),
+                                chapterToSlides);
+                        updateSlide(addScormSlideDTO.getDescription(), addScormSlideDTO.getTitle(),
+                                addScormSlideDTO.getImageFileId(), addScormSlideDTO.getStatus(),
+                                chapterToSlides.getSlide());
+                        // No specific update for ScormSlide details as they are immutable after upload
+                        // usually,
+                        // but if needed, we could implement
+                        // updateScormSlide(addScormSlideDTO.getScormSlide(), ...)
+                        notifyIfPublished(addScormSlideDTO.getStatus(), addScormSlideDTO.isNotify(), instituteId,
+                                chapterToSlides);
+                        return "Slide updated successfully";
+                    })
+                    .orElseGet(() -> addScormSlide(addScormSlideDTO, chapterId, instituteId));
+        }
+        learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId, SlideTypeEnum.SCORM.name(),
+                chapterId, moduleId, subjectId, packageSessionId);
+        return slideId;
+    }
+
+    public String addScormSlide(AddScormSlideDTO addScormSlideDTO, String chapterId, String instituteId) {
+        Chapter chapter = chapterRepository.findById(chapterId)
+                .orElseThrow(() -> new VacademyException("Chapter not found"));
+
+        // SCORM slide is already created via upload, so we just link it.
+        // But wait, the upload API creates the ScormSlide entity.
+        // Here we receive the ScormSlideDTO which should contain the ID of the created
+        // ScormSlide.
+        // Validation: Check if ScormSlide exists?
+
+        if (addScormSlideDTO.getScormSlide() == null || addScormSlideDTO.getScormSlide().getId() == null) {
+            throw new VacademyException("Scorm Slide ID is required");
+        }
+
+        // We assume the ScormSlide entity already exists from the upload step.
+        // We link it to the generic Slide.
+
+        Slide slide = slideRepository.save(new Slide(addScormSlideDTO, addScormSlideDTO.getScormSlide().getId(),
+                SlideTypeEnum.SCORM.name(), addScormSlideDTO.getStatus()));
+
+        ChapterToSlides chapterToSlides = chapterToSlidesRepository.save(
+                new ChapterToSlides(chapter, slide, addScormSlideDTO.getSlideOrder(), addScormSlideDTO.getStatus()));
+        notifyIfPublished(addScormSlideDTO.getStatus(), addScormSlideDTO.isNotify(), instituteId, chapterToSlides);
+        return slide.getId();
+    }
+
     public List<SlideDetailProjection> getSlidesByChapterId(String chapterId, CustomUserDetails user) {
         return slideRepository.findSlideDetailsByChapterId(chapterId,
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.DRAFT.name(), SlideStatus.UNSYNC.name()));
@@ -283,7 +346,7 @@ public class SlideService {
      */
     private Slide copySlideByType(Slide slide) {
         String sourceType = slide.getSourceType();
-        
+
         if (sourceType.equalsIgnoreCase(SlideTypeEnum.DOCUMENT.name())) {
             String newSourceId = copyDocumentSlideSource(slide.getSourceId());
             return createNewSlide(slide, newSourceId);
@@ -301,6 +364,12 @@ public class SlideService {
             return createNewSlide(slide, newSourceId);
         } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO_QUESTION.name())) {
             String newSourceId = copyVideoSlideQuestionSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.HTML_VIDEO.name())) {
+            String newSourceId = copyHtmlVideoSlideSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.SCORM.name())) {
+            String newSourceId = copyScormSlideSource(slide.getSourceId());
             return createNewSlide(slide, newSourceId);
         } else {
             throw new VacademyException("Unsupported slide type for copying: " + sourceType);
@@ -350,6 +419,20 @@ public class SlideService {
                     oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
             learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
                     SlideTypeEnum.VIDEO_QUESTION.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.HTML_VIDEO.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.HTML_VIDEO.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.HTML_VIDEO.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.SCORM.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.SCORM.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.SCORM.name(),
                     newChapterId, newModuleId, newSubjectId, newPackageSessionId);
         }
     }
@@ -559,6 +642,10 @@ public class SlideService {
             return copyQuizSlideSource(oldSlide.getSourceId());
         } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.VIDEO_QUESTION.name())) {
             return copyVideoSlideQuestionSource(oldSlide.getSourceId());
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.HTML_VIDEO.name())) {
+            return copyHtmlVideoSlideSource(oldSlide.getSourceId());
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.SCORM.name())) {
+            return copyScormSlideSource(oldSlide.getSourceId());
         } else {
             log.warn("Unknown slide type: {}, copying source ID as-is", sourceType);
             return oldSlide.getSourceId();
@@ -687,6 +774,41 @@ public class SlideService {
         return sourceId;
     }
 
+    /**
+     * Copy html video slide source and return new source ID
+     */
+    private String copyHtmlVideoSlideSource(String sourceId) {
+        HtmlVideoSlide htmlVideoSlide = htmlVideoSlideRepository.findById(sourceId).orElse(null);
+        if (htmlVideoSlide != null) {
+            HtmlVideoSlide newSlide = new HtmlVideoSlide();
+            newSlide.setId(UUID.randomUUID().toString());
+            newSlide.setAiGenVideoId(htmlVideoSlide.getAiGenVideoId());
+            newSlide.setUrl(htmlVideoSlide.getUrl());
+            newSlide.setVideoLengthInMillis(htmlVideoSlide.getVideoLengthInMillis());
+            newSlide.setCodeEditorConfig(htmlVideoSlide.getCodeEditorConfig());
+            newSlide = htmlVideoSlideRepository.save(newSlide);
+            return newSlide.getId();
+        }
+        return sourceId;
+    }
+
+    /**
+     * Copy scorm slide source and return new source ID
+     */
+    private String copyScormSlideSource(String sourceId) {
+        ScormSlide scormSlide = scormSlideRepository.findById(sourceId).orElse(null);
+        if (scormSlide != null) {
+            ScormSlide newSlide = new ScormSlide();
+            newSlide.setId(UUID.randomUUID().toString());
+            newSlide.setOriginalFileId(scormSlide.getOriginalFileId());
+            newSlide.setLaunchPath(scormSlide.getLaunchPath());
+            newSlide.setScormVersion(scormSlide.getScormVersion());
+            newSlide = scormSlideRepository.save(newSlide);
+            return newSlide.getId();
+        }
+        return sourceId;
+    }
+
     public String saveSlide(String slideId, String sourceId, String sourceType, String status, String title,
             String description, String imageFileId, Integer slideOrder, String chapterId) {
         Slide slide = new Slide();
@@ -806,12 +928,15 @@ public class SlideService {
     }
 
     public Double calculateTotalReadTimeInMinutes(String packageSessionId) {
-        return slideRepository.calculateTotalReadTimeInMinutes(packageSessionId, List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()), List.of(StatusEnum.ACTIVE.name()), List.of(StatusEnum.ACTIVE.name()));
+        return slideRepository.calculateTotalReadTimeInMinutes(packageSessionId,
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()), List.of(StatusEnum.ACTIVE.name()),
+                List.of(StatusEnum.ACTIVE.name()));
     }
 
     /**
      * Batch method to calculate read times for multiple package sessions at once.
      * This eliminates the N+1 query problem.
+     * 
      * @param packageSessionIds List of package session IDs
      * @return Map of package session ID to read time in minutes
      */
@@ -819,19 +944,17 @@ public class SlideService {
         if (packageSessionIds == null || packageSessionIds.isEmpty()) {
             return Map.of();
         }
-        
-        List<vacademy.io.admin_core_service.features.slide.dto.PackageSessionReadTimeProjection> results = 
-            slideRepository.calculateReadTimesForPackageSessions(
-                packageSessionIds,
-                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                List.of(StatusEnum.ACTIVE.name()),
-                List.of(StatusEnum.ACTIVE.name())
-            );
-        
+
+        List<vacademy.io.admin_core_service.features.slide.dto.PackageSessionReadTimeProjection> results = slideRepository
+                .calculateReadTimesForPackageSessions(
+                        packageSessionIds,
+                        List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                        List.of(StatusEnum.ACTIVE.name()),
+                        List.of(StatusEnum.ACTIVE.name()));
+
         return results.stream()
-            .collect(Collectors.toMap(
-                vacademy.io.admin_core_service.features.slide.dto.PackageSessionReadTimeProjection::getPackageSessionId,
-                vacademy.io.admin_core_service.features.slide.dto.PackageSessionReadTimeProjection::getReadTimeInMinutes
-            ));
+                .collect(Collectors.toMap(
+                        vacademy.io.admin_core_service.features.slide.dto.PackageSessionReadTimeProjection::getPackageSessionId,
+                        vacademy.io.admin_core_service.features.slide.dto.PackageSessionReadTimeProjection::getReadTimeInMinutes));
     }
 }

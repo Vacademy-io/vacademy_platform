@@ -60,6 +60,9 @@ public class DomainRoutingService {
                 .appStoreAppLink(mapping.getAppStoreAppLink())
                 .windowsAppLink(mapping.getWindowsAppLink())
                 .macAppLink(mapping.getMacAppLink())
+                .learnerPortalUrl(institute.getLearnerPortalBaseUrl())
+                .instructorPortalUrl(institute.getAdminPortalBaseUrl())
+                .convertUsernamePasswordToLowercase(mapping.isConvertUsernamePasswordToLowercase())
                 .build();
         return Optional.of(response);
     }

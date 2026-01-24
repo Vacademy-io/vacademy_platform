@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.common.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.util.CustomFieldKeyGenerator;
@@ -35,8 +36,10 @@ public class InstituteCustomFiledService {
     @Autowired
     private CustomFieldKeyGenerator keyGenerator;
 
+    @Autowired
     private CustomFieldValuesRepository customFieldValuesRepository;
 
+    @Transactional
     public void addOrUpdateCustomField(List<InstituteCustomFieldDTO> cfDTOs) {
         List<InstituteCustomField> instCFList = new ArrayList<>();
 
@@ -57,13 +60,7 @@ public class InstituteCustomFiledService {
 
             } else {
                 String fieldKey = keyGenerator.generateFieldKey(cfDto.getFieldName(), dto.getInstituteId());
-                cf = customFieldRepository
-                    .findTopByFieldKeyAndStatusOrderByCreatedAtDesc(fieldKey, StatusEnum.ACTIVE.name())
-                    .orElseGet(() -> {
-                        CustomFields newCF = new CustomFields(cfDto);
-                        newCF.setFieldKey(fieldKey);
-                        return customFieldRepository.save(newCF);
-                    });
+                cf = findOrCreateCustomFieldWithLock(fieldKey, cfDto);
             }
 
             Optional<InstituteCustomField> optionalInstCF =
@@ -83,6 +80,20 @@ public class InstituteCustomFiledService {
         if (!instCFList.isEmpty()) {
             instituteCustomFieldRepository.saveAll(instCFList);
         }
+    }
+
+    /**
+     * Find existing custom field or create new one with pessimistic locking to prevent duplicates.
+     * This method uses database-level locking to ensure only one thread can create a field with the same key.
+     */
+    private CustomFields findOrCreateCustomFieldWithLock(String fieldKey, CustomFieldDTO cfDto) {
+        Optional<CustomFields> existing = customFieldRepository.findByFieldKeyWithLock(fieldKey, StatusEnum.ACTIVE.name());
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        CustomFields newCF = new CustomFields(cfDto);
+        newCF.setFieldKey(fieldKey);
+        return customFieldRepository.save(newCF);
     }
 
 
@@ -302,10 +313,20 @@ public class InstituteCustomFiledService {
     }
 
     /**
-     * Find custom field by field key for a specific institute
+     * Find custom field by field key for a specific institute.
+     * First checks if the field exists with a proper institute mapping,
+     * then falls back to global fieldKey lookup for backward compatibility with old data.
+     * Since fieldKey contains _inst_{instituteId}, the global lookup is still institute-scoped.
      */
     public Optional<CustomFields> findCustomFieldByKeyAndInstitute(String fieldKey, String instituteId) {
-        return customFieldRepository.findTopByFieldKeyAndStatusOrderByCreatedAtDesc(fieldKey,StatusEnum.ACTIVE.name());
+        // First try to find via institute mapping (proper way)
+        Optional<CustomFields> withMapping = customFieldRepository.findByFieldKeyAndInstituteId(fieldKey, instituteId);
+        if (withMapping.isPresent()) {
+            return withMapping;
+        }
+        // Fallback: check by fieldKey directly (for backward compatibility with old data)
+        // This works because fieldKey already contains _inst_{instituteId}
+        return customFieldRepository.findTopByFieldKeyAndStatusOrderByCreatedAtDesc(fieldKey, StatusEnum.ACTIVE.name());
     }
 
     /**
@@ -323,35 +344,17 @@ public class InstituteCustomFiledService {
     }
 
     /**
-     * Create or find existing custom field by key for institute
-     * This method ensures no duplicate custom fields with same key for an institute
+     * Create or find existing custom field by key for institute.
+     * Uses pessimistic locking to prevent race conditions and duplicates.
      */
+    @Transactional
     public CustomFields createOrFindCustomFieldByKey(CustomFieldDTO request, String instituteId) {
         if (Objects.isNull(request))
             throw new VacademyException("Invalid Request");
 
-        // Generate field key
-        String fieldKey = keyGenerator.generateFieldKey(request.getFieldName(),instituteId);
+        String fieldKey = keyGenerator.generateFieldKey(request.getFieldName(), instituteId);
 
-        // Check if custom field with this key already exists for this institute
-        Optional<CustomFields> existingField = findCustomFieldByKeyAndInstitute(fieldKey, instituteId);
-        if (existingField.isPresent()) {
-            return existingField.get();
-        }
-
-        // Create new custom field with generated key
-        CustomFieldDTO requestWithKey = new CustomFieldDTO();
-        requestWithKey.setFieldName(request.getFieldName());
-        requestWithKey.setFieldKey(fieldKey);
-        requestWithKey.setFieldType(request.getFieldType());
-        requestWithKey.setDefaultValue(request.getDefaultValue());
-        requestWithKey.setConfig(request.getConfig());
-        requestWithKey.setIsSortable(request.getIsSortable());
-        requestWithKey.setIsMandatory(request.getIsMandatory());
-        requestWithKey.setIsFilter(request.getIsFilter());
-        requestWithKey.setIsHidden(request.getIsHidden());
-
-        return createCustomFieldFromRequest(requestWithKey,instituteId);
+        return findOrCreateCustomFieldWithLock(fieldKey, request);
     }
 
     public InstituteCustomField createInstituteMappingFromCustomField(CustomFields savedCustomField,

@@ -31,6 +31,24 @@ public class ChannelFlowConfig {
     @Column(name = "variable_config", columnDefinition = "TEXT")
     private String variableConfig;
 
+    @Column(name = "fixed_variables_config", columnDefinition = "TEXT")
+    private String fixedVariablesConfig;
+
+    /**
+     * Action configuration for workflows, verification, and other actions.
+     * JSON format:
+     * {
+     * "rules": [
+     * {"trigger": "hello", "match_type": "exact", "actions": [{"type": "WORKFLOW",
+     * "workflowId": "wf_id"}]},
+     * {"trigger": "\\d{4,6}", "match_type": "regex", "actions": [{"type":
+     * "VERIFICATION"}]}
+     * ]
+     * }
+     */
+    @Column(name = "action_template_config", columnDefinition = "TEXT")
+    private String actionTemplateConfig;
+
     @Column(name = "is_active")
     private boolean isActive = true;
 

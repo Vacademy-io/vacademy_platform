@@ -35,6 +35,8 @@ public class UserDTO {
     private String profilePicFileId;
     private List<String> roles;
     private Date lastLoginTime;
+    private Boolean isParent;
+    private String linkedParentId;
 
     public UserDTO(User user) {
         this.id = user.getId();
@@ -51,9 +53,11 @@ public class UserDTO {
         this.profilePicFileId = user.getProfilePicFileId();
         this.setLastLoginTime(user.getLastLoginTime());
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
+        this.isParent=user.getIsParent();
+        this.linkedParentId=user.getLinkedParentId();
     }
 
-    public UserDTO(User user,UserDTO userDTO){
+    public UserDTO(User user, UserDTO userDTO) {
         this.id = user.getId();
         this.username = user.getUsername();
         this.email = user.getEmail();
@@ -66,9 +70,11 @@ public class UserDTO {
         this.gender = user.getGender();
         this.isRootUser = user.isRootUser();
         this.profilePicFileId = user.getProfilePicFileId();
-        this.region=userDTO.getRegion();
+        this.region = userDTO.getRegion();
         this.setLastLoginTime(user.getLastLoginTime());
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
+        this.isParent=user.getIsParent();
+        this.linkedParentId=user.getLinkedParentId();
 
     }
 }

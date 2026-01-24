@@ -13,7 +13,9 @@ import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSour
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.SubOrgRoles;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -23,6 +25,9 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Stud
 import vacademy.io.admin_core_service.features.learner.dto.*;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -51,6 +56,9 @@ public class SubOrgLearnerService {
     private final CustomFieldValuesRepository customFieldValuesRepository;
     private final InstituteCustomFieldRepository instituteCustomFieldRepository;
     private final WorkflowTriggerService workflowTriggerService;
+    private final UserPlanRepository userPlanRepository;
+    private final EnrollInviteRepository enrollInviteRepository;
+
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
             String packageSessionId,
@@ -100,7 +108,8 @@ public class SubOrgLearnerService {
             }
         }
 
-        // Fetch and populate custom fields for all users (filtered by institute's active custom fields)
+        // Fetch and populate custom fields for all users (filtered by institute's
+        // active custom fields)
         // Use institute_id from student_session_institute_group_mapping, not sub_org_id
         if (instituteIdFromMapping != null) {
             enrichStudentMappingsWithCustomFields(studentMappings, instituteIdFromMapping);
@@ -154,7 +163,8 @@ public class SubOrgLearnerService {
      * - Null values if user hasn't filled them
      * This ensures consistent response structure across all users
      */
-    private void enrichStudentMappingsWithCustomFields(List<StudentMappingWithUserDTO> studentMappings, String instituteId) {
+    private void enrichStudentMappingsWithCustomFields(List<StudentMappingWithUserDTO> studentMappings,
+            String instituteId) {
         if (studentMappings == null || studentMappings.isEmpty()) {
             return;
         }
@@ -178,44 +188,54 @@ public class SubOrgLearnerService {
 
         log.info("Found {} active custom fields configured for institute", instituteCustomFieldsData.size());
 
-        // Build template list of all custom fields with null values
-        List<CustomFieldDTO> instituteCustomFieldsTemplate = new ArrayList<>();
+        // Build template map of all custom fields with null values, deduplicated by field_key
+        // Using LinkedHashMap to preserve form order while ensuring uniqueness
+        Map<String, CustomFieldDTO> instituteCustomFieldsTemplateMap = new LinkedHashMap<>();
         for (Object[] row : instituteCustomFieldsData) {
             InstituteCustomField icf = (InstituteCustomField) row[0];
             CustomFields cf = (CustomFields) row[1];
 
-            CustomFieldDTO template = CustomFieldDTO.builder()
-                    .customFieldId(cf.getId())
-                    .fieldKey(cf.getFieldKey())
-                    .fieldName(cf.getFieldName())
-                    .fieldType(cf.getFieldType())
-                    .fieldValue(null) // Default to null
-                    .sourceType(CustomFieldValueSourceTypeEnum.USER.name())
-                    .build();
+            String fieldKey = cf.getFieldKey();
+            
+            // Only add if we haven't seen this field_key before (deduplication)
+            if (!instituteCustomFieldsTemplateMap.containsKey(fieldKey)) {
+                CustomFieldDTO template = CustomFieldDTO.builder()
+                        .customFieldId(cf.getId())
+                        .fieldKey(fieldKey)
+                        .fieldName(cf.getFieldName())
+                        .fieldType(cf.getFieldType())
+                        .fieldValue(null) // Default to null
+                        .sourceType(CustomFieldValueSourceTypeEnum.USER.name())
+                        .build();
 
-            instituteCustomFieldsTemplate.add(template);
+                instituteCustomFieldsTemplateMap.put(fieldKey, template);
+            }
         }
+        
+        // Convert map to list for iteration
+        List<CustomFieldDTO> instituteCustomFieldsTemplate = new ArrayList<>(instituteCustomFieldsTemplateMap.values());
 
         // Step 2: Fetch user-specific custom field values
         List<Object[]> customFieldData = customFieldValuesRepository.findCustomFieldsWithKeysByUserIdsAndInstitute(
                 CustomFieldValueSourceTypeEnum.USER.name(),
                 userIds,
-                instituteId
-        );
+                instituteId);
 
         log.info("Found {} custom field value records", customFieldData.size());
 
-        // Group custom field values by user ID and custom field ID
+        // Group custom field values by user ID and field_key (instead of customFieldId)
+        // This allows matching even if values are stored under different duplicate custom_field_ids
         Map<String, Map<String, String>> userCustomFieldValuesMap = new HashMap<>();
-        
+
         for (Object[] row : customFieldData) {
             String userId = (String) row[0];
-            String customFieldId = (String) row[1];
+            String fieldKey = (String) row[2];  // Using field_key instead of custom_field_id
             String fieldValue = (String) row[5];
 
+            // Use putIfAbsent to keep the first value (most recent due to ORDER BY created_at DESC)
             userCustomFieldValuesMap
                     .computeIfAbsent(userId, k -> new HashMap<>())
-                    .put(customFieldId, fieldValue);
+                    .putIfAbsent(fieldKey, fieldValue);
         }
 
         // Step 3: Enrich each student mapping with ALL institute custom fields
@@ -223,7 +243,7 @@ public class SubOrgLearnerService {
             String userId = mapping.getUserId();
             Map<String, String> userValues = userCustomFieldValuesMap.getOrDefault(userId, new HashMap<>());
 
-            // Clone template and fill in user values
+            // Clone template and fill in user values using field_key for lookup
             List<CustomFieldDTO> userCustomFields = new ArrayList<>();
             for (CustomFieldDTO template : instituteCustomFieldsTemplate) {
                 CustomFieldDTO userField = CustomFieldDTO.builder()
@@ -231,7 +251,7 @@ public class SubOrgLearnerService {
                         .fieldKey(template.getFieldKey())
                         .fieldName(template.getFieldName())
                         .fieldType(template.getFieldType())
-                        .fieldValue(userValues.get(template.getCustomFieldId())) // Will be null if not filled
+                        .fieldValue(userValues.get(template.getFieldKey())) // Lookup by field_key instead of custom_field_id
                         .sourceType(template.getSourceType())
                         .build();
 
@@ -241,7 +261,7 @@ public class SubOrgLearnerService {
             mapping.setCustomFields(userCustomFields);
         }
 
-        log.info("Successfully enriched {} student mappings with {} custom fields each", 
+        log.info("Successfully enriched {} student mappings with {} custom fields each",
                 studentMappings.size(), instituteCustomFieldsTemplate.size());
     }
 
@@ -265,8 +285,6 @@ public class SubOrgLearnerService {
         return dto;
     }
 
-
-
     @Transactional
     public SubOrgEnrollResponseDTO enrollLearnerToSubOrg(SubOrgEnrollRequestDTO request, CustomUserDetails admin) {
         log.info("Starting sub-org enrollment for package_session_id: {}, sub_org_id: {}",
@@ -286,37 +304,42 @@ public class SubOrgLearnerService {
         // 4. Ensure student record exists
         ensureStudentExists(user);
 
-        // 5. Validate no duplicate enrollment
+        // 5. Validate member count limit for this sub-org
+        validateMemberCountLimit(request.getSubOrgId(), request.getPackageSessionId());
+
+        // 6. Validate no duplicate enrollment
         validateNoDuplicateEnrollment(user.getId(), request);
 
-        // 6. Create mapping
-        StudentSessionInstituteGroupMapping mapping = createMapping(request, user, packageSession, subOrg);
+        // 7. Find root admin plan id
+        String rootAdminPlanId = findRootAdminPlanId(request.getSubOrgId(), request.getPackageSessionId());
+
+        // 8. Create mapping
+        StudentSessionInstituteGroupMapping mapping = createMapping(request, user, packageSession, subOrg,
+                rootAdminPlanId);
         mapping = mappingRepository.save(mapping);
 
         log.info("Created mapping with ID: {} for user: {}", mapping.getId(), user.getId());
         UserDTO adminDTO = authService.getUsersFromAuthServiceByUserIds(List.of(admin.getUserId())).get(0);
-        // 7. Save custom fields if provided
+        // 8. Save custom fields if provided
         if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
             // Save custom fields for the mapping entity
             customFieldValueService.addCustomFieldValue(
                     request.getCustomFieldValues(),
                     CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
-                    mapping.getId()
-            );
-            // Save custom fields for the user entity (using user.getId() not mapping.getId())
+                    mapping.getId());
+            // Save custom fields for the user entity (using user.getId() not
+            // mapping.getId())
             customFieldValueService.addCustomFieldValue(
                     request.getCustomFieldValues(),
                     CustomFieldValueSourceTypeEnum.USER.name(),
-                    user.getId()
-            );
+                    user.getId());
             log.info("Saved {} custom field values for mapping: {} and user: {}",
                     request.getCustomFieldValues().size(), mapping.getId(), user.getId());
         }
 
-        triggerEnrollmentWorkflow(request.getInstituteId(),user,request.getPackageSessionId(),adminDTO);
+        triggerEnrollmentWorkflow(request.getInstituteId(), user, request.getPackageSessionId(), adminDTO);
 
-
-        // 8. Build and return response
+        // 9. Build and return response
         return SubOrgEnrollResponseDTO.builder()
                 .user(user)
                 .mappingId(mapping.getId())
@@ -376,7 +399,7 @@ public class SubOrgLearnerService {
      * Create new user or fetch existing user with proper user_roles entry
      */
     private UserDTO createOrFetchUser(SubOrgEnrollRequestDTO request) {
-        log.info("Creating or fetching user with email: {}, userId: {}", 
+        log.info("Creating or fetching user with email: {}, userId: {}",
                 request.getUser().getEmail(), request.getUser().getId());
 
         if (request.getUser().getRoles() == null || request.getUser().getRoles().isEmpty()) {
@@ -392,8 +415,7 @@ public class SubOrgLearnerService {
 
         return authService.createUserFromAuthService(
                 request.getUser(),
-                request.getInstituteId(),true
-        );
+                request.getInstituteId(), true);
     }
 
     private String generateRandomPassword(int length) {
@@ -423,14 +445,14 @@ public class SubOrgLearnerService {
                 .findByUserIdAndPackageSessionIdAndInstituteId(
                         userId,
                         request.getPackageSessionId(),
-                        request.getInstituteId()
-                );
+                        request.getInstituteId());
 
         if (existingMapping.isPresent()) {
             StudentSessionInstituteGroupMapping mapping = existingMapping.get();
             if (LearnerSessionStatusEnum.ACTIVE.name().equals(mapping.getStatus()) &&
                     request.getSubOrgId().equals(mapping.getSubOrg() != null ? mapping.getSubOrg().getId() : null)) {
-                throw new VacademyException("User is already enrolled in this package session through the same sub-organization");
+                throw new VacademyException(
+                        "User is already enrolled in this package session through the same sub-organization");
             }
         }
     }
@@ -442,7 +464,8 @@ public class SubOrgLearnerService {
             SubOrgEnrollRequestDTO request,
             UserDTO user,
             PackageSession packageSession,
-            Institute subOrg) {
+            Institute subOrg,
+            String userPlanId) {
 
         StudentSessionInstituteGroupMapping mapping = new StudentSessionInstituteGroupMapping();
 
@@ -465,32 +488,35 @@ public class SubOrgLearnerService {
         // Dates
         mapping.setEnrolledDate(request.getEnrolledDate() != null ? request.getEnrolledDate() : new Date());
         mapping.setExpiryDate(request.getExpiryDate());
-        if(request.getCommaSeparatedOrgRoles()!=null)
+        if (request.getCommaSeparatedOrgRoles() != null)
             mapping.setCommaSeparatedOrgRoles(request.getCommaSeparatedOrgRoles());
 
         // Status and enrollment number
-        mapping.setStatus(StringUtils.hasText(request.getStatus()) ?
-                request.getStatus() : LearnerSessionStatusEnum.ACTIVE.name());
+        mapping.setStatus(StringUtils.hasText(request.getStatus()) ? request.getStatus()
+                : LearnerSessionStatusEnum.ACTIVE.name());
         mapping.setInstituteEnrolledNumber(request.getInstituteEnrollmentNumber());
 
         // Comma separated org roles
         mapping.setCommaSeparatedOrgRoles(request.getCommaSeparatedOrgRoles());
 
         // No payment tracking for sub-org enrollments
-        mapping.setUserPlanId(null);
+        mapping.setUserPlanId(userPlanId);
         mapping.setDestinationPackageSession(null);
 
         return mapping;
     }
 
     @Transactional
-    public SubOrgTerminateResponseDTO terminateLearners(SubOrgTerminateRequestDTO request,CustomUserDetails userDetails) {
+    public SubOrgTerminateResponseDTO terminateLearners(SubOrgTerminateRequestDTO request,
+            CustomUserDetails userDetails) {
         log.info("Terminating learners for sub_org_id: {}, institute_id: {}, package_session_id: {}, user_count: {}",
-                request.getSubOrgId(), request.getInstituteId(), request.getPackageSessionId(), request.getUserIds().size());
+                request.getSubOrgId(), request.getInstituteId(), request.getPackageSessionId(),
+                request.getUserIds().size());
 
         // Validate sub-organization exists
         instituteRepository.findById(request.getSubOrgId())
-                .orElseThrow(() -> new VacademyException("Sub-organization not found with id: " + request.getSubOrgId()));
+                .orElseThrow(
+                        () -> new VacademyException("Sub-organization not found with id: " + request.getSubOrgId()));
 
         // Validate institute exists
         instituteRepository.findById(request.getInstituteId())
@@ -498,7 +524,8 @@ public class SubOrgLearnerService {
 
         // Validate package session exists
         packageSessionRepository.findById(request.getPackageSessionId())
-                .orElseThrow(() -> new VacademyException("Package session not found with id: " + request.getPackageSessionId()));
+                .orElseThrow(() -> new VacademyException(
+                        "Package session not found with id: " + request.getPackageSessionId()));
 
         // Perform bulk termination
         int terminatedCount = mappingRepository.terminateLearnersBySubOrgAndUserIds(
@@ -506,10 +533,10 @@ public class SubOrgLearnerService {
                 request.getInstituteId(),
                 request.getPackageSessionId(),
                 request.getUserIds(),
-                LearnerSessionStatusEnum.TERMINATED.name()
-        );
+                LearnerSessionStatusEnum.TERMINATED.name());
 
-        triggerTerminationWorkflow(request.getUserIds(),request.getInstituteId(),request.getPackageSessionId(),userDetails);
+        triggerTerminationWorkflow(request.getUserIds(), request.getInstituteId(), request.getPackageSessionId(),
+                userDetails);
 
         log.info("Successfully terminated {} learners", terminatedCount);
 
@@ -544,7 +571,8 @@ public class SubOrgLearnerService {
     }
 
     /**
-     * Build complete StudentSessionMappingWithSubOrgDTO from StudentSessionInstituteGroupMapping entity
+     * Build complete StudentSessionMappingWithSubOrgDTO from
+     * StudentSessionInstituteGroupMapping entity
      */
     private StudentSessionMappingWithSubOrgDTO buildCompleteMappingDTO(StudentSessionInstituteGroupMapping mapping) {
         // Build sub-org (institute) details
@@ -569,6 +597,7 @@ public class SubOrgLearnerService {
                 .userId(mapping.getUserId())
                 .instituteEnrolledNumber(mapping.getInstituteEnrolledNumber())
                 .enrolledDate(mapping.getEnrolledDate())
+                .inviteCode(getUserPlanId(mapping.getUserPlanId()))
                 .expiryDate(mapping.getExpiryDate())
                 .status(mapping.getStatus())
                 .createdAt(mapping.getCreatedAt())
@@ -576,7 +605,9 @@ public class SubOrgLearnerService {
                 .groupId(mapping.getGroup() != null ? mapping.getGroup().getId() : null)
                 .instituteId(mapping.getInstitute() != null ? mapping.getInstitute().getId() : null)
                 .packageSessionId(mapping.getPackageSession() != null ? mapping.getPackageSession().getId() : null)
-                .destinationPackageSessionId(mapping.getDestinationPackageSession() != null ? mapping.getDestinationPackageSession().getId() : null)
+                .destinationPackageSessionId(
+                        mapping.getDestinationPackageSession() != null ? mapping.getDestinationPackageSession().getId()
+                                : null)
                 .userPlanId(mapping.getUserPlanId())
                 .typeId(mapping.getTypeId())
                 .type(mapping.getType())
@@ -587,29 +618,131 @@ public class SubOrgLearnerService {
                 .subOrgId(subOrg != null ? subOrg.getId() : null)
                 .commaSeparatedOrgRoles(mapping.getCommaSeparatedOrgRoles())
                 .subOrgDetails(subOrgDto)
+                .packageName(
+                        mapping.getPackageSession() != null && mapping.getPackageSession().getPackageEntity() != null
+                                ? mapping.getPackageSession().getPackageEntity().getPackageName()
+                                : null)
+                .levelName(mapping.getPackageSession() != null && mapping.getPackageSession().getLevel() != null
+                        ? mapping.getPackageSession().getLevel().getLevelName()
+                        : null)
+                .sessionName(mapping.getPackageSession() != null && mapping.getPackageSession().getSession() != null
+                        ? mapping.getPackageSession().getSession().getSessionName()
+                        : null)
                 .build();
     }
 
+    private String getUserPlanId(String userPlanId){
+        if (userPlanId == null) {
+            return null;
+        }
+        return userPlanRepository.findInviteCodeByUserPlanId(userPlanId).orElse(null);
+    }
+
     @Async
-    private void triggerTerminationWorkflow(List<String>userIds,String instituteId,String packageSessionId,CustomUserDetails userDetails){
-        List<UserDTO>userDTOS = authService.getUsersFromAuthServiceByUserIds(userIds);
-        UserDTO admin =  authService.getUsersFromAuthServiceByUserIds(List.of(userDetails.getUserId())).get(0);
-        for(UserDTO userDTO:userDTOS){
+    private void triggerTerminationWorkflow(List<String> userIds, String instituteId, String packageSessionId,
+            CustomUserDetails userDetails) {
+        List<UserDTO> userDTOS = authService.getUsersFromAuthServiceByUserIds(userIds);
+        UserDTO admin = authService.getUsersFromAuthServiceByUserIds(List.of(userDetails.getUserId())).get(0);
+        Optional<PackageSession> optionalPackageSession = packageSessionRepository.findById(packageSessionId);
+        if (optionalPackageSession.isEmpty()) {
+            throw new VacademyException("PackageSession Not found");
+        }
+        for (UserDTO userDTO : userDTOS) {
             Map<String, Object> contextData = new HashMap<>();
-            contextData.put("user", userDTO);
+            contextData.put("member", userDTO);
             contextData.put("packageSessionIds", packageSessionId);
-            contextData.put("admin",admin);
-            workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_TERMINATION.name(),packageSessionId,instituteId,contextData);
+            contextData.put("admin", admin);
+            contextData.put("packageId", optionalPackageSession.get().getPackageEntity().getId());
+            workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_TERMINATION.name(),
+                    packageSessionId, instituteId, contextData);
         }
     }
 
     @Async
-    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO,String packageSessionId,UserDTO adminDTO) {
+    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO, String packageSessionId,
+            UserDTO adminDTO) {
+        Optional<PackageSession> optionalPackageSession = packageSessionRepository.findById(packageSessionId);
+        if (optionalPackageSession.isEmpty()) {
+            throw new VacademyException("PackageSession Not found");
+        }
         Map<String, Object> contextData = new HashMap<>();
-        contextData.put("user", userDTO);
+        contextData.put("member", userDTO);
         contextData.put("packageSessionIds", packageSessionId);
-        contextData.put("admin",adminDTO);
-        workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
+        contextData.put("subOrgAdmin", adminDTO);
+        contextData.put("packageId", optionalPackageSession.get().getPackageEntity().getId());
+        workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.SUB_ORG_MEMBER_ENROLLMENT.name(),
+                packageSessionId, instituteId, contextData);
+    }
+
+    private String findRootAdminPlanId(String subOrgId, String packageSessionId) {
+        Optional<StudentSessionInstituteGroupMapping> rootAdminMappingOpt = mappingRepository
+                .findRootAdminMappingBySubOrgAndPackageSession(subOrgId, packageSessionId);
+
+        if (rootAdminMappingOpt.isEmpty()) {
+            log.warn("No ROOT_ADMIN mapping found for sub_org_id: {}, package_session_id: {} - skipping validation",
+                    subOrgId, packageSessionId);
+            return null;
+        }
+
+        StudentSessionInstituteGroupMapping rootAdminMapping = rootAdminMappingOpt.get();
+        return rootAdminMapping.getUserPlanId();
+
+    }
+
+    private void validateMemberCountLimit(String subOrgId, String packageSessionId) {
+        String userPlanId = findRootAdminPlanId(subOrgId, packageSessionId);
+        if (userPlanId == null) {
+            log.warn("ROOT_ADMIN mapping has no user_plan_id for batch {} - skipping validation",
+                    packageSessionId);
+            return;
+        }
+
+        log.info("Found ROOT_ADMIN mapping with user_plan_id: {} for batch {}", userPlanId, packageSessionId);
+
+        // Step 2: Get UserPlan by ID
+        Optional<UserPlan> userPlanOpt = userPlanRepository.findById(userPlanId);
+
+        if (userPlanOpt.isEmpty()) {
+            log.warn("UserPlan not found for id: {} - skipping validation", userPlanId);
+            return;
+        }
+
+        UserPlan userPlan = userPlanOpt.get();
+        PaymentPlan paymentPlan = userPlan.getPaymentPlan();
+
+        if (paymentPlan == null) {
+            log.warn("No PaymentPlan found for UserPlan: {} - skipping validation", userPlan.getId());
+            return;
+        }
+
+        Integer memberCountLimit = paymentPlan.getMemberCount();
+
+        if (memberCountLimit == null) {
+            log.info("No member_count limit set for payment_plan: {} - allowing unlimited enrollment",
+                    paymentPlan.getId());
+            return;
+        }
+
+        // Step 3: Count current ACTIVE members in this batch
+        long currentMemberCount = mappingRepository.countBySubOrgIdAndPackageSessionIdAndStatus(
+                subOrgId,
+                packageSessionId,
+                LearnerSessionStatusEnum.ACTIVE.name());
+
+        log.info("Batch quota - Current: {}, Limit: {}, UserPlan: {}",
+                currentMemberCount, memberCountLimit, userPlanId);
+
+        // Step 4: Validate limit not exceeded
+        if (currentMemberCount >= memberCountLimit) {
+            throw new VacademyException(
+                    String.format("Member limit exceeded for this batch. " +
+                            "Current members: %d, Maximum allowed: %d. " +
+                            "Please contact ROOT_ADMIN to upgrade the plan.",
+                            currentMemberCount, memberCountLimit));
+        }
+
+        log.info("Validation passed. {} seats remaining for this batch.",
+                (memberCountLimit - currentMemberCount - 1));
     }
 
     @Transactional(readOnly = true)
@@ -617,7 +750,8 @@ public class SubOrgLearnerService {
         log.info("Fetching admins for packageSessionId: {}, subOrgId: {}", packageSessionId, subOrgId);
 
         // Query the database for admins
-        List<Object[]> adminResults = mappingRepository.findAdminsByPackageSessionAndSubOrg(packageSessionId, subOrgId, userId);
+        List<Object[]> adminResults = mappingRepository.findAdminsByPackageSessionAndSubOrg(packageSessionId, subOrgId,
+                userId);
 
         // Map results to DTOs
         List<AdminDetailsDTO> admins = adminResults.stream()

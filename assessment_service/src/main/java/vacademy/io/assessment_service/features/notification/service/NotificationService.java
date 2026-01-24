@@ -10,6 +10,8 @@ import vacademy.io.assessment_service.features.notification.dto.NotificationDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 
+import java.util.List;
+
 @Service
 public class NotificationService {
 
@@ -23,26 +25,26 @@ public class NotificationService {
     private String notificationServerBaseUrl;
 
     public String sendEmailToUsers(NotificationDTO notificationDTO) {
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.POST.name(),
                 notificationServerBaseUrl,
                 NotificationConstant.EMAIL_TO_USERS,
-                notificationDTO
-        );
+                notificationDTO);
         return response.getBody();
     }
 
     public String sendAttachmentEmailToUsers(AttachmentNotificationDTO notificationDTO) {
-        // Removed the redundant 'clientName' parameter, we can use the injected clientName field here
+        // Removed the redundant 'clientName' parameter, we can use the injected
+        // clientName field here
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName, // Directly use the injected 'clientName'
                 HttpMethod.POST.name(),
                 notificationServerBaseUrl,
                 NotificationConstant.ATTACHMENT_EMAIL_TO_USERS,
-                notificationDTO
-        );
+                List.of(notificationDTO));
         return response.getBody();
     }
 }

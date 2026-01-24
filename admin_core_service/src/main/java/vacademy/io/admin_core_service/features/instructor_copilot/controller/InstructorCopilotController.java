@@ -49,4 +49,9 @@ public class InstructorCopilotController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Date endDate) {
         return ResponseEntity.ok(service.getLogs(instituteId, status, startDate, endDate));
     }
+
+    @PostMapping("/retry-generate/{id}")
+    public ResponseEntity<InstructorCopilotLogDTO> retryGenerateContent(@PathVariable String id) {
+        return ResponseEntity.ok(service.retryGenerateContent(id));
+    }
 }

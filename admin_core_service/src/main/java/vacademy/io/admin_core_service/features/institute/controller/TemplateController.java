@@ -7,11 +7,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.institute.dto.template.*;
 import vacademy.io.admin_core_service.features.institute.service.TemplateService;
+import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
+
+import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER;
 
 @RestController
 @RequestMapping("/admin-core-service/institute/template/v1")
@@ -87,17 +90,21 @@ public class TemplateController {
     }
 
     /**
-     * Get all templates for an institute
+     * Get all templates for an institute (paginated)
+     * Returns lightweight template summaries without content to prevent memory issues
      */
     @GetMapping("/institute/{instituteId}")
-    public ResponseEntity<List<TemplateResponse>> getTemplatesByInstitute(
+    public ResponseEntity<PagedTemplateResponse> getTemplatesByInstitute(
             @RequestAttribute("user") CustomUserDetails userDetails,
-            @PathVariable String instituteId) {
+            @PathVariable String instituteId,
+            @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
         
-        log.info("Getting all templates for institute: {} by user: {}", instituteId, userDetails.getUserId());
+        log.info("Getting paginated templates for institute: {} by user: {}, page: {}, size: {}", 
+                instituteId, userDetails.getUserId(), pageNo, pageSize);
         
         try {
-            List<TemplateResponse> response = templateService.getTemplatesByInstitute(instituteId);
+            PagedTemplateResponse response = templateService.getTemplatesByInstitutePaginated(instituteId, pageNo, pageSize);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error getting templates for institute: {}", e.getMessage());

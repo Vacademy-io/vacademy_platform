@@ -214,12 +214,99 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         JOIN live_session_participants lsp ON lsp.session_id = s.id
         WHERE lsp.source_type = 'USER'
           AND lsp.source_id = :userId
-          AND ss.meeting_date >= CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
+          AND ss.meeting_date >= CURRENT_DATE
           AND s.status IN ('DRAFT', 'LIVE')
           AND ss.status != 'DELETED'
         ORDER BY ss.meeting_date, ss.start_time
     """, nativeQuery = true)
     List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessionsForUser(@Param("userId") String userId);
+
+    @Query(value = """
+        SELECT DISTINCT
+            s.id AS sessionId,
+            s.waiting_room_time AS waitingRoomTime,
+            s.thumbnail_file_id AS thumbnailFileId,
+            s.background_score_file_id AS backgroundScoreFileId,
+            s.session_streaming_service_type AS sessionStreamingServiceType,
+            ss.id AS scheduleId,
+            ss.meeting_date AS meetingDate,
+            ss.start_time AS startTime,
+            ss.last_entry_time AS lastEntryTime,
+            ss.recurrence_type AS recurrenceType,
+            s.access_level AS accessLevel,
+            s.title AS title,
+            s.subject AS subject,
+            s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
+            s.allow_play_pause AS allowPlayPause,
+            COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+            CASE
+                WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
+                ELSE s.default_meet_link
+            END AS meetingLink
+        FROM session_schedules ss
+        JOIN live_session s ON ss.session_id = s.id
+        JOIN live_session_participants lsp ON lsp.session_id = s.id
+        WHERE (
+            (:batchId IS NOT NULL AND lsp.source_type = 'BATCH' AND lsp.source_id = :batchId)
+            OR 
+            (:userId IS NOT NULL AND lsp.source_type = 'USER' AND lsp.source_id = :userId)
+        )
+        AND ss.meeting_date >= CURRENT_DATE
+        AND s.status IN ('DRAFT', 'LIVE')
+        AND ss.status != 'DELETED'
+        ORDER BY ss.meeting_date, ss.start_time
+    """, nativeQuery = true)
+    List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessionsForUserAndBatch(
+        @Param("batchId") String batchId,
+        @Param("userId") String userId
+    );
+
+    @Query(value = """
+        SELECT DISTINCT
+            s.id AS sessionId,
+            s.waiting_room_time AS waitingRoomTime,
+            s.thumbnail_file_id AS thumbnailFileId,
+            s.background_score_file_id AS backgroundScoreFileId,
+            s.session_streaming_service_type AS sessionStreamingServiceType,
+            ss.id AS scheduleId,
+            ss.meeting_date AS meetingDate,
+            ss.start_time AS startTime,
+            ss.last_entry_time AS lastEntryTime,
+            ss.recurrence_type AS recurrenceType,
+            s.access_level AS accessLevel,
+            s.title AS title,
+            s.subject AS subject,
+            s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
+            s.allow_play_pause AS allowPlayPause,
+            COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+            CASE
+                WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
+                ELSE s.default_meet_link
+            END AS meetingLink
+        FROM session_schedules ss
+        JOIN live_session s ON ss.session_id = s.id
+        JOIN live_session_participants lsp ON lsp.session_id = s.id
+        WHERE (
+            (:batchId IS NOT NULL AND lsp.source_type = 'BATCH' AND lsp.source_id = :batchId)
+            OR 
+            (:userId IS NOT NULL AND lsp.source_type = 'USER' AND lsp.source_id = :userId)
+        )
+        AND ss.meeting_date >= COALESCE(CAST(:startDate AS DATE), CURRENT_DATE)
+        AND (:endDate IS NULL OR ss.meeting_date <= CAST(:endDate AS DATE))
+        AND s.status IN ('DRAFT', 'LIVE')
+        AND ss.status != 'DELETED'
+        ORDER BY ss.meeting_date, ss.start_time
+        LIMIT CASE WHEN :size IS NULL THEN NULL ELSE :size END
+        OFFSET CASE WHEN :offset IS NULL THEN 0 ELSE :offset END
+    """, nativeQuery = true)
+    List<LiveSessionRepository.LiveSessionListProjection> findUpcomingSessionsForUserAndBatchWithFilters(
+        @Param("batchId") String batchId,
+        @Param("userId") String userId,
+        @Param("startDate") String startDate,
+        @Param("endDate") String endDate,
+        @Param("offset") Integer offset,
+        @Param("size") Integer size
+    );
 
     @Modifying
     @Transactional

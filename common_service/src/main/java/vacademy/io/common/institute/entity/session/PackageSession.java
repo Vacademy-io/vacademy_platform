@@ -57,9 +57,21 @@ public class PackageSession {
     @Column(name = "is_org_associated")
     private Boolean isOrgAssociated;
 
+    @Column(name = "enrollment_policy_settings")
+    private String enrollmentPolicySettings;
+
+    @Column(name = "available_slots")
+    private Integer availableSlots;
+
+    @Column(name = "max_seats")
+    private Integer maxSeats;
+
+    @Version
+    private Long version;
+
     @PrePersist
     public void prePersist() {
-        if (isOrgAssociated == null){
+        if (isOrgAssociated == null) {
             isOrgAssociated = false;
         }
     }

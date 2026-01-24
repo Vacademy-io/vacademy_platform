@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,8 +17,18 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption; // Added
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionSourceEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
+import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.dto.policy.EnrollmentPolicyJsonDTOs;
+import vacademy.io.common.institute.entity.session.PackageSession;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
@@ -27,6 +38,9 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.institute.entity.Institute;
@@ -62,7 +76,19 @@ public class UserPlanService {
     private AuthService authService;
 
     @Autowired
+    private StudentSessionRepository studentSessionRepository;
+
+    @Autowired
     private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationRepository;
+
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
 
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
@@ -87,11 +113,6 @@ public class UserPlanService {
             Date startDate) {
         logger.info("Creating UserPlan for userId={}, status={}, source={}, subOrgId={}",
                 userId, status, source, subOrgId);
-
-        // Validate userId is always provided - critical for data integrity
-        if (!StringUtils.hasText(userId)) {
-            throw new IllegalArgumentException("UserId is required for creating UserPlan. Cannot be null or empty.");
-        }
 
         UserPlan userPlan = new UserPlan();
         userPlan.setStatus(status);
@@ -134,16 +155,42 @@ public class UserPlanService {
 
         // --- Logic to calculate and set Start and End Dates ---
         // --- Date Logic with Timestamp ---
-        // Validate startDate is not in the future
-        Date effectiveStartDate = startDate;
-        if (effectiveStartDate != null) {
-            Date currentDate = new Date();
-            if (effectiveStartDate.after(currentDate)) {
-                throw new IllegalArgumentException("Start date cannot be in the future");
+
+        // Check for existing ACTIVE or PENDING plans for stacking
+        Optional<UserPlan> existingPlan = userPlanRepository
+                .findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
+                        userId,
+                        enrollInvite.getId(),
+                        List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name()));
+
+        Date effectiveStartDate;
+        if (existingPlan.isPresent()) {
+            // Stack the new plan after the existing one
+            effectiveStartDate = existingPlan.get().getEndDate();
+            if (effectiveStartDate == null) {
+                effectiveStartDate = new Date(); // Fallback
             }
+
+            // Only change status to PENDING if it was going to be ACTIVE
+            // If it's PENDING_FOR_PAYMENT, let it remain so (it will be handled in
+            // applyOperationsOnFirstPayment)
+            if (UserPlanStatusEnum.ACTIVE.name().equals(status)) {
+                status = UserPlanStatusEnum.PENDING.name();
+                userPlan.setStatus(status);
+            }
+            logger.info("Stacking UserPlan: Found existing plan ID={}. New plan will start at {}",
+                    existingPlan.get().getId(), effectiveStartDate);
         } else {
-            // Default to current date if startDate not provided
-            effectiveStartDate = new Date();
+            // No existing plan, use provided startDate or now
+            effectiveStartDate = startDate;
+            if (effectiveStartDate != null) {
+                Date currentDate = new Date();
+                if (effectiveStartDate.after(currentDate)) {
+                    throw new IllegalArgumentException("Start date cannot be in the future");
+                }
+            } else {
+                effectiveStartDate = new Date();
+            }
         }
 
         long startTimeMillis = effectiveStartDate.getTime();
@@ -210,25 +257,51 @@ public class UserPlanService {
     public void applyOperationsOnFirstPayment(UserPlan userPlan) {
         logger.info("Applying operations on first payment for UserPlan ID={}", userPlan.getId());
 
-        if (userPlan.getStatus().equalsIgnoreCase(UserPlanStatusEnum.ACTIVE.name())) {
-            logger.info("UserPlan already ACTIVE. Skipping re-activation.");
+        if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())
+                || UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
+            logger.info("UserPlan already ACTIVE or pending . Skipping re-activation.");
             return;
         }
 
         EnrollInvite enrollInvite = userPlan.getEnrollInvite();
 
+        // Check for OTHER existing ACTIVE or PENDING plans for stacking
+        // We exclude the current plan ID just in case, though it shouldn't be
+        // active/pending yet
+        Optional<UserPlan> existingPlan = userPlanRepository
+                .findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByEndDateDesc(
+                        userPlan.getUserId(),
+                        enrollInvite.getId(),
+                        List.of(
+                                UserPlanStatusEnum.ACTIVE.name(),
+                                UserPlanStatusEnum.PENDING.name()),
+                        List.of(userPlan.getId()));
+
         List<String> packageSessionIds = packageSessionEnrollInviteToPaymentOptionService
                 .findPackageSessionsOfEnrollInvite(enrollInvite);
-        logger.debug("Package session IDs resolved for EnrollInvite ID={}: {}", enrollInvite.getId(),
-                packageSessionIds);
-        learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
-                userPlan.getUserId(), enrollInvite.getId());
-        userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
-        userPlanRepository.save(userPlan);
+        // If we found a plan, and it's NOT the current plan (sanity check)
+        if (existingPlan.isPresent() && !existingPlan.get().getId().equals(userPlan.getId())) {
+            // Stack it!
+            userPlan.setStatus(UserPlanStatusEnum.PENDING.name());
+            userPlanRepository.save(userPlan);
+            logger.info("UserPlan stacked as PENDING after payment. ID={}. Existing plan ID={}", userPlan.getId(),
+                    existingPlan.get().getId());
+            // Do NOT shift learner to active package sessions yet
+        } else {
+            // Activate normally
 
-        logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
+            logger.debug("Package session IDs resolved for EnrollInvite ID={}: {}", enrollInvite.getId(),
+                    packageSessionIds);
+            learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
+                    userPlan.getUserId(), enrollInvite.getId());
+            userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+            userPlanRepository.save(userPlan);
 
-        // Send enrollment notifications after successful PAID enrollment
+            logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
+
+            // Send enrollment notifications after successful PAID enrollment
+
+        }
         sendEnrollmentNotificationsAfterPayment(userPlan, enrollInvite, packageSessionIds);
     }
 
@@ -279,9 +352,10 @@ public class UserPlanService {
         }
     }
 
-    @Cacheable(value = "userPlanWithPaymentLogs", key = "#userPlanId")
-    public UserPlanDTO getUserPlanWithPaymentLogs(String userPlanId) {
-        logger.info("Getting UserPlan with payment logs for ID: {}", userPlanId);
+    @Cacheable(value = "userPlanWithPaymentLogs", key = "#userPlanId + '_' + #includePolicyDetails")
+    public UserPlanDTO getUserPlanWithPaymentLogs(String userPlanId, boolean includePolicyDetails) {
+        logger.info("Getting UserPlan with payment logs for ID: {}, includePolicyDetails: {}", userPlanId,
+                includePolicyDetails);
 
         UserPlan userPlan = userPlanRepository.findById(userPlanId)
                 .orElseThrow(() -> new RuntimeException("UserPlan not found with ID: " + userPlanId));
@@ -293,8 +367,20 @@ public class UserPlanService {
         UserPlanDTO userPlanDTO = mapToDTO(userPlan);
         userPlanDTO.setPaymentLogs(paymentLogs);
 
+        // Add policy details if requested
+        if (includePolicyDetails) {
+            List<PackageSessionPolicyDetailsDTO> policyDetails = buildPolicyDetailsForUserPlan(userPlan);
+            userPlanDTO.setPolicyDetails(policyDetails);
+        }
+
         logger.info("Retrieved UserPlan with {} payment logs for ID: {}", paymentLogs.size(), userPlanId);
         return userPlanDTO;
+    }
+
+    // Overloaded method for backward compatibility
+    @Cacheable(value = "userPlanWithPaymentLogs", key = "#userPlanId + '_false'")
+    public UserPlanDTO getUserPlanWithPaymentLogs(String userPlanId) {
+        return getUserPlanWithPaymentLogs(userPlanId, false);
     }
 
     @Cacheable(value = "userPlanById", key = "#userPlanId")
@@ -324,10 +410,7 @@ public class UserPlanService {
                 userPlanFilterDTO.getInstituteId());
         Sort thisSort = ListService.createSortObject(userPlanFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-        List<String> status = userPlanFilterDTO.getStatuses();
-        if (status == null) {
-            status = List.of();
-        }
+        List<String> status = List.of(UserPlanStatusEnum.ACTIVE.name(),UserPlanStatusEnum.PENDING.name(),UserPlanStatusEnum.PENDING_FOR_PAYMENT.name(),UserPlanStatusEnum.CANCELED.name(),UserPlanStatusEnum.EXPIRED.name(),UserPlanStatusEnum.PAYMENT_FAILED.name(),UserPlanStatusEnum.TERMINATED.name());
         Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
                 userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
 
@@ -449,6 +532,7 @@ public class UserPlanService {
                 .paymentLogs((userPlan.getPaymentLogs() != null
                         ? userPlan.getPaymentLogs().stream().map(PaymentLog::mapToDTO).collect(Collectors.toList())
                         : List.of()))
+                .policyDetails(buildPolicyDetailsForUserPlan(userPlan))
                 .build();
     }
 
@@ -456,7 +540,12 @@ public class UserPlanService {
      * Map UserPlan to DTO WITHOUT payment logs (optimized for membership details).
      * This method avoids loading payment logs for better performance.
      */
-    private UserPlanDTO mapToDTOWithoutPaymentLogs(UserPlan userPlan) {
+    /**
+     * Map UserPlan to DTO WITHOUT payment logs (optimized for membership details).
+     * This method avoids loading payment logs for better performance.
+     */
+    private UserPlanDTO mapToDTOWithoutPaymentLogs(UserPlan userPlan,
+            List<PackageSessionPolicyDetailsDTO> policyDetails) {
         // Fetch sub-org details if source is SUB_ORG and subOrgId is present
         SubOrgDetailsDTO subOrgDetails = null;
         if (UserPlanSourceEnum.SUB_ORG.name().equals(userPlan.getSource()) &&
@@ -501,6 +590,7 @@ public class UserPlanService {
                         (userPlan.getPaymentOption() != null ? userPlan.getPaymentOption().mapToPaymentOptionDTO()
                                 : null))
                 .paymentLogs(List.of()) // Empty list - no payment logs loaded
+                .policyDetails(policyDetails) // Set policy details
                 .build();
     }
 
@@ -529,6 +619,151 @@ public class UserPlanService {
 
         userPlans.forEach(plan -> plan.setStatus(normalizedStatus));
         userPlanRepository.saveAll(userPlans);
+    }
+
+    /**
+     * Activates a stacked PENDING plan when the current plan expires.
+     * 1. Updates stacked plan status to ACTIVE.
+     * 2. Sets stacked plan start/end dates based on current time and validity.
+     * 3. Moves all active mappings from expired plan to stacked plan and extends
+     * their expiry.
+     */
+    @Transactional
+    public void activateStackedPlan(UserPlan stackedPlan, UserPlan expiredPlan) {
+        logger.info("Activating stacked plan ID={} (replacing expired plan ID={})", stackedPlan.getId(),
+                expiredPlan.getId());
+
+        // 1. Update Stacked Plan Dates
+        Date now = new Date();
+        stackedPlan.setStartDate(new Timestamp(now.getTime()));
+
+        // Calculate validity
+        Integer validityDays = null;
+        if (stackedPlan.getPaymentPlan() != null && stackedPlan.getPaymentPlan().getValidityInDays() != null) {
+            validityDays = stackedPlan.getPaymentPlan().getValidityInDays();
+        } else if (stackedPlan.getEnrollInvite() != null
+                && stackedPlan.getEnrollInvite().getLearnerAccessDays() != null) {
+            validityDays = stackedPlan.getEnrollInvite().getLearnerAccessDays();
+        }
+
+        if (validityDays != null) {
+            Calendar calendar = Calendar.getInstance();
+            calendar.setTime(now);
+            calendar.add(Calendar.DAY_OF_YEAR, validityDays);
+            stackedPlan.setEndDate(new Timestamp(calendar.getTimeInMillis()));
+        }
+
+        // 2. Update Status
+        stackedPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+        userPlanRepository.save(stackedPlan);
+
+        // 3. Transfer and Extend Mappings
+        List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository.findAllByUserPlanIdAndStatusIn(
+                expiredPlan.getId(),
+                List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+
+        if (mappings.isEmpty()) {
+            logger.warn("No active mappings found for expired plan ID={}. Nothing to transfer.", expiredPlan.getId());
+            return;
+        }
+
+        for (StudentSessionInstituteGroupMapping mapping : mappings) {
+            // Link to new plan
+            mapping.setUserPlanId(stackedPlan.getId());
+
+            // Extend expiry date to match the new plan's end date
+            // This ensures the mapping is valid for the duration of the new plan
+            if (stackedPlan.getEndDate() != null) {
+                mapping.setExpiryDate(stackedPlan.getEndDate());
+            }
+
+            studentSessionRepository.save(mapping);
+        }
+
+        logger.info("Transferred {} mappings from plan {} to plan {}", mappings.size(), expiredPlan.getId(),
+                stackedPlan.getId());
+    }
+
+    @Transactional
+    public void cancelUserPlan(String userPlanId, boolean force) {
+        logger.info("Cancelling UserPlan ID: {}, force: {}", userPlanId, force);
+
+        UserPlan userPlan = userPlanRepository.findById(userPlanId)
+                .orElseThrow(() -> new RuntimeException("UserPlan not found with ID: " + userPlanId));
+
+        userPlan.setStatus(force ? UserPlanStatusEnum.TERMINATED.name() : UserPlanStatusEnum.CANCELED.name());
+        userPlanRepository.save(userPlan);
+
+        if (!force) {
+            logger.info("UserPlan ID: {} marked as CANCELED", userPlanId);
+            return;
+        }
+
+        logger.info("UserPlan ID: {} marked as TERMINATED", userPlanId);
+
+        List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository.findAllByUserPlanIdAndStatusIn(
+                userPlanId,
+                List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+
+        if (mappings.isEmpty()) {
+            logger.warn("No session mappings found for UserPlan ID: {}", userPlanId);
+            return;
+        }
+
+        // Extract packageIds
+        Set<String> packageIds = mappings.stream()
+                .map(StudentSessionInstituteGroupMapping::getPackageSession)
+                .filter(Objects::nonNull)
+                .map(ps -> ps.getPackageEntity().getId())
+                .collect(Collectors.toSet());
+
+        if (packageIds.isEmpty()) {
+            studentSessionRepository.deleteAllInBatch(mappings);
+            logger.info("Deleted {} mappings (no package sessions)", mappings.size());
+            return;
+        }
+
+        // Fetch all invited sessions in one query
+        Map<String, PackageSession> invitedSessionByPackageId = packageSessionRepository
+                .findAllInvitedByPackageIds(packageIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        ps -> ps.getPackageEntity().getId(),
+                        Function.identity()));
+
+        List<StudentSessionInstituteGroupMapping> newMappings = new ArrayList<>();
+
+        for (StudentSessionInstituteGroupMapping mapping : mappings) {
+            PackageSession activePackageSession = mapping.getPackageSession();
+            if (activePackageSession == null)
+                continue;
+
+            String packageId = activePackageSession.getPackageEntity().getId();
+            PackageSession invitedSession = invitedSessionByPackageId.get(packageId);
+
+            if (invitedSession == null) {
+                logger.error(
+                        "INVITED package session not found for package ID: {}. Mapping ID: {}",
+                        packageId, mapping.getId());
+                continue;
+            }
+
+            newMappings.add(
+                    StudentSessionInstituteGroupMapping.createInvitedMappingFromTerminated(
+                            mapping,
+                            invitedSession,
+                            activePackageSession,
+                            LearnerSessionSourceEnum.TERMINATED.name(),
+                            LearnerSessionTypeEnum.PACKAGE_SESSION.name(),
+                            LearnerSessionStatusEnum.INVITED.name()));
+        }
+
+        // Bulk delete + bulk insert
+        studentSessionRepository.deleteAllInBatch(mappings);
+        studentSessionRepository.saveAll(newMappings);
+
+        logger.info("Force-cancel completed. Deleted: {}, Created INVITED mappings: {}", mappings.size(),
+                newMappings.size());
     }
 
     /**
@@ -610,10 +845,23 @@ public class UserPlanService {
                     }).collect(Collectors.toList())));
         }
 
-        // 7. Map to MembershipDetailsDTO (without payment logs)
+        // 7. Fetch Policy Data (Bulk)
+        Map<String, List<PackageSessionLearnerInvitationToPaymentOption>> enrollInviteToSessionsMap = new HashMap<>();
+        if (!enrollInviteIds.isEmpty()) {
+            List<PackageSessionLearnerInvitationToPaymentOption> allMappings = packageSessionLearnerInvitationRepository
+                    .findByEnrollInviteIdsAndStatusWithPackageSession(
+                            new ArrayList<>(enrollInviteIds),
+                            List.of("ACTIVE"));
+
+            enrollInviteToSessionsMap = allMappings.stream()
+                    .collect(Collectors.groupingBy(m -> m.getEnrollInvite().getId()));
+        }
+
+        // 8. Map to MembershipDetailsDTO (without payment logs)
         Map<String, UserPlan> finalUserPlanMap = userPlanMap;
         Map<String, UserDTO> finalUserMap = userMap;
         Map<String, List<PackageSessionLiteDTO>> finalSessionMap = sessionMap;
+        Map<String, List<PackageSessionLearnerInvitationToPaymentOption>> finalEnrollInviteToSessionsMap = enrollInviteToSessionsMap;
 
         return results.map(row -> {
             String userPlanId = (String) row[0]; // user_plan.id
@@ -625,8 +873,19 @@ public class UserPlanService {
                 throw new RuntimeException("UserPlan not found for id: " + userPlanId);
             }
 
-            // Map to DTO without payment logs
-            UserPlanDTO userPlanDTO = mapToDTOWithoutPaymentLogs(userPlan);
+            // Build policy details
+            List<PackageSessionPolicyDetailsDTO> policyDetails = null;
+            List<PackageSessionLearnerInvitationToPaymentOption> sessionMappings = finalEnrollInviteToSessionsMap
+                    .getOrDefault(userPlan.getEnrollInviteId(), Collections.emptyList());
+
+            policyDetails = sessionMappings.stream()
+                    .filter(m -> m.getPackageSession() != null)
+                    .map(m -> buildDetailsForSession(userPlan, m.getPackageSession()))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+
+            // Map to DTO without payment logs, passing policy details
+            UserPlanDTO userPlanDTO = mapToDTOWithoutPaymentLogs(userPlan, policyDetails);
 
             return MembershipDetailsDTO.builder()
                     .userPlan(userPlanDTO)
@@ -634,8 +893,20 @@ public class UserPlanService {
                     .membershipStatus(dynamicStatus)
                     .calculatedEndDate(endDate)
                     .packageSessions(finalSessionMap.getOrDefault(userPlan.getPaymentOptionId(), List.of()))
+                    .policyDetails(policyDetails)
                     .build();
         });
+    }
+
+    // Overloaded method for backward compatibility - now just calls the main method
+    @Cacheable(value = "membershipDetails", key = "#filterDTO.instituteId + '_' + #pageNo + '_' + #pageSize + '_' + " +
+            "#filterDTO.startDateInUtc + '_' + #filterDTO.endDateInUtc + '_' + " +
+            "(#filterDTO.membershipStatuses != null ? #filterDTO.membershipStatuses.toString() : 'null') + '_' + " +
+            "(#filterDTO.packageSessionIds != null ? #filterDTO.packageSessionIds.toString() : 'null') + '_' + " +
+            "(#filterDTO.sortOrder != null ? #filterDTO.sortOrder.toString() : 'null')", unless = "#result == null || #result.isEmpty()")
+    public Page<MembershipDetailsDTO> getMembershipDetailsCached(MembershipFilterDTO filterDTO, int pageNo,
+            int pageSize) {
+        return getMembershipDetails(filterDTO, pageNo, pageSize);
     }
 
     public Pageable createPageable(int page, int size, Map<String, String> sortCols) {
@@ -647,7 +918,212 @@ public class UserPlanService {
         return PageRequest.of(page, size, sort);
     }
 
-    public UserPlan save(UserPlan userPlan){
-       return userPlanRepository.save(userPlan);
+    /**
+     * Builds policy details for a UserPlan.
+     * Fetches all package sessions associated with the UserPlan's enrollInvite
+     * and extracts policy information.
+     *
+     * @param userPlan The UserPlan to build policy details for
+     * @return List of policy details, one per package session (empty if none)
+     */
+    private List<PackageSessionPolicyDetailsDTO> buildPolicyDetailsForUserPlan(UserPlan userPlan) {
+        if (userPlan == null || userPlan.getEnrollInviteId() == null) {
+            return Collections.emptyList();
+        }
+
+        try {
+            List<PackageSessionLearnerInvitationToPaymentOption> mappings = packageSessionLearnerInvitationRepository
+                    .findByEnrollInviteIdAndStatusWithPackageSession(
+                            userPlan.getEnrollInviteId(),
+                            List.of("ACTIVE"));
+
+            if (mappings == null || mappings.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            return mappings.stream()
+                    .filter(m -> m.getPackageSession() != null)
+                    .map(m -> buildDetailsForSession(userPlan, m.getPackageSession()))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            logger.error("Error building policy details for UserPlan ID: {}", userPlan.getId(), e);
+            return Collections.emptyList();
+        }
+    }
+
+    private PackageSessionPolicyDetailsDTO buildDetailsForSession(UserPlan userPlan, PackageSession packageSession) {
+        try {
+            String policyJson = packageSession.getEnrollmentPolicySettings();
+            if (!StringUtils.hasText(policyJson)) {
+                return null;
+            }
+
+            EnrollmentPolicyJsonDTOs.EnrollmentPolicySettingsDTO settings = objectMapper.readValue(policyJson,
+                    EnrollmentPolicyJsonDTOs.EnrollmentPolicySettingsDTO.class);
+
+            List<PolicyActionDTO> actions = buildPolicyActions(userPlan, settings);
+            ReenrollmentPolicyDetailsDTO reenrollment = buildReenrollmentPolicy(settings, userPlan);
+            OnExpiryPolicyDetailsDTO onExpiry = buildOnExpiryPolicy(settings, userPlan);
+
+            return PackageSessionPolicyDetailsDTO.builder()
+                    .packageSessionId(packageSession.getId())
+                    .packageSessionName(packageSession.getLevel().getLevelName() + " "
+                            + packageSession.getPackageEntity().getPackageName() + " "
+                            + packageSession.getSession().getSessionName())
+                    .packageSessionStatus(packageSession.getStatus())
+                    .policyActions(actions)
+                    .reenrollmentPolicy(reenrollment)
+                    .onExpiryPolicy(onExpiry)
+                    .build();
+        } catch (Exception e) {
+            logger.error("Error parsing policy for session: {}", packageSession.getId(), e);
+            return null;
+        }
+    }
+
+    private List<PolicyActionDTO> buildPolicyActions(UserPlan userPlan,
+            EnrollmentPolicyJsonDTOs.EnrollmentPolicySettingsDTO settings) {
+        List<PolicyActionDTO> actions = new ArrayList<>();
+        LocalDate endDate = userPlan.getEndDate() != null
+                ? userPlan.getEndDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                : null;
+
+        if (endDate == null)
+            return actions;
+
+        // Notifications
+        if (settings.getNotifications() != null) {
+            for (EnrollmentPolicyJsonDTOs.NotificationConfigDTO config : settings.getNotifications()) {
+                if ("ON_EXPIRY_DATE_REACHED".equals(config.getTrigger())) {
+                    addSingleNotificationAction(actions, endDate, 0, "Expiry notification", config);
+                } else if ("DURING_WAITING_PERIOD".equals(config.getTrigger())) {
+                    addRecurringNotificationActions(actions, endDate, config);
+                } else if ("BEFORE_EXPIRY".equals(config.getTrigger()) && config.getDaysBeforeExpiry() != null) {
+                    LocalDate scheduledDate = endDate.minusDays(config.getDaysBeforeExpiry());
+                    addSingleNotificationAction(actions, scheduledDate, -config.getDaysBeforeExpiry(),
+                            "Reminder " + config.getDaysBeforeExpiry() + " days before expiry", config);
+                }
+            }
+        }
+
+        // Auto-renewal / Payment
+        if (settings.getOnExpiry() != null && Boolean.TRUE.equals(settings.getOnExpiry().getEnableAutoRenewal())) {
+            actions.add(PolicyActionDTO.builder()
+                    .actionType("PAYMENT_ATTEMPT")
+                    .scheduledDate(endDate)
+                    .description("Auto-renewal payment attempt")
+                    .daysPastOrBeforeExpiry(0)
+                    .build());
+        }
+
+        // Final Expiry
+        if (settings.getOnExpiry() != null && settings.getOnExpiry().getWaitingPeriodInDays() != null) {
+            LocalDate finalExpiryDate = endDate.plusDays(settings.getOnExpiry().getWaitingPeriodInDays());
+            actions.add(PolicyActionDTO.builder()
+                    .actionType("FINAL_EXPIRY")
+                    .scheduledDate(finalExpiryDate)
+                    .description("Final expiry after waiting period")
+                    .daysPastOrBeforeExpiry(settings.getOnExpiry().getWaitingPeriodInDays())
+                    .build());
+        }
+
+        actions.sort(Comparator.comparing(PolicyActionDTO::getScheduledDate));
+        return actions;
+    }
+
+    private void addSingleNotificationAction(List<PolicyActionDTO> actions, LocalDate scheduledDate, int daysDiff,
+            String desc, EnrollmentPolicyJsonDTOs.NotificationConfigDTO config) {
+        if (scheduledDate.isAfter(LocalDate.now())) {
+            actions.add(PolicyActionDTO.builder()
+                    .actionType("NOTIFICATION")
+                    .scheduledDate(scheduledDate)
+                    .description(desc)
+                    .daysPastOrBeforeExpiry(daysDiff)
+                    .details(buildNotificationDetails(config))
+                    .build());
+        }
+    }
+
+    private void addRecurringNotificationActions(List<PolicyActionDTO> actions, LocalDate endDate,
+            EnrollmentPolicyJsonDTOs.NotificationConfigDTO config) {
+        int interval = config.getSendEveryNDays() != null ? config.getSendEveryNDays() : 1;
+        int maxSends = config.getMaxSends() != null ? config.getMaxSends() : 1;
+
+        for (int i = 1; i <= maxSends; i++) {
+            int daysAfter = i * interval;
+            LocalDate scheduledDate = endDate.plusDays(daysAfter);
+            if (scheduledDate.isAfter(LocalDate.now())) {
+                actions.add(PolicyActionDTO.builder()
+                        .actionType("NOTIFICATION")
+                        .scheduledDate(scheduledDate)
+                        .description("Follow-up " + daysAfter + " days after expiry")
+                        .daysPastOrBeforeExpiry(daysAfter)
+                        .details(buildNotificationDetails(config))
+                        .build());
+            }
+        }
+    }
+
+    private Map<String, Object> buildNotificationDetails(EnrollmentPolicyJsonDTOs.NotificationConfigDTO config) {
+        Map<String, Object> details = new HashMap<>();
+        if (config.getNotificationConfig() != null) {
+            details.put("type", config.getNotificationConfig().getType());
+            // details.put("content", config.getNotificationConfig().getContent());
+            String templateName = config.getNotificationConfig().getTemplateName();
+            details.put("templateName", StringUtils.hasText(templateName) ? templateName : "DEFAULT_TEMPLATE");
+        }
+        return details;
+    }
+
+    private ReenrollmentPolicyDetailsDTO buildReenrollmentPolicy(
+            EnrollmentPolicyJsonDTOs.EnrollmentPolicySettingsDTO settings, UserPlan userPlan) {
+        if (settings.getReenrollmentPolicy() == null)
+            return null;
+
+        LocalDate nextEligible = null;
+        if (userPlan.getEndDate() != null && settings.getReenrollmentPolicy().getReenrollmentGapInDays() != null) {
+            nextEligible = userPlan.getEndDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                    .plusDays(settings.getReenrollmentPolicy().getReenrollmentGapInDays());
+        }
+
+        return ReenrollmentPolicyDetailsDTO.builder()
+                .allowReenrollmentAfterExpiry(settings.getReenrollmentPolicy().getAllowReenrollmentAfterExpiry())
+                .reenrollmentGapInDays(settings.getReenrollmentPolicy().getReenrollmentGapInDays())
+                .nextEligibleEnrollmentDate(nextEligible)
+                .build();
+    }
+
+    private OnExpiryPolicyDetailsDTO buildOnExpiryPolicy(EnrollmentPolicyJsonDTOs.EnrollmentPolicySettingsDTO settings,
+            UserPlan userPlan) {
+        if (settings.getOnExpiry() == null)
+            return null;
+
+        LocalDate endDate = userPlan.getEndDate() != null
+                ? userPlan.getEndDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                : null;
+        LocalDate finalExpiry = null;
+        LocalDate nextPayment = null;
+
+        if (endDate != null) {
+            if (settings.getOnExpiry().getWaitingPeriodInDays() != null) {
+                finalExpiry = endDate.plusDays(settings.getOnExpiry().getWaitingPeriodInDays());
+            }
+            if (Boolean.TRUE.equals(settings.getOnExpiry().getEnableAutoRenewal())) {
+                nextPayment = endDate;
+            }
+        }
+
+        return OnExpiryPolicyDetailsDTO.builder()
+                .waitingPeriodInDays(settings.getOnExpiry().getWaitingPeriodInDays())
+                .enableAutoRenewal(settings.getOnExpiry().getEnableAutoRenewal())
+                .nextPaymentAttemptDate(nextPayment)
+                .finalExpiryDate(finalExpiry)
+                .build();
+    }
+
+    public UserPlan save(UserPlan userPlan) {
+        return userPlanRepository.save(userPlan);
     }
 }

@@ -4,9 +4,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.notification_service.features.combot.dto.InactiveUsersRequest;
+import vacademy.io.notification_service.features.combot.dto.LogSequenceRequest;
+import vacademy.io.notification_service.features.combot.dto.UsersByMessagesRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateRequest;
 import vacademy.io.notification_service.features.combot.dto.WhatsAppTemplateResponse;
 import vacademy.io.notification_service.features.combot.service.CombotMessagingService;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
+
+import java.util.List;
 
 /**
  * Controller for sending WhatsApp messages via Com.bot
@@ -25,4 +31,23 @@ public class CombotMessagingController {
             @RequestBody WhatsAppTemplateRequest request) {
         return combotMessagingService.sendTemplateMessage(request);
     }
+
+    @PostMapping("/filter-adjacent-sequence")
+    public ResponseEntity<List<String>> filterUsersByAdjacentSequence(@RequestBody LogSequenceRequest request) {
+        List<String> userIds = combotMessagingService.filterUsersByStrictSequence(request);
+        return ResponseEntity.ok(userIds);
+    }
+
+    @PostMapping("/filter-inactive-users")
+    public ResponseEntity<List<String>> filterInactiveUsers(@RequestBody InactiveUsersRequest request) {
+        List<String> userIds = combotMessagingService.findInactiveUsers(request);
+        return ResponseEntity.ok(userIds);
+    }
+
+    @PostMapping("/filter-users-by-messages")
+    public ResponseEntity<List<String>> filterUsersByMessages(@RequestBody UsersByMessagesRequest request) {
+        List<String> userIds = combotMessagingService.findUsersByAllMessages(request);
+        return ResponseEntity.ok(userIds);
+    }
+
 }

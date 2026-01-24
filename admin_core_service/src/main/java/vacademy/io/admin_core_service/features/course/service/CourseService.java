@@ -1,10 +1,11 @@
 package vacademy.io.admin_core_service.features.course.service;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.enums.LearnerInvitationSourceTypeEnum;
@@ -18,6 +19,7 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageSessio
 import vacademy.io.admin_core_service.features.packages.service.PackageService;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.session.dto.AddNewSessionDTO;
+import vacademy.io.admin_core_service.features.course.dto.CourseBatchDTO;
 import vacademy.io.admin_core_service.features.session.service.SessionService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -46,6 +48,8 @@ public class CourseService {
     private final LearnerInvitationService learnerInvitationService;
     private final FacultyService facultyService;
     private final PackageService packageService;
+    private final PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationToPaymentOptionRepository;
+    private final vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
@@ -57,7 +61,7 @@ public class CourseService {
         }
 
         if (addCourseDTO.getNewCourse()) {
-            savedPackage = getCourse(addCourseDTO,instituteId);
+            savedPackage = getCourse(addCourseDTO, instituteId);
         } else {
             savedPackage = packageRepository.findById(addCourseDTO.getId())
                     .orElseThrow(() -> new VacademyException("Package not found"));
@@ -70,27 +74,30 @@ public class CourseService {
         if (addCourseDTO.getContainLevels()) {
             createPackageSession(savedPackage, addCourseDTO.getSessions(), user, instituteId);
         } else {
-            createPackageSessionForDefaultLevelAndSession(savedPackage, addCourseDTO.getAddFacultyToCourse(), instituteId, user);
+            createPackageSessionForDefaultLevelAndSession(savedPackage, addCourseDTO.getAddFacultyToCourse(),
+                    instituteId, user);
         }
 
         return savedPackage.getId();
     }
 
     private void createPackageSessionForDefaultLevelAndSession(PackageEntity savedPackage,
-                                                               List<AddFacultyToCourseDTO> addFacultyToCourseDTOS,
-                                                               String instituteId,
-                                                               CustomUserDetails user) {
+            List<AddFacultyToCourseDTO> addFacultyToCourseDTOS,
+            String instituteId,
+            CustomUserDetails user) {
         Level level = levelService.getLevelById("DEFAULT");
         Session session = sessionService.getSessionById("DEFAULT");
-        packageSessionService.createPackageSession(level, session, savedPackage, null, new Date(), instituteId, user, addFacultyToCourseDTOS);
+        packageSessionService.createPackageSession(level, session, savedPackage, null, new Date(), instituteId, user,
+                addFacultyToCourseDTOS);
     }
 
     private void createPackageSession(PackageEntity savedPackage,
-                                      List<AddNewSessionDTO> addNewSessionDTOS,
-                                      CustomUserDetails user,
-                                      String instituteId) {
+            List<AddNewSessionDTO> addNewSessionDTOS,
+            CustomUserDetails user,
+            String instituteId) {
         if (Objects.isNull(addNewSessionDTOS) || addNewSessionDTOS.isEmpty()) {
-            throw new VacademyException("Levels and Sessions cannot be null or empty. You must provide at least one level.");
+            throw new VacademyException(
+                    "Levels and Sessions cannot be null or empty. You must provide at least one level.");
         }
 
         for (AddNewSessionDTO addNewSessionDTO : addNewSessionDTOS) {
@@ -105,12 +112,13 @@ public class CourseService {
         }
     }
 
-    public PackageEntity getCourse(AddCourseDTO addCourseDTO,String instituteId) {
+    public PackageEntity getCourse(AddCourseDTO addCourseDTO, String instituteId) {
         validateRequest(addCourseDTO);
-        Optional<PackageEntity>optionalPackageEntity = packageRepository.findTopByPackageNameAndSessionStatusAndInstitute(addCourseDTO.getCourseName(),
-                List.of(PackageStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name()),
-                instituteId);
+        Optional<PackageEntity> optionalPackageEntity = packageRepository
+                .findTopByPackageNameAndSessionStatusAndInstitute(addCourseDTO.getCourseName(),
+                        List.of(PackageStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                        List.of(PackageStatusEnum.ACTIVE.name(), PackageStatusEnum.DRAFT.name()),
+                        instituteId);
         if (optionalPackageEntity.isPresent()) {
             return optionalPackageEntity.get();
         }
@@ -179,7 +187,8 @@ public class CourseService {
             packageEntity.setStatus(addCourseDTO.getStatus());
         }
 
-        // Update created by user ID if provided (usually shouldn't change, but for completeness)
+        // Update created by user ID if provided (usually shouldn't change, but for
+        // completeness)
         if (StringUtils.hasText(addCourseDTO.getCreatedByUserId())) {
             packageEntity.setCreatedByUserId(addCourseDTO.getCreatedByUserId());
         }
@@ -299,14 +308,75 @@ public class CourseService {
         }
 
         packageSessionRepository.saveAll(packageSessions);
+        
+        // Delete learner invitations for these package sessions
         learnerInvitationService.deleteLearnerInvitationBySourceAndSourceId(
                 LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), packageSessionIds);
+
+        // Handle enroll_invite cleanup
+        if (!packageSessionIds.isEmpty()) {
+            // Find all affected enroll_invite_ids before marking junction table as deleted
+            List<String> affectedEnrollInviteIds = packageSessionLearnerInvitationToPaymentOptionRepository
+                    .findDistinctEnrollInviteIdsByPackageSessionIds(packageSessionIds);
+            
+            // Mark the enroll invite junction table entries as deleted
+            packageSessionLearnerInvitationToPaymentOptionRepository.updateStatusByPackageSessionIds(
+                    packageSessionIds, PackageStatusEnum.DELETED.name());
+            
+            // Find enroll_invites that now have zero active package sessions
+            if (!affectedEnrollInviteIds.isEmpty()) {
+                List<Object[]> activeCounts = packageSessionLearnerInvitationToPaymentOptionRepository
+                        .countActiveByEnrollInviteIds(affectedEnrollInviteIds);
+                
+                // Convert to map for efficient lookup: enrollInviteId -> activeCount
+                Map<String, Long> activeCountMap = activeCounts.stream()
+                        .collect(Collectors.toMap(
+                                arr -> (String) arr[0],
+                                arr -> (Long) arr[1]
+                        ));
+                
+                // Find enroll_invites with zero active sessions
+                List<String> enrollInvitesToDelete = affectedEnrollInviteIds.stream()
+                        .filter(id -> activeCountMap.getOrDefault(id, 0L) == 0L)
+                        .collect(Collectors.toList());
+                
+                // Bulk update enroll_invites to DELETED status
+                if (!enrollInvitesToDelete.isEmpty()) {
+                    enrollInviteRepository.updateStatusByIds(enrollInvitesToDelete, PackageStatusEnum.DELETED.name());
+                }
+            }
+        }
 
         return "Course deleted successfully";
     }
 
-    public String addOrUpdateCourse(AddCourseDTO addCourseDTO,String instituteId,CustomUserDetails userDetails) {
-        packageService.addOrUpdatePackage(addCourseDTO,instituteId,userDetails);
+    public String addOrUpdateCourse(AddCourseDTO addCourseDTO, String instituteId, CustomUserDetails userDetails) {
+        packageService.addOrUpdatePackage(addCourseDTO, instituteId, userDetails);
         return "done!!!";
+    }
+
+    @Transactional(readOnly = true)
+    public List<CourseBatchDTO> getBatchesForCourse(String courseId) {
+        List<PackageSession> packageSessions = packageSessionRepository.findByPackageEntity_IdAndStatus(courseId,
+                PackageSessionStatusEnum.ACTIVE.name());
+
+        return packageSessions.stream().map(packageSession -> CourseBatchDTO.builder()
+                .id(packageSession.getId())
+                .packageDto(CourseBatchDTO.MiniPackageDTO.builder()
+                        .id(packageSession.getPackageEntity().getId())
+                        .packageName(packageSession.getPackageEntity().getPackageName())
+                        .build())
+                .level(CourseBatchDTO.MiniLevelDTO.builder()
+                        .id(packageSession.getLevel().getId())
+                        .levelName(packageSession.getLevel().getLevelName())
+                        .build())
+                .session(CourseBatchDTO.MiniSessionDTO.builder()
+                        .id(packageSession.getSession().getId())
+                        .sessionName(packageSession.getSession().getSessionName())
+                        .startDate(packageSession.getSession().getStartDate())
+                        .build())
+                .readTimeInMinutes(0)
+                .build())
+                .collect(Collectors.toList());
     }
 }

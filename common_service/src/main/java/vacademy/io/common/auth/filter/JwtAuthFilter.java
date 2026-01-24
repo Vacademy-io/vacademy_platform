@@ -14,9 +14,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import vacademy.io.common.auth.entity.UserActivity;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.auth.repository.UserActivityRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.UserActivityTrackingService;
 import vacademy.io.common.auth.service.UserService;
@@ -32,8 +30,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Autowired
     UserDetailsService userDetailsService;
 
-    @Autowired
-    private UserActivityRepository userActivityRepository;
     @Autowired
     private JwtService jwtService; // Inject JwtService dependency
 
@@ -149,19 +145,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             // Log any errors during JWT processing
             log.error(exception.getMessage());
             throw new VacademyException(exception.getMessage());
-        }
-    }
-
-    void addUserActivity(String userId, String origin, String route, String clientIp) {
-        try {
-            UserActivity userActivity = new UserActivity();
-            userActivity.setUserId(userId);
-            userActivity.setOrigin(origin);
-            userActivity.setRoute(route);
-            userActivity.setClientIp(clientIp);
-            userActivityRepository.save(userActivity);
-        } catch (Exception e) {
-            log.error(e.getMessage());
         }
     }
 

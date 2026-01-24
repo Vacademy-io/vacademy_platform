@@ -1,9 +1,10 @@
 package vacademy.io.admin_core_service.features.learner.manager;
 
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
+
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.InstituteModuleService;
@@ -44,10 +45,9 @@ public class LearnerInstituteManager {
     private SlideService slideService;
 
     @Transactional
-    public StudentInstituteInfoDTO getInstituteDetails(String instituteId, String userId) {
+    public StudentInstituteInfoDTO getInstituteDetails(String instituteId, String userId, boolean includeBatches) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
 
-        ObjectMapper objectMapper = new ObjectMapper();
         if (institute.isEmpty()) {
             throw new VacademyException("Invalid Institute Id");
         }
@@ -65,20 +65,33 @@ public class LearnerInstituteManager {
         instituteInfoDTO.setAddress(institute.get().getAddress());
         instituteInfoDTO.setState(institute.get().getState());
         instituteInfoDTO.setInstituteThemeCode(institute.get().getInstituteThemeCode());
-        instituteInfoDTO.setSubModules(instituteModuleService.getSubmoduleIdsForInstitute(institute.get().getId()));
-        instituteInfoDTO.setBatchesForSessions(packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(), List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
-            return new PackageSessionDTO(obj,getReadTimeOfPackageSession(obj.getId()));
-        }).toList());
-        List<StudentSessionInstituteGroupMapping> studentSessions = studentSessionRepository.findAllByInstituteIdAndUserId(instituteId, userId);
-        Set<PackageSession> packageSessions = new HashSet<>();
+        instituteInfoDTO.setSubModules(new ArrayList<>());
+        if (includeBatches) {
+            instituteInfoDTO.setBatchesForSessions(
+                    packageSessionRepository.findPackageSessionsByInstituteId(institute.get().getId(),
+                            List.of(PackageSessionStatusEnum.ACTIVE.name())).stream().map((obj) -> {
+                                return new PackageSessionDTO(obj, getReadTimeOfPackageSession(obj.getId()));
+                            }).toList());
 
-        for (StudentSessionInstituteGroupMapping studentSession : studentSessions) {
-            if (studentSession.getPackageSession() != null)
-                packageSessions.add(studentSession.getPackageSession());
+            List<StudentSessionInstituteGroupMapping> studentSessions = studentSessionRepository
+                    .findAllByInstituteIdAndUserId(instituteId, userId);
+            Set<PackageSession> packageSessions = new HashSet<>();
+
+            for (StudentSessionInstituteGroupMapping studentSession : studentSessions) {
+                if (studentSession.getPackageSession() != null)
+                    packageSessions.add(studentSession.getPackageSession());
+            }
+            if (!packageSessions.isEmpty()) {
+                instituteInfoDTO.setSubjects(subjectRepository
+                        .findDistinctSubjectsOfPackageSessions(
+                                packageSessions.stream().map(PackageSession::getId).toList())
+                        .stream().map(SubjectDTO::new).toList());
+            }
+        } else {
+            instituteInfoDTO.setBatchesForSessions(new ArrayList<>());
+            instituteInfoDTO.setSubjects(new ArrayList<>());
         }
-        if (!packageSessions.isEmpty()) {
-            instituteInfoDTO.setSubjects(subjectRepository.findDistinctSubjectsOfPackageSessions(packageSessions.stream().map(PackageSession::getId).toList()).stream().map(SubjectDTO::new).toList());
-        }
+
         if (institute.get().getSetting() != null) {
             instituteInfoDTO.setInstituteSettingsJson(institute.get().getSetting());
         }
@@ -101,7 +114,7 @@ public class LearnerInstituteManager {
         return instituteInfoDTOList;
     }
 
-    private Double getReadTimeOfPackageSession(String packageSessionId){
+    private Double getReadTimeOfPackageSession(String packageSessionId) {
         return slideService.calculateTotalReadTimeInMinutes(packageSessionId);
     }
 }

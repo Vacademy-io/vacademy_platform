@@ -31,7 +31,46 @@ public interface UserRepository extends CrudRepository<User, String> {
             @Param("roleStatus") List<String> roleStatus,
             @Param("roleNames") List<String> roleNames);
 
+    @Query(value = """
+            SELECT u.* FROM users u
+            JOIN user_role ur ON u.id = ur.user_id
+            JOIN roles r ON r.id = ur.role_id
+            WHERE u.mobile = :mobile
+              AND ur.status IN (:roleStatus)
+              AND r.role_name IN (:roleNames)
+            ORDER BY u.created_at DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<User> findMostRecentUserByMobileAndRoleStatusAndRoleNames(
+            @Param("mobile") String mobile,
+            @Param("roleStatus") List<String> roleStatus,
+            @Param("roleNames") List<String> roleNames);
+
+    // NEW METHOD: For WhatsApp OTP login - uses correct column name 'mobile_number'
+    @Query(value = """
+            SELECT u.* FROM users u
+            JOIN user_role ur ON u.id = ur.user_id
+            JOIN roles r ON r.id = ur.role_id
+            WHERE u.mobile_number = :mobileNumber
+              AND ur.status IN (:roleStatus)
+              AND r.role_name IN (:roleNames)
+            ORDER BY u.created_at DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<User> findUserByMobileNumberAndRoleStatusAndRoleNames(
+            @Param("mobileNumber") String mobileNumber,
+            @Param("roleStatus") List<String> roleStatus,
+            @Param("roleNames") List<String> roleNames);
+
     List<User> findByIdIn(List<String> userIds);
+
+    /**
+     * Find all children linked to the given parent IDs.
+     * 
+     * @param parentIds List of parent user IDs
+     * @return List of child users where linked_parent_id is in the provided list
+     */
+    List<User> findByLinkedParentIdIn(List<String> parentIds);
 
     @Modifying
     @Transactional
@@ -114,12 +153,64 @@ public interface UserRepository extends CrudRepository<User, String> {
     List<User> findUsersByStatusAndInstitute(@Param("statuses") List<String> statuses,
             @Param("roles") List<String> roles, @Param("instituteId") String instituteId);
 
+    @Query(value = "SELECT DISTINCT u.* FROM users u " +
+            "JOIN user_role ur ON u.id = ur.user_id " +
+            "JOIN roles r ON r.id = ur.role_id " +
+            "WHERE ur.status IN (:statuses) " +
+            "AND r.role_name IN (:roles) " +
+            "AND ur.institute_id = :instituteId " +
+            "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
+            "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
+            "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%')) " +
+            "ORDER BY u.full_name ASC", nativeQuery = true)
+    List<User> findUsersByStatusAndInstitutePaged(@Param("statuses") List<String> statuses,
+            @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
+            @Param("name") String name,
+            @Param("email") String email,
+            @Param("mobile") String mobile,
+            org.springframework.data.domain.Pageable pageable);
+
+    @Query(value = "SELECT COUNT(DISTINCT u.id) FROM users u " +
+            "JOIN user_role ur ON u.id = ur.user_id " +
+            "JOIN roles r ON r.id = ur.role_id " +
+            "WHERE ur.status IN (:statuses) " +
+            "AND r.role_name IN (:roles) " +
+            "AND ur.institute_id = :instituteId " +
+            "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
+            "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
+            "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%'))", nativeQuery = true)
+    long countUsersByStatusAndInstitute(@Param("statuses") List<String> statuses,
+            @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
+            @Param("name") String name,
+            @Param("email") String email,
+            @Param("mobile") String mobile);
+
     @Modifying
     @Transactional
     @Query("UPDATE User u SET u.lastTokenUpdateTime = CURRENT_TIMESTAMP WHERE u.id IN :userIds")
     void updateLastTokenUpdateTime(@Param("userIds") List<String> userIds);
 
     Optional<User> findFirstByEmailOrderByCreatedAtDesc(String email);
+
+    /**
+     * Find user by username and institute ID for trusted login.
+     * ⚠️ TEMPORARY: Used for emergency trusted login when email service is down.
+     * TODO: Consider removing when email service is restored.
+     */
+    @Query(value = """
+            SELECT DISTINCT u.* FROM users u
+            JOIN user_role ur ON u.id = ur.user_id
+            JOIN roles r ON r.id = ur.role_id
+            WHERE u.username = :username
+              AND ur.institute_id = :instituteId
+              AND ur.status IN ('ACTIVE', 'INVITED')
+              AND r.role_name IN ('STUDENT')
+            ORDER BY u.created_at DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<User> findUserByUsernameAndInstituteId(
+            @Param("username") String username,
+            @Param("instituteId") String instituteId);
 
     // In your UserRepository.java
     // In your UserRepository.java
@@ -149,5 +240,41 @@ public interface UserRepository extends CrudRepository<User, String> {
             @Param("roles") List<String> roles,
             @Param("statuses") List<String> statuses,
             @Param("targetDate") Date targetDate);
+
+    @Query(value = """
+            SELECT DISTINCT u.* FROM users u
+            JOIN user_role ur ON u.id = ur.user_id
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.status = 'ACTIVE'
+            AND ur.institute_id = :instituteId
+            AND (:roleNames IS NULL OR r.role_name IN (:roleNames))
+            AND (
+                (:query IS NULL OR LOWER(u.full_name) LIKE LOWER(CONCAT('%', :query, '%'))) OR
+                (:query IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%'))) OR
+                (:query IS NULL OR u.mobile_number LIKE CONCAT('%', :query, '%'))
+            )
+            ORDER BY u.full_name ASC
+            LIMIT 10
+            """, nativeQuery = true)
+    List<User> autoSuggestUsers(@Param("instituteId") String instituteId,
+            @Param("roleNames") List<String> roleNames,
+            @Param("query") String query);
+
+    @Query(value = """
+            SELECT DISTINCT u.* FROM users u
+            JOIN user_role ur ON u.id = ur.user_id
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.status = 'ACTIVE'
+            AND ur.institute_id = :instituteId
+            AND (
+                (:query IS NULL OR LOWER(u.full_name) LIKE LOWER(CONCAT('%', :query, '%'))) OR
+                (:query IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%'))) OR
+                (:query IS NULL OR u.mobile_number LIKE CONCAT('%', :query, '%'))
+            )
+            ORDER BY u.full_name ASC
+            LIMIT 10
+            """, nativeQuery = true)
+    List<User> autoSuggestUsersAllRoles(@Param("instituteId") String instituteId,
+            @Param("query") String query);
 
 }

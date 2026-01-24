@@ -1,0 +1,60 @@
+# NGINX Ingress Controller Resource Fix
+# Issue: 173+ restarts, likely OOM kills
+# Solution: Increase memory and CPU limits significantly
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+data:
+  # Enable underscores in headers (for service-to-service communication)
+  enable-underscores-in-headers: "true"
+
+  # Remove body size limit (for file uploads)
+  proxy-body-size: "0"
+
+  # Timeout settings (30 minutes for long-running requests like AI/media processing)
+  proxy-connect-timeout: "1800"
+  proxy-send-timeout: "1800"
+  proxy-read-timeout: "1800"
+
+  # Connection optimization
+  keep-alive: "75"
+  keep-alive-requests: "10000"
+  upstream-keepalive-connections: "320"
+  upstream-keepalive-timeout: "60"
+  upstream-keepalive-requests: "10000"
+
+  # Worker optimization
+  worker-processes: "auto"
+  worker-connections: "4096"
+
+  # Memory optimization
+  use-gzip: "true"
+  gzip-level: "5"
+
+  # Reduce log verbosity to save memory
+  log-format-upstream: '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_length $request_time [$proxy_upstream_name] [$proxy_alternative_upstream_name] $upstream_addr $upstream_response_length $upstream_response_time $upstream_status $req_id'
+
+  # Error handling
+  custom-http-errors: "502,503,504"
+
+  # SSL optimization
+  ssl-protocols: "TLSv1.2 TLSv1.3"
+  ssl-redirect: "true"
+
+  # Buffer optimization (reduce memory usage)
+  proxy-buffer-size: "16k"
+  proxy-buffers-number: "4"
+
+  # Rate limiting protection (optional)
+  # limit-req-status-code: "429"
+  # limit-conn-status-code: "429"
+
+---
+# Patch to increase ingress controller resources
+# Apply with: kubectl patch deployment ingress-nginx-controller -n ingress-nginx --patch-file=01-ingress-resources-patch.yaml

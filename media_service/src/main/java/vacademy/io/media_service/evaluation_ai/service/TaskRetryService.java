@@ -2,13 +2,15 @@ package vacademy.io.media_service.evaluation_ai.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.media_service.ai.ExternalAIApiServiceImpl;
 import vacademy.io.media_service.ai.ExternalAIApiService;
+import vacademy.io.media_service.config.AiModelConfig;
 import vacademy.io.media_service.dto.DeepSeekResponse;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusEnum;
@@ -16,153 +18,281 @@ import vacademy.io.media_service.enums.TaskStatusTypeEnum;
 import vacademy.io.media_service.service.TaskStatusService;
 import vacademy.io.media_service.util.JsonUtils;
 
+import jakarta.annotation.PreDestroy;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.*;
 
 import static vacademy.io.media_service.ai.ExternalAIApiService.getCommaSeparatedQuestionNumbers;
 import static vacademy.io.media_service.ai.ExternalAIApiService.getIsProcessCompleted;
 import static vacademy.io.media_service.constant.ConstantAiTemplate.getTemplateBasedOnType;
 
 /**
- * Service for handling task retries in case of failures or incomplete processing.
- * Manages asynchronous retry logic with exponential backoff (up to 5 retries).
+ * Service for handling task retries in case of failures or incomplete
+ * processing.
+ * Uses ScheduledExecutorService for exponential backoff instead of
+ * Thread.sleep.
  */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class TaskRetryService {
 
-    private static final int MAX_RETRY_ATTEMPTS = 5;
+    private static final Set<String> QUESTION_PROCESSING_TASKS = Set.of(
+            TaskStatusTypeEnum.TEXT_TO_QUESTIONS.name(),
+            TaskStatusTypeEnum.PDF_TO_QUESTIONS.name(),
+            TaskStatusTypeEnum.AUDIO_TO_QUESTIONS.name(),
+            TaskStatusTypeEnum.HTML_TO_QUESTIONS.name(),
+            TaskStatusTypeEnum.IMAGE_TO_QUESTIONS.name(),
+            TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE.name());
 
-    @Autowired
-    private TaskStatusService taskStatusService;
+    private final TaskStatusService taskStatusService;
+    private final ObjectMapper objectMapper;
+    private final ExternalAIApiServiceImpl deepSeekApiService;
+    private final AiModelConfig aiModelConfig;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    // Scheduler for retry backoff delays
+    private final ScheduledExecutorService retryScheduler = Executors.newScheduledThreadPool(3, r -> {
+        Thread t = new Thread(r, "Retry-Scheduler");
+        t.setDaemon(true);
+        return t;
+    });
 
-    @Autowired
-    private ExternalAIApiServiceImpl deepSeekApiService;
+    @PreDestroy
+    public void shutdown() {
+        retryScheduler.shutdown();
+        try {
+            if (!retryScheduler.awaitTermination(30, TimeUnit.SECONDS)) {
+                retryScheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            retryScheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
 
     /**
      * Initiates an asynchronous retry of a failed task.
+     * Uses ScheduledExecutorService for exponential backoff.
      *
      * @param newTask       The new task status to be processed
      * @param oldDynamicMap The dynamic map containing previous task parameters
+     * @param modelOverride Optional model override from frontend
+     * @return CompletableFuture for tracking completion
      */
-    public void asyncRetryTask(TaskStatus newTask, String oldDynamicMap) {
-        new Thread(() -> {
-            try {
-                handleRetryInBackground(newTask, oldDynamicMap, 0);
-            } catch (Exception e) {
-                throw new VacademyException("Failed to retry task: " + e.getMessage());
-            }
-        }).start();
+    @Async("retryExecutor")
+    public CompletableFuture<Void> asyncRetryTask(TaskStatus newTask, String oldDynamicMap, String modelOverride) {
+        CompletableFuture<Void> resultFuture = new CompletableFuture<>();
+
+        log.info("Starting retry for task: {} with type: {}", newTask.getId(), newTask.getType());
+
+        // Start the retry chain
+        scheduleRetryAttempt(newTask, oldDynamicMap, modelOverride, 0, resultFuture);
+
+        return resultFuture.exceptionally(ex -> {
+            log.error("Failed to retry task {}: {}", newTask.getId(), ex.getMessage(), ex);
+            taskStatusService.updateTaskStatusAndStatusMessage(
+                    newTask,
+                    TaskStatusEnum.FAILED.name(),
+                    newTask.getResultJson(),
+                    "Retry failed: " + getRootCauseMessage(ex));
+            return null;
+        });
     }
 
     /**
-     * Handles the retry logic in background thread with recursive retry mechanism.
-     *
-     * @param newTask       The task to be retried
-     * @param oldDynamicMap The dynamic map containing task parameters
-     * @param retryCount    Current retry attempt count
-     * @throws Exception If processing fails
+     * Overload for backward compatibility
      */
-    private void handleRetryInBackground(TaskStatus newTask, String oldDynamicMap, int retryCount) throws Exception {
-        // Base case: stop retrying after max attempts
-        if (retryCount >= MAX_RETRY_ATTEMPTS) {
-            if (newTask.getResultJson().isEmpty()) {
-                taskStatusService.updateTaskStatus(newTask, TaskStatusEnum.FAILED.name(), null, "MAX_RETRY_ATTEMPTS : No Response Generate");
+    @Async("retryExecutor")
+    public CompletableFuture<Void> asyncRetryTask(TaskStatus newTask, String oldDynamicMap) {
+        return asyncRetryTask(newTask, oldDynamicMap, null);
+    }
+
+    /**
+     * Schedules a retry attempt with exponential backoff using
+     * ScheduledExecutorService.
+     */
+    private void scheduleRetryAttempt(
+            TaskStatus task,
+            String dynamicMapStr,
+            String modelOverride,
+            int attempt,
+            CompletableFuture<Void> resultFuture) {
+
+        if (resultFuture.isDone()) {
+            return;
+        }
+
+        int maxAttempts = aiModelConfig.getMaxRetryAttempts();
+
+        if (attempt >= maxAttempts) {
+            handleMaxRetriesExceeded(task);
+            resultFuture.complete(null);
+            return;
+        }
+
+        // Calculate exponential backoff delay: 0s, 1s, 2s, 4s, 8s, 16s...
+        long delayMs = attempt == 0 ? 0 : (long) Math.pow(2, attempt - 1) * 1000;
+
+        if (attempt > 0) {
+            log.info("Retry attempt {} for task {} - scheduling with {}ms delay", attempt + 1, task.getId(), delayMs);
+        }
+
+        retryScheduler.schedule(() -> {
+            try {
+                boolean completed = processRetryAttempt(task, dynamicMapStr, modelOverride, attempt);
+
+                if (completed) {
+                    resultFuture.complete(null);
+                } else {
+                    // Prepare for next attempt with updated data
+                    String updatedDynamicMap = prepareNextRetryData(task.getType(), dynamicMapStr,
+                            task.getResultJson());
+                    scheduleRetryAttempt(task, updatedDynamicMap, modelOverride, attempt + 1, resultFuture);
+                }
+            } catch (Exception e) {
+                log.warn("Retry attempt {} failed for task {}: {}", attempt + 1, task.getId(), e.getMessage());
+
+                // Try with fallback model on failure
+                if (attempt < maxAttempts - 1) {
+                    String fallbackModel = getFallbackModel(attempt);
+                    log.info("Trying fallback model: {} for task {}", fallbackModel, task.getId());
+                    scheduleRetryAttempt(task, dynamicMapStr, fallbackModel, attempt + 1, resultFuture);
+                } else {
+                    resultFuture.completeExceptionally(e);
+                }
             }
-            return;
-        }
+        }, delayMs, TimeUnit.MILLISECONDS);
+    }
 
-        // Get appropriate template based on task type
-        String template = getTemplateBasedOnType(TaskStatusTypeEnum.valueOf(newTask.getType()));
-        Map<String, Object> dynamicMap = objectMapper.readValue(oldDynamicMap, Map.class);
+    /**
+     * Processes a single retry attempt.
+     *
+     * @return true if task is complete, false if more attempts needed
+     */
+    private boolean processRetryAttempt(TaskStatus task, String dynamicMapStr, String modelOverride, int attempt)
+            throws Exception {
 
-        // Create prompt and store initial task data
+        // Update status to show progress
+        taskStatusService.updateTaskStatus(
+                task,
+                TaskStatusEnum.PROGRESS.name(),
+                task.getResultJson(),
+                String.format("Retry attempt %d in progress...", attempt + 1));
+
+        // Get template and create prompt
+        String template = getTemplateBasedOnType(TaskStatusTypeEnum.valueOf(task.getType()));
+        Map<String, Object> dynamicMap = objectMapper.readValue(dynamicMapStr, Map.class);
         Prompt prompt = new PromptTemplate(template).create(dynamicMap);
-        taskStatusService.convertMapToJsonAndStore(dynamicMap, newTask);
 
-        // Call DeepSeek API for processing
+        // Store the prompt data
+        taskStatusService.convertMapToJsonAndStore(dynamicMap, task);
+
+        // Determine which model to use
+        String model = aiModelConfig.getModelToUse(modelOverride);
+
+        // Call AI API
         DeepSeekResponse response = deepSeekApiService.getChatCompletion(
-                "google/gemini-2.5-flash",
+                model,
                 prompt.getContents().trim(),
-                30000
-        );
+                aiModelConfig.getDefaultTimeoutMs());
 
-        // Handle empty response case with retry
+        // Handle empty response
         if (response == null || response.getChoices() == null || response.getChoices().isEmpty()) {
-            handleRetryInBackground(newTask, oldDynamicMap, retryCount + 1);
-            return;
+            log.warn("Empty response from model {} for task {}", model, task.getId());
+            return false; // Will trigger retry
         }
 
-        // Process API response
+        // Process response
         String resultJson = response.getChoices().get(0).getMessage().getContent();
         String sanitizedJson = JsonUtils.extractAndSanitizeJson(resultJson);
-        String mergedJson = mergeWithPreviousResults(newTask.getType(), newTask.getResultJson(), sanitizedJson);
+        String mergedJson = mergeWithPreviousResults(task.getType(), task.getResultJson(), sanitizedJson);
 
-        // Update task status with intermediate results
-        taskStatusService.updateTaskStatus(newTask, TaskStatusEnum.PROGRESS.name(), mergedJson, "Questions Generating");
+        // Update with intermediate results
+        taskStatusService.updateTaskStatus(
+                task,
+                TaskStatusEnum.PROGRESS.name(),
+                mergedJson,
+                "Processing response...");
 
-        // Check if task is complete
-        if (isTaskComplete(newTask, mergedJson, newTask.getType())) {
-            return;
+        // Check if complete
+        if (isTaskComplete(task, mergedJson)) {
+            log.info("Task {} completed successfully after {} attempts", task.getId(), attempt + 1);
+            taskStatusService.updateTaskStatus(
+                    task,
+                    TaskStatusEnum.COMPLETED.name(),
+                    mergedJson,
+                    "Task completed successfully");
+            return true;
         }
 
-        // Prepare for next retry if needed
-        String updatedDynamicMap = prepareNextRetryData(newTask.getType(), oldDynamicMap, sanitizedJson);
-        handleRetryInBackground(newTask, updatedDynamicMap, retryCount + 1);
-    }
-
-    /**
-     * Prepares dynamic map for next retry attempt by updating question numbers.
-     *
-     * @param taskType         Type of the task being processed
-     * @param dynamicMapString Current dynamic map as JSON string
-     * @param newResultJson    New results from current attempt
-     * @return Updated dynamic map as JSON string
-     * @throws JsonProcessingException If JSON processing fails
-     */
-    private String prepareNextRetryData(String taskType, String dynamicMapString, String newResultJson)
-            throws JsonProcessingException {
-
-        if (isQuestionProcessingTask(taskType)) {
-            Map<String, Object> dynamicMap = objectMapper.readValue(dynamicMapString, Map.class);
-            String questionNumbers = getCommaSeparatedQuestionNumbers(newResultJson);
-            dynamicMap.put("questionNumbers", questionNumbers);
-            return objectMapper.writeValueAsString(dynamicMap);
-        }
-        return dynamicMapString;
-    }
-
-    /**
-     * Checks if task processing is complete based on current results.
-     *
-     * @param task              The task being processed
-     * @param currentResultJson Current processing results
-     * @param taskType          Type of the task
-     * @return true if task is complete, false otherwise
-     */
-    private boolean isTaskComplete(TaskStatus task, String currentResultJson, String taskType) {
-        if (isQuestionProcessingTask(taskType)) {
-            if (getIsProcessCompleted(currentResultJson)) {
-                taskStatusService.updateTaskStatus(task, TaskStatusEnum.COMPLETED.name(), currentResultJson, "Questions Generated");
-                return true;
-            }
-        } else {
-            if (currentResultJson != null && !currentResultJson.isEmpty()) {
-                taskStatusService.updateTaskStatus(task, TaskStatusEnum.COMPLETED.name(), currentResultJson, "Questions Generated");
-                return true;
-            }
-        }
         return false;
     }
 
     /**
-     * Merges new results with previous results based on task type.
-     *
-     * @param taskType     Type of the task
-     * @param previousJson Previous results JSON
-     * @param newJson      New results JSON
-     * @return Merged JSON string
+     * Handles the case when max retries are exceeded.
+     */
+    private void handleMaxRetriesExceeded(TaskStatus task) {
+        String resultJson = task.getResultJson();
+
+        if (resultJson != null && !resultJson.isEmpty()) {
+            // We have partial results - mark as completed with what we have
+            log.info("Task {} reached max retries but has partial results", task.getId());
+            taskStatusService.updateTaskStatus(
+                    task,
+                    TaskStatusEnum.COMPLETED.name(),
+                    resultJson,
+                    "Completed with partial results after max retries");
+        } else {
+            // No results at all - mark as failed
+            log.warn("Task {} failed after max retries with no results", task.getId());
+            taskStatusService.updateTaskStatusAndStatusMessage(
+                    task,
+                    TaskStatusEnum.FAILED.name(),
+                    null,
+                    "Task failed after maximum retry attempts. Please try again with different input.");
+        }
+    }
+
+    /**
+     * Gets a fallback model based on attempt number.
+     */
+    private String getFallbackModel(int attempt) {
+        var fallbackModels = aiModelConfig.getFallbackModels();
+        if (fallbackModels.isEmpty()) {
+            return aiModelConfig.getDefaultModel();
+        }
+        int index = Math.min(attempt, fallbackModels.size() - 1);
+        return fallbackModels.get(index);
+    }
+
+    /**
+     * Prepares dynamic map for next retry attempt.
+     */
+    private String prepareNextRetryData(String taskType, String dynamicMapStr, String newResultJson)
+            throws JsonProcessingException {
+
+        if (isQuestionProcessingTask(taskType) && newResultJson != null) {
+            Map<String, Object> dynamicMap = objectMapper.readValue(dynamicMapStr, Map.class);
+            String questionNumbers = getCommaSeparatedQuestionNumbers(newResultJson);
+            dynamicMap.put("allQuestionNumbers", questionNumbers);
+            return objectMapper.writeValueAsString(dynamicMap);
+        }
+        return dynamicMapStr;
+    }
+
+    /**
+     * Checks if task processing is complete.
+     */
+    private boolean isTaskComplete(TaskStatus task, String currentResultJson) {
+        if (isQuestionProcessingTask(task.getType())) {
+            return getIsProcessCompleted(currentResultJson);
+        }
+        return currentResultJson != null && !currentResultJson.isEmpty();
+    }
+
+    /**
+     * Merges new results with previous results.
      */
     private String mergeWithPreviousResults(String taskType, String previousJson, String newJson) {
         if (isQuestionProcessingTask(taskType)) {
@@ -172,17 +302,20 @@ public class TaskRetryService {
     }
 
     /**
-     * Helper method to check if task is a question processing type.
-     *
-     * @param taskType Task type to check
-     * @return true if task involves question processing
+     * Checks if task is a question processing type.
      */
     private boolean isQuestionProcessingTask(String taskType) {
-        return taskType.equals(TaskStatusTypeEnum.TEXT_TO_QUESTIONS.name()) ||
-                taskType.equals(TaskStatusTypeEnum.PDF_TO_QUESTIONS.name()) ||
-                taskType.equals(TaskStatusTypeEnum.AUDIO_TO_QUESTIONS.name()) ||
-                taskType.equals(TaskStatusTypeEnum.HTML_TO_QUESTIONS.name()) ||
-                taskType.equals(TaskStatusTypeEnum.IMAGE_TO_QUESTIONS.name()) ||
-                taskType.equals(TaskStatusTypeEnum.SORT_QUESTIONS_TOPIC_WISE.name());
+        return QUESTION_PROCESSING_TASKS.contains(taskType);
+    }
+
+    /**
+     * Gets the root cause message from a throwable chain.
+     */
+    private String getRootCauseMessage(Throwable throwable) {
+        Throwable cause = throwable;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause.getMessage() != null ? cause.getMessage() : throwable.getMessage();
     }
 }

@@ -1,0 +1,83 @@
+# Kubernetes RBAC Configuration for Diagnostics Service
+# This gives community-service permission to read pod, service, and event status
+# across multiple namespaces for infrastructure health monitoring.
+#
+# Apply this AFTER deploying community-service:
+#   kubectl apply -f diagnostics-rbac.yaml
+
+---
+# ServiceAccount for the diagnostics service
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: diagnostics-service-account
+  namespace: default
+  labels:
+    app: community-service
+    component: diagnostics
+
+---
+# ClusterRole with read-only permissions for infrastructure monitoring
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: diagnostics-cluster-reader
+  labels:
+    app: community-service
+    component: diagnostics
+rules:
+  # Read pods, services, endpoints in all namespaces
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/status
+      - services
+      - endpoints
+      - events
+      - configmaps
+      - nodes
+    verbs: ["get", "list", "watch"]
+
+  # Read deployments, replicasets, daemonsets
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - deployments/status
+      - replicasets
+      - daemonsets
+      - statefulsets
+    verbs: ["get", "list", "watch"]
+
+  # Read ingresses
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - ingresses/status
+    verbs: ["get", "list", "watch"]
+
+  # Read certificates (cert-manager)
+  - apiGroups: ["cert-manager.io"]
+    resources:
+      - certificates
+      - certificaterequests
+      - issuers
+      - clusterissuers
+    verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding - binds the ClusterRole to the ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: diagnostics-cluster-reader-binding
+  labels:
+    app: community-service
+    component: diagnostics
+subjects:
+  - kind: ServiceAccount
+    name: diagnostics-service-account
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: diagnostics-cluster-reader
+  apiGroup: rbac.authorization.k8s.io

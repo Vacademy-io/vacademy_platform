@@ -18,6 +18,10 @@ class GenerationOptions(BaseModel):
         default=None,
         description="Target number of chapters to generate (only for depth >= 3)"
     )
+    course_timing: Optional[int] = Field(
+        default=None,
+        description="Total course duration in minutes. AI will determine optimal slide count based on timing and content type (e.g., video slides take more time)"
+    )
     generate_images: bool = Field(
         default=False,
         description="Whether to generate course_banner_image and course_preview_image (S3 URLs)"
@@ -39,6 +43,12 @@ class CourseUserPromptRequest(BaseModel):
         default=None,
         description="Optional generation configuration (slides, chapters, images, etc.)"
     )
+    model: Optional[str] = Field(
+        default=None,
+        description="Optional LLM model to use (overrides database default, falls back to environment if not set)"
+    )
+    # NOTE: openai_key and gemini_key are NOT accepted from frontend for security
+    # Keys are automatically resolved from database (user → institute) or environment variables
 
 
 class CourseOutlineRequest(BaseModel):
@@ -61,7 +71,7 @@ class CourseOutlineRequest(BaseModel):
     )
     model: Optional[str] = Field(
         default=None,
-        description="LLM model identifier; falls back to service default when omitted",
+        description="LLM model identifier; falls back to database default or environment when omitted",
     )
     course_depth: Optional[int] = Field(
         default=None,
@@ -70,6 +80,12 @@ class CourseOutlineRequest(BaseModel):
     generation_options: Optional[GenerationOptions] = Field(
         default=None,
         description="Optional generation configuration (slides, chapters, images, etc.)",
+    )
+    # NOTE: openai_key and gemini_key are NOT accepted from frontend for security
+    # Keys are automatically resolved using waterfall: user → institute → environment
+    user_id: Optional[str] = Field(
+        default=None,
+        description="Optional user identifier for user-level API key lookup (waterfall priority)",
     )
 
 
@@ -135,6 +151,10 @@ class Todo(BaseModel):
     chapter_name: Optional[str] = Field(
         default=None,
         description="Chapter name (only populated for depth 3-5 todos)"
+    )
+    metadata: Optional[dict] = Field(
+        default_factory=dict,
+        description="Optional metadata keys (e.g. 'language', 'html_quality')"
     )
 
 

@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.institute.entity.Template;
 import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
@@ -21,6 +22,7 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowExecutio
 import vacademy.io.admin_core_service.features.workflow.enums.ExecutionLogStatus;
 import vacademy.io.admin_core_service.features.workflow.enums.NodeType;
 import vacademy.io.admin_core_service.features.workflow.dto.execution_log.EmailExecutionDetails;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
 
@@ -276,6 +278,17 @@ public class SendEmailNodeHandler implements NodeHandler {
                         log.info("Successfully dispatched {} regular email batches.", finalBatchList.size());
                     } catch (Exception e) {
                         log.error("Error sending regular email batch request", e);
+                        SentryLogger.SentryEventBuilder.error(e)
+                                .withMessage("Email batch send failed (regular)")
+                                .withTag("workflow.execution.id",
+                                        workflowExecutionId != null ? workflowExecutionId : "unknown")
+                                .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                                .withTag("node.type", "SEND_EMAIL")
+                                .withTag("email.type", "REGULAR")
+                                .withTag("batch.count", String.valueOf(finalBatchList.size()))
+                                .withTag("institute.id", finalInstituteId)
+                                .withTag("operation", "sendRegularEmailBatch")
+                                .send();
                         emailResults.add("ERROR: Batch send failed (regular) - " + e.getMessage());
 
                         // Handle failures for all users in these batches
@@ -310,6 +323,17 @@ public class SendEmailNodeHandler implements NodeHandler {
                         log.info("Successfully dispatched {} attachment email batches.", finalAttachmentList.size());
                     } catch (Exception e) {
                         log.error("Error sending attachment email batch request", e);
+                        SentryLogger.SentryEventBuilder.error(e)
+                                .withMessage("Email batch send failed (attachment)")
+                                .withTag("workflow.execution.id",
+                                        workflowExecutionId != null ? workflowExecutionId : "unknown")
+                                .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                                .withTag("node.type", "SEND_EMAIL")
+                                .withTag("email.type", "ATTACHMENT")
+                                .withTag("batch.count", String.valueOf(finalAttachmentList.size()))
+                                .withTag("institute.id", finalInstituteId)
+                                .withTag("operation", "sendAttachmentEmailBatch")
+                                .send();
                         emailResults.add("ERROR: Batch send failed (attachment) - " + e.getMessage());
 
                         // Handle failures for all users in these batches
@@ -389,6 +413,14 @@ public class SendEmailNodeHandler implements NodeHandler {
 
         } catch (Exception e) {
             log.error("Error handling SendEmail node", e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("SendEmail node execution failed")
+                    .withTag("workflow.execution.id", workflowExecutionId != null ? workflowExecutionId : "unknown")
+                    .withTag("node.id", nodeId != null ? nodeId : "unknown")
+                    .withTag("node.type", "SEND_EMAIL")
+                    .withTag("institute.id", instituteId != null ? instituteId : "unknown")
+                    .withTag("operation", "handleSendEmailNode")
+                    .send();
             changes.put("status", "error");
             changes.put("error", e.getMessage());
 
@@ -443,6 +475,10 @@ public class SendEmailNodeHandler implements NodeHandler {
             return processEmailDataAndCreateRequests(emailDataObj, itemContext, "REGULAR", failedEmails, item);
         } catch (Exception e) {
             log.error("Error processing regular email forEach operation for item: {}", item, e);
+            SentryLogger.logError(e, "Email forEach processing failed", Map.of(
+                    "email.type", "REGULAR",
+                    "operation", "processRegularEmailOperation",
+                    "node.type", "SEND_EMAIL"));
             failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
                     .itemData(item)
                     .errorMessage(e.getMessage())
@@ -486,6 +522,10 @@ public class SendEmailNodeHandler implements NodeHandler {
             return Collections.emptyList();
         } catch (Exception e) {
             log.error("Error processing attachment email forEach operation for item: {}", item, e);
+            SentryLogger.logError(e, "Attachment email forEach processing failed", Map.of(
+                    "email.type", "ATTACHMENT",
+                    "operation", "processAttachmentEmailOperation",
+                    "node.type", "SEND_EMAIL"));
             failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
                     .itemData(item)
                     .errorMessage(e.getMessage())

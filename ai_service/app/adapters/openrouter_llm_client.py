@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, AsyncGenerator
+from typing import Any, Dict, Optional, AsyncGenerator, Tuple
 
 import httpx
 import json
@@ -16,7 +16,16 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
     All concrete details (base URL, API key, default model, timeouts) are configurable
     via environment variables. You can adapt this to any provider by adjusting the
     request payload format and headers.
+    
+    Supports free tier model fallback chain for cost-effective generation.
     """
+    
+    # Free tier models to try in order (fallback chain)
+    FREE_MODELS = [
+        "xiaomi/mimo-v2-flash:free",
+        "mistralai/devstral-2512:free",
+        "nvidia/nemotron-3-nano-30b-a3b:free"
+    ]
 
     def __init__(
         self,
@@ -27,39 +36,155 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
     ) -> None:
         settings = get_settings()
         self._base_url = base_url or getattr(settings, "llm_base_url", "")
-        self._api_key = api_key or getattr(settings, "llm_api_key", "")
+        self._api_key = api_key or getattr(settings, "openrouter_api_key", "")
         self._default_model = default_model or getattr(
-            settings, "llm_default_model", "gpt-4.1-mini"
+            settings, "llm_default_model", "xiaomi/mimo-v2-flash:free"
         )
+        # If using free models, set up fallback chain
+        if self._default_model in self.FREE_MODELS:
+            self._model_chain = self.FREE_MODELS
+        else:
+            self._model_chain = [self._default_model]
         self._timeout_seconds = timeout_seconds
 
-    async def generate_outline(self, prompt: str, model: str | None) -> str:
-        """Generate outline using regular (non-streaming) API call."""
-        payload = self._build_payload(prompt=prompt, model=model or self._default_model, stream=False)
-        headers = self._build_headers()
+    async def generate_outline(
+        self, 
+        prompt: str, 
+        model: str | None, 
+        api_key: str | None = None
+    ) -> str | Tuple[str, Dict[str, int]]:
+        """
+        Generate outline using regular (non-streaming) API call with free model fallback.
+        
+        Args:
+            prompt: The prompt to send to the LLM
+            model: Optional model to use (overrides default)
+            api_key: Optional API key to use (overrides instance default)
+        
+        Returns:
+            If return_usage=True: Tuple of (content, usage_dict)
+            Otherwise: Just the content string (backward compatible)
+        """
+        return await self._generate_outline_with_usage(prompt, model, api_key, return_usage=False)
+    
+    async def generate_outline_with_usage(
+        self, 
+        prompt: str, 
+        model: str | None, 
+        api_key: str | None = None
+    ) -> Tuple[str, Dict[str, int]]:
+        """
+        Generate outline and return both content and token usage.
+        
+        Args:
+            prompt: The prompt to send to the LLM
+            model: Optional model to use (overrides default)
+            api_key: Optional API key to use (overrides instance default)
+        
+        Returns:
+            Tuple of (content, usage_dict) where usage_dict contains:
+            - prompt_tokens: int
+            - completion_tokens: int
+            - total_tokens: int
+        """
+        return await self._generate_outline_with_usage(prompt, model, api_key, return_usage=True)
+    
+    async def _generate_outline_with_usage(
+        self, 
+        prompt: str, 
+        model: str | None, 
+        api_key: str | None = None,
+        return_usage: bool = False
+    ) -> str | Tuple[str, Dict[str, int]]:
+        """
+        Internal method to generate outline with optional usage tracking.
+        """
+        # Use provided API key or fall back to instance default
+        effective_api_key = api_key or self._api_key
+        
+        # Determine which models to try
+        if model:
+            models_to_try = [model]
+        elif self._default_model in self.FREE_MODELS:
+            models_to_try = self._model_chain
+        else:
+            models_to_try = [self._default_model]
+        
+        last_error = None
+        for model_to_use in models_to_try:
+            try:
+                payload = self._build_payload(prompt=prompt, model=model_to_use, stream=False)
+                headers = self._build_headers(api_key=effective_api_key)
 
-        async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
-            response = await client.post(
-                url=self._base_url,
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data: Dict[str, Any] = response.json()
+                async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+                    response = await client.post(
+                        url=self._base_url,
+                        headers=headers,
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    data: Dict[str, Any] = response.json()
 
-        # This is intentionally generic; adapt to your provider's schema.
-        # Expecting something like OpenAI/compatible:
-        #   { "choices": [ { "message": { "content": "..." } } ] }
-        try:
-            return data["choices"][0]["message"]["content"]
-        except Exception:
-            # Fallback: return raw JSON string
-            return response.text
+                # Extract content
+                try:
+                    content = data["choices"][0]["message"]["content"]
+                except Exception:
+                    # Fallback: return raw JSON string
+                    content = response.text
+                
+                # Extract usage information if available
+                usage_info = {}
+                if "usage" in data:
+                    usage = data["usage"]
+                    usage_info = {
+                        "prompt_tokens": usage.get("prompt_tokens", 0),
+                        "completion_tokens": usage.get("completion_tokens", 0),
+                        "total_tokens": usage.get("total_tokens", 0),
+                    }
+                else:
+                    # Default to 0 if usage not available
+                    usage_info = {
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                    }
+                
+                if return_usage:
+                    return content, usage_info
+                else:
+                    return content
+                    
+            except httpx.HTTPStatusError as exc:
+                last_error = exc
+                # If this is not the last model, continue to next
+                if model_to_use != models_to_try[-1]:
+                    continue
+                # Last model failed, raise the error
+                raise
+            except Exception as exc:
+                last_error = exc
+                # If this is not the last model, continue to next
+                if model_to_use != models_to_try[-1]:
+                    continue
+                # Last model failed, raise the error
+                raise
+        
+        # Should never reach here, but just in case
+        if last_error:
+            raise last_error
+        raise RuntimeError("No models available to try")
 
-    async def stream_outline(self, prompt: str, model: str | None) -> AsyncGenerator[str, None]:
-        """Generate outline using streaming API call (matches media-service pattern)."""
+    async def stream_outline(self, prompt: str, model: str | None, api_key: str | None = None) -> AsyncGenerator[str, None]:
+        """
+        Generate outline using streaming API call (matches media-service pattern).
+        
+        Args:
+            prompt: The prompt to send to the LLM
+            model: Optional model to use (overrides default)
+            api_key: Optional API key to use (overrides instance default)
+        """
         # For now, use non-streaming API for simplicity
-        result = await self.generate_outline(prompt, model)
+        result = await self.generate_outline(prompt, model, api_key=api_key)
         yield result
 
     def _build_payload(self, prompt: str, model: str, stream: bool = False) -> Dict[str, Any]:
@@ -74,10 +199,17 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
             payload["stream"] = True
         return payload
 
-    def _build_headers(self) -> Dict[str, str]:
+    def _build_headers(self, api_key: str | None = None) -> Dict[str, str]:
+        """
+        Build HTTP headers for API requests.
+        
+        Args:
+            api_key: Optional API key to use (overrides instance default)
+        """
         headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+        effective_key = api_key or self._api_key
+        if effective_key:
+            headers["Authorization"] = f"Bearer {effective_key}"
         return headers
 
 

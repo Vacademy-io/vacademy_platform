@@ -2,6 +2,7 @@ package vacademy.io.common.auth.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -34,6 +35,9 @@ public class UserService {
 
     @Autowired
     UserRoleRepository userRoleRepository;
+
+    @Value("${spring.application.name:unknown}")
+    private String applicationName;
 
     public List<User> getUsersFromUserIds(List<String> userIds) {
         List<User> users = new ArrayList<>();
@@ -303,6 +307,47 @@ public class UserService {
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
+    public PagedUserWithRolesResponse getUsersByInstituteIdAndStatusPaged(String instituteId, List<String> statuses,
+            List<String> roles, String searchName, int pageNumber, int pageSize, CustomUserDetails userDetails) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(pageNumber,
+                pageSize);
+
+        String name = null;
+        String email = null;
+        String mobile = null;
+
+        if (searchName != null && !searchName.trim().isEmpty()) {
+            if (searchName.contains("@")) {
+                email = searchName;
+            } else if (searchName.matches("^[0-9+\\-\\s]+$")) {
+                mobile = searchName;
+            } else {
+                name = searchName;
+            }
+        }
+
+        List<User> users = userRepository.findUsersByStatusAndInstitutePaged(statuses, roles, instituteId, name, email,
+                mobile, pageable);
+        long totalElements = userRepository.countUsersByStatusAndInstitute(statuses, roles, instituteId, name, email,
+                mobile);
+
+        List<UserWithRolesDTO> content = users.stream()
+                .map(UserWithRolesDTO::new)
+                .collect(Collectors.toList());
+
+        int totalPages = (int) Math.ceil((double) totalElements / pageSize);
+
+        return PagedUserWithRolesResponse.builder()
+                .content(content)
+                .pageNumber(pageNumber)
+                .pageSize(pageSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .first(pageNumber == 0)
+                .last(pageNumber >= totalPages - 1)
+                .build();
+    }
+
     public User updateUser(User user, UserDTO userDTO) {
         if (StringUtils.hasText(userDTO.getUsername()))
             user.setUsername(userDTO.getUsername());
@@ -491,14 +536,70 @@ public class UserService {
         return users.stream().map(UserDTO::new).toList();
     }
 
-    public void updateLastLoginTimeForUser(String userId){
-        try{
-            User user = userRepository.findById(userId).orElseThrow(() -> new VacademyException("User Not Found with id " + userId));
+    public void updateLastLoginTimeForUser(String userId) {
+        if (!"auth_service".equals(applicationName)) {
+            return;
+        }
+        try {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new VacademyException("User Not Found with id " + userId));
             user.setLastLoginTime(new Date());
             userRepository.save(user);
-        }catch (Exception e){
-            log.error("Failed to update last login time for user: " + userId, e);
+        } catch (Exception e) {
         }
+    }
+
+    public List<UserDTO> autoSuggestUsers(String instituteId, List<String> roleNames, String query) {
+        List<User> users;
+        if (roleNames == null || roleNames.isEmpty()) {
+            users = userRepository.autoSuggestUsersAllRoles(instituteId, query);
+        } else {
+            users = userRepository.autoSuggestUsers(instituteId, roleNames, query);
+        }
+        return users.stream().map(UserDTO::new).collect(Collectors.toList());
+    }
+
+    /**
+     * Get users with their linked children.
+     * For each parent user ID provided, fetches the parent and their linked child
+     * (if any).
+     * 
+     * @param parentUserIds List of parent user IDs to fetch
+     * @return List of ParentWithChildDTO containing parent and child user
+     *         information
+     */
+    public List<ParentWithChildDTO> getUsersWithChildren(List<String> parentUserIds) {
+        if (parentUserIds == null || parentUserIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Fetch all parent users
+        List<User> parents = userRepository.findByIdIn(parentUserIds);
+        Map<String, User> parentMap = parents.stream()
+                .collect(Collectors.toMap(User::getId, user -> user, (a, b) -> a));
+
+        // Fetch all children linked to these parents
+        List<User> children = userRepository.findByLinkedParentIdIn(parentUserIds);
+        Map<String, User> childByParentId = children.stream()
+                .filter(child -> child.getLinkedParentId() != null)
+                .collect(Collectors.toMap(User::getLinkedParentId, child -> child, (a, b) -> a));
+
+        // Build ParentWithChildDTO for each requested parent ID
+        List<ParentWithChildDTO> result = new ArrayList<>();
+        for (String parentId : parentUserIds) {
+            User parent = parentMap.get(parentId);
+            if (parent != null) {
+                User child = childByParentId.get(parentId);
+                ParentWithChildDTO dto = ParentWithChildDTO.builder()
+                        .parent(new UserDTO(parent))
+                        .child(child != null ? new UserDTO(child) : null)
+                        .build();
+                result.add(dto);
+            }
+        }
+
+        log.info("Fetched {} parents with children for {} requested IDs", result.size(), parentUserIds.size());
+        return result;
     }
 
 }

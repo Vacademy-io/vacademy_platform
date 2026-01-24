@@ -68,3 +68,4 @@ def generate_media_prompt(
     """
     return f"Create a {image_style} media image (16:9 aspect ratio) for course '{course_name}' about {base_search_query} suitable for social media. {about_course[:150]}"
 
+

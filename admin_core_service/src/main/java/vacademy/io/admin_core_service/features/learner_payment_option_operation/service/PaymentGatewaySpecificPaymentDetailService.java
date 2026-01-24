@@ -11,8 +11,8 @@ import java.util.Map;
 public class PaymentGatewaySpecificPaymentDetailService {
 
     public void configureCustomerPaymentData(UserInstitutePaymentGatewayMapping userInstitutePaymentGatewayMapping,
-                                              String vendor,
-                                              PaymentInitiationRequestDTO paymentInitiationRequestDTO) {
+            String vendor,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO) {
         PaymentGateway paymentGateway = PaymentGateway.fromString(vendor);
 
         switch (paymentGateway) {
@@ -29,38 +29,44 @@ public class PaymentGatewaySpecificPaymentDetailService {
                 }
                 break;
             case EWAY:
-                if (paymentInitiationRequestDTO.getEwayRequest() != null){
-                    paymentInitiationRequestDTO.getEwayRequest().setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
+                if (paymentInitiationRequestDTO.getEwayRequest() != null) {
+                    paymentInitiationRequestDTO.getEwayRequest()
+                            .setCustomerId(userInstitutePaymentGatewayMapping.getPaymentGatewayCustomerId());
                 }
+                break;
+            case PHONEPE:
                 break;
             default:
                 throw new IllegalStateException("Unexpected value: " + vendor);
         }
     }
 
-    public void configureCustomerPaymentData(Map<String,Object> userInstitutePaymentGatewayMapping,
-                                             String vendor,
-                                             PaymentInitiationRequestDTO paymentInitiationRequestDTO) {
+    public void configureCustomerPaymentData(Map<String, Object> userInstitutePaymentGatewayMapping,
+            String vendor,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO) {
         PaymentGateway paymentGateway = PaymentGateway.fromString(vendor);
 
         switch (paymentGateway) {
             case STRIPE:
                 if (paymentInitiationRequestDTO.getStripeRequest() != null) {
                     paymentInitiationRequestDTO.getStripeRequest()
-                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
+                            .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 }
                 break;
             case RAZORPAY:
                 if (paymentInitiationRequestDTO.getRazorpayRequest() != null) {
                     paymentInitiationRequestDTO.getRazorpayRequest()
-                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
+                            .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 }
                 break;
             case EWAY:
                 if (paymentInitiationRequestDTO.getEwayRequest() != null) {
                     paymentInitiationRequestDTO.getEwayRequest()
-                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
+                            .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 }
+                break;
+            case PHONEPE:
+                // No specific customer ID configuration needed for PhonePe at this stage
                 break;
             default:
                 throw new IllegalStateException("Unexpected value: " + vendor);

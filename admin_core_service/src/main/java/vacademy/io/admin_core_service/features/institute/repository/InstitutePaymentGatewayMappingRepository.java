@@ -7,6 +7,15 @@ import vacademy.io.admin_core_service.features.institute.entity.InstitutePayment
 import java.util.List;
 import java.util.Optional;
 
-public interface InstitutePaymentGatewayMappingRepository extends JpaRepository<InstitutePaymentGatewayMapping,String> {
-    Optional<InstitutePaymentGatewayMapping>findByInstituteIdAndVendorAndStatusIn(String instituteId, String vendor, List<String> status);
+public interface InstitutePaymentGatewayMappingRepository
+        extends JpaRepository<InstitutePaymentGatewayMapping, String> {
+    Optional<InstitutePaymentGatewayMapping> findByInstituteIdAndVendorAndStatusIn(String instituteId, String vendor,
+            List<String> status);
+
+    /**
+     * Find the latest payment gateway mapping for an institute by createdAt date.
+     * Used to get the vendor/vendorId for EnrollInvite entries.
+     */
+    Optional<InstitutePaymentGatewayMapping> findFirstByInstituteIdAndStatusInOrderByCreatedAtDesc(String instituteId,
+            List<String> status);
 }

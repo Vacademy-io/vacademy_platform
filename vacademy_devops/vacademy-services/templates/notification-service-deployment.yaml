@@ -24,6 +24,9 @@ spec:
         - name: notification-service
           image: {{ .Values.services.notification_service.image.repository }}:{{ .Values.services.notification_service.image.tag }}
           imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
           resources:
             requests:
               cpu: "200m"

@@ -30,7 +30,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-
 @Slf4j
 @Service
 public class UserInstituteService {
@@ -66,12 +65,30 @@ public class UserInstituteService {
         instituteInfoDTO.setEmail(institute.getEmail());
         instituteInfoDTO.setPhone(institute.getMobileNumber());
         instituteInfoDTO.setWebsiteUrl(institute.getWebsiteUrl());
+        instituteInfoDTO.setBoard(institute.getBoard());
+        instituteInfoDTO.setGstDetails(institute.getGstDetails());
+        instituteInfoDTO.setAffiliationNumber(institute.getAffiliationNumber());
+        instituteInfoDTO.setStaffStrength(institute.getStaffStrength());
+        instituteInfoDTO.setSchoolStrength(institute.getSchoolStrength());
         return instituteInfoDTO;
     }
 
     @Transactional
     public InstituteIdAndNameDTO saveInstitute(InstituteInfoDTO instituteDto) {
         try {
+            // Debug logging for institute fields - to trace production issues
+            log.info("[ADMIN-CORE-SERVICE] saveInstitute - Input InstituteInfoDTO:");
+            log.info("[ADMIN-CORE-SERVICE] board: {}",
+                    instituteDto != null ? instituteDto.getBoard() : "null (DTO is null)");
+            log.info("[ADMIN-CORE-SERVICE] gstDetails: {}",
+                    instituteDto != null ? instituteDto.getGstDetails() : "null (DTO is null)");
+            log.info("[ADMIN-CORE-SERVICE] affiliationNumber: {}",
+                    instituteDto != null ? instituteDto.getAffiliationNumber() : "null (DTO is null)");
+            log.info("[ADMIN-CORE-SERVICE] staffStrength: {}",
+                    instituteDto != null ? instituteDto.getStaffStrength() : "null (DTO is null)");
+            log.info("[ADMIN-CORE-SERVICE] schoolStrength: {}",
+                    instituteDto != null ? instituteDto.getSchoolStrength() : "null (DTO is null)");
+
             List<Submodule> allSubModules = new ArrayList<>();
 
             if (!Objects.isNull(instituteDto.getModuleRequestIds())) {
@@ -84,8 +101,25 @@ public class UserInstituteService {
 
             Institute institute = getInstitute(instituteDto);
 
+            // Debug logging after entity creation
+            log.info("[ADMIN-CORE-SERVICE] saveInstitute - Institute entity after getInstitute():");
+            log.info("[ADMIN-CORE-SERVICE] institute.board: {}", institute.getBoard());
+            log.info("[ADMIN-CORE-SERVICE] institute.gstDetails: {}", institute.getGstDetails());
+            log.info("[ADMIN-CORE-SERVICE] institute.affiliationNumber: {}", institute.getAffiliationNumber());
+            log.info("[ADMIN-CORE-SERVICE] institute.staffStrength: {}", institute.getStaffStrength());
+            log.info("[ADMIN-CORE-SERVICE] institute.schoolStrength: {}", institute.getSchoolStrength());
+
             if (institute.getInstituteName() != null) {
                 Institute savedInstitute = instituteRepository.save(institute);
+
+                // Debug logging after save
+                log.info("[ADMIN-CORE-SERVICE] saveInstitute - Institute saved with ID: {}", savedInstitute.getId());
+                log.info("[ADMIN-CORE-SERVICE] savedInstitute.board: {}", savedInstitute.getBoard());
+                log.info("[ADMIN-CORE-SERVICE] savedInstitute.gstDetails: {}", savedInstitute.getGstDetails());
+                log.info("[ADMIN-CORE-SERVICE] savedInstitute.affiliationNumber: {}",
+                        savedInstitute.getAffiliationNumber());
+                log.info("[ADMIN-CORE-SERVICE] savedInstitute.staffStrength: {}", savedInstitute.getStaffStrength());
+                log.info("[ADMIN-CORE-SERVICE] savedInstitute.schoolStrength: {}", savedInstitute.getSchoolStrength());
 
                 instituteSettingService.createDefaultSettingsForInstitute(savedInstitute);
                 createInstituteSubModulesMapping(allSubModules, savedInstitute);
@@ -95,6 +129,7 @@ public class UserInstituteService {
 
             return null;
         } catch (Exception e) {
+            log.error("[ADMIN-CORE-SERVICE] saveInstitute - Error saving institute: {}", e.getMessage(), e);
             throw new VacademyException("Failed to add: " + e.getMessage());
         }
     }
@@ -125,18 +160,27 @@ public class UserInstituteService {
         institute.setLetterHeadFileId(instituteInfo.getLetterHeadFileId());
         institute.setInstituteType(instituteInfo.getType());
         institute.setInstituteThemeCode(instituteInfo.getInstituteThemeCode());
+        institute.setBoard(instituteInfo.getBoard());
+        institute.setGstDetails(instituteInfo.getGstDetails());
+        institute.setAffiliationNumber(instituteInfo.getAffiliationNumber());
+        institute.setStaffStrength(instituteInfo.getStaffStrength());
+        institute.setSchoolStrength(instituteInfo.getSchoolStrength());
         return institute;
     }
 
-
-    public ResponseEntity<InstituteDashboardResponse> getInstituteDashboardDetail(CustomUserDetails user, String instituteId) {
+    public ResponseEntity<InstituteDashboardResponse> getInstituteDashboardDetail(CustomUserDetails user,
+            String instituteId) {
         Optional<Institute> instituteOptional = instituteRepository.findById(instituteId);
-        if (instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (instituteOptional.isEmpty())
+            throw new VacademyException("Institute Not Found");
 
         Integer emptyOrNullFieldsCount = instituteRepository.findCountForNullOrEmptyFields(instituteId);
         Integer percentage = (((11 - emptyOrNullFieldsCount) * 100) / 11);
-        Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteIdAndStatusIn(instituteId,List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()));
-        Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotInAndPackageSessionStatusIn(instituteId, List.of("DELETED", "INACTIVE", "TERMINATED"),List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()));
+        Long batchCount = packageSessionRepository.findCountPackageSessionsByInstituteIdAndStatusIn(instituteId,
+                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()));
+        Long studentCount = studentSessionRepository.countStudentsByInstituteIdAndStatusNotInAndPackageSessionStatusIn(
+                instituteId, List.of("DELETED", "INACTIVE", "TERMINATED"),
+                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()));
         Long courseCount = packageRepository.countDistinctPackagesByInstituteId(instituteId);
         Long levelCount = packageRepository.countDistinctLevelsByInstituteId(instituteId);
         Long subjectCount = subjectPackageSessionRepository.countDistinctSubjectsByInstituteId(instituteId);
@@ -151,14 +195,33 @@ public class UserInstituteService {
                 .build());
     }
 
+    public ResponseEntity<String> updateInstituteDetails(CustomUserDetails user, String instituteId,
+            InstituteInfoDTO instituteInfoDTO) {
+        if (Objects.isNull(instituteInfoDTO))
+            throw new VacademyException("Invalid Request");
 
-    public ResponseEntity<String> updateInstituteDetails(CustomUserDetails user, String instituteId, InstituteInfoDTO instituteInfoDTO) {
-        if (Objects.isNull(instituteInfoDTO)) throw new VacademyException("Invalid Request");
+        // Debug logging for update request - to trace production issues
+        log.info("[ADMIN-CORE-SERVICE] updateInstituteDetails - Input InstituteInfoDTO for instituteId: {}",
+                instituteId);
+        log.info("[ADMIN-CORE-SERVICE] incoming board: {}", instituteInfoDTO.getBoard());
+        log.info("[ADMIN-CORE-SERVICE] incoming gstDetails: {}", instituteInfoDTO.getGstDetails());
+        log.info("[ADMIN-CORE-SERVICE] incoming affiliationNumber: {}", instituteInfoDTO.getAffiliationNumber());
+        log.info("[ADMIN-CORE-SERVICE] incoming staffStrength: {}", instituteInfoDTO.getStaffStrength());
+        log.info("[ADMIN-CORE-SERVICE] incoming schoolStrength: {}", instituteInfoDTO.getSchoolStrength());
 
         Optional<Institute> instituteOptional = instituteRepository.findById(instituteId);
 
-        if (instituteOptional.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (instituteOptional.isEmpty())
+            throw new VacademyException("Institute Not Found");
         Institute institute = instituteOptional.get();
+
+        // Debug logging for current DB values
+        log.info("[ADMIN-CORE-SERVICE] updateInstituteDetails - Current DB values:");
+        log.info("[ADMIN-CORE-SERVICE] current board: {}", institute.getBoard());
+        log.info("[ADMIN-CORE-SERVICE] current gstDetails: {}", institute.getGstDetails());
+        log.info("[ADMIN-CORE-SERVICE] current affiliationNumber: {}", institute.getAffiliationNumber());
+        log.info("[ADMIN-CORE-SERVICE] current staffStrength: {}", institute.getStaffStrength());
+        log.info("[ADMIN-CORE-SERVICE] current schoolStrength: {}", institute.getSchoolStrength());
 
         updateIfNotNull(instituteInfoDTO.getInstituteName(), institute::setInstituteName);
         updateIfNotNull(instituteInfoDTO.getType(), institute::setInstituteType);
@@ -172,12 +235,25 @@ public class UserInstituteService {
         updateIfNotNull(instituteInfoDTO.getInstituteThemeCode(), institute::setInstituteThemeCode);
         updateIfNotNull(instituteInfoDTO.getPinCode(), institute::setPinCode);
         updateIfNotNull(instituteInfoDTO.getInstituteLogoFileId(), institute::setLogoFileId);
+        updateIfNotNull(instituteInfoDTO.getBoard(), institute::setBoard);
+        updateIfNotNull(instituteInfoDTO.getGstDetails(), institute::setGstDetails);
+        updateIfNotNull(instituteInfoDTO.getAffiliationNumber(), institute::setAffiliationNumber);
+        updateIfNotNull(instituteInfoDTO.getStaffStrength(), institute::setStaffStrength);
+        updateIfNotNull(instituteInfoDTO.getSchoolStrength(), institute::setSchoolStrength);
+
+        // Debug logging for values after update (before save)
+        log.info("[ADMIN-CORE-SERVICE] updateInstituteDetails - Values after update (before save):");
+        log.info("[ADMIN-CORE-SERVICE] final board: {}", institute.getBoard());
+        log.info("[ADMIN-CORE-SERVICE] final gstDetails: {}", institute.getGstDetails());
+        log.info("[ADMIN-CORE-SERVICE] final affiliationNumber: {}", institute.getAffiliationNumber());
+        log.info("[ADMIN-CORE-SERVICE] final staffStrength: {}", institute.getStaffStrength());
+        log.info("[ADMIN-CORE-SERVICE] final schoolStrength: {}", institute.getSchoolStrength());
 
         instituteRepository.save(institute);
+        log.info("[ADMIN-CORE-SERVICE] updateInstituteDetails - Institute saved successfully");
 
         return ResponseEntity.ok("Done");
     }
-
 
     /**
      * Helper method to update a field if the new value is not null.
@@ -194,7 +270,8 @@ public class UserInstituteService {
 
     public String addLetterHeadFileId(String instituteId, String letterHeadFileId, CustomUserDetails userDetails) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
-        if (institute.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (institute.isEmpty())
+            throw new VacademyException("Institute Not Found");
         institute.get().setLetterHeadFileId(letterHeadFileId);
         instituteRepository.save(institute.get());
         return "Done";
@@ -202,7 +279,8 @@ public class UserInstituteService {
 
     public String getLetterFileId(String instituteId, CustomUserDetails userDetails) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
-        if (institute.isEmpty()) throw new VacademyException("Institute Not Found");
+        if (institute.isEmpty())
+            throw new VacademyException("Institute Not Found");
         return institute.get().getLetterHeadFileId();
     }
 }

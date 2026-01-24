@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service;
 
-import io.sentry.Sentry;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
@@ -18,5 +17,6 @@ public class AdminCoreServiceApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(AdminCoreServiceApplication.class, args);
+        
     }
 }

@@ -1,6 +1,5 @@
 package vacademy.io.media_service.service;
 
-
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.media_service.dto.AcknowledgeRequest;
@@ -29,7 +28,8 @@ public interface FileService {
 
     boolean delete(String fileName);
 
-    String getPublicUrlWithExpiryAndSource(String source, String sourceId, Integer expiryDays) throws FileDownloadException;
+    String getPublicUrlWithExpiryAndSource(String source, String sourceId, Integer expiryDays)
+            throws FileDownloadException;
 
     List<Map<String, String>> getMultiplePublicUrlWithExpiryAndId(String fileIds);
 
@@ -48,4 +48,6 @@ public interface FileService {
     String getPublicBucketUrl(String fileId, Integer expiryDays) throws FileDownloadException;
 
     String getPublicUrl(String id, String bucketName);
+
+    FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key) throws FileUploadException, IOException;
 }

@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.live_session.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -274,35 +275,18 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(String batchId, String userId, CustomUserDetails user) {
-        // Get sessions for batch
-        List<LiveSessionRepository.LiveSessionListProjection> batchProjections =
-                new ArrayList<>();
-        if (StringUtils.hasText(batchId)){
-            batchProjections = sessionRepository.findUpcomingSessionsForBatch(batchId);
-        }
+    @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId + '_' + #page + '_' + #size + '_' + #startDate + '_' + #endDate")
+    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(
+            String batchId, String userId, int page, Integer size, String startDate, String endDate, CustomUserDetails user) {
+        // Calculate offset for pagination (only if size is provided)
+        Integer offset = (size != null) ? page * size : null;
         
-        // Get sessions for user
-        System.out.println("userid is:"+userId);
-        List<LiveSessionRepository.LiveSessionListProjection> userProjections =
-                sessionRepository.findUpcomingSessionsForUser(userId);
+        // Optimized: Single query that fetches both batch and user sessions with database-level deduplication
+        List<LiveSessionRepository.LiveSessionListProjection> projections = 
+                sessionRepository.findUpcomingSessionsForUserAndBatchWithFilters(batchId, userId, startDate, endDate, offset, size);
 
-        // Combine both lists and remove duplicates based on sessionId and scheduleId
-        Map<String, LiveSessionRepository.LiveSessionListProjection> uniqueSessions = new LinkedHashMap<>();
-        
-        // Add batch sessions
-        for (LiveSessionRepository.LiveSessionListProjection p : batchProjections) {
-            String key = p.getSessionId() + "_" + p.getScheduleId();
-            uniqueSessions.put(key, p);
-        }
-        
-        // Add user sessions (will override batch sessions if same key exists)
-        for (LiveSessionRepository.LiveSessionListProjection p : userProjections) {
-            String key = p.getSessionId() + "_" + p.getScheduleId();
-            uniqueSessions.put(key, p);
-        }
-
-        List<LiveSessionListDTO> flatList = uniqueSessions.values().stream().map(p -> new LiveSessionListDTO(
+        // Map projections to DTOs
+        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),

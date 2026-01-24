@@ -5,8 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -14,9 +12,9 @@ import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDo
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
-import vacademy.io.admin_core_service.features.learner.dto.JwtResponseDto;
 import vacademy.io.admin_core_service.features.learner.dto.LearnerPortalAccessResponse;
 import vacademy.io.admin_core_service.features.learner.enums.LmsSourcesEnum;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -44,24 +42,24 @@ public class LearnerPortalAccessService {
     @Value("${default.learner.portal.url}")
     private String defaultLearnerPortalUrl;
 
-    public LearnerPortalAccessResponse generateLearnerPortalAccessUrl(String instituteId, String userId) {
+    public LearnerPortalAccessResponse generateLearnerPortalAccessUrl(String instituteId,String packageId, String userId) {
+        UserWithJwtDTO userWithJwtDTO = authService.generateJwtTokensWithUser(userId, instituteId);
+       if(StringUtils.hasText(packageId)){
+           Optional<WorkflowTrigger>optionalWorkflowTrigger = workflowTriggerService.findByInstituteIdEventNameAndEventId(instituteId,WorkflowTriggerEvent.GENERATE_ADMIN_LOGIN_URL_FOR_LEARNER_PORTAL.name(),instituteId);
+           if (optionalWorkflowTrigger.isPresent()) {
+               Map<String, Object> response = workflowTriggerService.handleTriggerEvents(
+                   WorkflowTriggerEvent.GENERATE_ADMIN_LOGIN_URL_FOR_LEARNER_PORTAL.name(),
+                   instituteId, instituteId, Map.of("user", userWithJwtDTO.getUser(),"packageId",packageId));
+               if (response.get("adminLoginUrl") != null) {
+                   return LearnerPortalAccessResponse.builder()
+                       .redirectUrl(response.get("adminLoginUrl").toString())
+                       .build();
+               }
+               throw new VacademyException("User not foud on Learndash LMS");
+           }
+       }
         Institute institute = instituteRepository.findById(instituteId)
                 .orElseThrow(() -> new VacademyException("Institute not found"));
-
-        String activeLms = determineActiveLms(institute);
-        UserWithJwtDTO userWithJwtDTO = authService.generateJwtTokensWithUser(userId, instituteId);
-        if (activeLms.equalsIgnoreCase(LmsSourcesEnum.LEARNDASH.name())) {
-            Map<String, Object> response = workflowTriggerService.handleTriggerEvents(
-                    WorkflowTriggerEvent.GENERATE_ADMIN_LOGIN_URL_FOR_LEARNER_PORTAL.name(),
-                    LmsSourcesEnum.LEARNDASH.name(), instituteId, Map.of("user", userWithJwtDTO.getUser()));
-            if (response.get("adminLoginUrl") != null) {
-                return LearnerPortalAccessResponse.builder()
-                        .redirectUrl(response.get("adminLoginUrl").toString())
-                        .build();
-            }
-            throw new VacademyException("User not foud on Learndash LMS");
-        }
-
         String redirectUrl = buildRedirectUrl(institute, userWithJwtDTO);
 
         return LearnerPortalAccessResponse.builder()
@@ -117,21 +115,20 @@ public class LearnerPortalAccessService {
         }
     }
 
-    public Boolean sendCredForLMS(String instituteId, String userId) {
-        Institute institute = instituteRepository.findById(instituteId)
-                .orElseThrow(() -> new VacademyException("Institute not found"));
-
-        String activeLms = determineActiveLms(institute);
+    public Boolean sendCredForLMS(String instituteId,String packageId, String userId) {
         UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(userId)).get(0);
-        if (activeLms.equalsIgnoreCase(LmsSourcesEnum.LEARNDASH.name())) {
-            Map<String, Object> response = workflowTriggerService.handleTriggerEvents(
-                    WorkflowTriggerEvent.SEND_LEARNER_CREDENTIALS.name(), LmsSourcesEnum.LEARNDASH.name(), instituteId,
-                    Map.of("user", userDTO));
-            if (response.get("credSent") != null && response.get("credSent") instanceof Boolean
+        if (StringUtils.hasText(packageId)){
+            Optional<WorkflowTrigger>optionalWorkflowTrigger = workflowTriggerService.findByInstituteIdEventNameAndEventId(instituteId,WorkflowTriggerEvent.SEND_LEARNER_CREDENTIALS.name(),instituteId);
+            if (optionalWorkflowTrigger.isPresent()) {
+                Map<String, Object> response = workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.SEND_LEARNER_CREDENTIALS.name(), instituteId, instituteId,
+                    Map.of("user", userDTO,"packageId",packageId));
+                if (response.get("credSent") != null && response.get("credSent") instanceof Boolean
                     && (Boolean) response.get("credSent")) {
-                return true;
+                    return true;
+                }
+                return false;
             }
-            return false;
         }
 
         authService.sendCredToUsers(List.of(userId));

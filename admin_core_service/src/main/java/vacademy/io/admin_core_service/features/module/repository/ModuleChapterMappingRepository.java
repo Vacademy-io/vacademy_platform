@@ -52,7 +52,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                             'assignment_slide_count', chap_data.assignment_slide_count,
                             'survey_slide_count', chap_data.survey_slide_count,
                             'unknown_count', chap_data.unknown_count
-                        ) ORDER BY c.created_at
+                        ) ORDER BY cpsm.chapter_order ASC NULLS LAST
                     ) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
                 ) AS module_data
                 FROM subject_module_mapping smm
@@ -555,7 +555,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                                 AND cs.status IN (:chapterToSlidesStatus)
                             ) AS slide_data
                             )
-                        ) ORDER BY c.created_at
+                        ) ORDER BY cpsm.chapter_order ASC NULLS LAST
                     ) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
                 ) AS module_data
                 FROM subject_module_mapping smm

@@ -30,7 +30,7 @@ public class AuthService {
     @Value(value = "${spring.application.name}")
     String clientName;
 
-    public UserDTO inviteUser(UserDTO userDTO,String instituteId) {
+    public UserDTO inviteUser(UserDTO userDTO, String instituteId) {
 
         ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
                 clientName,
@@ -60,8 +60,7 @@ public class AuthService {
                     HttpMethod.POST.name(),
                     authServerBaseUrl,
                     AuthServiceRoutes.GET_USERS_FROM_AUTH_SERVICE,
-                    userIds
-            );
+                    userIds);
 
             return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
             });
@@ -70,7 +69,7 @@ public class AuthService {
         }
     }
 
-    public UserDTO updateUser(UserDTO userDTO,String userId) {
+    public UserDTO updateUser(UserDTO userDTO, String userId) {
         if (userDTO == null || userId == null) {
             throw new VacademyException("User details cannot be null");
         }
@@ -80,9 +79,8 @@ public class AuthService {
                     clientName,
                     HttpMethod.PUT.name(),
                     authServerBaseUrl,
-                    AuthServiceRoutes.UPDATE_USER_ROUTE+"?userId="+userId,
-                    userDTO
-            );
+                    AuthServiceRoutes.UPDATE_USER_ROUTE + "?userId=" + userId,
+                    userDTO);
 
             return objectMapper.readValue(response.getBody(), new TypeReference<UserDTO>() {
             });
@@ -105,8 +103,7 @@ public class AuthService {
                     HttpMethod.POST.name(),
                     authServerBaseUrl,
                     url,
-                    userDTO
-            );
+                    userDTO);
 
             return objectMapper.readValue(response.getBody(), UserDTO.class);
 
@@ -122,12 +119,11 @@ public class AuthService {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
-                clientName,
-                HttpMethod.GET.name(),
-                authServerBaseUrl,
-                AuthServiceRoutes.GET_USER_BY_ID_WITH_PASSWORD+"?userId="+userId,
-                null
-            );
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    AuthServiceRoutes.GET_USER_BY_ID_WITH_PASSWORD + "?userId=" + userId,
+                    null);
 
             return objectMapper.readValue(response.getBody(), new TypeReference<UserDTO>() {
             });
@@ -136,17 +132,16 @@ public class AuthService {
         }
     }
 
-
     public UserWithJwtDTO generateJwtTokensWithUser(String userId, String instituteId) {
         try {
             String endpoint = AuthServiceRoutes.GENERATE_TOKEN_FOR_LEARNER + "?userId=" + userId + "&instituteId="
-                + instituteId;
+                    + instituteId;
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
-                clientName,
-                HttpMethod.GET.name(),
-                authServerBaseUrl,
-                endpoint,
-                null);
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    null);
 
             if (response == null || response.getBody() == null) {
                 throw new VacademyException("Failed to generate JWT tokens");
@@ -159,15 +154,15 @@ public class AuthService {
         }
     }
 
-    public String sendCredToUsers(List<String>userIds) {
+    public String sendCredToUsers(List<String> userIds) {
         try {
             String endpoint = AuthServiceRoutes.SEND_CRED_TO_USERS;
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
-                clientName,
-                HttpMethod.POST.name(),
-                authServerBaseUrl,
-                endpoint,
-                userIds);
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    userIds);
 
             return response.getBody();
         } catch (Exception e) {
@@ -179,13 +174,13 @@ public class AuthService {
         try {
             String endpoint = AuthServiceRoutes.CREATE_OR_GET_EXISTING_BY_ID + "?instituteId=" + instituteId;
             ObjectMapper objectMapper = new ObjectMapper();
-            
+
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
-                clientName,
-                HttpMethod.POST.name(),
-                authServerBaseUrl,
-                endpoint,
-                userDTO);
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    userDTO);
 
             return objectMapper.readValue(response.getBody(), UserDTO.class);
         } catch (Exception e) {
@@ -193,5 +188,80 @@ public class AuthService {
         }
     }
 
+    public vacademy.io.admin_core_service.features.student_analysis.dto.StudentLoginStatsDto getStudentLoginStats(
+            String userId, String startDate, String endDate) {
+        try {
+            String endpoint = AuthServiceRoutes.GET_STUDENT_LOGIN_STATS
+                    + "?userId=" + userId
+                    + "&startDate=" + startDate
+                    + "&endDate=" + endDate;
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    null);
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            return objectMapper.readValue(response.getBody(),
+                    vacademy.io.admin_core_service.features.student_analysis.dto.StudentLoginStatsDto.class);
+        } catch (Exception e) {
+            throw new VacademyException("Failed to get student login stats: " + e.getMessage());
+        }
+    }
+
+    public List<UserDTO> createMultipleUsers(List<UserDTO> userDTOs, String instituteId, boolean toNotifiy) {
+        if (userDTOs == null || userDTOs.isEmpty()) {
+            throw new VacademyException("User DTOs list cannot be null or empty");
+        }
+        try {
+            String endpoint = AuthServiceRoutes.CREATE_MULTIPLE_USERS + "?instituteId=" + instituteId + "&isNotify="
+                    + toNotifiy;
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    userDTOs);
+
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
+            });
+        } catch (Exception e) {
+            throw new VacademyException("Failed to create multiple users: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Fetch users with their linked children from auth_service.
+     * 
+     * @param userIds List of parent user IDs to fetch
+     * @return List of ParentWithChildDTO containing parent and child user
+     *         information
+     */
+    public List<vacademy.io.common.auth.dto.ParentWithChildDTO> getUsersWithChildren(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        try {
+            String endpoint = AuthServiceRoutes.GET_USERS_WITH_CHILDREN;
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    userIds);
+
+            return objectMapper.readValue(response.getBody(),
+                    new TypeReference<List<vacademy.io.common.auth.dto.ParentWithChildDTO>>() {
+                    });
+        } catch (Exception e) {
+            throw new VacademyException("Failed to get users with children: " + e.getMessage());
+        }
+    }
 
 }

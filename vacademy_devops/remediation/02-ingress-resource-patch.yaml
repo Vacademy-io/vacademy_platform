@@ -1,0 +1,36 @@
+# Patch for NGINX Ingress Controller Deployment
+# Apply with: kubectl patch deployment ingress-nginx-controller -n ingress-nginx --patch-file 02-ingress-resource-patch.yaml
+
+spec:
+  template:
+    spec:
+      containers:
+        - name: controller
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          # Improved liveness probe settings
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1

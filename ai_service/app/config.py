@@ -2,6 +2,7 @@ import os
 from functools import lru_cache
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
@@ -32,6 +33,13 @@ class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
     """
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
     # App
     app_name: str = "AI Service"
@@ -67,19 +75,30 @@ class Settings(BaseSettings):
 
     # LLM Configuration - Using OpenRouter (your working API key)
     llm_base_url: str = "https://openrouter.ai/api/v1/chat/completions"
-    llm_api_key: Optional[str] = None  # Your OpenRouter API key (sk-or-v1-...)
-    llm_default_model: str = "google/gemini-2.5-pro"  # Gemini 2.5 Pro (default from media-service)
-    # Alternative working models:
-    # llm_default_model: str = "openai/gpt-4o-mini"  # Good balance
-    # llm_default_model: str = "google/gemini-pro"  # Google's model
-    # llm_default_model: str = "meta-llama/llama-3.2-3b-instruct"  # Smaller llama
+    openrouter_api_key: Optional[str] = None  # Will be populated from OPENROUTER_API_KEY env var
+    # Default to free tier model, can be overridden via LLM_DEFAULT_MODEL env var
+    llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "xiaomi/mimo-v2-flash:free")
+    # Free tier models (fallback chain):
+    # - xiaomi/mimo-v2-flash:free
+    # - mistralai/devstral-2512:free
+    # - nvidia/nemotron-3-nano-30b-a3b:free
+    # Alternative paid models:
+    # - google/gemini-2.5-pro
+    # - openai/gpt-4o-mini
     llm_timeout_seconds: float = 60.0
 
-    # S3 Configuration (for generated course images)
+    # S3 Configuration (for generated course images and AI videos)
+    # Uses same config as media-service
     s3_aws_access_key: Optional[str] = None
     s3_aws_access_secret: Optional[str] = None
     s3_aws_region: Optional[str] = None
     aws_bucket_name: Optional[str] = None
+    
+    # AWS Configuration (alternative naming from media-service)
+    aws_access_key: Optional[str] = None
+    aws_secret_key: Optional[str] = None
+    aws_region: str = "ap-south-1"
+    aws_s3_public_bucket: Optional[str] = None
 
     # Google Generative AI Configuration (for Gemini image generation)
     gemini_api_key: Optional[str] = None

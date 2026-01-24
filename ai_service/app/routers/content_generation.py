@@ -43,7 +43,9 @@ async def generate_content_from_coursetree(
     async def event_generator():
         async for event in service.generate_content_from_coursetree(
             course_tree=payload.course_tree,
-            request_id=request_id
+            request_id=request_id,
+            institute_id=payload.institute_id,
+            user_id=payload.user_id,
         ):
             # Format as SSE: "data: <content>\n\n"
             yield f"data: {event}\n\n"
@@ -59,4 +61,6 @@ async def generate_content_from_coursetree(
 
 
 __all__ = ["router"]
+
+
 

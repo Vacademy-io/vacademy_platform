@@ -58,6 +58,12 @@ public class User {
     @Column(name = "is_root_user")
     private boolean isRootUser;
 
+    @Column(name = "is_parent")
+    private Boolean isParent;
+
+    @Column(name = "linked_parent_id")
+    private String linkedParentId;
+
     @Column(name = "last_token_update_time")
     @Temporal(TemporalType.TIMESTAMP)
     private Date lastTokenUpdateTime;
@@ -95,6 +101,167 @@ public class User {
         if (this.email != null) {
             this.email = this.email.toLowerCase();
         }
+    }
+
+    // Manual Getters and Setters to ensure compilation
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public Set<UserRole> getRoles() {
+        return roles;
+    }
+
+    public void setRoles(Set<UserRole> roles) {
+        this.roles = roles;
+    }
+
+    public String getAddressLine() {
+        return addressLine;
+    }
+
+    public void setAddressLine(String addressLine) {
+        this.addressLine = addressLine;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getPinCode() {
+        return pinCode;
+    }
+
+    public void setPinCode(String pinCode) {
+        this.pinCode = pinCode;
+    }
+
+    public String getMobileNumber() {
+        return mobileNumber;
+    }
+
+    public void setMobileNumber(String mobileNumber) {
+        this.mobileNumber = mobileNumber;
+    }
+
+    public Date getDateOfBirth() {
+        return dateOfBirth;
+    }
+
+    public void setDateOfBirth(Date dateOfBirth) {
+        this.dateOfBirth = dateOfBirth;
+    }
+
+    public String getGender() {
+        return gender;
+    }
+
+    public void setGender(String gender) {
+        this.gender = gender;
+    }
+
+    public String getProfilePicFileId() {
+        return profilePicFileId;
+    }
+
+    public void setProfilePicFileId(String profilePicFileId) {
+        this.profilePicFileId = profilePicFileId;
+    }
+
+    public boolean isRootUser() {
+        return isRootUser;
+    }
+
+    public void setRootUser(boolean rootUser) {
+        isRootUser = rootUser;
+    }
+
+    public Boolean getIsParent() {
+        return isParent;
+    }
+
+    public void setIsParent(Boolean isParent) {
+        this.isParent = isParent;
+    }
+
+    public String getLinkedParentId() {
+        return linkedParentId;
+    }
+
+    public void setLinkedParentId(String linkedParentId) {
+        this.linkedParentId = linkedParentId;
+    }
+
+    public Date getLastTokenUpdateTime() {
+        return lastTokenUpdateTime;
+    }
+
+    public void setLastTokenUpdateTime(Date lastTokenUpdateTime) {
+        this.lastTokenUpdateTime = lastTokenUpdateTime;
+    }
+
+    public Date getLastLoginTime() {
+        return lastLoginTime;
+    }
+
+    public void setLastLoginTime(Date lastLoginTime) {
+        this.lastLoginTime = lastLoginTime;
+    }
+
+    public Timestamp getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Timestamp createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Timestamp getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(Timestamp updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
 }

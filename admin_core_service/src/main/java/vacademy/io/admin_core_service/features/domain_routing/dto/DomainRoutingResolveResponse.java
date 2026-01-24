@@ -34,4 +34,7 @@ public class DomainRoutingResolveResponse {
     private String appStoreAppLink;
     private String windowsAppLink;
     private String macAppLink;
+    private String learnerPortalUrl;
+    private String instructorPortalUrl;
+    private boolean convertUsernamePasswordToLowercase;
 }

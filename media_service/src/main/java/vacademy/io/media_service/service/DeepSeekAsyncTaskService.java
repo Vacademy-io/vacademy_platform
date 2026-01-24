@@ -1,394 +1,431 @@
 package vacademy.io.media_service.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import vacademy.io.media_service.ai.DeepSeekLectureService;
 import vacademy.io.media_service.ai.ExternalAIApiService;
 import vacademy.io.media_service.dto.TextDTO;
 import vacademy.io.media_service.dto.audio.AudioConversionDeepLevelResponse;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusEnum;
+import vacademy.io.media_service.exception.FileConversionException;
+import vacademy.io.media_service.util.IdGenerationUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.text.SimpleDateFormat;
-import java.util.Base64;
-import java.util.Date;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * Service for handling async AI processing tasks.
+ * Refactored to use PollingService with ScheduledExecutorService instead of
+ * Thread.sleep.
+ */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class DeepSeekAsyncTaskService {
 
-    @Autowired
-    TaskStatusService taskStatusService;
+    private final TaskStatusService taskStatusService;
+    private final ExternalAIApiService externalAIApiService;
+    private final DeepSeekLectureService deepSeekLectureService;
+    private final PollingService pollingService;
 
-    @Autowired
-    ExternalAIApiService deepSeekService;
+    // Timeout for polling operations (max wait time)
+    private static final long POLLING_TIMEOUT_MINUTES = 15;
 
-    @Autowired
-    DeepSeekLectureService deepSeekLectureService;
+    // ==================== PDF Processing ====================
 
-    @Autowired
-    FileConversionStatusService fileConversionStatusService;
+    /**
+     * Polls for PDF conversion completion and processes to questions.
+     */
+    @Async("fileProcessingExecutor")
+    public CompletableFuture<Void> pollAndProcessPdfToQuestions(
+            TaskStatus taskStatus,
+            String pdfId,
+            String userPrompt,
+            Boolean generateImage) {
 
-    @Autowired
-    NewDocConverterService newDocConverterService;
-
-    @Autowired
-    HtmlImageConverter htmlImageConverter;
-
-    @Autowired
-    NewAudioConverterService newAudioConverterService;
-
-    int PDF_MAX_TRIES = 20;
-    int PDF_DELAY = 20000;
-
-    int AUDIO_MAX_TRIES = 50;
-    int AUDIO_DELAY = 20000;
-
-    public static String extractBody(String html) {
-        if (html == null || html.isEmpty()) {
-            return "";
-        }
-
-        // Regex to match the content between <body> and </body> tags
-        Pattern pattern = Pattern.compile(
-                "<body[^>]*>(.*?)</body>",
-                Pattern.CASE_INSENSITIVE | Pattern.DOTALL // Handle case and multi-line content
-        );
-
-        Matcher matcher = pattern.matcher(html);
-        if (matcher.find()) {
-            // Extract the content (group 1) between the tags
-            return matcher.group(1).trim(); // Trim to remove leading/trailing whitespace
-        } else {
-            return html;
-        }
+        return pollAndProcessPdfToQuestions(taskStatus, pdfId, userPrompt, null, generateImage);
     }
 
-    public void processDeepSeekTaskInBackground(TaskStatus taskStatus, String userPrompt, String networkHtml) {
-        try {
-            String restoreJson = (taskStatus.getResultJson() == null) ? "" : taskStatus.getResultJson();
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
+    /**
+     * Polls for PDF conversion completion and processes to questions with model
+     * override.
+     * Uses PollingService with ScheduledExecutorService instead of Thread.sleep.
+     */
+    @Async("fileProcessingExecutor")
+    public CompletableFuture<Void> pollAndProcessPdfToQuestions(
+            TaskStatus taskStatus,
+            String pdfId,
+            String userPrompt,
+            String preferredModel,
+            Boolean generateImage) {
 
-            String rawOutput = deepSeekService.getQuestionsWithDeepSeekFromHTMLRecursive(
-                    networkHtml, userPrompt, restoreJson, 0, taskStatus
-            );
-            if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), rawOutput, "No Response Generate");
-            else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
-        } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
-            log.error("Failed To Generate: " + e.getMessage());
-        }
+        updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Starting PDF processing...");
+
+        return pollingService.pollForPdfHtmlAsync(pdfId, taskStatus)
+                .orTimeout(POLLING_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                .thenCompose(networkHtml -> {
+                    if (networkHtml != null) {
+                        return processDeepSeekTaskAsync(taskStatus, userPrompt, networkHtml, preferredModel,
+                                generateImage);
+                    } else {
+                        return CompletableFuture.failedFuture(
+                                FileConversionException.conversionFailed(pdfId, "Timeout waiting for PDF conversion"));
+                    }
+                })
+                .exceptionally(ex -> {
+                    log.error("PDF to questions processing failed for task {}: {}", taskStatus.getId(), ex.getMessage(),
+                            ex);
+                    updateStatusFailed(taskStatus, "PDF processing failed: " + getRootCauseMessage(ex));
+                    return null;
+                });
     }
 
-    private void processDeepSeekTaskInBackgroundForPdftoQuestionOfTopic(TaskStatus taskStatus, String topics, String networkHtml) {
-        try {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
+    /**
+     * Polls for PDF conversion and sorts questions topic-wise.
+     */
+    @Async("fileProcessingExecutor")
+    public CompletableFuture<Void> pollAndProcessSortQuestionTopicWise(TaskStatus taskStatus, String pdfId,
+            Boolean generateImage) {
+        updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Processing PDF for topic sorting...");
 
-            String restoreJson = (taskStatus.getResultJson() == null) ? "" : taskStatus.getResultJson();
-
-            String rawOutput = deepSeekService.getQuestionsWithDeepSeekFromHTMLOfTopics(
-                    networkHtml, topics, restoreJson, 0, taskStatus
-            );
-
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
-        } catch (Exception e) {
-            log.error("Failed To Generate: " + e.getMessage());
-        }
+        return pollingService.pollForPdfHtmlAsync(pdfId, taskStatus)
+                .orTimeout(POLLING_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                .thenCompose(networkHtml -> {
+                    if (networkHtml != null) {
+                        return processSortQuestionsByTopicAsync(networkHtml, taskStatus, null, generateImage);
+                    } else {
+                        return CompletableFuture.failedFuture(
+                                FileConversionException.conversionFailed(pdfId, "Timeout waiting for PDF conversion"));
+                    }
+                })
+                .exceptionally(ex -> {
+                    log.error("Sort questions topic-wise failed for task {}: {}", taskStatus.getId(), ex.getMessage(),
+                            ex);
+                    updateStatusFailed(taskStatus, "Topic sorting failed: " + getRootCauseMessage(ex));
+                    return null;
+                });
     }
 
-    private void processDeepSeekTaskInBackgroundForAudioToQuestionOfTopic(TaskStatus taskStatus, String convertedText, String numQuestions, String prompt, String difficulty, String language) {
-        try {
-            String restoreJson = (taskStatus.getResultJson() == null) ? "" : taskStatus.getResultJson();
+    /**
+     * Polls for PDF conversion and extracts questions for specific topics.
+     */
+    @Async("fileProcessingExecutor")
+    public CompletableFuture<Void> pollAndProcessPdfExtractTopicQuestions(
+            TaskStatus taskStatus,
+            String pdfId,
+            String requiredTopics,
+            Boolean generateImage) {
 
-            String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromAudio(convertedText, difficulty, numQuestions, prompt, restoreJson, 0, taskStatus));
+        updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Extracting topic questions...");
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated"            );
-        } catch (Exception e) {
-            log.error("Failed To Generate: " + e.getMessage());
-        }
+        return pollingService.pollForPdfHtmlAsync(pdfId, taskStatus)
+                .orTimeout(POLLING_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                .thenCompose(networkHtml -> {
+                    if (networkHtml != null) {
+                        return processTopicExtractionAsync(taskStatus, requiredTopics, networkHtml, null,
+                                generateImage);
+                    } else {
+                        return CompletableFuture.failedFuture(
+                                FileConversionException.conversionFailed(pdfId, "Timeout waiting for PDF conversion"));
+                    }
+                })
+                .exceptionally(ex -> {
+                    log.error("PDF topic extraction failed for task {}: {}", taskStatus.getId(), ex.getMessage(), ex);
+                    updateStatusFailed(taskStatus, "Topic extraction failed: " + getRootCauseMessage(ex));
+                    return null;
+                });
     }
 
-    @Async
-    public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForLecturePlanner(TaskStatus taskStatus, String userPrompt, String lectureDuration, String language, String methodOfTeaching, String level) {
-        return CompletableFuture.runAsync(() -> processDeepSeekTaskInBackgroundForLecturePlanner(taskStatus, userPrompt, lectureDuration, language, methodOfTeaching, level));
+    // ==================== Audio Processing ====================
+
+    /**
+     * Polls for audio transcription and generates questions.
+     */
+    @Async("fileProcessingExecutor")
+    public CompletableFuture<Void> pollAndProcessAudioToQuestions(
+            TaskStatus taskStatus,
+            String audioId,
+            String prompt,
+            String difficulty,
+            String language,
+            String numQuestions,
+            Boolean generateImage) {
+
+        return pollAndProcessAudioToQuestions(taskStatus, audioId, prompt, difficulty, language, numQuestions, null,
+                generateImage);
     }
 
-    private void processDeepSeekTaskInBackgroundForLecturePlanner(TaskStatus taskStatus, String userPrompt, String lectureDuration, String language, String methodOfTeaching, String level) {
-        try {
-            String rawOutput = (deepSeekLectureService.generateLecturePlannerFromPrompt(userPrompt, lectureDuration, language, methodOfTeaching, taskStatus, level, 0));
+    /**
+     * Polls for audio transcription and generates questions with model override.
+     * Uses PollingService with ScheduledExecutorService instead of Thread.sleep.
+     */
+    @Async("fileProcessingExecutor")
+    public CompletableFuture<Void> pollAndProcessAudioToQuestions(
+            TaskStatus taskStatus,
+            String audioId,
+            String prompt,
+            String difficulty,
+            String language,
+            String numQuestions,
+            String preferredModel,
+            Boolean generateImage) {
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
-        } catch (Exception e) {
-            log.error("Failed To Generate: " + e.getMessage());
-        }
+        updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Processing audio transcription...");
+
+        return pollingService.pollForAudioTranscriptionAsync(audioId, taskStatus)
+                .orTimeout(POLLING_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                .thenCompose(transcribedText -> {
+                    if (transcribedText != null) {
+                        return processAudioToQuestionsAsync(taskStatus, transcribedText, numQuestions, prompt,
+                                difficulty, language, preferredModel, generateImage);
+                    } else {
+                        return CompletableFuture.failedFuture(
+                                FileConversionException.conversionFailed(audioId,
+                                        "Timeout waiting for audio transcription"));
+                    }
+                })
+                .exceptionally(ex -> {
+                    log.error("Audio to questions processing failed for task {}: {}", taskStatus.getId(),
+                            ex.getMessage(), ex);
+                    updateStatusFailed(taskStatus, "Audio processing failed: " + getRootCauseMessage(ex));
+                    return null;
+                });
     }
 
-    private void processDeepSeekTaskInBackgroundForLectureFeedback(TaskStatus taskStatus, String text, AudioConversionDeepLevelResponse convertedAudioResponse) {
-        try {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
+    /**
+     * Polls for audio transcription and generates lecture feedback.
+     */
+    @Async("fileProcessingExecutor")
+    public CompletableFuture<Void> pollAndProcessAudioFeedback(TaskStatus taskStatus, String audioId, String model) {
+        updateStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING, "Analyzing lecture audio...");
 
-            String convertedAudioResponseString = getStringFromObject(convertedAudioResponse);
-            String audioPace = getPaceFromTextAndDuration(text, convertedAudioResponse.getAudioDuration());
-
-            String rawOutput = (deepSeekLectureService.generateLectureFeedback(text, convertedAudioResponseString, taskStatus, 0, audioPace));
-
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
-        } catch (Exception e) {
-            log.error("Failed To Generate: " + e.getMessage());
-        }
+        return pollingService.pollForAudioResponseAsync(audioId, taskStatus)
+                .orTimeout(POLLING_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+                .thenCompose(audioResponse -> {
+                    if (audioResponse != null && audioResponse.getText() != null) {
+                        return processLectureFeedbackAsync(taskStatus, audioResponse, model);
+                    } else {
+                        return CompletableFuture.failedFuture(
+                                FileConversionException.conversionFailed(audioId,
+                                        "Timeout waiting for audio transcription"));
+                    }
+                })
+                .exceptionally(ex -> {
+                    log.error("Audio feedback processing failed for task {}: {}", taskStatus.getId(), ex.getMessage(),
+                            ex);
+                    updateStatusFailed(taskStatus, "Feedback processing failed: " + getRootCauseMessage(ex));
+                    return null;
+                });
     }
 
-    private String getPaceFromTextAndDuration(String text, Long audioDuration) {
-        if (Objects.isNull(text) || Objects.isNull(audioDuration) || audioDuration == 0) return "0";
+    // ==================== Text Processing ====================
 
-        int wordCount = text.trim().isEmpty() ? 0 : text.trim().split("\\s+").length;
-        float audioDurationInMinutes = (float) audioDuration / 60f;
-        double pace = (double) wordCount / audioDurationInMinutes;
-
-        return String.format("%.2f", pace); // return pace with 2 decimal points
-    }
-
-    private String getStringFromObject(AudioConversionDeepLevelResponse convertedAudioResponse) throws Exception {
-        ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.writeValueAsString(convertedAudioResponse);
-    }
-
-    private void processDeepSeekTaskInBackgroundForTextToQuestions(TextDTO textPrompt, TaskStatus taskStatus) {
-        String oldJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
-        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromTextPrompt(textPrompt.getText(), textPrompt.getNum().toString(), textPrompt.getQuestionType(), textPrompt.getClassLevel(), textPrompt.getTopics(), textPrompt.getQuestionLanguage(), taskStatus, 0, oldJson));
-        if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput,"No Response Generated");
-        else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
-    }
-
-    private void processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(String networkHtml, TaskStatus taskStatus) {
-        taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.PROGRESS.name(), null, "Questions Generating");
-
-        String rawOutput = (deepSeekService.getQuestionsWithDeepSeekFromHTMLWithTopics(networkHtml, taskStatus, 0, ""));
-        if(rawOutput==null || rawOutput.isEmpty()) taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), rawOutput, "No Response Generated");
-        else taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), rawOutput, "Questions Generated");
-    }
-
-    public CompletableFuture<Void> pollAndProcessPdfToQuestions(TaskStatus taskStatus, String pdfId, String userPrompt) {
+    /**
+     * Processes text to generate questions.
+     */
+    @Async("aiTaskExecutor")
+    public CompletableFuture<Void> pollAndProcessTextToQuestions(TaskStatus taskStatus, TextDTO textPrompt,
+            String model) {
         return CompletableFuture.runAsync(() -> {
             try {
-                // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
-
-                for (int attempt = 1; attempt <= PDF_MAX_TRIES; attempt++) {
-
-                    var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
-
-                    if (fileConversionStatus.isPresent() && StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-                        processDeepSeekTaskInBackground(taskStatus, userPrompt, fileConversionStatus.get().getHtmlText());
-                        return;
-                    }
-
-                    // Try converting if not available
-                    String html = newDocConverterService.getConvertedHtml(pdfId);
-                    if (html != null) {
-                        String htmlBody = extractBody(html);
-                        String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
-                        fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-
-
-                        processDeepSeekTaskInBackground(taskStatus, userPrompt, networkHtml);
-                        return;
-                    }
-
-                    Thread.sleep(PDF_DELAY); // wait before next attempt
-                }
-
-                // After retries exhausted
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process PDF");
-
+                updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating questions from text...");
+                processTextToQuestions(textPrompt, taskStatus, model);
             } catch (Exception e) {
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
+                log.error("Text to questions processing failed for task {}: {}", taskStatus.getId(), e.getMessage(), e);
+                updateStatusFailed(taskStatus, "Text processing failed: " + e.getMessage());
             }
         });
     }
 
-    @Async
-    public CompletableFuture<Void> pollAndProcessSortQuestionTopicWise(TaskStatus taskStatus, String pdfId) {
+    /**
+     * Processes lecture planner generation.
+     */
+    @Async("aiTaskExecutor")
+    public CompletableFuture<Void> processDeepSeekTaskInBackgroundWrapperForLecturePlanner(
+            TaskStatus taskStatus,
+            String userPrompt,
+            String lectureDuration,
+            String language,
+            String methodOfTeaching,
+            String level,
+            String model) {
+
         return CompletableFuture.runAsync(() -> {
             try {
-                // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
+                updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating lecture plan...");
 
-                for (int attempt = 1; attempt <= PDF_MAX_TRIES; attempt++) {
+                String rawOutput = deepSeekLectureService.generateLecturePlannerFromPrompt(
+                        userPrompt, lectureDuration, language, methodOfTeaching, taskStatus, level, 0);
 
-                    var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
-
-                    if (fileConversionStatus.isPresent() && StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-
-                        processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(fileConversionStatus.get().getHtmlText(), taskStatus);
-                        return;
-                    }
-
-                    // Try converting if not available
-                    String html = newDocConverterService.getConvertedHtml(pdfId);
-                    if (html != null) {
-                        String htmlBody = extractBody(html);
-                        String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
-                        fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-
-                        processDeepSeekTaskInBackgroundSortPdfQuestionsWithTopics(networkHtml, taskStatus);
-                        return;
-                    }
-
-                    Thread.sleep(PDF_DELAY); // wait before next attempt
-                }
-
-                // After retries exhausted
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process PDF");
-
+                updateStatusCompleted(taskStatus, rawOutput, "Lecture plan generated successfully");
             } catch (Exception e) {
-                log.error("Exception during polling: {}", e.getMessage(), e);
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
+                log.error("Lecture planner failed for task {}: {}", taskStatus.getId(), e.getMessage(), e);
+                updateStatusFailed(taskStatus, "Lecture plan generation failed: " + e.getMessage());
             }
         });
     }
 
-    @Async
-    public CompletableFuture<Void> pollAndProcessPdfExtractTopicQuestions(TaskStatus taskStatus, String pdfId, String requiredTopics) {
+    // ==================== Async Processing Methods ====================
+
+    private CompletableFuture<Void> processDeepSeekTaskAsync(
+            TaskStatus taskStatus, String userPrompt, String networkHtml, String preferredModel,
+            Boolean generateImage) {
+
         return CompletableFuture.runAsync(() -> {
             try {
-                // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
+                String restoreJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
+                updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating questions...");
 
-                for (int attempt = 1; attempt <= PDF_MAX_TRIES; attempt++) {
+                String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTMLRecursive(
+                        networkHtml, userPrompt, restoreJson, 0, taskStatus, generateImage);
 
-                    var fileConversionStatus = fileConversionStatusService.findByVendorFileId(pdfId);
-
-                    if (fileConversionStatus.isPresent() && StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-
-                        processDeepSeekTaskInBackgroundForPdftoQuestionOfTopic(taskStatus, requiredTopics, fileConversionStatus.get().getHtmlText());
-                        return;
-                    }
-
-                    // Try converting if not available
-                    String html = newDocConverterService.getConvertedHtml(pdfId);
-                    if (html != null) {
-                        String htmlBody = extractBody(html);
-                        String networkHtml = htmlImageConverter.convertBase64ToUrls(htmlBody);
-                        fileConversionStatusService.updateHtmlText(pdfId, networkHtml);
-
-                        processDeepSeekTaskInBackgroundForPdftoQuestionOfTopic(taskStatus, requiredTopics, networkHtml);
-                        return;
-                    }
-
-                    Thread.sleep(PDF_DELAY); // wait before next attempt
-                }
-
-                // After retries exhausted
-                log.error("Failed to get HTML after retries, marking task as FAILED");
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process PDF");
-
+                updateStatusCompleted(taskStatus, rawOutput, "Question generation completed");
             } catch (Exception e) {
-                log.error("Exception during polling: {}", e.getMessage(), e);
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
+                throw new RuntimeException("Question generation failed: " + e.getMessage(), e);
             }
         });
     }
 
-    @Async
-    public CompletableFuture<Void> pollAndProcessAudioToQuestions(TaskStatus taskStatus, String audioId, String prompt, String difficulty, String language, String numQuestions) {
+    private CompletableFuture<Void> processSortQuestionsByTopicAsync(
+            String networkHtml, TaskStatus taskStatus, String preferredModel, Boolean generateImage) {
+
         return CompletableFuture.runAsync(() -> {
             try {
-                // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
+                updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Sorting questions by topic...");
 
-                for (int attempt = 1; attempt <= AUDIO_MAX_TRIES; attempt++) {
-                    log.info("Polling attempt {} for pdfId {}", attempt, audioId);
+                String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTMLWithTopics(
+                        networkHtml, taskStatus, 0, "", generateImage);
 
-                    var fileConversionStatus = fileConversionStatusService.findByVendorFileId(audioId);
-
-                    if (fileConversionStatus.isPresent() && StringUtils.hasText(fileConversionStatus.get().getHtmlText())) {
-                        log.info("HTML found, proceeding with deep seek task");
-                        processDeepSeekTaskInBackgroundForAudioToQuestionOfTopic(taskStatus, fileConversionStatus.get().getHtmlText(), numQuestions, prompt, difficulty, language);
-                        return;
-                    }
-
-                    // Try converting if not available
-                    String convertedText = newAudioConverterService.getConvertedAudio(audioId);
-                    if (convertedText != null) {
-                        fileConversionStatusService.updateHtmlText(audioId, convertedText);
-
-                        log.info("HTML successfully converted, proceeding with deep seek task");
-                        processDeepSeekTaskInBackgroundForAudioToQuestionOfTopic(taskStatus, convertedText, numQuestions, prompt, difficulty, language);
-                        return;
-                    }
-
-                    Thread.sleep(AUDIO_DELAY); // wait before next attempt
-                }
-
-                // After retries exhausted
-                log.error("Failed to get HTML after retries, marking task as FAILED");
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process Audio");
-
+                updateStatusCompleted(taskStatus, rawOutput, "Topic sorting completed");
             } catch (Exception e) {
-                log.error("Exception during polling: {}", e.getMessage(), e);
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
+                throw new RuntimeException("Topic sorting failed: " + e.getMessage(), e);
             }
         });
+    }
+
+    private CompletableFuture<Void> processTopicExtractionAsync(
+            TaskStatus taskStatus, String requiredTopics, String networkHtml, String preferredModel,
+            Boolean generateImage) {
+
+        return CompletableFuture.runAsync(() -> {
+            try {
+                String restoreJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
+                updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Extracting topic questions...");
+
+                String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromHTMLOfTopics(
+                        networkHtml, requiredTopics, restoreJson, 0, taskStatus, generateImage);
+
+                updateStatusCompleted(taskStatus, rawOutput, "Topic extraction completed");
+            } catch (Exception e) {
+                throw new RuntimeException("Topic extraction failed: " + e.getMessage(), e);
+            }
+        });
+    }
+
+    private CompletableFuture<Void> processAudioToQuestionsAsync(
+            TaskStatus taskStatus, String transcribedText, String numQuestions, String prompt,
+            String difficulty, String language, String preferredModel, Boolean generateImage) {
+
+        return CompletableFuture.runAsync(() -> {
+            try {
+                String restoreJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
+                updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating questions from audio...");
+
+                String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromAudio(
+                        transcribedText, difficulty, numQuestions, prompt, restoreJson, 0, taskStatus, generateImage);
+
+                updateStatusCompleted(taskStatus, rawOutput, "Audio question generation completed");
+            } catch (Exception e) {
+                throw new RuntimeException("Audio question generation failed: " + e.getMessage(), e);
+            }
+        });
+    }
+
+    private CompletableFuture<Void> processLectureFeedbackAsync(
+            TaskStatus taskStatus, AudioConversionDeepLevelResponse audioResponse, String model) {
+
+        return CompletableFuture.runAsync(() -> {
+            try {
+                updateStatus(taskStatus, TaskStatusEnum.PROGRESS, "Generating lecture feedback...");
+
+                String audioPace = audioResponse.getAudioDuration() != null
+                        ? String.valueOf(audioResponse.getAudioDuration())
+                        : "unknown";
+                String rawOutput = deepSeekLectureService.generateLectureFeedback(
+                        audioResponse.getText(), audioResponse.toString(), taskStatus, 0, audioPace);
+
+                updateStatusCompleted(taskStatus, rawOutput, "Lecture feedback generated");
+            } catch (Exception e) {
+                throw new RuntimeException("Lecture feedback generation failed: " + e.getMessage(), e);
+            }
+        });
+    }
+
+    private void processTextToQuestions(TextDTO textPrompt, TaskStatus taskStatus, String model) {
+        try {
+            String restoreJson = taskStatus.getResultJson() != null ? taskStatus.getResultJson() : "";
+
+            String rawOutput = externalAIApiService.getQuestionsWithDeepSeekFromTextPrompt(
+                    textPrompt.getText(),
+                    String.valueOf(textPrompt.getNum()),
+                    textPrompt.getQuestionType(),
+                    textPrompt.getClassLevel(),
+                    textPrompt.getTopics(),
+                    textPrompt.getQuestionLanguage(),
+                    taskStatus,
+                    0,
+                    restoreJson,
+                    model,
+                    textPrompt.getGenerateImage());
+
+            if (TaskStatusEnum.FAILED.name().equals(taskStatus.getStatus())) {
+                return;
+            }
+
+            updateStatusCompleted(taskStatus, rawOutput, "Text question generation completed");
+        } catch (Exception e) {
+            throw new RuntimeException("Text question generation failed: " + e.getMessage(), e);
+        }
+    }
+
+    // ==================== Utility Methods ====================
+
+    private void updateStatus(TaskStatus taskStatus, TaskStatusEnum status, String message) {
+        taskStatusService.updateTaskStatusAndStatusMessage(
+                taskStatus,
+                status.name(),
+                taskStatus.getResultJson(),
+                message);
+    }
+
+    private void updateStatusCompleted(TaskStatus taskStatus, String resultJson, String message) {
+        taskStatusService.updateTaskStatusAndStatusMessage(
+                taskStatus,
+                TaskStatusEnum.COMPLETED.name(),
+                resultJson,
+                message);
+    }
+
+    private void updateStatusFailed(TaskStatus taskStatus, String message) {
+        taskStatusService.updateTaskStatusAndStatusMessage(
+                taskStatus,
+                TaskStatusEnum.FAILED.name(),
+                taskStatus.getResultJson(),
+                message);
+    }
+
+    private String getRootCauseMessage(Throwable throwable) {
+        Throwable cause = throwable;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause.getMessage() != null ? cause.getMessage() : throwable.getMessage();
     }
 
     public String generateUniqueId(String input) {
-        try {
-            String timestamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
-            String combined = input + "-" + timestamp;
-
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(combined.getBytes(StandardCharsets.UTF_8));
-            String base64Encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
-
-            // Return first 20 characters for uniqueness + brevity
-            return base64Encoded.substring(0, 20);
-        } catch (Exception e) {
-            throw new RuntimeException("Error generating unique ID", e);
-        }
-    }
-
-    @Async
-    public CompletableFuture<Void> pollAndProcessAudioFeedback(TaskStatus taskStatus, String audioId) {
-        return CompletableFuture.runAsync(() -> {
-            try {
-                // Update task status as FILE_PROCESSING during polling
-                taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FILE_PROCESSING.name(), null, "Questions Generating");
-
-                for (int attempt = 1; attempt <= AUDIO_MAX_TRIES; attempt++) {
-
-                    AudioConversionDeepLevelResponse convertedAudioResponse = newAudioConverterService.getConvertedAudioResponse(audioId);
-
-                    if (convertedAudioResponse != null && convertedAudioResponse.getText() != null) {
-                        fileConversionStatusService.updateHtmlText(audioId, convertedAudioResponse.getText());
-                        processDeepSeekTaskInBackgroundForLectureFeedback(taskStatus, convertedAudioResponse.getText(), convertedAudioResponse);
-                        return;
-                    }
-                    Thread.sleep(AUDIO_DELAY); // wait before next attempt
-                }
-
-                // After retries exhausted
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, "Failed To Process Audio");
-
-            } catch (Exception e) {
-                taskStatusService.updateTaskStatusAndStatusMessage(taskStatus, TaskStatusEnum.FAILED.name(), null, e.getMessage());
-            }
-        });
-    }
-
-    @Async
-    public CompletableFuture<Void> pollAndProcessTextToQuestions(TaskStatus taskStatus, TextDTO textPrompt) {
-        return CompletableFuture.runAsync(() -> processDeepSeekTaskInBackgroundForTextToQuestions(textPrompt, taskStatus));
+        return IdGenerationUtils.generateUniqueId(input);
     }
 }

@@ -138,4 +138,14 @@ public class InstructorCopilotService {
                 startTs, endTs);
         return logs.stream().map(InstructorCopilotLogDTO::new).collect(Collectors.toList());
     }
+
+    public InstructorCopilotLogDTO retryGenerateContent(String logId) {
+        InstructorCopilotLog log = repository.findById(logId)
+                .orElseThrow(() -> new RuntimeException("Log not found with id: " + logId));
+
+        // Retry content generation
+        generateInitialContent(log);
+
+        return new InstructorCopilotLogDTO(log);
+    }
 }

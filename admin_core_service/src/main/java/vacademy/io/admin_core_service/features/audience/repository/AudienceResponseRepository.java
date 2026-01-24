@@ -27,6 +27,16 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
      * Find all leads for a campaign with pagination
      */
     Page<AudienceResponse> findByAudienceId(String audienceId, Pageable pageable);
+    
+    /**
+     * Find audience response by enquiry ID
+     */
+    Optional<AudienceResponse> findByEnquiryId(String enquiryId);
+    
+    /**
+     * Find audience responses by multiple enquiry IDs (batch fetch)
+     */
+    List<AudienceResponse> findByEnquiryIdIn(List<String> enquiryIds);
 
     /**
      * Find lead by ID and audience ID (for security/isolation)

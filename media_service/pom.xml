@@ -214,6 +214,32 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <dependency>
+                <groupId>io.zipkin.reporter2</groupId>
+                <artifactId>zipkin-reporter-bom</artifactId>
+                <version>2.16.3</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.zipkin.brave</groupId>
+                <artifactId>brave-bom</artifactId>
+                <version>5.15.1</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>3.2.4</version>
+            </dependency>
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-tracing-bom</artifactId>
+                <version>1.1.3</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -227,27 +253,7 @@
                     <mainClass>vacademy.io.media_service.MediaServiceApplication</mainClass>
                 </configuration>
             </plugin>
-            <plugin>
-                <groupId>io.sentry</groupId>
-                <artifactId>sentry-maven-plugin</artifactId>
-                <version>0.9.0</version>
-                <extensions>true</extensions>
-                <configuration>
-                    <!-- for showing output of sentry-cli -->
-                    <debugSentryCli>true</debugSentryCli>
-                    <org>vacademy</org>
-                    <project>java-spring-boot</project>
-                    <!-- Auth token passed via Maven property: -Dsentry.authToken -->
-                    <authToken>${sentry.authToken}</authToken>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>uploadSourceBundle</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
+
         </plugins>
         <finalName>media_service</finalName>
     </build>

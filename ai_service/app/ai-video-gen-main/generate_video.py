@@ -29,289 +29,10 @@ def _html_escape(text: str) -> str:
 
 def _prepare_page(page, width: int, height: int, background_color: str = "#000") -> None:
     """Initialize a blank page with desired viewport and helper updaters for snippets/captions."""
-    libs = f"file://{Path.cwd()}/assets/libs"
+
     page.set_viewport_size({"width": width, "height": height})
     # Install updater that creates/removes/positions shadow-root wrapped snippets and scales to fit.
-    page.add_init_script(
-        """
-        window.__activeSnippets = new Map();
-        window.__updateSnippets = async (entries) => {
-          const activeIds = new Set(entries.map(e => e.id));
-          
-          // Remove no longer active snippets
-          for (const [id, host] of Array.from(window.__activeSnippets.entries())) {
-            if (!activeIds.has(id)) {
-              try { host.remove(); } catch (e) {}
-              window.__activeSnippets.delete(id);
-            }
-          }
 
-          const promises = [];
-
-          // Add/update active snippets
-          for (const e of entries) {
-            let host = window.__activeSnippets.get(e.id);
-            if (!host) {
-              host = document.createElement('div');
-              host.id = e.id;
-              host.style.position = 'absolute';
-              host.style.overflow = 'hidden';
-              host.style.pointerEvents = 'none';
-              host.style.background = 'transparent';
-              document.body.appendChild(host);
-
-              // Use Light DOM (direct append) so scripts like GSAP can find elements
-              const root = host; 
-              const wrapper = document.createElement('div');
-                  wrapper.className = 'content-wrapper'; // Use class instead of ID to avoid dupes
-                  wrapper.style.position = 'absolute';
-                  wrapper.style.left = '0px';
-                  wrapper.style.top = '0px';
-                  wrapper.style.transformOrigin = 'top left';
-                  // Force centering
-                  wrapper.style.display = 'flex';
-                  wrapper.style.flexDirection = 'column';
-                  wrapper.style.justifyContent = 'center';
-                  wrapper.style.alignItems = 'center';
-                  wrapper.style.textAlign = 'center';
-
-                  wrapper.innerHTML = e.html; // snippet HTML
-                  root.appendChild(wrapper);
-                  
-                  // Manually activate scripts injected via innerHTML
-                  wrapper.querySelectorAll('script').forEach(oldScript => {
-                    const newScript = document.createElement('script');
-                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-                    oldScript.parentNode.replaceChild(newScript, oldScript);
-                  });
-
-                  // Re-run Prism highlighting for any new code blocks
-                  if (window.Prism) {
-                     window.Prism.highlightAllUnder(wrapper);
-                  }
-
-                  // Render KaTeX math
-                  if (window.renderMathInElement) {
-                      window.renderMathInElement(wrapper, {
-                          delimiters: [
-                              {left: '$$', right: '$$', display: true},
-                              {left: '$', right: '$', display: false}
-                          ]
-                      });
-                  }
-
-                  // Trigger Mermaid (Robust)
-                  if (window.mermaid) {
-                      if (!window.mermaidInitialized) {
-                          window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
-                          window.mermaidInitialized = true;
-                      }
-                      
-                      const nodes = wrapper.querySelectorAll('.mermaid, pre > code.language-mermaid, div.mermaid');
-                      if (nodes.length > 0) {
-                          const p = Promise.all(Array.from(nodes).map(async (el, index) => {
-                              const id = 'mermaid-' + e.id + '-' + index + '-' + Math.round(Math.random() * 10000);
-                              try {
-                                  let graphDefinition = el.textContent.trim();
-                                  if (!graphDefinition) return;
-                                  
-                                  if (el.tagName.toLowerCase() === 'code' && el.parentElement.tagName.toLowerCase() === 'pre') {
-                                      const div = document.createElement('div');
-                                      div.id = id;
-                                      div.className = 'mermaid-diagram';
-                                      div.style.display = 'flex';
-                                      div.style.justifyContent = 'center';
-                                      el.parentElement.replaceWith(div);
-                                  } else {
-                                      el.id = id;
-                                  }
-                                  
-                                  const { svg } = await window.mermaid.render(id, graphDefinition);
-                                  const successContainer = document.getElementById(id);
-                                  if (successContainer) successContainer.innerHTML = svg;
-                              } catch (err) {
-                                  console.error('Mermaid render error for id ' + id, err);
-                                  const errorContainer = document.getElementById(id);
-                                  if (errorContainer) {
-                                    errorContainer.innerHTML = '<div style="color:red;border:1px solid red;padding:5px;font-size:10px;">Mermaid Error: ' + err.message + '</div>';
-                                  }
-                              }
-                          }));
-                          promises.push(p);
-                      }
-                  }
-
-
-                  // Ensure we append to #world-layer
-                  const world = document.getElementById('world-layer') || document.body;
-                  world.appendChild(host);
-                  window.__activeSnippets.set(e.id, host);
-
-              const scaleToFit = () => {
-                const targetW = host.clientWidth;
-                const targetH = host.clientHeight;
-                const rect = wrapper.getBoundingClientRect();
-                const rawW = rect.width || wrapper.scrollWidth || 1;
-                const rawH = rect.height || wrapper.scrollHeight || 1;
-                const scale = Math.min(targetW / rawW, targetH / rawH);
-                wrapper.style.transform = `scale(${scale})`;
-                const scaledW = rawW * scale;
-                const scaledH = rawH * scale;
-                const offsetX = Math.max(0, (targetW - scaledW) / 2);
-                const offsetY = Math.max(0, (targetH - scaledH) / 2);
-                wrapper.style.left = offsetX + 'px';
-                wrapper.style.top = offsetY + 'px';
-              };
-              // Initial scale after layout
-              requestAnimationFrame(scaleToFit);
-              // Recompute when media loads
-              wrapper.querySelectorAll('img,video').forEach((el) => {
-                if (el.complete) {
-                  requestAnimationFrame(scaleToFit);
-                } else {
-                  el.addEventListener('load', () => requestAnimationFrame(scaleToFit), { once: true });
-                }
-              });
-            }
-
-            // Always update geometry (in case dimensions/position change)
-            host.style.left = (e.x | 0) + 'px';
-            host.style.top = (e.y | 0) + 'px';
-            host.style.width = (e.w | 0) + 'px';
-            host.style.height = (e.h | 0) + 'px';
-            if (typeof e.z !== 'undefined') host.style.zIndex = String(e.z);
-          }
-          await Promise.all(promises);
-        };
-        // Caption helper: unique caption host (id: caption)
-        window.__updateCaption = (entryOrNull) => {
-          const id = 'caption';
-          if (!entryOrNull) {
-            const host = window.__activeSnippets.get(id);
-            if (host) { try { host.remove(); } catch (e) {}; window.__activeSnippets.delete(id); }
-            return;
-          }
-          const e = entryOrNull;
-          let host = window.__activeSnippets.get(id);
-          if (!host) {
-            host = document.createElement('div');
-            host.id = id;
-            host.style.position = 'absolute';
-            host.style.overflow = 'hidden';
-            host.style.pointerEvents = 'none';
-            host.style.background = 'transparent';
-            document.body.appendChild(host);
-            const root = host.attachShadow({ mode: 'open' });
-            const wrapper = document.createElement('div');
-            wrapper.id = 'content-wrapper';
-            wrapper.style.position = 'absolute';
-            wrapper.style.left = '0px';
-            wrapper.style.top = '0px';
-            wrapper.style.transformOrigin = 'top left';
-            root.appendChild(wrapper);
-            // Append to UI layer (HUD)
-            const ui = document.getElementById('ui-layer') || document.body;
-            ui.appendChild(host);
-            window.__activeSnippets.set(id, host);
-          }
-          const root = host.shadowRoot;
-          const wrapper = root.getElementById('content-wrapper');
-          wrapper.innerHTML = e.html;
-          // position and scale
-          host.style.left = (e.x | 0) + 'px';
-          host.style.top = (e.y | 0) + 'px';
-          host.style.width = (e.w | 0) + 'px';
-          host.style.height = (e.h | 0) + 'px';
-          requestAnimationFrame(() => {
-            const targetW = host.clientWidth;
-            const targetH = host.clientHeight;
-            const rect = wrapper.getBoundingClientRect();
-            const rawW = rect.width || wrapper.scrollWidth || 1;
-            const rawH = rect.height || wrapper.scrollHeight || 1;
-            const scale = Math.min(targetW / rawW, targetH / rawH);
-            wrapper.style.transform = `scale(${scale})`;
-            const scaledW = rawW * scale;
-            const scaledH = rawH * scale;
-            const offsetX = Math.max(0, (targetW - scaledW) / 2);
-            const offsetY = Math.max(0, (targetH - scaledH) / 2);
-            wrapper.style.left = offsetX + 'px';
-            wrapper.style.top = offsetY + 'px';
-          });
-        };
-        """
-    )
-
-    page.add_init_script(
-        """
-        window.__updateCharacter = (state) => {
-          let container = document.getElementById('character-container');
-          if (!container) {
-            container = document.createElement('div');
-            container.id = 'character-container';
-            container.style.position = 'absolute';
-            container.style.top = '0';
-            container.style.left = '0';
-            container.style.width = '100%';
-            container.style.height = '100%';
-            container.style.pointerEvents = 'none';
-            container.style.userSelect = 'none';
-            container.style.zIndex = '10';
-            container.style.zIndex = '10';
-            const world = document.getElementById('world-layer') || document.body;
-            world.appendChild(container);
-
-            const pose = document.createElement('img');
-            pose.id = 'char-pose';
-            pose.style.position = 'absolute';
-            pose.style.left = '0';
-            pose.style.top = '0';
-            pose.style.transformOrigin = 'top left';
-            pose.style.willChange = 'transform';
-            container.appendChild(pose);
-
-            const mouth = document.createElement('img');
-            mouth.id = 'char-mouth';
-            mouth.style.position = 'absolute';
-            mouth.style.transformOrigin = 'top left';
-            mouth.style.willChange = 'transform';
-            container.appendChild(mouth);
-          }
-
-          if (!state || !state.visible) {
-            container.style.display = 'none';
-            return;
-          }
-
-          container.style.display = 'block';
-          if (typeof state.zIndex !== 'undefined') {
-            container.style.zIndex = String(state.zIndex);
-          }
-
-          const poseImg = document.getElementById('char-pose');
-          const mouthImg = document.getElementById('char-mouth');
-
-          if (state.poseSrc && poseImg.getAttribute('data-src') !== state.poseSrc) {
-            poseImg.src = state.poseSrc;
-            poseImg.setAttribute('data-src', state.poseSrc);
-          }
-          if (state.mouthSrc && mouthImg.getAttribute('data-src') !== state.mouthSrc) {
-            mouthImg.src = state.mouthSrc;
-            mouthImg.setAttribute('data-src', state.mouthSrc);
-          }
-
-          poseImg.style.left = (state.poseX || 0) + 'px';
-          poseImg.style.top = (state.poseY || 0) + 'px';
-          poseImg.style.transform = `scale(${state.poseScale || 1})`;
-          poseImg.style.display = 'block';
-
-          mouthImg.style.left = (state.mouthX || 0) + 'px';
-          mouthImg.style.top = (state.mouthY || 0) + 'px';
-          mouthImg.style.transform = `scale(${state.mouthScale || 1})`;
-          mouthImg.style.display = state.mouthSrc ? 'block' : 'none';
-        };
-        """
-    )
 
 
     
@@ -355,27 +76,27 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 <meta charset="utf-8" />
                 
                 <!-- KaTeX for Math -->
-                <link rel="stylesheet" href="REPLACE_LIBS/katex.min.css">
-                <script defer src="REPLACE_LIBS/katex.min.js"></script>
-                <script defer src="REPLACE_LIBS/auto-render.min.js"></script>
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+                <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+                <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 
                 <!-- Prism.js for Syntax Highlighting (Monokai theme) -->
-                <link href="REPLACE_LIBS/prism-okaidia.min.css" rel="stylesheet" />
-                <script src="REPLACE_LIBS/prism.min.js"></script>
-                <script src="REPLACE_LIBS/prism-python.min.js"></script>
-                <script src="REPLACE_LIBS/prism-javascript.min.js"></script>
-                <script src="REPLACE_LIBS/prism-css.min.js"></script>
-                <script src="REPLACE_LIBS/prism-json.min.js"></script>
-                <script src="REPLACE_LIBS/prism-bash.min.js"></script>
-
+                <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css" rel="stylesheet" />
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+                
                 <!-- Mermaid.js for Diagrams -->
-                <script src="REPLACE_LIBS/mermaid.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
 
                 <!-- GSAP for Animations -->
-                <script src="REPLACE_LIBS/gsap.min.js"></script>
-                <script src="REPLACE_LIBS/TextPlugin.min.js"></script>
-                <script src="REPLACE_LIBS/MotionPathPlugin.min.js"></script>
-                <script src="REPLACE_LIBS/DrawSVGPlugin.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/TextPlugin.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/MotionPathPlugin.min.js"></script>
+                <!-- DrawSVGPlugin avoided as it is premium -->
 
                 <!-- Vivus.js for SVG Path Animations -->
                 <script src="https://cdn.jsdelivr.net/npm/vivus@0.4.6/dist/vivus.min.js"></script>
@@ -544,7 +265,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 </script>
               </body>
             </html>
-            """.replace("REPLACE_BG", background_color).replace("REPLACE_LIBS", libs)
+            """.replace("REPLACE_BG", background_color)
     
     temp_html_path = Path.cwd() / ".render_page.html"
     temp_html_path.write_text(html_content, encoding="utf-8")
@@ -598,11 +319,11 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   // Inject CSS into Shadow DOM for KaTeX and Prism
                   const katexCss = document.createElement('link');
                   katexCss.rel = 'stylesheet';
-                  katexCss.href = 'REPLACE_LIBS/katex.min.css';
+                  katexCss.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
                   
                   const prismCss = document.createElement('link');
                   prismCss.rel = 'stylesheet';
-                  prismCss.href = 'REPLACE_LIBS/prism-okaidia.min.css';
+                  prismCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css';
 
                   root.appendChild(katexCss);
                   root.appendChild(prismCss);
@@ -898,7 +619,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
             };
           }
         }
-        """.replace("REPLACE_LIBS", libs)
+        """
     )
 
 

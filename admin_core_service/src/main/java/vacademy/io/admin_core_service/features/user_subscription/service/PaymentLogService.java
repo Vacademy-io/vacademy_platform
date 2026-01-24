@@ -273,7 +273,7 @@ public class PaymentLogService {
 
     /**
      * Refactored logic to handle actions after status update.
-     * Handles both PAID and FAILED statuses for ONLY_DETAILS_FILL entry management.
+     * Handles both PAID and FAILED statuses for ABANDONED_CART entry management.
      */
     private void handlePostPaymentLogic(PaymentLog paymentLog, String paymentStatus, String instituteId) {
         // Handle payment failure - create PAYMENT_FAILED entry
@@ -288,7 +288,7 @@ public class PaymentLogService {
             return;
         }
 
-        // Handle payment success - mark ONLY_DETAILS_FILL as DELETED
+        // Handle payment success - mark ABANDONED_CART as DELETED
         handlePaymentSuccessEntryCleanup(paymentLog, instituteId);
 
         // Check if this is a donation (null user plan ID)
@@ -818,7 +818,7 @@ public class PaymentLogService {
     }
 
     /**
-     * Handles payment failure by marking ONLY_DETAILS_FILL entries as DELETED
+     * Handles payment failure by marking ABANDONED_CART entries as DELETED
      * and creating PAYMENT_FAILED entries in the INVITED session.
      */
     private void handlePaymentFailure(PaymentLog paymentLog, String instituteId) {
@@ -849,7 +849,7 @@ public class PaymentLogService {
                 String actualPackageSessionId = mapping.getDestinationPackageSession().getId();
                 String invitedPackageSessionId = mapping.getPackageSession().getId();
 
-                // Mark ONLY_DETAILS_FILL entries as DELETED
+                // Mark ABANDONED_CART entries as DELETED
                 learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
                         userId,
                         invitedPackageSessionId,
@@ -885,7 +885,7 @@ public class PaymentLogService {
     }
 
     /**
-     * Handles payment success by marking ONLY_DETAILS_FILL entries as DELETED.
+     * Handles payment success by marking ABANDONED_CART entries as DELETED.
      * The actual ACTIVE entries are created by
      * UserPlanService.applyOperationsOnFirstPayment().
      */
@@ -903,7 +903,7 @@ public class PaymentLogService {
                 return;
             }
 
-            // Get ONLY_DETAILS_FILL entries for this user plan
+            // Get ABANDONED_CART entries for this user plan
             List<vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping> mappings = learnerEnrollmentEntryService
                     .findOnlyDetailsFilledEntriesForUserPlan(userId, userPlan.getId(), instituteId);
 
@@ -915,7 +915,7 @@ public class PaymentLogService {
                 String actualPackageSessionId = mapping.getDestinationPackageSession().getId();
                 String invitedPackageSessionId = mapping.getPackageSession().getId();
 
-                // Mark ONLY_DETAILS_FILL and PAYMENT_FAILED entries as DELETED
+                // Mark ABANDONED_CART and PAYMENT_FAILED entries as DELETED
                 learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
                         userId,
                         invitedPackageSessionId,
@@ -923,7 +923,7 @@ public class PaymentLogService {
                         instituteId);
 
                 log.info(
-                        "Marked ONLY_DETAILS_FILL entries as DELETED for user {} in package session {} on payment success",
+                        "Marked ABANDONED_CART entries as DELETED for user {} in package session {} on payment success",
                         userId, actualPackageSessionId);
             }
 

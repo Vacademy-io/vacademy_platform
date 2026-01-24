@@ -23,7 +23,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.common.institute.entity.Institute;
 
 /**
- * Service to handle learner enrollment entry creation with ONLY_DETAILS_FILL
+ * Service to handle learner enrollment entry creation with ABANDONED_CART
  * type tracking.
  * This creates an initial tracking entry before payment/workflow processing.
  */
@@ -70,7 +70,7 @@ public class LearnerEnrollmentEntryService {
     }
 
     /**
-     * Marks previous ONLY_DETAILS_FILL and PAYMENT_FAILED entries as DELETED.
+     * Marks previous ABANDONED_CART and PAYMENT_FAILED entries as DELETED.
      * Called when a user re-submits the enrollment form.
      *
      * @param userId                  The user ID
@@ -82,7 +82,7 @@ public class LearnerEnrollmentEntryService {
     public int markPreviousEntriesAsDeleted(String userId, String invitedPackageSessionId,
             String actualPackageSessionId, String instituteId) {
         List<String> typesToDelete = List.of(
-                LearnerSessionTypeEnum.ONLY_DETAILS_FILL.name(),
+                LearnerSessionTypeEnum.ABANDONED_CART.name(),
                 LearnerSessionTypeEnum.PAYMENT_FAILED.name());
 
         int deletedCount = studentSessionRepository.markEntriesAsDeleted(
@@ -98,7 +98,7 @@ public class LearnerEnrollmentEntryService {
     }
 
     /**
-     * Creates an ONLY_DETAILS_FILL entry for initial form submission tracking.
+     * Creates an ABANDONED_CART entry for initial form submission tracking.
      *
      * @param userId                The user ID
      * @param invitedPackageSession The INVITED package session
@@ -124,14 +124,14 @@ public class LearnerEnrollmentEntryService {
         mapping.setUserId(userId);
         mapping.setPackageSession(invitedPackageSession);
         mapping.setDestinationPackageSession(actualPackageSession);
-        mapping.setType(LearnerSessionTypeEnum.ONLY_DETAILS_FILL.name());
+        mapping.setType(LearnerSessionTypeEnum.ABANDONED_CART.name());
         mapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
         mapping.setEnrolledDate(new Date());
         mapping.setUserPlanId(userPlanId);
         mapping.setInstitute(institute);
 
         StudentSessionInstituteGroupMapping saved = studentSessionRepository.save(mapping);
-        log.info("Created ONLY_DETAILS_FILL entry with ID: {} for user: {}, destination: {}, institute: {}",
+        log.info("Created ABANDONED_CART entry with ID: {} for user: {}, destination: {}, institute: {}",
                 saved.getId(), userId, actualPackageSession.getId(), instituteId);
 
         return saved;
@@ -236,7 +236,37 @@ public class LearnerEnrollmentEntryService {
     }
 
     /**
-     * Finds ONLY_DETAILS_FILL entries for a specific user plan.
+     * Gets the list of workflow IDs configured for a package session.
+     *
+     * @param packageSession The package session
+     * @return List of workflow IDs (empty if none configured)
+     */
+    public List<String> getWorkflowIds(PackageSession packageSession) {
+        try {
+            EnrollmentPolicyJsonDTOs.WorkflowConfigDTO workflowConfig = getWorkflowConfiguration(packageSession);
+
+            if (workflowConfig == null || !Boolean.TRUE.equals(workflowConfig.getEnabled())) {
+                return List.of();
+            }
+
+            if (workflowConfig.getWorkflows() == null || workflowConfig.getWorkflows().isEmpty()) {
+                return List.of();
+            }
+
+            return workflowConfig.getWorkflows().stream()
+                    .map(EnrollmentPolicyJsonDTOs.WorkflowItemDTO::getWorkflowId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .toList();
+
+        } catch (Exception e) {
+            log.warn("Error getting workflow IDs for package session {}: {}",
+                    packageSession.getId(), e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Finds ABANDONED_CART entries for a specific user plan.
      * Used during payment webhook processing.
      *
      * @param userId      The user ID
@@ -250,7 +280,7 @@ public class LearnerEnrollmentEntryService {
         return studentSessionRepository.findAllByUserPlanIdAndStatusIn(
                 userPlanId,
                 List.of(LearnerSessionStatusEnum.ACTIVE.name())).stream()
-                .filter(m -> LearnerSessionTypeEnum.ONLY_DETAILS_FILL.name().equals(m.getType()))
+                .filter(m -> LearnerSessionTypeEnum.ABANDONED_CART.name().equals(m.getType()))
                 .filter(m -> m.getInstitute() != null && instituteId.equals(m.getInstitute().getId()))
                 .toList();
     }

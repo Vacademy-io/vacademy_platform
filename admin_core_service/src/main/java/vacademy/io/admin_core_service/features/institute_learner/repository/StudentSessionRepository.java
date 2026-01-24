@@ -248,7 +248,7 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
   /**
    * Mark entries as DELETED for a user when re-enrolling or after payment status
    * change.
-   * This marks previous ONLY_DETAILS_FILL and PAYMENT_FAILED entries as DELETED.
+   * This marks previous ABANDONED_CART and PAYMENT_FAILED entries as DELETED.
    */
   @Modifying
   @Transactional
@@ -282,4 +282,21 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
       @Param("instituteId") String instituteId,
       @Param("types") List<String> types,
       @Param("statuses") List<String> statuses);
+
+  /**
+   * Find entries by user, package session, destination, type, and status.
+   * Used by workflow to find ABANDONED_CART entries.
+   */
+  @Query("SELECT s FROM StudentSessionInstituteGroupMapping s " +
+      "WHERE s.userId = :userId " +
+      "AND s.packageSession.id = :packageSessionId " +
+      "AND s.destinationPackageSession.id = :destinationPackageSessionId " +
+      "AND s.type = :type " +
+      "AND s.status = :status")
+  List<StudentSessionInstituteGroupMapping> findByUserAndPackageSessionAndDestinationAndTypeAndStatus(
+      @Param("userId") String userId,
+      @Param("packageSessionId") String packageSessionId,
+      @Param("destinationPackageSessionId") String destinationPackageSessionId,
+      @Param("type") String type,
+      @Param("status") String status);
 }

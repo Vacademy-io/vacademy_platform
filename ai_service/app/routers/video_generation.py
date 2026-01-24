@@ -365,10 +365,12 @@ async def get_video_urls(
     Returns:
     - html_url: URL to the HTML timeline file (time_based_frame.json)
     - audio_url: URL to the audio file (narration.mp3)
+    - words_url: URL to time-synced words JSON for captions
     - status: Current video generation status
     - current_stage: Current generation stage
     
     These URLs can be used directly in frontend video players.
+    The words_url contains word-level timestamps for displaying captions.
     """
     status = service.get_video_status(video_id)
     
@@ -381,6 +383,7 @@ async def get_video_urls(
         video_id=video_id,
         html_url=s3_urls.get("timeline"),  # HTML timeline file
         audio_url=s3_urls.get("audio"),     # Audio file
+        words_url=s3_urls.get("words"),     # Time-synced words for captions
         status=status.get("status", "UNKNOWN"),
         current_stage=status.get("current_stage", "UNKNOWN")
     )

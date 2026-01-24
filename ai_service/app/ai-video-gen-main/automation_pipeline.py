@@ -1303,6 +1303,9 @@ class VideoGenerationPipeline:
         # Sort by start time to be sure
         entries.sort(key=lambda x: x["start"])
         
+        # Minimum shot duration to allow animations to complete
+        MIN_SHOT_DURATION = 3.0  # At least 3 seconds per shot
+        
         # Iterate and clamp duration of current shot if it overlaps with next
         for i in range(len(entries) - 1):
             curr = entries[i]
@@ -1312,11 +1315,21 @@ class VideoGenerationPipeline:
             if curr["end"] > nxt["start"]:
                 curr["end"] = nxt["start"]
             
-            # If clamping made it zero or negative duration, give it a tiny sliver or remove?
-            # Better to just nudge next start? User wants "one at a time". 
-            # Clamping end is safer.
+            # If clamping made it too short, enforce minimum duration
+            if curr["end"] - curr["start"] < MIN_SHOT_DURATION:
+                # Try to extend, but don't overlap with next
+                desired_end = curr["start"] + MIN_SHOT_DURATION
+                curr["end"] = min(desired_end, nxt["start"])
+            
+            # Absolute minimum to prevent zero-duration shots
             if curr["end"] <= curr["start"]:
-                curr["end"] = curr["start"] + 0.1 # Minimal duration
+                curr["end"] = curr["start"] + 0.5
+        
+        # Also enforce minimum duration for the last entry
+        if entries:
+            last = entries[-1]
+            if last["end"] - last["start"] < MIN_SHOT_DURATION:
+                last["end"] = min(last["start"] + MIN_SHOT_DURATION, base_end)
                 
         # Also ensure last shot doesn't exceed base_end (already handled by min(base_end) in loop)
         # -------------------------------------------------
@@ -1729,9 +1742,23 @@ class VideoGenerationPipeline:
     def _build_fallback_entry(
         self, seg: Dict[str, Any], start: float, end: float, filler_index: int
     ) -> Dict[str, Any]:
-        text = str(seg.get("text", "")).strip()
-        words = text.split()
-        snippet = " ".join(words[:22]) + ("..." if len(words) > 22 else "")
+        # Extract words relevant to the filler's time range from word-level data
+        seg_words = seg.get("words", [])
+        relevant_words = []
+        for w in seg_words:
+            w_start = float(w.get("start", 0))
+            w_end = float(w.get("end", 0))
+            # Include words that overlap with the filler time range
+            if w_end >= start and w_start <= end:
+                relevant_words.append(str(w.get("word", "")))
+        
+        # If we have word-level data, use it; otherwise fall back to segment text
+        if relevant_words:
+            snippet = " ".join(relevant_words[:22]) + ("..." if len(relevant_words) > 22 else "")
+        else:
+            text = str(seg.get("text", "")).strip()
+            words = text.split()
+            snippet = " ".join(words[:22]) + ("..." if len(words) > 22 else "")
         
         # Get colors based on background_type
         bg_type = getattr(self, '_current_background_type', 'white')

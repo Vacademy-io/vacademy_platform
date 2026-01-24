@@ -295,13 +295,17 @@ HTML_GENERATION_SAFE_AREA = (
     "Canvas is 1920x1080. You MUST keep all critical text and distinct visual elements within the **SAFE AREA**.\n"
     "**SAFE AREA**: x=[100, 1820], y=[80, 1000]. (Maximize use of width for split layouts).\n"
     "**CRITICAL**: Always use `htmlStartX: 0, htmlStartY: 0, width: 1920, height: 1080` for FULL SCREEN centered layouts.\n"
-    "Return JSON ONLY in this form:\n"
+    "\n**SHOT DURATION RULES**:\n"
+    "- Each shot MUST have `durationSeconds` of at least 5 seconds (minimum)\n"
+    "- Recommended: 8-15 seconds per shot to allow content to be read\n"
+    "- Create 2-4 shots per segment, NOT more\n"
+    "\nReturn JSON ONLY in this form:\n"
     "{\n"
     '  "shots": [\n'
     "    {\n"
     '      "offsetSeconds": 0,\n'
     '      "start_word": "The first 3-5 words...",\n'
-    '      "durationSeconds": 12,\n'
+    '      "durationSeconds": 10,\n'
     '      "htmlStartX": 0,\n'
     '      "htmlStartY": 0,\n'
     '      "width": 1920,\n'
@@ -393,6 +397,14 @@ showThenAnnotate('#text', '#key', 'underline', '{annotation_color}', 0, 0.8);  /
 - Shadows or blur effects
 - Card-heavy app-like design
 - Use colors that don't contrast with {background_type} background
+- Long setTimeout delays (keep under 3 seconds)
+- Leave elements with opacity:0 without immediate fadeIn/popIn animation
+
+**ANIMATION TIMING RULES**:
+- All animations must START within the first 0.5 seconds of the shot
+- All animations must COMPLETE within 5 seconds
+- If using setTimeout, keep delays under 2 seconds
+- Main text should be visible immediately (use fadeIn with delay:0)
 
 **Language**: {language}
 

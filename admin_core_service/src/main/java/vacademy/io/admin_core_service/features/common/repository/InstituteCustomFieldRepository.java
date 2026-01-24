@@ -18,81 +18,90 @@ public interface InstituteCustomFieldRepository extends JpaRepository<InstituteC
     void deleteByCustomFieldId(String customFieldId);
 
     @Query("SELECT icf, cf FROM InstituteCustomField icf, CustomFields cf " +
-        "WHERE cf.id = icf.customFieldId " +
-        "AND icf.instituteId = :instituteId " +
-        "AND icf.type = :type " +
-        "AND icf.typeId = :typeId " +
-        "ORDER BY cf.formOrder ASC")
+            "WHERE cf.id = icf.customFieldId " +
+            "AND icf.instituteId = :instituteId " +
+            "AND icf.type = :type " +
+            "AND icf.typeId = :typeId " +
+            "ORDER BY cf.formOrder ASC")
     List<Object[]> findInstituteCustomFieldsWithDetails(
-        @Param("instituteId") String instituteId,
-        @Param("type") String type,
-        @Param("typeId") String typeId);
+            @Param("instituteId") String instituteId,
+            @Param("type") String type,
+            @Param("typeId") String typeId);
 
     @Query("SELECT icf, cf FROM InstituteCustomField icf, CustomFields cf " +
-        "WHERE cf.id = icf.customFieldId " +
-        "AND icf.instituteId = :instituteId " +
-        "AND icf.typeId IS NULL " +
-        "AND icf.status = :status " +
-        "ORDER BY cf.formOrder ASC")
+            "WHERE cf.id = icf.customFieldId " +
+            "AND icf.instituteId = :instituteId " +
+            "AND icf.typeId IS NULL " +
+            "AND icf.status = :status " +
+            "ORDER BY cf.formOrder ASC")
     List<Object[]> findActiveInstituteCustomFieldsWithNullTypeId(
-        @Param("instituteId") String instituteId,
-        @Param("status") String status);
+            @Param("instituteId") String instituteId,
+            @Param("status") String status);
 
     @Modifying
     @Transactional
     @Query("UPDATE InstituteCustomField icf SET icf.status = :status WHERE icf.instituteId = :instituteId AND icf.type = :type AND icf.customFieldId = :customFieldId")
     int updateStatusByInstituteIdAndTypeAndCustomFieldId(
-        @Param("instituteId") String instituteId,
-        @Param("type") String type,
-        @Param("customFieldId") String customFieldId,
-        @Param("status") String status);
-    @Query("""
-    SELECT icf, cf
-    FROM InstituteCustomField icf
-    JOIN CustomFields cf ON cf.id = icf.customFieldId
-    WHERE icf.instituteId = :instituteId
-      AND icf.status = :status
-      AND icf.id IN (
-            SELECT MIN(icf2.id)
-            FROM InstituteCustomField icf2
-            JOIN CustomFields cf2 ON cf2.id = icf2.customFieldId
-            WHERE icf2.instituteId = :instituteId
-              AND icf2.status = :status
-            GROUP BY cf2.fieldKey
-      )
-    ORDER BY cf.formOrder ASC
-""")
-    List<Object[]> findUniqueActiveCustomFieldsByInstituteId(
-        @Param("instituteId") String instituteId,
-        @Param("status") String status);
+            @Param("instituteId") String instituteId,
+            @Param("type") String type,
+            @Param("customFieldId") String customFieldId,
+            @Param("status") String status);
 
+    @Query("""
+                SELECT icf, cf
+                FROM InstituteCustomField icf
+                JOIN CustomFields cf ON cf.id = icf.customFieldId
+                WHERE icf.instituteId = :instituteId
+                  AND icf.status = :status
+                  AND icf.id IN (
+                        SELECT MIN(icf2.id)
+                        FROM InstituteCustomField icf2
+                        JOIN CustomFields cf2 ON cf2.id = icf2.customFieldId
+                        WHERE icf2.instituteId = :instituteId
+                          AND icf2.status = :status
+                        GROUP BY cf2.fieldKey
+                  )
+                ORDER BY cf.formOrder ASC
+            """)
+    List<Object[]> findUniqueActiveCustomFieldsByInstituteId(
+            @Param("instituteId") String instituteId,
+            @Param("status") String status);
 
     @Query(value = """
-                SELECT icf.* FROM institute_custom_fields icf
-                JOIN custom_fields cf ON cf.id = icf.custom_field_id
-                WHERE icf.institute_id = :instituteId
-                AND cf.field_name = :fieldName
-                AND icf.status = 'ACTIVE'
-                """,nativeQuery = true)
+            SELECT icf.* FROM institute_custom_fields icf
+            JOIN custom_fields cf ON cf.id = icf.custom_field_id
+            WHERE icf.institute_id = :instituteId
+            AND cf.field_name = :fieldName
+            AND icf.status = 'ACTIVE'
+            """, nativeQuery = true)
     Optional<InstituteCustomField> findByInstituteIdAndFieldName(@Param("instituteId") String instituteId,
-                                                                 @Param("fieldName") String fieldName);
+            @Param("fieldName") String fieldName);
 
     Optional<InstituteCustomField> findTopByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatusOrderByCreatedAtDesc(
-        String instituteId,
-        String fieldId,
-        String type,
-        String typeId,
-        String status
-    );
+            String instituteId,
+            String fieldId,
+            String type,
+            String typeId,
+            String status);
 
-    List<InstituteCustomField> findByInstituteIdAndTypeAndTypeIdAndStatusIn(String instituteId, String type, String typeId, List<String> status);
+    List<InstituteCustomField> findByInstituteIdAndTypeAndTypeIdAndStatusIn(String instituteId, String type,
+            String typeId, List<String> status);
 
-    List<InstituteCustomField> findByInstituteIdAndCustomFieldIdInAndStatusIn(String instituteId, List<String> list, List<String> status);
+    List<InstituteCustomField> findByInstituteIdAndCustomFieldIdInAndStatusIn(String instituteId, List<String> list,
+            List<String> status);
 
     @Query("SELECT icf, cf FROM InstituteCustomField icf " +
-           "JOIN CustomFields cf ON cf.id = icf.customFieldId " +
-           "WHERE icf.instituteId = :instituteId " +
-           "AND icf.status = 'ACTIVE' " +
-           "ORDER BY cf.formOrder ASC")
+            "JOIN CustomFields cf ON cf.id = icf.customFieldId " +
+            "WHERE icf.instituteId = :instituteId " +
+            "AND icf.status = 'ACTIVE' " +
+            "ORDER BY cf.formOrder ASC")
     List<Object[]> findAllActiveCustomFieldsWithDetailsByInstituteId(@Param("instituteId") String instituteId);
+
+    @Query("SELECT cf, icf.type, COUNT(icf.id) " +
+            "FROM InstituteCustomField icf " +
+            "JOIN CustomFields cf ON cf.id = icf.customFieldId " +
+            "WHERE icf.instituteId = :instituteId " +
+            "AND icf.status = 'ACTIVE' " +
+            "GROUP BY cf.id, cf.fieldName, cf.fieldType, cf.fieldKey, cf.defaultValue, cf.config, cf.formOrder, cf.isMandatory, cf.isFilter, cf.isSortable, cf.isHidden, cf.createdAt, cf.updatedAt, cf.status, icf.type")
+    List<Object[]> findCustomFieldUsageAggregation(@Param("instituteId") String instituteId);
 }

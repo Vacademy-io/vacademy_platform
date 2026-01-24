@@ -130,6 +130,21 @@ public class AudienceService {
         return userIds;
     }
 
+    private void saveInstituteCustomFields(String audienceId, List<InstituteCustomFieldDTO> dtos) {
+        if (!CollectionUtils.isEmpty(dtos)) {
+            List<InstituteCustomFieldDTO> customFieldsToSave = dtos.stream()
+                    .filter(Objects::nonNull)
+                    .peek(cf -> {
+                        cf.setId(null); // Force creation of new mapping
+                        cf.setType(CustomFieldTypeEnum.AUDIENCE_FORM.name());
+                        cf.setTypeId(audienceId);
+                    })
+                    .collect(Collectors.toList());
+            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
+            logger.info("Linked {} custom fields to audience {}", customFieldsToSave.size(), audienceId);
+        }
+    }
+
     /**
      * Create a new audience campaign with custom fields
      * Pattern: Same as EnrollInviteService.createEnrollInvite()
@@ -161,19 +176,7 @@ public class AudienceService {
         logger.info("Saved audience with ID: {}", savedAudience.getId());
 
         // 2. Link custom fields - EXACTLY like EnrollInvite!
-        if (!CollectionUtils.isEmpty(audienceDTO.getInstituteCustomFields())) {
-            List<InstituteCustomFieldDTO> customFieldsToSave = audienceDTO.getInstituteCustomFields().stream()
-                    .filter(Objects::nonNull)
-                    .peek(cf -> {
-                        cf.setType(CustomFieldTypeEnum.AUDIENCE_FORM.name());
-                        cf.setTypeId(savedAudience.getId());
-                    })
-                    .collect(Collectors.toList());
-
-            // Reuse existing service!
-            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
-            logger.info("Linked {} custom fields to audience {}", customFieldsToSave.size(), savedAudience.getId());
-        }
+        saveInstituteCustomFields(savedAudience.getId(), audienceDTO.getInstituteCustomFields());
 
         return savedAudience.getId();
     }
@@ -222,17 +225,7 @@ public class AudienceService {
         Audience updated = audienceRepository.save(audience);
 
         // Update custom fields if provided
-        if (!CollectionUtils.isEmpty(audienceDTO.getInstituteCustomFields())) {
-            List<InstituteCustomFieldDTO> customFieldsToSave = audienceDTO.getInstituteCustomFields().stream()
-                    .filter(Objects::nonNull)
-                    .peek(cf -> {
-                        cf.setType(CustomFieldTypeEnum.AUDIENCE_FORM.name());
-                        cf.setTypeId(updated.getId());
-                    })
-                    .collect(Collectors.toList());
-
-            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
-        }
+        saveInstituteCustomFields(updated.getId(), audienceDTO.getInstituteCustomFields());
 
         logger.info("Updated audience: {}", updated.getId());
         return updated.getId();

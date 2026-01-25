@@ -353,53 +353,53 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       const originalCode = oldScript.textContent;
                       const scopedCode = `
                         (function(scope) {
-                            if (!window.gsap) { console.error("Global GSAP missing!"); return; }
-
-                            // 1. Resolution Helpers
-                            const resolve = (t) => (typeof t === 'string' ? Array.from(scope.querySelectorAll(t)) : t);
-                            const resolveOne = (t) => (typeof t === 'string' ? scope.querySelector(t) : t);
-
-                            // 2. Scoped GSAP Proxy
-                            const gsap = { ...window.gsap };
-                            gsap.to = (t, v) => window.gsap.to(resolve(t), v);
-                            gsap.from = (t, v) => window.gsap.from(resolve(t), v);
-                            gsap.fromTo = (t, f, to) => window.gsap.fromTo(resolve(t), f, to);
-                            gsap.set = (t, v) => window.gsap.set(resolve(t), v);
-                            gsap.timeline = (v) => window.gsap.timeline(v);
-
-                            // 3. Animation Helpers (Proxied to local resolution)
-                            const fadeIn = (sel, dur, del) => gsap.fromTo(sel, {opacity: 0}, {opacity: 1, duration: dur||0.5, delay: del||0, ease: 'power2.out'});
-                            const popIn = (sel, dur, del) => gsap.fromTo(sel, {opacity: 0, scale: 0.85}, {opacity: 1, scale: 1, duration: dur||0.4, delay: del||0, ease: 'back.out(1.7)'});
-                            const slideUp = (sel, dur, del) => gsap.fromTo(sel, {opacity: 0, y: 30}, {opacity: 1, y: 0, duration: dur||0.5, delay: del||0, ease: 'power2.out'});
-                            
-                            const typewriter = (sel, dur, del) => window.typewriter && window.typewriter(resolveOne(sel), dur, del);
-                            const revealLines = (sel, stag) => window.revealLines && window.revealLines(resolveOne(sel), stag);
-                            const annotate = (sel, opts) => window.annotate && window.annotate(resolveOne(sel), opts);
-                            
-                            const animateSVG = (id, dur, cb) => {
-                                const el = resolveOne('#' + id.replace(/^#/, ''));
-                                if(el && window.animateSVG) window.animateSVG(el, dur, cb);
-                            };
-                            
-                            const showThenAnnotate = (textSel, termSel, type, color, textDelay, annotDelay) => {
-                                fadeIn(resolveOne(textSel), 0.5, textDelay || 0);
-                                setTimeout(() => {
-                                  if(window.annotate) window.annotate(resolveOne(termSel), {
-                                    type: type || 'underline',
-                                    color: color || '#dc2626',
-                                    duration: 600
-                                  });
-                                }, ((textDelay || 0) + (annotDelay || 0.8)) * 1000);
-                            };
-
-                            const playSound = (url, vol) => window.playSound && window.playSound(url, vol);
-                            const sounds = window.sounds || {};
-
-                            // 4. Execute Original Snippet
                             try {
-                                ${originalCode}
-                            } catch (e) {
-                                console.error("Script execution error in snippet:", e);
+                                if (!window.gsap) console.error("Global GSAP missing! Animations may fail.");
+
+                                var resolve = function(t) { return (typeof t === 'string' ? Array.from(scope.querySelectorAll(t)) : t); };
+                                var resolveOne = function(t) { return (typeof t === 'string' ? scope.querySelector(t) : t); };
+
+                                var gsap = (window.gsap) ? { ...window.gsap } : {};
+                                gsap.to = function(t, v) { return window.gsap.to(resolve(t), v); };
+                                gsap.from = function(t, v) { return window.gsap.from(resolve(t), v); };
+                                gsap.fromTo = function(t, f, to) { return window.gsap.fromTo(resolve(t), f, to); };
+                                gsap.set = function(t, v) { return window.gsap.set(resolve(t), v); };
+                                gsap.timeline = function(v) { return window.gsap.timeline(v); };
+
+                                var fadeIn = function(sel, dur, del) { return gsap.fromTo(sel, {opacity: 0}, {opacity: 1, duration: dur||0.5, delay: del||0, ease: 'power2.out'}); };
+                                var popIn = function(sel, dur, del) { return gsap.fromTo(sel, {opacity: 0, scale: 0.85}, {opacity: 1, scale: 1, duration: dur||0.4, delay: del||0, ease: 'back.out(1.7)'}); };
+                                var slideUp = function(sel, dur, del) { return gsap.fromTo(sel, {opacity: 0, y: 30}, {opacity: 1, y: 0, duration: dur||0.5, delay: del||0, ease: 'power2.out'}); };
+                                
+                                var typewriter = function(sel, dur, del) { return window.typewriter && window.typewriter(resolveOne(sel), dur, del); };
+                                var revealLines = function(sel, stag) { return window.revealLines && window.revealLines(resolveOne(sel), stag); };
+                                var annotate = function(sel, opts) { return window.annotate && window.annotate(resolveOne(sel), opts); };
+                                
+                                var animateSVG = function(id, dur, cb) {
+                                    var el = resolveOne('#' + id.replace(/^#/, ''));
+                                    if(el && window.animateSVG) window.animateSVG(el, dur, cb);
+                                };
+                                
+                                var showThenAnnotate = function(textSel, termSel, type, color, textDelay, annotDelay) {
+                                    fadeIn(resolveOne(textSel), 0.5, textDelay || 0);
+                                    setTimeout(function() {
+                                      if(window.annotate) window.annotate(resolveOne(termSel), {
+                                        type: type || 'underline',
+                                        color: color || '#dc2626',
+                                        duration: 600
+                                      });
+                                    }, ((textDelay || 0) + (annotDelay || 0.8)) * 1000);
+                                };
+
+                                var playSound = function(url, vol) { return window.playSound && window.playSound(url, vol); };
+                                var sounds = window.sounds || {};
+
+                                try {
+                                    ${originalCode}
+                                } catch (e) {
+                                    console.error("Script execution error in snippet:", e);
+                                }
+                            } catch (err) {
+                                console.error("Setup error in scoped block:", err);
                             }
                         })(document.getElementById('${e.id}').shadowRoot);
                       `;

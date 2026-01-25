@@ -23,6 +23,198 @@ export interface AIVideoPlayerProps {
   height?: number;
 }
 
+const fixHtmlContent = (html: string, includeLibs = true) => {
+    // Inject required libraries (GSAP, MotionPath, Mermaid) + Interaction Script
+    const libs = `
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+        <style>
+            /* Visual cues for interactive elements */
+            .hover-target:hover {
+                outline: 2px dashed #3b82f6;
+                cursor: grab;
+            }
+            .is-dragging {
+                outline: 2px solid #3b82f6;
+                cursor: grabbing;
+                user-select: none;
+            }
+            [contenteditable="true"] {
+                outline: 2px solid #22c55e;
+                cursor: text;
+                min-width: 10px;
+            }
+        </style>
+        <script>
+            window.addEventListener('load', () => {
+                // Initialize Libraries
+                if(window.gsap && window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
+                if(window.mermaid) mermaid.initialize({startOnLoad:true});
+
+                // --- Interaction Logic ---
+                const postUpdate = () => {
+                    // Robust serialization to preserve styles (which might move to HEAD) and content
+                    let result = "";
+
+                    const isInjection = (node) => {
+                        // Check scripts
+                        if (node.tagName === 'SCRIPT') {
+                            if (node.src && (node.src.includes('gsap') || node.src.includes('mermaid'))) return true;
+                            if (node.innerHTML.includes('Interaction Logic')) return true;
+                            if (node.innerHTML.includes('gsap.registerPlugin(MotionPathPlugin)')) return true; 
+                        }
+                        // Check interaction style
+                        if (node.tagName === 'STYLE') {
+                            if (node.innerHTML.includes('Visual cues for interactive elements')) return true;
+                        }
+                        return false;
+                    }
+
+                    // 1. Process HEAD (Styles often end up here)
+                    if (document.head) {
+                        Array.from(document.head.childNodes).forEach(node => {
+                            if (!isInjection(node)) {
+                                result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
+                            }
+                        });
+                    }
+
+                    // 2. Process BODY
+                    // Clone body to clean up interaction markers on elements (classes/attributes)
+                    const bodyClone = document.body.cloneNode(true);
+                    
+                    // Clean attributes
+                    bodyClone.querySelectorAll('*').forEach(el => {
+                        el.classList.remove('hover-target', 'is-dragging');
+                        el.removeAttribute('contenteditable');
+                    });
+                    
+                    Array.from(bodyClone.childNodes).forEach(node => {
+                         if (!isInjection(node)) {
+                             result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
+                         }
+                    });
+
+                    window.parent.postMessage({
+                        type: 'HTML_UPDATE',
+                        html: result 
+                    }, '*');
+                };
+
+                // Add hover effects to everything reasonable
+                document.body.addEventListener('mouseover', (e) => {
+                    if (e.target !== document.body && !e.target.classList.contains('hover-target')) {
+                        // e.target.classList.add('hover-target');
+                    }
+                });
+                
+                // Helper to find a "movable" block (divs, imgs, etc)
+                const getMovable = (target) => {
+                    if(!target || target === document.body) return null;
+                    // Move up until we find a block level element or the body
+                    const style = window.getComputedStyle(target);
+                    if (style.display === 'block' || style.display === 'flex' || target.tagName === 'IMG') return target;
+                    return getMovable(target.parentElement);
+                }
+
+                // Drag Logic
+                let draggedEl = null;
+                let startX = 0, startY = 0;
+                let initialTransform = {x: 0, y: 0};
+                let hasMoved = false;
+
+                const getTranslate = (el) => {
+                    const style = window.getComputedStyle(el);
+                    const matrix = new WebKitCSSMatrix(style.transform);
+                    return {x: matrix.m41, y: matrix.m42};
+                }
+
+                document.addEventListener('mousedown', (e) => {
+                    if (e.target.isContentEditable) return; // Don't drag if editing text
+                    
+                    const target = getMovable(e.target);
+                    if (!target) return;
+
+                    draggedEl = target;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    initialTransform = getTranslate(draggedEl);
+                    hasMoved = false;
+                    
+                    // Don't add class yet, wait for move
+                    e.preventDefault(); 
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (!draggedEl) return;
+                    e.preventDefault();
+                    
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+                    
+                    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+                         hasMoved = true;
+                         draggedEl.classList.add('is-dragging');
+                    }
+
+                    if (!hasMoved) return;
+                    
+                    // Apply translate
+                    draggedEl.style.transform = \`translate3d(\${initialTransform.x + dx}px, \${initialTransform.y + dy}px, 0)\`;
+                });
+
+                document.addEventListener('mouseup', () => {
+                    if (draggedEl) {
+                        draggedEl.classList.remove('is-dragging');
+                        draggedEl = null; 
+                        if (hasMoved) {
+                            postUpdate(); // Only save if actually moved
+                        }
+                    }
+                });
+
+                // Text Edit Logic
+                document.addEventListener('dblclick', (e) => {
+                    const target = e.target;
+                    // Relaxed check: Allow text editing on anything that isn't the root containers
+                    // and has some text content.
+                    if (target !== document.body && target !== document.documentElement) {
+                        e.stopPropagation(); // Only edit the specific clicked element
+                        
+                        target.setAttribute('contenteditable', 'true');
+                        target.focus();
+                        
+                        // Select all text
+                        // Use try-catch as execCommand can be flaky in some contexts
+                        try {
+                            document.execCommand('selectAll', false, null);
+                        } catch(err) {}
+                        
+                        // Prevent drag while editing
+                        const stopProp = (k) => k.stopPropagation();
+                        target.addEventListener('keydown', stopProp);
+                        target.addEventListener('mousedown', stopProp); // Stop drag start
+                        
+                        // Save on blur
+                        target.addEventListener('blur', () => {
+                            target.removeAttribute('contenteditable');
+                            target.removeEventListener('keydown', stopProp);
+                            target.removeEventListener('mousedown', stopProp);
+                            postUpdate();
+                        }, {once: true});
+                    }
+                });
+            });
+        </script>
+    `;
+
+    // Replace absolute file paths with valid Vite src paths and prepend libraries
+    const fixedPathHtml = html.replace(/file:\/\/\/.*\/runs\/dna_gene_editing\/generated_images\//g, '/src/routes/ai-video-studio/runs/dna_gene_editing/generated_images/');
+
+    return (includeLibs ? libs : '') + fixedPathHtml;
+};
+
 export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   timelineUrl,
   audioUrl,
@@ -360,6 +552,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           </style>
         </head>
         <body>
+          ${fixHtmlContent("", true)}
     `;
 
     sortedFrames.forEach((frame) => {
@@ -371,7 +564,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           height: ${frame.htmlEndY - frame.htmlStartY}px;
           z-index: ${frame.z};
         ">
-          ${frame.html}
+          ${fixHtmlContent(frame.html, false)}
         </div>
       `;
     });

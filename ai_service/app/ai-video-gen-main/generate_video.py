@@ -144,9 +144,9 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   };
 
                   // Helper: Rough Notation annotation
-                  window.annotate = function(selector, options) {
+                  window.annotate = function(selectorOrEl, options) {
                     if (window.RoughNotation) {
-                      const el = document.querySelector(selector);
+                      const el = (typeof selectorOrEl === 'string') ? document.querySelector(selectorOrEl) : selectorOrEl;
                       if (el) {
                         const annotation = RoughNotation.annotate(el, {
                           type: options.type || 'underline',
@@ -195,8 +195,8 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   };
 
                   // 2. TYPEWRITER - Letters appear one by one
-                  window.typewriter = function(selector, duration, delay) {
-                    const el = document.querySelector(selector);
+                  window.typewriter = function(selectorOrEl, duration, delay) {
+                    const el = (typeof selectorOrEl === 'string') ? document.querySelector(selectorOrEl) : selectorOrEl;
                     if (!el) return;
                     const text = el.textContent;
                     el.textContent = '';
@@ -232,8 +232,8 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   };
 
                   // 5. REVEAL LINE BY LINE - For multi-line text
-                  window.revealLines = function(selector, staggerDelay) {
-                    const el = document.querySelector(selector);
+                  window.revealLines = function(selectorOrEl, staggerDelay) {
+                    const el = (typeof selectorOrEl === 'string') ? document.querySelector(selectorOrEl) : selectorOrEl;
                     if (!el) return;
                     const lines = el.querySelectorAll('.line');
                     if (lines.length === 0) {
@@ -366,37 +366,53 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                                     }
                                     return target;
                                 };
+                                const resolveOne = (target) => {
+                                    if (typeof target === 'string') {
+                                        return scope.querySelector(target);
+                                    }
+                                    return target;
+                                };
 
                                 g.to = (target, vars) => window.gsap.to(resolve(target), vars);
                                 g.from = (target, vars) => window.gsap.from(resolve(target), vars);
                                 g.fromTo = (target, f, t) => window.gsap.fromTo(resolve(target), f, t);
                                 g.set = (target, vars) => window.gsap.set(resolve(target), vars);
-                                g.timeline = (vars) => {
-                                    const tl = window.gsap.timeline(vars);
-                                    // Wrap timeline methods if needed, but usually .to/.from are called on tl
-                                    // For now, let's assume simple usage. 
-                                    // Getting extensive with timeline proxying is complex. 
-                                    // Let's rely on g.from/g.to interactions.
-                                    // Ideally we proxy the timeline object too:
-                                    const explicitProxy = (tlInstance) => {
-                                        const originalTo = tlInstance.to.bind(tlInstance);
-                                        const originalFrom = tlInstance.from.bind(tlInstance);
-                                        const originalFromTo = tlInstance.fromTo.bind(tlInstance);
-                                        const originalSet = tlInstance.set.bind(tlInstance);
-                                        
-                                        tlInstance.to = (t, v, p) => { originalTo(resolve(t), v, p); return tlInstance; };
-                                        tlInstance.from = (t, v, p) => { originalFrom(resolve(t), v, p); return tlInstance; };
-                                        tlInstance.fromTo = (t, f, to, p) => { originalFromTo(resolve(t), f, to, p); return tlInstance; };
-                                        tlInstance.set = (t, v, p) => { originalSet(resolve(t), v, p); return tlInstance; };
-                                        return tlInstance;
-                                    };
-                                    return explicitProxy(tl);
-                                };
-                                return g;
+                                g.timeline = (vars) => window.gsap.timeline(vars);
+                                
+                                return {g, resolve, resolveOne};
                             };
 
-                            const gsap = createScopedGsap();
-                            // Also expose standard ScrollTrigger? Not relevant for video.
+                            const {g: gsap, resolve, resolveOne} = createScopedGsap();
+                            
+                            // Proxies for Helper Functions
+                            const fadeIn = (sel, dur, del) => gsap.fromTo(sel, {opacity: 0}, {opacity: 1, duration: dur||0.5, delay: del||0, ease: 'power2.out'});
+                            
+                            const popIn = (sel, dur, del) => gsap.fromTo(sel, {opacity: 0, scale: 0.85}, {opacity: 1, scale: 1, duration: dur||0.4, delay: del||0, ease: 'back.out(1.7)'});
+                            
+                            const slideUp = (sel, dur, del) => gsap.fromTo(sel, {opacity: 0, y: 30}, {opacity: 1, y: 0, duration: dur||0.5, delay: del||0, ease: 'power2.out'});
+                            
+                            const typewriter = (sel, dur, del) => window.typewriter(resolveOne(sel), dur, del);
+                            
+                            const revealLines = (sel, stag) => window.revealLines(resolveOne(sel), stag);
+                            
+                            const annotate = (sel, opts) => window.annotate(resolveOne(sel), opts);
+                            
+                            const animateSVG = (id, dur, cb) => {
+                                // Vivus needs the element. The ID passed is usually checking for #id.
+                                const el = resolveOne('#' + id.replace(/^#/, ''));
+                                if(el) window.animateSVG(el, dur, cb);
+                            };
+                            
+                            const showThenAnnotate = (textSel, termSel, type, color, textDelay, annotDelay) => {
+                                fadeIn(textSel, 0.5, textDelay || 0);
+                                setTimeout(() => {
+                                  annotate(termSel, {
+                                    type: type || 'underline',
+                                    color: color || '#dc2626',
+                                    duration: 600
+                                  });
+                                }, ((textDelay || 0) + (annotDelay || 0.8)) * 1000);
+                            };
                             
                             try {
                                 ${originalCode}

@@ -23,6 +23,14 @@ class VideoGenerationRequest(BaseModel):
         default="2-3 minutes", 
         description="Target video duration. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'"
     )
+    institute_id: Optional[str] = Field(
+        default=None,
+        description="Institute identifier (optional, for logging/context)"
+    )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="User identifier (optional, for logging/context)"
+    )
     
     class Config:
         json_schema_extra = {

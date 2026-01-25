@@ -16,6 +16,9 @@ from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
 from .s3_service import S3Service
+from sqlalchemy.orm import Session
+from ..models.ai_token_usage import ApiProvider, RequestType
+
 
 
 class VideoGenerationService:
@@ -88,7 +91,10 @@ class VideoGenerationService:
         resume: bool = False,
         model: Optional[str] = None,
         target_audience: str = "General/Adult",
-        target_duration: str = "2-3 minutes"
+        target_duration: str = "2-3 minutes",
+        db_session: Optional[Session] = None,
+        institute_id: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -182,7 +188,10 @@ class VideoGenerationService:
                     target_stage_idx=target_stage_idx,
                     model=model,
                     target_audience=target_audience,
-                    target_duration=target_duration
+                    target_duration=target_duration,
+                    db_session=db_session,
+                    institute_id=institute_id,
+                    user_id=user_id
                 ):
                     # If we get an error event, log it and check if we should stop
                     if event.get("type") == "error":
@@ -235,7 +244,10 @@ class VideoGenerationService:
         target_stage_idx: int,
         model: Optional[str] = None,
         target_audience: str = "General/Adult",
-        target_duration: str = "2-3 minutes"
+        target_duration: str = "2-3 minutes",
+        db_session: Optional[Session] = None,
+        institute_id: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -428,6 +440,42 @@ class VideoGenerationService:
             
             with ThreadPoolExecutor() as executor:
                 outputs = await loop.run_in_executor(executor, pipeline_run)
+            
+            # Record token usage if available
+            if outputs and "token_usage" in outputs and db_session:
+                try:
+                    from .token_usage_service import TokenUsageService
+                    
+                    usage = outputs["token_usage"]
+                    # Don't record if no tokens used
+                    if usage.get("total_tokens", 0) > 0 or usage.get("image_count", 0) > 0:
+                        token_service = TokenUsageService(db_session)
+                        
+                        # Determine provider based on model or default to OPENAI (generic)
+                        # The pipeline is mixed, but mostly OpenRouter/LLM driven for tokens
+                        provider = ApiProvider.OPENAI
+                        if model and "gemini" in model.lower():
+                            provider = ApiProvider.GEMINI
+                            
+                        token_service.record_usage(
+                            api_provider=provider,
+                            prompt_tokens=usage.get("prompt_tokens", 0),
+                            completion_tokens=usage.get("completion_tokens", 0),
+                            total_tokens=usage.get("total_tokens", 0),
+                            request_type=RequestType.VIDEO,
+                            institute_id=institute_id,
+                            user_id=user_id,
+                            model=model or "video-gen-pipeline",
+                            metadata={
+                                "video_id": video_id,
+                                "image_count": usage.get("image_count", 0),
+                                "stages": f"{self.STAGES[start_stage_idx]}->{self.STAGES[target_stage_idx]}"
+                            }
+                        )
+                        logger.info(f"[VideoGenService] Recorded usage for video {video_id}: {usage.get('total_tokens')} tokens, {usage.get('image_count')} images")
+                except Exception as e:
+                    logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
+
             logger.info(f"[VideoGenService] Pipeline completed successfully")
         except Exception as e:
             import traceback

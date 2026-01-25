@@ -211,7 +211,7 @@ class OpenRouterClient:
         model: Optional[str] = None,
         temperature: float = 0.6,
         max_tokens: int = 2000,
-    ) -> str:
+    ) -> Tuple[str, Dict[str, Any]]:
         # If using free models, try them in order with fallback
         models_to_try = self.model_chain if model is None and self.default_model in self.FREE_MODELS else [model or self.default_model]
         
@@ -234,7 +234,9 @@ class OpenRouterClient:
                     raw = response.read().decode("utf-8")
                     # Parse JSON response and return content
                     data = json.loads(raw)
-                    return data["choices"][0]["message"]["content"]
+                    content = data["choices"][0]["message"]["content"]
+                    usage = data.get("usage", {})
+                    return content, usage
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="ignore")
                 last_error = RuntimeError(f"OpenRouter request failed with {model_to_use}: {exc.code} {exc.reason}\n{detail}")
@@ -403,6 +405,21 @@ class VideoGenerationPipeline:
         do_html = stage_idx <= self.STAGE_INDEX["html"] and self.STAGE_INDEX["html"] < stop_idx
         do_render = stage_idx <= self.STAGE_INDEX["render"] and self.STAGE_INDEX["render"] < stop_idx
 
+        # Token usage aggregation
+        total_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "image_count": 0
+        }
+        
+        def accumulate_usage(u: Dict[str, Any]):
+            if not u: return
+            total_usage["prompt_tokens"] += u.get("prompt_tokens", 0)
+            total_usage["completion_tokens"] += u.get("completion_tokens", 0)
+            total_usage["total_tokens"] += u.get("total_tokens", 0)
+            total_usage["image_count"] += u.get("image_count", 0)
+
         script_path = run_dir / "script.txt"
         response_json = run_dir / "narration_raw.json"
         audio_path = run_dir / "narration.mp3"
@@ -415,7 +432,9 @@ class VideoGenerationPipeline:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
             print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
-            script_plan = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration)
+            script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration)
+            script_plan = script_out["result"]
+            accumulate_usage(script_out.get("usage", {}))
         else:
             self._require_file(script_path, "script.txt (narration text)")
             # Try to load the plan if it exists, otherwise provide a dummy one
@@ -464,10 +483,13 @@ class VideoGenerationPipeline:
             if not segments:
                 raise RuntimeError("Failed to derive segments from narration.")
             print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
-            html_segments = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
+            html_results, html_usage = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
+            html_segments = html_results
+            accumulate_usage(html_usage)
             
             print("🖼️  Generating AI images for visual assets ...")
-            html_segments = self._process_generated_images(html_segments, run_dir)
+            html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
+            accumulate_usage(image_usage)
             
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(html_segments, run_dir)
@@ -516,6 +538,7 @@ class VideoGenerationPipeline:
             "alignment_json": word_outputs.get("alignment_json", alignment_json),
             "timeline_json": timeline_path,
             "video_path": video_path,
+            "token_usage": total_usage,
         }
 
     # --- Script generation -------------------------------------------------
@@ -528,7 +551,7 @@ class VideoGenerationPipeline:
             target_duration=target_duration
         ).strip()
 
-        raw = self.script_client.chat(
+        raw, usage = self.script_client.chat(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             temperature=0.5,
             max_tokens=12000,
@@ -551,7 +574,7 @@ class VideoGenerationPipeline:
         plan_path.write_text(json.dumps(data, indent=2))
         script_path = run_dir / "script.txt"
         script_path.write_text(script_text + "\n")
-        return {"plan": data, "script_path": script_path, "script_text": script_text}
+        return {"result": {"plan": data, "script_path": script_path, "script_text": script_text}, "usage": usage}
 
     # --- Google TTS bridge -------------------------------------------------
     # --- Edge TTS bridge (Free, Timed) -------------------------------------------------
@@ -943,8 +966,8 @@ class VideoGenerationPipeline:
             start_time += window
         return segments
 
-    def _generate_html_segments(self, segments: List[Dict[str, Any]], style_guide: Dict[str, Any], script_plan: Optional[Dict[str, Any]], run_dir: Path, language: str = "English") -> List[Dict[str, Any]]:
-        def task(seg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _generate_html_segments(self, segments: List[Dict[str, Any]], style_guide: Dict[str, Any], script_plan: Optional[Dict[str, Any]], run_dir: Path, language: str = "English") -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        def task(seg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
             # Flatten style guide for prompt
             palette = style_guide.get("palette", {})
             background_type = style_guide.get("background_type", "black")
@@ -1047,7 +1070,7 @@ class VideoGenerationPipeline:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    raw = self.html_client.chat(
+                    raw, usage = self.html_client.chat(
                         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                         temperature=0.7,  # Lower temperature for more consistent JSON output
                         max_tokens=12000,
@@ -1060,7 +1083,7 @@ class VideoGenerationPipeline:
                     base_end = float(seg["end"])
                     self._ensure_segment_coverage(shot_entries, seg, base_start, base_end)
                     self._apply_layout_to_entries(shot_entries, seg)
-                    return shot_entries
+                    return shot_entries, usage
                 except Exception as e:
                     if attempt < max_retries - 1:
                         wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
@@ -1072,14 +1095,21 @@ class VideoGenerationPipeline:
                         raise
 
         results: List[Dict[str, Any]] = []
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(segments) or 1)) as executor:
             future_map = {executor.submit(task, seg): seg for seg in segments}
             for future in concurrent.futures.as_completed(future_map):
                 seg = future_map[future]
-                result_entries = future.result()
+                result_entries, usage = future.result()
                 results.extend(result_entries)
+                if usage:
+                    total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                    total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                    total_usage["total_tokens"] += usage.get("total_tokens", 0)
+
         results.sort(key=lambda item: item["start"])
-        return results
+        return results, total_usage
 
     def _parse_html_response(self, raw: str, seg: Dict[str, Any], run_dir: Path) -> Dict[str, Any]:
         try:
@@ -1890,7 +1920,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 return True
         return False
 
-    def _process_generated_images(self, html_segments: List[Dict[str, Any]], run_dir: Path) -> List[Dict[str, Any]]:
+    def _process_generated_images(self, html_segments: List[Dict[str, Any]], run_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Scan generated HTML for <img data-img-prompt="..."> tags, generate images via Gemini,
         save them to disk, and update the src attribute.
@@ -1901,7 +1931,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # Check if Gemini API key is available
         if not self.gemini_image_api_key:
             print("    ⚠️  No Gemini API key configured. Skipping image generation.")
-            return html_segments
+            return html_segments, {}
         
         # We'll use a ThreadPoolExecutor to generate images in parallel
         # First, gather all image requests
@@ -1932,7 +1962,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not tasks:
             print(f"    ℹ️  No image tags found in HTML segments (checked {total_html_segments} segments, {segments_with_images} had 'data-img-prompt' attribute).")
             print(f"    ℹ️  The LLM may not have generated image tags. Check HTML generation prompt includes image instructions.")
-            return html_segments
+            return html_segments, {}
 
         print(f"    Found {len(tasks)} images to generate from {segments_with_images} segments.")
         
@@ -1942,7 +1972,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             
             # Generate
             print(f"    🎨 Generating image {idx}: {prompt[:50]}...")
-            image_bytes = self._call_image_generation_llm(prompt)
+            # We don't get exact token usage from this simplified call, but we can count images
+            image_bytes, usage_meta = self._call_image_generation_llm(prompt)
             if not image_bytes:
                 print(f"    ❌ Failed to generate image for: {prompt[:50]}...")
                 return None
@@ -1962,7 +1993,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     "entry_id": id(task["entry"]),
                     "full_tag": task["full_tag"],
                     "new_src": str(path.absolute()),
-                    "filename": filename
+                    "filename": filename,
+                    "usage": usage_meta
                 }
             except Exception as e:
                 print(f"    ❌ Failed to save image {filename}: {e}")
@@ -1971,6 +2003,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         replacements = {}
         successful_generations = 0
         failed_generations = 0
+        total_image_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "image_count": 0}
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(process_image_task, t) for t in tasks]
@@ -1978,6 +2011,13 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 res = f.result()
                 if res:
                     successful_generations += 1
+                    total_image_usage["image_count"] += 1
+                    u = res.get("usage")
+                    if u:
+                        total_image_usage["prompt_tokens"] += u.get("promptTokenCount", 0)
+                        total_image_usage["completion_tokens"] += u.get("candidatesTokenCount", 0)
+                        total_image_usage["total_tokens"] += u.get("totalTokenCount", 0)
+                    
                     entry_id = res["entry_id"]
                     if entry_id not in replacements:
                         replacements[entry_id] = []
@@ -1989,7 +2029,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         
         if successful_generations == 0:
             print("    ⚠️  No images were successfully generated. HTML will retain placeholder images.")
-            return html_segments
+            return html_segments, total_image_usage
         
         # Apply replacements - use a more robust matching strategy
         replacements_applied = 0
@@ -2031,17 +2071,17 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 entry["html"] = html
         
         print(f"    📝 Applied {replacements_applied} image replacements to HTML segments")
-        return html_segments
+        return html_segments, total_image_usage
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0)
-    def _call_image_generation_llm(self, prompt: str, width: int = 1920, height: int = 1080) -> Optional[bytes]:
+    def _call_image_generation_llm(self, prompt: str, width: int = 1920, height: int = 1080) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
         """
-        Generate image using Google Generative AI (Gemini).
+        Generate image using Google Generative AI (Gemini). Returns (image_bytes, usage_metadata).
         """
         try:
             if not self.gemini_image_api_key:
                 print(f"    ⚠️ No Gemini API key for images. Cannot generate: {prompt[:50]}...")
-                return None
+                return None, None
                 
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key={self.gemini_image_api_key}"
             headers = {"Content-Type": "application/json"}
@@ -2063,16 +2103,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             with urllib.request.urlopen(req, timeout=60) as response:
                 if response.status != 200:
                     print(f"Gemini API error: {response.status}")
-                    return None
+                    return None, None
                 raw = response.read().decode("utf-8")
                 data = json.loads(raw)
+            
+            usage_metadata = data.get("usageMetadata", {})
 
             # Check for inlineData
             # 1. Direct inlineData (rare for this endpoint structure but checked in snippet)
             if "inlineData" in data:
                 b64 = data["inlineData"].get("data")
                 if b64:
-                    return base64.b64decode(b64)
+                    return base64.b64decode(b64), usage_metadata
             
             # 2. Candidates
             if "candidates" in data and data["candidates"]:
@@ -2082,15 +2124,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         if "inlineData" in part:
                             b64 = part["inlineData"].get("data")
                             if b64:
-                                return base64.b64decode(b64)
+                                return base64.b64decode(b64), usage_metadata
             
-            return None
+            return None, None
 
         except Exception as e:
             print(f"    ❌ Gemini image generation exception for prompt '{prompt[:50]}...': {str(e)}")
             import traceback
             print(f"    📋 Error details: {traceback.format_exc()[:500]}")  # Limit traceback length
-            return None
+            return None, None
 
     def _generate_avatar(self, audio_path: Path, run_dir: Path, opts: Dict[str, Any]) -> Optional[Path]:
         avatar_opts = opts.get("avatar", {})

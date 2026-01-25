@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from uuid import uuid4
 from typing import Optional
+from sqlalchemy.orm import Session
+from ..db import db_dependency
 
 from ..schemas.video_generation import (
     VideoGenerationRequest,
@@ -47,7 +49,8 @@ def get_video_service() -> VideoGenerationService:
 )
 async def generate_till_script(
     payload: VideoGenerationRequest,
-    service: VideoGenerationService = Depends(get_video_service)
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency)
 ) -> StreamingResponse:
     """
     Generate AI video up to script stage only.
@@ -69,7 +72,11 @@ async def generate_till_script(
             html_quality=payload.html_quality,
             resume=False,
             target_audience=payload.target_audience,
-            target_duration=payload.target_duration
+            target_audience=payload.target_audience,
+            target_duration=payload.target_duration,
+            db_session=db,
+            institute_id=payload.institute_id,
+            user_id=payload.user_id
         ):
             yield f"data: {event}\n\n"
     
@@ -91,7 +98,8 @@ async def generate_till_script(
 )
 async def generate_till_mp3(
     payload: VideoGenerationRequest,
-    service: VideoGenerationService = Depends(get_video_service)
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency)
 ) -> StreamingResponse:
     """
     Generate AI video up to TTS (Text-to-Speech) stage.
@@ -111,7 +119,12 @@ async def generate_till_mp3(
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,
-            resume=False
+            resume=False,
+            target_audience=payload.target_audience,
+            target_duration=payload.target_duration,
+            db_session=db,
+            institute_id=payload.institute_id,
+            user_id=payload.user_id
         ):
             yield f"data: {event}\n\n"
     
@@ -133,7 +146,8 @@ async def generate_till_mp3(
 )
 async def generate_till_html(
     payload: VideoGenerationRequest,
-    service: VideoGenerationService = Depends(get_video_service)
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency)
 ) -> StreamingResponse:
     """
     Generate AI video up to HTML generation stage.
@@ -161,7 +175,12 @@ async def generate_till_html(
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,
-            resume=False
+            resume=False,
+            target_audience=payload.target_audience,
+            target_duration=payload.target_duration,
+            db_session=db,
+            institute_id=payload.institute_id,
+            user_id=payload.user_id
         ):
             yield f"data: {event}\n\n"
     
@@ -183,7 +202,8 @@ async def generate_till_html(
 )
 async def generate_till_render(
     payload: VideoGenerationRequest,
-    service: VideoGenerationService = Depends(get_video_service)
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency)
 ) -> StreamingResponse:
     """
     Generate complete AI video including final rendering.
@@ -206,7 +226,12 @@ async def generate_till_render(
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,
-            resume=False
+            resume=False,
+            target_audience=payload.target_audience,
+            target_duration=payload.target_duration,
+            db_session=db,
+            institute_id=payload.institute_id,
+            user_id=payload.user_id
         ):
             yield f"data: {event}\n\n"
     

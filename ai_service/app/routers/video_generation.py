@@ -72,7 +72,6 @@ async def generate_till_script(
             html_quality=payload.html_quality,
             resume=False,
             target_audience=payload.target_audience,
-            target_audience=payload.target_audience,
             target_duration=payload.target_duration,
             db_session=db,
             institute_id=payload.institute_id,

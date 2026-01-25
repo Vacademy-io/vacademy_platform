@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
-import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
@@ -84,6 +83,9 @@ public class EnrollInviteService {
             instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
         }
 
+        // Automatically copy default custom fields to the new enroll invite
+        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(enrollInviteDTO.getInstituteId(), savedEnrollInvite.getId());
+
         List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
                 .filter(Objects::nonNull)
                 .map(dto -> {
@@ -129,6 +131,9 @@ public class EnrollInviteService {
                     .collect(Collectors.toList());
             instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
         }
+
+        // Automatically copy default custom fields to the updated enroll invite
+        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(enrollInviteDTO.getInstituteId(), savedEnrollInvite.getId());
 
         List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
                 .filter(Objects::nonNull)
@@ -618,4 +623,5 @@ public class EnrollInviteService {
         dto.setIsBundled(enrollInvite.getIsBundled());
         return dto;
     }
+
 }

@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.enroll_invite.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionEnrollInvitePaymentOptionPlanToReferralOption;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
@@ -30,6 +31,7 @@ import java.sql.Date;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class DefaultEnrollInviteService {
@@ -61,6 +63,9 @@ public class DefaultEnrollInviteService {
     @Autowired
     private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
 
+    @Autowired
+    private InstituteCustomFiledService instituteCustomFiledService;
+
     public void createDefaultEnrollInvite(PackageSession packageSession, String instituteId) {
         EnrollInvite enrollInvite = new EnrollInvite();
         enrollInvite.setName(getNameForDefaultEnrollInvite(packageSession));
@@ -89,6 +94,10 @@ public class DefaultEnrollInviteService {
 
         if (optionalPaymentOption.isPresent()) {
             repository.save(enrollInvite);
+
+            // Automatically copy default custom fields to the new enroll invite
+            instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(instituteId, enrollInvite.getId());
+
             PaymentOption paymentOption = optionalPaymentOption.get();
             if (paymentOption.getPaymentPlans() != null && !paymentOption.getPaymentPlans().isEmpty()) {
                 enrollInvite.setCurrency(paymentOption.getPaymentPlans().get(0).getCurrency());
@@ -153,4 +162,5 @@ public class DefaultEnrollInviteService {
 
         return sb.toString();
     }
+
 }

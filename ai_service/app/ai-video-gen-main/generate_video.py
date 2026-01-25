@@ -353,57 +353,38 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       const originalCode = oldScript.textContent;
                       const scopedCode = `
                         (function(scope) {
-                            // Creator of scoped GSAP instance
-                            const createScopedGsap = () => {
-                                const g = { ...window.gsap }; // shallow clone
-                                
-                                const resolve = (target) => {
-                                    if (typeof target === 'string') {
-                                        return Array.from(scope.querySelectorAll(target));
-                                    }
-                                    return target;
-                                };
-                                const resolveOne = (target) => {
-                                    if (typeof target === 'string') {
-                                        return scope.querySelector(target);
-                                    }
-                                    return target;
-                                };
+                            if (!window.gsap) { console.error("Global GSAP missing!"); return; }
 
-                                g.to = (target, vars) => window.gsap.to(resolve(target), vars);
-                                g.from = (target, vars) => window.gsap.from(resolve(target), vars);
-                                g.fromTo = (target, f, t) => window.gsap.fromTo(resolve(target), f, t);
-                                g.set = (target, vars) => window.gsap.set(resolve(target), vars);
-                                g.timeline = (vars) => window.gsap.timeline(vars);
-                                
-                                return {g, resolve, resolveOne};
-                            };
+                            // 1. Resolution Helpers
+                            const resolve = (t) => (typeof t === 'string' ? Array.from(scope.querySelectorAll(t)) : t);
+                            const resolveOne = (t) => (typeof t === 'string' ? scope.querySelector(t) : t);
 
-                            const {g: gsap, resolve, resolveOne} = createScopedGsap();
-                            
-                            // Proxies for Helper Functions
+                            // 2. Scoped GSAP Proxy
+                            const gsap = { ...window.gsap };
+                            gsap.to = (t, v) => window.gsap.to(resolve(t), v);
+                            gsap.from = (t, v) => window.gsap.from(resolve(t), v);
+                            gsap.fromTo = (t, f, to) => window.gsap.fromTo(resolve(t), f, to);
+                            gsap.set = (t, v) => window.gsap.set(resolve(t), v);
+                            gsap.timeline = (v) => window.gsap.timeline(v);
+
+                            // 3. Animation Helpers (Proxied to local resolution)
                             const fadeIn = (sel, dur, del) => gsap.fromTo(sel, {opacity: 0}, {opacity: 1, duration: dur||0.5, delay: del||0, ease: 'power2.out'});
-                            
                             const popIn = (sel, dur, del) => gsap.fromTo(sel, {opacity: 0, scale: 0.85}, {opacity: 1, scale: 1, duration: dur||0.4, delay: del||0, ease: 'back.out(1.7)'});
-                            
                             const slideUp = (sel, dur, del) => gsap.fromTo(sel, {opacity: 0, y: 30}, {opacity: 1, y: 0, duration: dur||0.5, delay: del||0, ease: 'power2.out'});
                             
-                            const typewriter = (sel, dur, del) => window.typewriter(resolveOne(sel), dur, del);
-                            
-                            const revealLines = (sel, stag) => window.revealLines(resolveOne(sel), stag);
-                            
-                            const annotate = (sel, opts) => window.annotate(resolveOne(sel), opts);
+                            const typewriter = (sel, dur, del) => window.typewriter && window.typewriter(resolveOne(sel), dur, del);
+                            const revealLines = (sel, stag) => window.revealLines && window.revealLines(resolveOne(sel), stag);
+                            const annotate = (sel, opts) => window.annotate && window.annotate(resolveOne(sel), opts);
                             
                             const animateSVG = (id, dur, cb) => {
-                                // Vivus needs the element. The ID passed is usually checking for #id.
                                 const el = resolveOne('#' + id.replace(/^#/, ''));
-                                if(el) window.animateSVG(el, dur, cb);
+                                if(el && window.animateSVG) window.animateSVG(el, dur, cb);
                             };
                             
                             const showThenAnnotate = (textSel, termSel, type, color, textDelay, annotDelay) => {
                                 fadeIn(resolveOne(textSel), 0.5, textDelay || 0);
                                 setTimeout(() => {
-                                  annotate(resolveOne(termSel), {
+                                  if(window.annotate) window.annotate(resolveOne(termSel), {
                                     type: type || 'underline',
                                     color: color || '#dc2626',
                                     duration: 600
@@ -411,9 +392,10 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                                 }, ((textDelay || 0) + (annotDelay || 0.8)) * 1000);
                             };
 
-                            const playSound = (url, vol) => window.playSound(url, vol);
-                            const sounds = window.sounds;
-                            
+                            const playSound = (url, vol) => window.playSound && window.playSound(url, vol);
+                            const sounds = window.sounds || {};
+
+                            // 4. Execute Original Snippet
                             try {
                                 ${originalCode}
                             } catch (e) {

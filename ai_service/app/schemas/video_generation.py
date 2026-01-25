@@ -15,6 +15,14 @@ class VideoGenerationRequest(BaseModel):
     captions_enabled: bool = Field(default=True, description="Enable/disable captions in the video")
     html_quality: str = Field(default="advanced", description="HTML quality mode: 'classic' (frames/animation only) or 'advanced' (all features)")
     video_id: Optional[str] = Field(default=None, description="Optional video ID (generated if not provided)")
+    target_audience: str = Field(
+        default="General/Adult", 
+        description="Target audience for age-appropriate content. Examples: 'Class 3 (Ages 7-8)', 'Class 9-10 (Ages 14-15)', 'College/Adult'"
+    )
+    target_duration: str = Field(
+        default="2-3 minutes", 
+        description="Target video duration. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'"
+    )
     
     class Config:
         json_schema_extra = {
@@ -23,7 +31,9 @@ class VideoGenerationRequest(BaseModel):
                 "language": "English",
                 "captions_enabled": True,
                 "html_quality": "advanced",
-                "video_id": "quantum-entanglement-101"
+                "video_id": "quantum-entanglement-101",
+                "target_audience": "Class 3 (Ages 7-8)",
+                "target_duration": "5 minutes"
             }
         }
 

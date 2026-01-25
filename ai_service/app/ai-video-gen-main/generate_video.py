@@ -414,11 +414,12 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   // Helper: Animate SVG with Vivus
                   window.animateSVG = function(svgId, duration, callback) {
                     if (window.Vivus) {
+                      var cb = typeof callback === 'function' ? callback : undefined;
                       new Vivus(svgId, {
                         duration: duration || 100,
                         type: 'oneByOne',
                         animTimingFunction: Vivus.EASE_OUT
-                      }, callback || function() {});
+                      }, cb);
                     }
                   };
 

@@ -86,7 +86,9 @@ class VideoGenerationService:
         captions_enabled: bool = True,
         html_quality: str = "advanced",
         resume: bool = False,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        target_audience: str = "General/Adult",
+        target_duration: str = "2-3 minutes"
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -97,6 +99,8 @@ class VideoGenerationService:
             target_stage: Target stage (SCRIPT, TTS, WORDS, HTML, RENDER)
             language: Language for video content
             resume: Whether to resume from existing progress
+            target_audience: Target audience for age-appropriate content
+            target_duration: Target video duration (e.g., '5 minutes')
             
         Yields:
             SSE events with progress updates
@@ -400,20 +404,26 @@ class VideoGenerationService:
         
         try:
             # Run pipeline in thread pool with stop_at to prevent rendering
-            logger.info(f"[VideoGenService] Running pipeline: start_from={start_from}, stop_at={stop_at}, language={language}, captions={captions_enabled}, html_quality={html_quality}")
+            logger.info(f"[VideoGenService] Running pipeline: start_from={start_from}, stop_at={stop_at}, language={language}, captions={captions_enabled}, html_quality={html_quality}, target_audience={target_audience}, target_duration={target_duration}")
+            
+            # Use functools.partial to pass keyword arguments
+            import functools
+            pipeline_run = functools.partial(
+                pipeline.run,
+                base_prompt=prompt,
+                run_name=video_id,
+                resume_run=None,
+                start_from=start_from,
+                stop_at=stop_at,
+                language=language,
+                show_captions=captions_enabled,
+                html_quality=html_quality,
+                target_audience=target_audience,
+                target_duration=target_duration
+            )
+            
             with ThreadPoolExecutor() as executor:
-                outputs = await loop.run_in_executor(
-                    executor,
-                    pipeline.run,
-                    prompt,  # base_prompt
-                    video_id,  # run_name
-                    None,  # resume_run
-                    start_from,  # start_from
-                    stop_at,  # stop_at - stops at target stage (e.g., "html" to skip render)
-                    language,  # language
-                    captions_enabled,  # show_captions
-                    html_quality  # html_quality
-                )
+                outputs = await loop.run_in_executor(executor, pipeline_run)
             logger.info(f"[VideoGenService] Pipeline completed successfully")
         except Exception as e:
             import traceback

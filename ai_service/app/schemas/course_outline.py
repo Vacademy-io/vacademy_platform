@@ -30,6 +30,15 @@ class GenerationOptions(BaseModel):
         default="professional",
         description="Style for generated images (e.g., 'professional', 'creative', 'minimalist')"
     )
+    # AI Video generation options
+    ai_video_target_audience: Optional[str] = Field(
+        default=None,
+        description="Target audience for AI videos. Examples: 'Class 3 (Ages 7-8)', 'Class 9-10 (Ages 14-15)', 'College/Adult'. Affects vocabulary and examples."
+    )
+    ai_video_target_duration: Optional[str] = Field(
+        default=None,
+        description="Target duration for AI videos. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'."
+    )
 
 
 class CourseUserPromptRequest(BaseModel):

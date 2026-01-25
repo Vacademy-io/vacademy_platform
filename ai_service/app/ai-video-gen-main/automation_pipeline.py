@@ -352,6 +352,8 @@ class VideoGenerationPipeline:
         show_captions: bool = True,
         html_quality: str = "advanced",
         background_type: str = "white",
+        target_audience: str = "General/Adult",
+        target_duration: str = "2-3 minutes",
     ) -> Dict[str, Any]:
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
@@ -412,8 +414,8 @@ class VideoGenerationPipeline:
         if do_script:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
-            print(f"📝 Drafting refined script ({run_dir.name}) ...")
-            script_plan = self._draft_script(base_prompt, run_dir, language=language)
+            print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
+            script_plan = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration)
         else:
             self._require_file(script_path, "script.txt (narration text)")
             # Try to load the plan if it exists, otherwise provide a dummy one
@@ -517,9 +519,14 @@ class VideoGenerationPipeline:
         }
 
     # --- Script generation -------------------------------------------------
-    def _draft_script(self, base_prompt: str, run_dir: Path, language: str = "English") -> Dict[str, Any]:
+    def _draft_script(self, base_prompt: str, run_dir: Path, language: str = "English", target_audience: str = "General/Adult", target_duration: str = "2-3 minutes") -> Dict[str, Any]:
         system_prompt = SCRIPT_SYSTEM_PROMPT
-        user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(base_prompt=base_prompt.strip(), language=language).strip()
+        user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
+            base_prompt=base_prompt.strip(), 
+            language=language,
+            target_audience=target_audience,
+            target_duration=target_duration
+        ).strip()
 
         raw = self.script_client.chat(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
@@ -2297,6 +2304,16 @@ def parse_args() -> argparse.Namespace:
         default="black",
         help="Background color type: 'black' for dark theme, 'white' for light theme (default: black)."
     )
+    parser.add_argument(
+        "--target-audience",
+        default="General/Adult",
+        help="Target audience for age-appropriate content. Examples: 'Class 3 (Ages 7-8)', 'Class 9-10 (Ages 14-15)', 'College/Adult'."
+    )
+    parser.add_argument(
+        "--target-duration",
+        default="2-3 minutes",
+        help="Target video duration. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'."
+    )
     args = parser.parse_args()
 
     if args.resume_run and args.run_name:
@@ -2331,6 +2348,8 @@ def main() -> None:
         resume_run=args.resume_run,
         start_from=args.start_from,
         background_type=args.background_type,
+        target_audience=args.target_audience,
+        target_duration=args.target_duration,
     )
     print("\n✅ Pipeline completed successfully!")
     print(f"• Run directory: {outputs['run_dir']}")

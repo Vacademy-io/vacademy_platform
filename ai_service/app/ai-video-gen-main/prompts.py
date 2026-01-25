@@ -44,6 +44,7 @@ BACKGROUND_PRESETS = {
 
 SCRIPT_SYSTEM_PROMPT = (
     "You are a senior educational scriptwriter for energetic 16:9 explainer videos. "
+    "You adapt your vocabulary, examples, and concept depth based on the target audience's age/grade level. "
     "Return JSON containing a single continuous narration script (multiple paragraphs allowed), "
     "plus a beat outline and CTA notes. Respond with JSON only."
 )
@@ -54,25 +55,49 @@ Base idea from the user:
 {base_prompt}
 ---
 
+Target Audience: {target_audience}
+
+**AGE-APPROPRIATE GUIDELINES**:
+- **Class 1-2 (Ages 5-7)**: Very simple words, short sentences, fun comparisons to toys/animals/family. Max 1 concept per video.
+- **Class 3-5 (Ages 7-10)**: Simple vocabulary, relatable examples (games, school, friends). 1-2 concepts, lots of visuals.
+- **Class 6-8 (Ages 11-13)**: Can handle some technical terms with explanations. Real-world applications. 2-3 concepts.
+- **Class 9-10 (Ages 14-15)**: More formal vocabulary okay. Abstract thinking. Connect to exams/careers.
+- **Class 11-12 (Ages 16-18)**: Adult vocabulary. Complex concepts. Depth over simplification.
+- **College/Adult**: Technical depth, professional examples, assume foundational knowledge.
+
+Target Duration: {target_duration}
+
+**DURATION GUIDELINES** (based on speaking rate of ~130 words/minute):
+- 2-3 minutes = 250-400 words
+- 5 minutes = ~650 words
+- 7 minutes = ~900 words  
+- 10 minutes = ~1300 words
+
 Requirements:
-- Audience: curious beginners.
-- Tone: upbeat, authoritative, and human.
-- Keep the narration ~2-3 minutes long (~250-350 words total). MAXIMUM 3 minutes.
+- **MATCH vocabulary and examples to the target audience's age/grade level.**
+- Tone: upbeat, authoritative, and human. More playful for younger, more professional for older.
+- **MATCH the narration length to the target duration above.** Write enough content to fill the requested time.
+- For longer videos (5+ minutes), break into clear sections with transitions like "Now let's look at..." or "Next, we'll explore..."
 - Include a short CTA at the end encouraging viewers to apply what they learned.
 - Provide a concise beat outline to help designers understand key turns.
 - **IMPORTANT**: Write the script, title, and summaries ENTIRELY in **{language}**.
 - If the language is not English, ensure the tone remains natural for that language.
+- **Include a "Key Takeaway" statement** that summarizes the main point in one simple sentence.
+- **Mention a common mistake** students make about this topic (for Wrong vs Right visual).
 
 JSON shape:
 {{
   "title": "...",
   "audience": "...",
+  "target_grade": "...",
   "script": "Full narration text...",
+  "key_takeaway": "One sentence summary of the main concept",
+  "common_mistake": "A typical misconception or error students make",
   "beat_outline": [
     {{
       "label": "Hook",
       "summary": "...",
-      "visual_idea": "Describe a key visual metaphor for this section (e.g. 'A crumbling ancient pillar representing legacy code')"
+      "visual_idea": "Describe a key visual metaphor for this section"
     }}
   ],
   "cta": "..."
@@ -187,15 +212,24 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "```\n"
     "Types: 'underline', 'circle', 'box', 'highlight', 'strike-through', 'crossed-off', 'bracket'\n\n"
     
-    "**🎬 VIVUS.JS - USE FOR SVG DRAWING ANIMATIONS**:\n"
-    "Draws SVG paths like handwriting!\n"
+    "**🎬 VIVUS.JS - HANDWRITING EFFECT (USE FOR EQUATIONS/KEY TERMS)**:\n"
+    "Draws SVG paths like a teacher writing on a board! Perfect for:\n"
+    "- Mathematical equations\n"
+    "- Key terms being 'written'\n"
+    "- Arrows and flow diagrams\n"
+    "- Underlining important words\n"
     "```html\n"
-    "<svg id='my-diagram' viewBox='0 0 400 200'>\n"
-    "  <path d='M50,100 L350,100' stroke='#0f172a' stroke-width='3' fill='none'/>\n"
+    "<!-- Handwritten equation example -->\n"
+    "<svg id='equation' viewBox='0 0 300 80' style='font-family: cursive;'>\n"
+    "  <text x='10' y='50' font-size='36' fill='none' stroke='#0f172a' stroke-width='1'>E = mc²</text>\n"
     "</svg>\n"
-    "<script>\n"
-    "animateSVG('my-diagram', 150); // duration in frames\n"
-    "</script>\n"
+    "<script>animateSVG('equation', 100);</script>\n"
+    "\n"
+    "<!-- Arrow pointing to concept -->\n"
+    "<svg id='arrow' viewBox='0 0 200 50'>\n"
+    "  <path d='M10,25 L150,25 M140,15 L160,25 L140,35' stroke='#dc2626' stroke-width='3' fill='none'/>\n"
+    "</svg>\n"
+    "<script>animateSVG('arrow', 60);</script>\n"
     "```\n\n"
     
     "**🔊 HOWLER.JS - SOUND EFFECTS (OPTIONAL BUT PROFESSIONAL)**:\n"
@@ -212,6 +246,57 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "3. **DRAW, DON'T JUST SHOW**: Use Vivus to draw diagrams as if sketching on a whiteboard.\n"
     "4. **SIMPLE TEXT**: Large, readable text. Key term + brief explanation. That's it.\n"
     "5. **SIGNALING**: Use arrows, circles, highlights to direct attention.\n\n"
+    
+    "**📋 KEY TAKEAWAY CARD (USE AT END OF EACH CONCEPT)**:\n"
+    "Summarize the main point in a highlighted box:\n"
+    "```html\n"
+    "<div class='key-takeaway'>\n"
+    "  <div class='takeaway-icon'>💡</div>\n"
+    "  <div class='takeaway-content'>\n"
+    "    <span class='takeaway-label'>Key Takeaway</span>\n"
+    "    <p class='takeaway-text'>Photosynthesis converts sunlight into food for plants.</p>\n"
+    "  </div>\n"
+    "</div>\n"
+    "<style>\n"
+    ".key-takeaway { display: flex; align-items: center; gap: 20px; padding: 24px 32px; "
+    "border-left: 5px solid #10b981; background: rgba(16, 185, 129, 0.1); margin: 20px 0; }\n"
+    ".takeaway-icon { font-size: 48px; }\n"
+    ".takeaway-label { font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: #10b981; font-weight: 700; }\n"
+    ".takeaway-text { font-size: 28px; margin-top: 8px; font-weight: 600; }\n"
+    "</style>\n"
+    "```\n\n"
+    
+    "**❌✅ WRONG VS RIGHT (USE FOR COMMON MISTAKES)**:\n"
+    "Show what students often get wrong, then the correct approach:\n"
+    "```html\n"
+    "<div class='wrong-right-container'>\n"
+    "  <div class='wrong-box'>\n"
+    "    <div class='wr-header'><span class='wr-icon'>❌</span> Common Mistake</div>\n"
+    "    <p class='wr-text'>Plants eat soil to grow</p>\n"
+    "  </div>\n"
+    "  <div class='right-box'>\n"
+    "    <div class='wr-header'><span class='wr-icon'>✅</span> Actually...</div>\n"
+    "    <p class='wr-text'>Plants make their own food using sunlight!</p>\n"
+    "  </div>\n"
+    "</div>\n"
+    "<style>\n"
+    ".wrong-right-container { display: flex; gap: 40px; width: 100%; }\n"
+    ".wrong-box, .right-box { flex: 1; padding: 24px; border-radius: 12px; }\n"
+    ".wrong-box { border: 3px solid #ef4444; background: rgba(239, 68, 68, 0.1); }\n"
+    ".right-box { border: 3px solid #10b981; background: rgba(16, 185, 129, 0.1); }\n"
+    ".wr-header { font-size: 18px; font-weight: 700; margin-bottom: 12px; }\n"
+    ".wrong-box .wr-header { color: #ef4444; }\n"
+    ".right-box .wr-header { color: #10b981; }\n"
+    ".wr-icon { font-size: 24px; margin-right: 8px; }\n"
+    ".wr-text { font-size: 24px; }\n"
+    "</style>\n"
+    "<script>\n"
+    "// Animate: show wrong first, then right\n"
+    "fadeIn('.wrong-box', 0.5, 0);\n"
+    "fadeIn('.right-box', 0.5, 1.5);\n"
+    "setTimeout(() => annotate('.wrong-box .wr-text', {type: 'strike-through', color: '#ef4444'}), 800);\n"
+    "</script>\n"
+    "```\n\n"
     
     "**❌ DO NOT USE**:\n"
     "- Shadows (box-shadow, drop-shadow)\n"

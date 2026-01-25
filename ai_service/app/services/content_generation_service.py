@@ -367,7 +367,9 @@ class ContentGenerationService:
                 captions_enabled=True,  # Default for course outline
                 html_quality=todo.metadata.get("html_quality", "advanced"),
                 resume=False,
-                model=todo.metadata.get("model") or todo.model  # Use model from metadata or todo
+                model=todo.metadata.get("model") or todo.model,  # Use model from metadata or todo
+                target_audience=todo.metadata.get("target_audience", "General/Adult"),
+                target_duration=todo.metadata.get("target_duration", "2-3 minutes")
             ):
                 event_count += 1
                 logger.info(f"[AI_VIDEO] Received event #{event_count} for {video_id}: {event.get('type', 'unknown')}, stage={event.get('stage', 'N/A')}")
@@ -466,7 +468,9 @@ class ContentGenerationService:
                         captions_enabled=True,
                         html_quality=todo.metadata.get("html_quality", "advanced"),
                         resume=True,  # Resume from current stage (SCRIPT)
-                        model=todo.metadata.get("model") or todo.model
+                        model=todo.metadata.get("model") or todo.model,
+                        target_audience=todo.metadata.get("target_audience", "General/Adult"),
+                        target_duration=todo.metadata.get("target_duration", "2-3 minutes")
                     ):
                         # Log background progress but don't send events to frontend
                         if event.get("type") == "completed":

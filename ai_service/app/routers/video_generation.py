@@ -67,7 +67,9 @@ async def generate_till_script(
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,
-            resume=False
+            resume=False,
+            target_audience=payload.target_audience,
+            target_duration=payload.target_duration
         ):
             yield f"data: {event}\n\n"
     

@@ -18,6 +18,76 @@ X-Institute-Key: vac_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ---
 
+## API Key Management
+
+These endpoints allow you to manage API keys for your institute.
+
+### 1. Generate API Key
+
+Generate a new API key for your institute.
+
+**Endpoint:** `POST /api/v1/institute/api-keys/generate`
+
+**Request Body:**
+
+```json
+{
+  "institute_id": "your-institute-uuid",
+  "name": "My Prod Key"
+}
+```
+
+**Response:**
+
+```json
+{
+  "id": "uuid...",
+  "name": "My Prod Key",
+  "key": "vac_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "created_at": "2024-01-25T12:00:00Z",
+  "status": "active"
+}
+```
+
+### 2. List API Keys
+
+Get all active API keys for your institute.
+
+**Endpoint:** `GET /api/v1/institute/api-keys/{institute_id}`
+
+**Response:**
+
+```json
+[
+  {
+    "id": "uuid...",
+    "name": "My Prod Key",
+    "key": "vac_live_xxxxxxxxxxxx...xxxx",
+    "created_at": "2024-01-25T12:00:00Z",
+    "status": "active"
+  }
+]
+```
+
+### 3. Revoke API Key
+
+Revoke/delete an API key.
+
+**Endpoint:** `DELETE /api/v1/institute/api-keys/{institute_id}/{key_id}`
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "message": "Key revoked"
+}
+```
+
+---
+
+## External Video Generation APIs
+
 ## 1. Generate Video
 
 Start a video generation process. This endpoint returns a Server-Sent Events (SSE) stream that provides real-time progress updates.

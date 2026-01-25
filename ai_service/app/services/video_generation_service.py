@@ -180,7 +180,9 @@ class VideoGenerationService:
                     work_dir=work_dir,
                     start_stage_idx=start_stage_idx,
                     target_stage_idx=target_stage_idx,
-                    model=model
+                    model=model,
+                    target_audience=target_audience,
+                    target_duration=target_duration
                 ):
                     # If we get an error event, log it and check if we should stop
                     if event.get("type") == "error":
@@ -231,7 +233,9 @@ class VideoGenerationService:
         work_dir: Path,
         start_stage_idx: int,
         target_stage_idx: int,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        target_audience: str = "General/Adult",
+        target_duration: str = "2-3 minutes"
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.

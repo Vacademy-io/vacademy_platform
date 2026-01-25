@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.course.dto.bulk.*;
 import vacademy.io.admin_core_service.features.course.enums.CourseTypeEnum;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
@@ -73,6 +74,7 @@ public class BulkCourseService {
     private final EnrollInviteCoursePreviewService enrollInviteCoursePreviewService;
     private final LearnerInvitationService learnerInvitationService;
     private final InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
+    private final InstituteCustomFiledService instituteCustomFiledService;
 
     private static final String DEFAULT_LEVEL_ID = "DEFAULT";
     private static final String DEFAULT_SESSION_ID = "DEFAULT";
@@ -449,6 +451,9 @@ public class BulkCourseService {
 
         enrollInvite = enrollInviteRepository.save(enrollInvite);
 
+        // Automatically copy default custom fields to the new enroll invite
+        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(instituteId, enrollInvite.getId());
+
         // Create junction table entry
         if (paymentOption != null) {
             PackageSessionLearnerInvitationToPaymentOption junction = new PackageSessionLearnerInvitationToPaymentOption(
@@ -563,4 +568,5 @@ public class BulkCourseService {
         }
         return sb.toString();
     }
+
 }

@@ -386,6 +386,55 @@ public class InstituteCustomFiledService {
                 .groupInternalOrder(request.getGroupInternalOrder()).build());
     }
 
+    /**
+     * Find default custom fields for an institute
+     */
+    public List<InstituteCustomField> findDefaultCustomFieldsByInstituteId(String instituteId) {
+        return instituteCustomFieldRepository.findByInstituteIdAndTypeAndTypeIdAndStatusIn(
+                instituteId,
+                CustomFieldTypeEnum.DEFAULT_CUSTOM_FIELD.name(),
+                null,
+                List.of(StatusEnum.ACTIVE.name())
+        );
+    }
+
+    /**
+     * Copy default custom fields for an institute to enroll invite type
+     */
+    public void copyDefaultCustomFieldsToEnrollInvite(String instituteId, String enrollInviteId) {
+        List<InstituteCustomFieldDTO> defaultCustomFieldsToCopy = getDefaultCustomFieldsForEnrollInvite(instituteId, enrollInviteId);
+        if (!defaultCustomFieldsToCopy.isEmpty()) {
+            addOrUpdateCustomField(defaultCustomFieldsToCopy);
+        }
+    }
+
+    /**
+     * Get default custom fields for an institute and convert them to ENROLL_INVITE type for the given enroll invite ID
+     */
+    private List<InstituteCustomFieldDTO> getDefaultCustomFieldsForEnrollInvite(String instituteId, String enrollInviteId) {
+        List<InstituteCustomField> defaultCustomFields = findDefaultCustomFieldsByInstituteId(instituteId);
+
+        return defaultCustomFields.stream()
+                .map(defaultField -> {
+                    InstituteCustomFieldDTO dto = new InstituteCustomFieldDTO();
+                    dto.setInstituteId(instituteId);
+                    dto.setFieldId(defaultField.getCustomFieldId());
+                    dto.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
+                    dto.setTypeId(enrollInviteId);
+                    dto.setStatus(StatusEnum.ACTIVE.name());
+                    dto.setIndividualOrder(defaultField.getIndividualOrder());
+                    dto.setGroupInternalOrder(defaultField.getGroupInternalOrder());
+                    
+                    // Set customField with id so addOrUpdateCustomField can find the existing CustomFields entity
+                    CustomFieldDTO customFieldDTO = new CustomFieldDTO();
+                    customFieldDTO.setId(defaultField.getCustomFieldId());
+                    dto.setCustomField(customFieldDTO);
+                    
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
     public String updateCustomField(Institute institute, CustomFieldDTO request, String fieldId) {
         Optional<CustomFields> customFieldsOptional = customFieldRepository.findById(fieldId);
         if (customFieldsOptional.isEmpty()) {

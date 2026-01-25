@@ -76,8 +76,7 @@ public class ApplicationSecurityConfig {
             // validated internally
             "/admin-core-service/v1/agent/stream/**",
             "/admin-core-service/api/v1/audience/webhook/**",
-            "/admin-core-service/health/**"
-            "/admin-core-service/v1/recipient-resolution/centralized",
+            "/admin-core-service/health/**",
             // Invoice test endpoints (for testing only)
             "/admin-core-service/v1/invoices/test/**"
     };

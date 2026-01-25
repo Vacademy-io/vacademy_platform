@@ -304,7 +304,18 @@ public class InvoiceService {
         BigDecimal totalPlanPrice = BigDecimal.ZERO;
         BigDecimal totalDiscountAmount = BigDecimal.ZERO;
         List<InvoiceLineItemData> allLineItems = new ArrayList<>();
-        String currency = firstPaymentLog.getCurrency();
+        // Use currency from payment log (primary source), fallback to plan currency if needed
+        String paymentLogCurrency = firstPaymentLog.getCurrency();
+        String planCurrency = firstPaymentLog.getUserPlan() != null && firstPaymentLog.getUserPlan().getPaymentPlan() != null ? 
+                firstPaymentLog.getUserPlan().getPaymentPlan().getCurrency() : null;
+        
+        log.info("Building invoice - PaymentLog currency: '{}', Plan currency: '{}'", paymentLogCurrency, planCurrency);
+        
+        // Validate and normalize currency - filter out invalid values like "#" or single characters
+        String currency = normalizeAndValidateCurrency(paymentLogCurrency, planCurrency);
+        
+        log.info("Final currency used for invoice: '{}'", currency);
+        
         String paymentMethod = firstPaymentLog.getVendor();
         String transactionId = firstPaymentLog.getVendorId();
         LocalDateTime paymentDate = firstPaymentLog.getDate() != null ? 
@@ -428,11 +439,18 @@ public class InvoiceService {
 
         // For multi-package enrollments, try to get package session details
         String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
+        
+        // Ensure description is never null or empty
+        if (description == null || description.trim().isEmpty()) {
+            description = paymentPlan != null && paymentPlan.getName() != null ? 
+                    paymentPlan.getName() : "Package Enrollment";
+            log.warn("Using fallback description for payment log: {}", paymentLogId);
+        }
 
         // Main plan item - use payment amount from payment log
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
-                .description(description)
+                .description(description.trim())
                 .quantity(1)
                 .unitPrice(paymentAmount)
                 .amount(paymentAmount)
@@ -480,42 +498,81 @@ public class InvoiceService {
         try {
             // Get the payment log to access user plan and session information
             PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId).orElse(null);
-            if (paymentLog != null && paymentLog.getUserPlan() != null) {
-                UserPlan userPlan = paymentLog.getUserPlan();
+            if (paymentLog == null) {
+                log.warn("Payment log not found for ID: {}", paymentLogId);
+                return getFallbackDescription(paymentPlan);
+            }
+            
+            if (paymentLog.getUserPlan() == null) {
+                log.warn("Payment log {} has no user plan", paymentLogId);
+                return getFallbackDescription(paymentPlan);
+            }
+            
+            UserPlan userPlan = paymentLog.getUserPlan();
 
-                // Get package session information from student session mappings
-                List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
-                        .findAllByUserPlanIdAndStatusIn(userPlan.getId(), List.of("ACTIVE"));
-                if (mappings != null && !mappings.isEmpty()) {
-                    StudentSessionInstituteGroupMapping mapping = mappings.get(0);
-                    if (mapping != null && mapping.getPackageSession() != null) {
-                        String packageSessionId = mapping.getPackageSession().getId();
+            // Get package session information from student session mappings
+            List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
+                    .findAllByUserPlanIdAndStatusIn(userPlan.getId(), List.of("ACTIVE"));
+            
+            if (mappings == null || mappings.isEmpty()) {
+                log.warn("No active student session mappings found for userPlanId: {}", userPlan.getId());
+                return getFallbackDescription(paymentPlan);
+            }
+            
+            StudentSessionInstituteGroupMapping mapping = mappings.get(0);
+            if (mapping == null || mapping.getPackageSession() == null) {
+                log.warn("Student session mapping has no package session for userPlanId: {}", userPlan.getId());
+                return getFallbackDescription(paymentPlan);
+            }
+            
+            String packageSessionId = mapping.getPackageSession().getId();
+            if (packageSessionId == null || packageSessionId.isEmpty()) {
+                log.warn("Package session ID is null or empty for userPlanId: {}", userPlan.getId());
+                return getFallbackDescription(paymentPlan);
+            }
 
-                        // Get batch/institute info for the package session
-                        Optional<BatchInstituteProjection> batchInfoOpt =
-                                packageSessionRepository.findBatchAndInstituteByPackageSessionId(packageSessionId);
+            // Get batch/institute info for the package session
+            Optional<BatchInstituteProjection> batchInfoOpt =
+                    packageSessionRepository.findBatchAndInstituteByPackageSessionId(packageSessionId);
 
-                        if (batchInfoOpt.isPresent()) {
-                            BatchInstituteProjection info = batchInfoOpt.get();
-                            // Format: "Plan Name - Batch Name (Institute Name)"
-                            // Batch name already includes level name from the query: CONCAT(l.level_name, ' ', p.package_name)
-                            String baseDescription = paymentPlan.getName() != null ? paymentPlan.getName() : "Package";
-                            String batchInfo = info.getBatchName() != null ? " - " + info.getBatchName() : "";
-                            String instituteInfo = info.getInstituteName() != null ? " (" + info.getInstituteName() + ")" : "";
-
-                            return baseDescription + batchInfo + instituteInfo;
-                        }
-                    }
+            if (batchInfoOpt.isPresent()) {
+                BatchInstituteProjection info = batchInfoOpt.get();
+                // Format: "Level Name Package Name" (no institute name)
+                // Batch name already includes level name and package name: CONCAT(l.level_name, ' ', p.package_name)
+                String batchName = info.getBatchName();
+                if (batchName != null && !batchName.trim().isEmpty()) {
+                    return batchName.trim();
                 }
             }
+            
+            log.warn("Could not get batch info for packageSessionId: {}", packageSessionId);
         } catch (Exception e) {
-            log.debug("Could not build detailed package session description for payment log {}: {}",
-                    paymentLogId, e.getMessage());
+            log.error("Error building package session description for payment log {}: {}", 
+                    paymentLogId, e.getMessage(), e);
         }
 
         // Fallback to basic plan description
-        return paymentPlan.getName() + (paymentPlan.getDescription() != null ?
-                " - " + paymentPlan.getDescription() : "");
+        return getFallbackDescription(paymentPlan);
+    }
+    
+    /**
+     * Get fallback description when package session info is not available
+     */
+    private String getFallbackDescription(PaymentPlan paymentPlan) {
+        if (paymentPlan == null) {
+            return "Package Enrollment";
+        }
+        String planName = paymentPlan.getName();
+        String planDesc = paymentPlan.getDescription();
+        
+        if (planName != null && !planName.trim().isEmpty()) {
+            if (planDesc != null && !planDesc.trim().isEmpty()) {
+                return planName.trim() + " - " + planDesc.trim();
+            }
+            return planName.trim();
+        }
+        
+        return "Package Enrollment";
     }
 
     /**
@@ -586,9 +643,9 @@ public class InvoiceService {
             taxAmount = totalAmount.subtract(subtotal);
         }
 
-        // Build line items
+        // Build line items - use package session description instead of plan name
         List<InvoiceLineItemData> lineItems = buildLineItems(paymentPlan, paymentLogLineItems, 
-                taxIncluded, taxRate, taxLabel, subtotal, taxAmount, totalAmount);
+                taxIncluded, taxRate, taxLabel, subtotal, taxAmount, totalAmount, paymentLog.getId());
 
         // Build invoice data
         InvoiceData invoiceData = InvoiceData.builder()
@@ -605,7 +662,7 @@ public class InvoiceService {
                 .taxAmount(taxAmount)
                 .subtotal(subtotal)
                 .totalAmount(totalAmount)
-                .currency(paymentPlan.getCurrency() != null ? paymentPlan.getCurrency() : paymentLog.getCurrency())
+                .currency(getCurrencyFromPaymentLog(paymentLog, paymentPlan))
                 .taxIncluded(taxIncluded)
                 .taxRate(taxRate)
                 .taxLabel(taxLabel)
@@ -653,14 +710,23 @@ public class InvoiceService {
                                                       String taxLabel,
                                                       BigDecimal subtotal,
                                                       BigDecimal taxAmount,
-                                                      BigDecimal totalAmount) {
+                                                      BigDecimal totalAmount,
+                                                      String paymentLogId) {
         List<InvoiceLineItemData> lineItems = new ArrayList<>();
+
+        // Get package session description (package name) instead of plan name
+        String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
+        
+        // Ensure description is never null or empty
+        if (description == null || description.trim().isEmpty()) {
+            description = paymentPlan != null && paymentPlan.getName() != null ? 
+                    paymentPlan.getName() : "Package Enrollment";
+        }
 
         // Main plan item - use total amount from payment log (which is the actual paid amount)
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
-                .description(paymentPlan.getName() + (paymentPlan.getDescription() != null ? 
-                        " - " + paymentPlan.getDescription() : ""))
+                .description(description.trim())
                 .quantity(1)
                 .unitPrice(totalAmount)
                 .amount(totalAmount)
@@ -860,15 +926,28 @@ public class InvoiceService {
         filled = filled.replace("{{user_email}}", user.getEmail() != null ? user.getEmail() : "");
         filled = filled.replace("{{user_address}}", user.getAddressLine() != null ? user.getAddressLine() : "");
 
-        // Financial info - format with $ prefix
+        // Financial info - format with currency symbol based on currency code
+        String invoiceCurrency = invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR";
+        log.info("Invoice currency from invoiceData: '{}'", invoiceCurrency);
+        String currencySymbol = getCurrencySymbol(invoiceCurrency);
+        
+        // Final safeguard: ensure currency symbol is never "#"
+        if ("#".equals(currencySymbol) || currencySymbol == null || currencySymbol.trim().isEmpty()) {
+            log.error("CRITICAL: Currency symbol is '#', null, or empty! Defaulting to ₹. Currency was: '{}'", invoiceCurrency);
+            currencySymbol = "₹";
+        }
+        
+        log.info("Currency symbol resolved: '{}' for currency code: '{}'", currencySymbol, invoiceCurrency);
+        
         filled = filled.replace("{{subtotal}}", invoiceData.getSubtotal() != null ? 
-                "$" + invoiceData.getSubtotal().toString() : "$0.00");
+                currencySymbol + invoiceData.getSubtotal().toString() : currencySymbol + "0.00");
         filled = filled.replace("{{tax_amount}}", invoiceData.getTaxAmount() != null ? 
-                "$" + invoiceData.getTaxAmount().toString() : "$0.00");
+                currencySymbol + invoiceData.getTaxAmount().toString() : currencySymbol + "0.00");
         filled = filled.replace("{{total_amount}}", invoiceData.getTotalAmount() != null ? 
-                "$" + invoiceData.getTotalAmount().toString() : "$0.00");
-        filled = filled.replace("{{currency}}", invoiceData.getCurrency() != null ? 
-                invoiceData.getCurrency() : "INR");
+                currencySymbol + invoiceData.getTotalAmount().toString() : currencySymbol + "0.00");
+        filled = filled.replace("{{currency}}", invoiceCurrency);
+        // Replace currency_symbol placeholder if template uses it
+        filled = filled.replace("{{currency_symbol}}", currencySymbol);
 
         // Payment info
         filled = filled.replace("{{payment_method}}", invoiceData.getPaymentMethod() != null ? 
@@ -953,20 +1032,128 @@ public class InvoiceService {
             return "<tr><td colspan='4'>No items</td></tr>";
         }
 
+        String currencySymbol = getCurrencySymbol(currency != null ? currency : "INR");
+        
+        // Final safeguard: ensure currency symbol is never "#"
+        if ("#".equals(currencySymbol) || currencySymbol == null || currencySymbol.trim().isEmpty()) {
+            log.error("CRITICAL: Currency symbol is '#', null, or empty! Defaulting to ₹. Currency was: '{}'", currency);
+            currencySymbol = "₹";
+        }
+        
         StringBuilder html = new StringBuilder();
         for (InvoiceLineItemData item : lineItems) {
             html.append("<tr>");
             html.append("<td>").append(item.getDescription() != null ? item.getDescription() : "").append("</td>");
             html.append("<td>").append(item.getQuantity() != null ? item.getQuantity() : 1).append("</td>");
-            // Format unit price with $ prefix
+            // Format unit price with currency symbol
             String unitPrice = item.getUnitPrice() != null ? item.getUnitPrice().toString() : "0.00";
-            html.append("<td>$").append(unitPrice).append("</td>");
-            // Format amount with $ prefix
+            html.append("<td>").append(currencySymbol).append(unitPrice).append("</td>");
+            // Format amount with currency symbol
             String amount = item.getAmount() != null ? item.getAmount().toString() : "0.00";
-            html.append("<td>$").append(amount).append("</td>");
+            html.append("<td>").append(currencySymbol).append(amount).append("</td>");
             html.append("</tr>");
         }
         return html.toString();
+    }
+
+    /**
+     * Get currency from payment log with proper fallback
+     */
+    private String getCurrencyFromPaymentLog(PaymentLog paymentLog, PaymentPlan paymentPlan) {
+        String paymentLogCurrency = paymentLog != null ? paymentLog.getCurrency() : null;
+        String planCurrency = paymentPlan != null ? paymentPlan.getCurrency() : null;
+        
+        log.info("Getting currency - PaymentLog currency: '{}', Plan currency: '{}'", paymentLogCurrency, planCurrency);
+        
+        // Validate and normalize currency
+        String currency = normalizeAndValidateCurrency(paymentLogCurrency, planCurrency);
+        
+        log.info("Final currency selected: '{}'", currency);
+        return currency;
+    }
+    
+    /**
+     * Normalize and validate currency code, filtering out invalid values like "#" or symbols
+     */
+    private String normalizeAndValidateCurrency(String paymentLogCurrency, String planCurrency) {
+        // List of valid currency codes
+        Set<String> validCurrencyCodes = Set.of("INR", "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "SGD", "AED", "GBP");
+        
+        // Try payment log currency first
+        if (paymentLogCurrency != null && !paymentLogCurrency.trim().isEmpty()) {
+            String normalized = paymentLogCurrency.trim().toUpperCase();
+            // Reject if it's a single character (like "#") or not a valid currency code
+            if (normalized.length() >= 3 && (validCurrencyCodes.contains(normalized) || normalized.matches("^[A-Z]{3}$"))) {
+                log.debug("Using payment log currency: '{}'", normalized);
+                return normalized;
+            } else {
+                log.warn("Invalid payment log currency code: '{}', trying plan currency", paymentLogCurrency);
+            }
+        }
+        
+        // Try plan currency
+        if (planCurrency != null && !planCurrency.trim().isEmpty()) {
+            String normalized = planCurrency.trim().toUpperCase();
+            if (normalized.length() >= 3 && (validCurrencyCodes.contains(normalized) || normalized.matches("^[A-Z]{3}$"))) {
+                log.debug("Using plan currency: '{}'", normalized);
+                return normalized;
+            } else {
+                log.warn("Invalid plan currency code: '{}', defaulting to INR", planCurrency);
+            }
+        }
+        
+        // Default to INR
+        log.info("No valid currency found, defaulting to INR");
+        return "INR";
+    }
+    
+    /**
+     * Get currency symbol based on currency code
+     * This method ensures we never return "#" or invalid symbols
+     */
+    private String getCurrencySymbol(String currencyCode) {
+        if (currencyCode == null || currencyCode.trim().isEmpty()) {
+            log.debug("Currency code is null or empty, defaulting to INR symbol");
+            return "₹"; // Default to INR symbol
+        }
+        
+        // Normalize currency code: trim whitespace and convert to uppercase
+        String normalizedCurrency = currencyCode.trim().toUpperCase();
+        
+        // Reject invalid currency codes (single characters, symbols, etc.)
+        if (normalizedCurrency.length() < 3 || normalizedCurrency.equals("#") || 
+            normalizedCurrency.matches("^[#\\$€£¥₹]+$")) {
+            log.warn("Invalid currency code detected: '{}', defaulting to INR symbol", currencyCode);
+            return "₹";
+        }
+        
+        // Log the currency code being used for debugging
+        log.debug("Getting currency symbol for currency code: '{}' (normalized: '{}')", currencyCode, normalizedCurrency);
+        
+        switch (normalizedCurrency) {
+            case "INR":
+                return "₹";
+            case "USD":
+                return "$";
+            case "EUR":
+                return "€";
+            case "GBP":
+                return "£";
+            case "JPY":
+                return "¥";
+            case "AUD":
+                return "$"; // Australian Dollar uses $ symbol
+            case "CAD":
+                return "C$";
+            case "SGD":
+                return "S$";
+            case "AED":
+                return "د.إ"; // UAE Dirham
+            default:
+                log.warn("Unknown currency code: '{}', defaulting to INR symbol instead of using code as symbol", normalizedCurrency);
+                // Always default to INR symbol for unknown currencies to avoid showing invalid symbols
+                return "₹";
+        }
     }
 
     /**

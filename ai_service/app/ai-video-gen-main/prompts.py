@@ -128,6 +128,13 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "- **ANIMATE CONCEPTS, NOT LAYOUTS** - Use animations to EXPLAIN (draw arrows, build diagrams, show flow).\n"
     "- **CLEAN & MINIMAL** - Like a whiteboard or presentation slide, not a website.\n\n"
     
+    "**🛠️ PLATFORM CAPABILITIES**:\n"
+    "1. **Math**: Use LaTeX: `$$ E=mc^2 $$` (renders via KaTeX).\n"
+    "2. **Code**: Use `<pre><code class='language-python'>...</code></pre>` (Prism.js).\n"
+    "3. **Diagrams**: Use `<div class='mermaid'>graph TD; A-->B;</div>` (Mermaid.js).\n"
+    "4. **SVG Animations**: **USE THIS FOR EXPLAINING CONCEPTS** - Draw lines, animate icons, show processes.\n"
+    "5. **Images**: Include 1-2 AI images: `<img class='generated-image' data-img-prompt='...' src='placeholder.png' />`.\n\n"
+    
     "**🛠️ ANIMATION TOOLS AVAILABLE**:\n"
     "1. **Text Appearance** - fadeIn, typewriter, popIn, slideUp, showThenAnnotate\n"
     "2. **Vivus.js** - Draw SVG paths (handwriting effect)\n"
@@ -390,6 +397,11 @@ showThenAnnotate('#text', '#key', 'underline', '{annotation_color}', 0, 0.8);  /
 - 'circle' - Circle around term (use: {primary_color})
 - 'highlight' - Marker highlight (use yellow: #fef08a)
 - 'box' - Box around content (use: {primary_color})
+
+**AI Images**: Include 1-2 images for real-world context:
+`<img class="generated-image" data-img-prompt="description of the image you want" src="placeholder.png" style="max-width:400px;" />`
+- Use for: real-world examples, complex visuals that can't be drawn with SVG
+- Keep prompts descriptive (20-40 words): style, subject, colors, composition
 
 **DO NOT**:
 - Text flying in from sides

@@ -1747,18 +1747,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         self, entries: List[Dict[str, Any]], seg: Dict[str, Any], base_start: float, base_end: float
     ) -> None:
         # User requested "have one at all times", so we minimize gap tolerance.
-        MIN_GAP = 0.5  # Increased to 0.5s to avoid tiny filler flashes
-        
-        # 0. Pre-pass: Snap entries to boundaries if close (within 0.2s)
-        # This fixes the issue where an entry starts at 0.1s and creates a 0.1s gap
-        for entry in entries:
-            s = float(entry.get("start", base_start))
-            e = float(entry.get("end", base_end))
-            if s - base_start < 0.2:
-                entry["start"] = base_start
-            if base_end - e < 0.2:
-                entry["end"] = base_end
-
+        MIN_GAP = 0.05
         intervals: List[Tuple[float, float]] = []
         for entry in entries:
             start = max(base_start, float(entry.get("start", base_start)))

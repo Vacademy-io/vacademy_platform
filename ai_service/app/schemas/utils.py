@@ -1,4 +1,3 @@
-from typing import Optional
 from pydantic import BaseModel, HttpUrl
 
 class UrlScrapeRequest(BaseModel):
@@ -6,4 +5,4 @@ class UrlScrapeRequest(BaseModel):
 
 class UrlScrapeResponse(BaseModel):
     content: str
-    title: Optional[str] = None
+    title: str | None = None

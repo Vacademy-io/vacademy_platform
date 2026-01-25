@@ -248,20 +248,17 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   };
 
                   // 6. THEN ANNOTATE - Show text, then annotate key part
-                  // This is the pattern: text appears → pause → key term gets annotated
-                  window.showThenAnnotate = function(textSelector, termSelector, annotationType, annotationColor, textDelay, annotationDelay) {
-                    // First show the text
-                    fadeIn(textSelector, 0.5, textDelay || 0);
-                    
-                    // Then annotate the key term
+                  window.showThenAnnotate = function(textSelector, termSelector, type, color, textDelay, annotDelay) {
+                    window.fadeIn(textSelector, 0.5, textDelay || 0);
                     setTimeout(() => {
-                      annotate(termSelector, {
-                        type: annotationType || 'underline',
-                        color: annotationColor || '#dc2626',
+                      window.annotate(termSelector, {
+                        type: type || 'underline',
+                        color: color || '#dc2626',
                         duration: 600
                       });
-                    }, ((textDelay || 0) + (annotationDelay || 0.8)) * 1000);
+                    }, ((textDelay || 0) + (annotDelay || 0.8)) * 1000);
                   };
+
                 </script>
               </body>
             </html>
@@ -404,15 +401,18 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                             };
                             
                             const showThenAnnotate = (textSel, termSel, type, color, textDelay, annotDelay) => {
-                                fadeIn(textSel, 0.5, textDelay || 0);
+                                fadeIn(resolveOne(textSel), 0.5, textDelay || 0);
                                 setTimeout(() => {
-                                  annotate(termSel, {
+                                  annotate(resolveOne(termSel), {
                                     type: type || 'underline',
                                     color: color || '#dc2626',
                                     duration: 600
                                   });
                                 }, ((textDelay || 0) + (annotDelay || 0.8)) * 1000);
                             };
+
+                            const playSound = (url, vol) => window.playSound(url, vol);
+                            const sounds = window.sounds;
                             
                             try {
                                 ${originalCode}

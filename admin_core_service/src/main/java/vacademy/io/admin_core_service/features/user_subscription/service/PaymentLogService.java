@@ -25,6 +25,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
@@ -68,6 +69,9 @@ public class PaymentLogService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
+
+    @Autowired
+    private InvoiceService invoiceService;
 
     @Autowired
     private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
@@ -299,7 +303,24 @@ public class PaymentLogService {
         } else {
             log.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}",
                     paymentLog.getUserPlan().getId());
-            userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
+                userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
+
+                // Generate invoice for paid enrollments
+                if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
+                    try {
+                        log.info("Generating invoice for payment log ID: {}", paymentLogId);
+                        invoiceService.generateInvoice(
+                            paymentLog.getUserPlan(),
+                            paymentLog,
+                            instituteId
+                        );
+                        log.info("Invoice generated successfully for payment log ID: {}", paymentLogId);
+                    } catch (Exception e) {
+                        // Don't fail payment confirmation if invoice generation fails
+                        log.error("Failed to generate invoice for payment log ID: {}. Payment confirmation will continue without invoice.",
+                            paymentLogId, e);
+                    }
+                }
 
             // Parse the paymentSpecificData which now contains both response and original
             // request

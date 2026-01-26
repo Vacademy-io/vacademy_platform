@@ -1,0 +1,12 @@
+{
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "background_color": "#ffffff",
+  "show_captions": true,
+  "captions_settings_path": "captions_settings.json",
+  "show_branding": true,
+  "branding_json_path": "branding.json",
+  "frames_dir": ".render_frames",
+  "show_character": false
+}

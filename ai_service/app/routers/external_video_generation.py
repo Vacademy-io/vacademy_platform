@@ -72,8 +72,6 @@ async def generate_video_external(
             resume=False,
             target_audience=payload.target_audience,
             target_duration=payload.target_duration,
-            target_duration=payload.target_duration,
-            target_duration=payload.target_duration,
             db_session=db,
             model=payload.model or VIDEO_GENERATION_DEFAULT_MODEL,
             institute_id=institute_id, # Authenticated institute

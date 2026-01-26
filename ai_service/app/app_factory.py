@@ -71,11 +71,11 @@ def create_app() -> FastAPI:
     app.include_router(token_usage_router, prefix=settings.api_base_path)
     app.include_router(chat_bot_router, prefix=settings.api_base_path)
     app.include_router(chat_agent_router, prefix=settings.api_base_path)
-    app.include_router(validation_router, prefix=settings.api_base_path)
-    app.include_router(institute_settings_router, prefix=settings.api_base_path)
     app.include_router(utils_router, prefix=settings.api_base_path)
-    app.include_router(institute_api_keys_router, prefix=settings.api_base_path)
-    app.include_router(external_video_generation_router, prefix=settings.api_base_path)
+    
+    # Mount new external/management APIs under /api/v1
+    app.include_router(institute_api_keys_router, prefix=f"{settings.api_base_path}/api/v1")
+    app.include_router(external_video_generation_router, prefix=f"{settings.api_base_path}/api/v1")
 
 
 

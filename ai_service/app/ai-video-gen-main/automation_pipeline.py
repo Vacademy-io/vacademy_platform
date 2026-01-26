@@ -355,6 +355,12 @@ class GoogleCloudTTSClient:
                     clean_json = clean_json[1:-1]
                 
                 info = json.loads(clean_json)
+                
+                # Fix private_key newlines if they are literal "\n" strings
+                if "private_key" in info and "\\n" in info["private_key"]:
+                    print("    🔧 Fixing escaped newlines in private_key...")
+                    info["private_key"] = info["private_key"].replace("\\n", "\n")
+                
                 credentials = service_account.Credentials.from_service_account_info(info)
             except json.JSONDecodeError as e:
                 print(f"❌ JSON Decode Error. Content preview: {self.credentials_json[:50]}...")

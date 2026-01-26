@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 import secrets
 import string
 from datetime import datetime
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 

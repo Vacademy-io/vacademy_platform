@@ -962,3 +962,251 @@ class VideoGenerationService:
         
         return video_record.to_dict()
 
+
+    async def regenerate_video_frame(
+        self,
+        video_id: str,
+        timestamp: float,
+        user_prompt: str,
+        db_session: Optional[Session] = None,
+        institute_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Regenerate HTML content for a specific frame based on user prompt.
+        
+        Args:
+            video_id: Video identifier
+            timestamp: Timestamp in seconds to identify the frame
+            user_prompt: User's instruction for modification
+            
+        Returns:
+            Dict containing original_html and new_html
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # 1. Get video status to find timeline URL
+        status = self.get_video_status(video_id)
+        if not status or "timeline" not in status.get("s3_urls", {}):
+            raise ValueError(f"Timeline not found for video {video_id}. Generate HTML stage first.")
+            
+        timeline_url = status["s3_urls"]["timeline"]
+        
+        # 2. Download and parse timeline
+        with tempfile.TemporaryDirectory() as temp_dir:
+            timeline_path = Path(temp_dir) / "time_based_frame.json"
+            if not self.s3_service.download_file(timeline_url, timeline_path):
+                raise RuntimeError("Failed to download timeline file")
+                
+            timeline_data = json.loads(timeline_path.read_text(encoding='utf-8'))
+            
+            # 3. Find the target frame
+            target_frame = None
+            frame_index = -1
+            
+            # Timeline is list of {start_time, end_time, html, ...}
+            # Find frame where start_time <= timestamp < end_time
+            # Or closest frame
+            for idx, frame in enumerate(timeline_data):
+                start = float(frame.get("start_time", 0))
+                end = float(frame.get("end_time", 99999))
+                
+                if start <= timestamp and timestamp < end:
+                    target_frame = frame
+                    frame_index = idx
+                    break
+            
+            if not target_frame:
+                # If no exact match (e.g. timestamp at very end), take last frame
+                if timeline_data:
+                    target_frame = timeline_data[-1]
+                    frame_index = len(timeline_data) - 1
+                else:
+                    raise ValueError("Empty timeline")
+            
+            original_html = target_frame.get("html", "")
+            
+            # 4. Call LLM to regenerate HTML
+            # We need an LLM client here. We can use OpenRouter client directly or via pipeline.
+            # For simplicity and speed, let's use the one from config/pipeline settings
+            from ..config import get_settings
+            from ..adapters.openrouter_llm_client import OpenRouterOutlineLLMClient
+            
+            # Construct prompt
+            system_prompt = """
+            You are an expert HTML/CSS developer for educational videos. 
+            Your task is to modify the provided HTML frame based on the user's request.
+            
+            RULES:
+            1. Keep the HTML structure valid and responsive.
+            2. PRESERVE all existing image tags <img src="..."> exactly as they are. DO NOT change image sources.
+            3. Apply requested text or CSS style changes.
+            4. Return ONLY the new HTML code. No markdown, no explanations.
+            """
+            
+            user_message = f"""
+            ORIGINAL HTML:
+            {original_html}
+            
+            USER INSTRUCTION:
+            {user_prompt}
+            
+            Generate the updated HTML:
+            """
+            
+            # Use LLM client
+            # We can reuse the outline client or a simpler one. 
+            # Ideally we should inject this dependency, but for now we instantiate as service method
+            llm_client = OpenRouterOutlineLLMClient() 
+            
+            # Note: OpenRouterOutlineLLMClient expects specific format, let's use a simpler direct call or 
+            # if the client supports chat. The existing client is for outlines.
+            # Let's import requests to call OpenRouter direct for this specific task
+            # OR better, stick to the pattern and use a proper adapter.
+            # Since we are in the service, let's use the pipeline's LLM logic if available, 
+            # or just call the API directly using settings keys.
+            
+            import requests
+            settings = get_settings()
+            
+            if not settings.openrouter_api_key:
+                raise ValueError("OpenRouter API key not configured")
+                
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://vacademy.io",
+                },
+                json={
+                    "model": settings.llm_default_model or "openai/gpt-4o",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message}
+                    ],
+                    "temperature": 0.7
+                },
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"LLM Error: {response.text}")
+                raise RuntimeError("Failed to regenerate HTML via AI")
+                
+            new_html = response.json()["choices"][0]["message"]["content"].strip()
+            
+            # Cleanup markdown block if present
+            if new_html.startswith("```html"):
+                new_html = new_html.replace("```html", "", 1)
+            if new_html.startswith("```"):
+                new_html = new_html.replace("```", "", 1)
+            if new_html.endswith("```"):
+                new_html = new_html[:-3]
+            
+            new_html = new_html.strip()
+            
+            return {
+                "video_id": video_id,
+                "frame_index": frame_index,
+                "timestamp": timestamp,
+                "original_html": original_html,
+                "new_html": new_html
+            }
+
+    async def update_video_frame(
+        self,
+        video_id: str,
+        frame_index: int,
+        new_html: str
+    ) -> Dict[str, Any]:
+        """
+        Update a specific frame's HTML in the timeline and save back to S3.
+        
+        Args:
+            video_id: Video identifier
+            frame_index: Index of the frame to update
+            new_html: The valid HTML content
+            
+        Returns:
+            Success status
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        status = self.get_video_status(video_id)
+        if not status or "timeline" not in status.get("s3_urls", {}):
+            raise ValueError(f"Timeline not found for video {video_id}")
+            
+        timeline_url = status["s3_urls"]["timeline"]
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = Path(temp_dir) / "time_based_frame.json"
+            
+            # Download
+            if not self.s3_service.download_file(timeline_url, file_path):
+                raise RuntimeError("Failed to download timeline file")
+            
+            # Read
+            data = json.loads(file_path.read_text(encoding='utf-8'))
+            
+            # Update
+            if frame_index < 0 or frame_index >= len(data):
+                raise IndexError(f"Frame index {frame_index} out of range (0-{len(data)-1})")
+                
+            data[frame_index]["html"] = new_html
+            
+            # Write
+            file_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
+            
+            # Upload back
+            # We use upload_file directly to S3
+            # We need to constructing the S3 key again or reuse internal logic
+            # S3Service.upload_file expects a key.
+            # TIMELINE URL: https://bucket.s3.amazonaws.com/ai-videos/{video_id}/timeline/time_based_frame.json
+            # KEY: ai-videos/{video_id}/timeline/time_based_frame.json
+            
+            from ..config import get_settings
+            settings = get_settings()
+            bucket = settings.aws_bucket_name
+            
+            # Extract key from URL
+            # simplistic extraction: find "ai-videos/..."
+            if f"/{bucket}/" in timeline_url:
+                # Path style
+                key = timeline_url.split(f"/{bucket}/")[-1]
+            elif f"{bucket}.s3" in timeline_url:
+                # Virtual host style
+                # URL: https://BUCKET.s3.region.amazonaws.com/KEY
+                # We need to strip the domain part
+                # Find first slash after domain
+                match = re.search(r'\.com/(.+)$', timeline_url)
+                if match:
+                    key = match.group(1)
+                else:
+                     # Fallback manual construction
+                     key = f"ai-videos/{video_id}/timeline/time_based_frame.json"
+            else:
+                 key = f"ai-videos/{video_id}/timeline/time_based_frame.json"
+            
+            # Upload
+            try:
+                self.s3_service.s3_client.upload_file(
+                    str(file_path),
+                    bucket,
+                    key,
+                    ExtraArgs={'ContentType': 'application/json', 'ACL': 'public-read'}
+                )
+                
+                # Invalidate CloudFront? (Not handled here, assuming direct S3 usage or short TTL)
+                
+            except Exception as e:
+                logger.error(f"Failed to upload updated timeline: {e}")
+                raise RuntimeError(f"Failed to save changes to S3: {e}")
+                
+            return {
+                "status": "success",
+                "video_id": video_id,
+                "updated_frame_index": frame_index,
+                "message": "Frame updated successfully. Player should reflect changes immediately."
+            }

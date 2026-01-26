@@ -15,7 +15,10 @@ from ..dependencies import get_institute_from_api_key
 from ..schemas.video_generation import (
     VideoGenerationRequest,
     VideoStatusResponse,
-    VideoUrlsResponse
+    VideoUrlsResponse,
+    RegenerateFrameRequest,
+    RegenerateFrameResponse,
+    UpdateFrameRequest
 )
 from ..services.video_generation_service import VideoGenerationService
 from ..repositories.ai_video_repository import AiVideoRepository
@@ -139,3 +142,65 @@ async def get_video_urls_external(
         status=status.get("status", "UNKNOWN"),
         current_stage=status.get("current_stage", "UNKNOWN")
     )
+
+
+@router.post(
+    "/frame/regenerate",
+    response_model=RegenerateFrameResponse,
+    summary="Regenerate a specific frame's HTML using AI (External)"
+)
+async def regenerate_frame_external(
+    payload: RegenerateFrameRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key)
+) -> RegenerateFrameResponse:
+    """
+    Regenerate HTML content for a specific frame based on user prompt.
+    Returns the new HTML for preview.
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    try:
+        result = await service.regenerate_video_frame(
+            video_id=payload.video_id,
+            timestamp=payload.timestamp,
+            user_prompt=payload.user_prompt,
+            db_session=db,
+            institute_id=institute_id
+        )
+        return RegenerateFrameResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/frame/update",
+    summary="Update a specific frame's HTML (External)"
+)
+async def update_frame_external(
+    payload: UpdateFrameRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key)
+):
+    """
+    Update a frame's HTML in the timeline.
+    Call this after previewing the regenerated frame to confirm changes.
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    try:
+        result = await service.update_video_frame(
+            video_id=payload.video_id,
+            frame_index=payload.frame_index,
+            new_html=payload.new_html
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except IndexError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

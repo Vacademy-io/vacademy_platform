@@ -128,3 +128,26 @@ class VideoUrlsResponse(BaseModel):
             }
         }
 
+
+class RegenerateFrameRequest(BaseModel):
+    """Request for regenerating a specific frame's HTML."""
+    video_id: str = Field(..., description="Video ID")
+    timestamp: float = Field(..., description="Timestamp of the frame in seconds")
+    user_prompt: str = Field(..., description="User's instruction for modification")
+    institute_id: Optional[str] = Field(None, description="Institute ID (optional)")
+
+
+class RegenerateFrameResponse(BaseModel):
+    """Response with new HTML content."""
+    video_id: str
+    frame_index: int
+    timestamp: float
+    original_html: str
+    new_html: str
+
+
+class UpdateFrameRequest(BaseModel):
+    """Request for updating a specific frame's HTML."""
+    video_id: str = Field(..., description="Video ID")
+    frame_index: int = Field(..., description="Index of the frame to update")
+    new_html: str = Field(..., description="New HTML content")

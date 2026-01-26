@@ -356,10 +356,31 @@ class GoogleCloudTTSClient:
                 
                 info = json.loads(clean_json)
                 
-                # Fix private_key newlines if they are literal "\n" strings
-                if "private_key" in info and "\\n" in info["private_key"]:
-                    print("    🔧 Fixing escaped newlines in private_key...")
-                    info["private_key"] = info["private_key"].replace("\\n", "\n")
+                # Fix private_key formatting issues (missing newlines)
+                if "private_key" in info:
+                    pk = info["private_key"]
+                    updated = False
+                    
+                    if "\\n" in pk:
+                        pk = pk.replace("\\n", "\n")
+                        updated = True
+                    
+                    # Ensure header is followed by a newline
+                    header = "-----BEGIN PRIVATE KEY-----"
+                    if header in pk and not pk.startswith(header + "\n"):
+                        pk = pk.replace(header, header + "\n")
+                        updated = True
+                        
+                    # Ensure footer is preceded by a newline
+                    footer = "-----END PRIVATE KEY-----"
+                    if footer in pk and not pk.endswith("\n" + footer) and not pk.endswith("\n" + footer + "\n"):
+                        pk = pk.replace(footer, "\n" + footer)
+                        updated = True
+                    
+                    if updated:
+                        print("    🔧 Fixing private_key formatting/newlines...")
+                        # Remove any double newlines we might have introduced
+                        info["private_key"] = pk.replace("\n\n", "\n")
                 
                 credentials = service_account.Credentials.from_service_account_info(info)
             except json.JSONDecodeError as e:

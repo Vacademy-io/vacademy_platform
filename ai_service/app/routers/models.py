@@ -65,6 +65,7 @@ async def list_models(
     """
     Get a list of all available AI models.
     Can be filtered by category or provider.
+    
     Models from this list can be used in outline and content generation APIs.
     """
     models: List[ModelInfo] = ALL_MODELS

@@ -346,8 +346,19 @@ class GoogleCloudTTSClient:
 
         if self.credentials_json:
             print(f"🔑 Using Service Account from Environment Variable")
-            info = json.loads(self.credentials_json)
-            credentials = service_account.Credentials.from_service_account_info(info)
+            try:
+                # Sanitize: Remove wrapping quotes if they were injected by shell/k8s
+                clean_json = self.credentials_json.strip()
+                if clean_json.startswith("'") and clean_json.endswith("'"):
+                    clean_json = clean_json[1:-1]
+                elif clean_json.startswith('"') and clean_json.endswith('"'):
+                    clean_json = clean_json[1:-1]
+                
+                info = json.loads(clean_json)
+                credentials = service_account.Credentials.from_service_account_info(info)
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON Decode Error. Content preview: {self.credentials_json[:50]}...")
+                raise e
         elif self.credentials_path:
             print(f"🔑 Using Service Account: {self.credentials_path}")
             credentials = service_account.Credentials.from_service_account_file(self.credentials_path)

@@ -35,6 +35,14 @@ class VideoGenerationRequest(BaseModel):
         default=None, 
         description="AI Model to use for generation (e.g. 'xiaomi/mimo-v2-flash:free')"
     )
+    voice_gender: str = Field(
+        default="female",
+        description="Voice gender for TTS: 'male' or 'female'. Default is 'female'."
+    )
+    tts_provider: str = Field(
+        default="edge",
+        description="TTS Provider: 'edge' (Microsoft Edge TTS, default) or 'google' (Google Cloud TTS)."
+    )
     
     class Config:
         json_schema_extra = {
@@ -45,7 +53,9 @@ class VideoGenerationRequest(BaseModel):
                 "html_quality": "advanced",
                 "video_id": "quantum-entanglement-101",
                 "target_audience": "Class 3 (Ages 7-8)",
-                "target_duration": "5 minutes"
+                "target_duration": "5 minutes",
+                "voice_gender": "female",
+                "tts_provider": "edge"
             }
         }
 

@@ -92,6 +92,8 @@ class VideoGenerationService:
         model: Optional[str] = None,
         target_audience: str = "General/Adult",
         target_duration: str = "2-3 minutes",
+        voice_gender: str = "female",
+        tts_provider: str = "edge",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None
@@ -189,6 +191,8 @@ class VideoGenerationService:
                     model=model,
                     target_audience=target_audience,
                     target_duration=target_duration,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider,
                     db_session=db_session,
                     institute_id=institute_id,
                     user_id=user_id
@@ -245,6 +249,8 @@ class VideoGenerationService:
         model: Optional[str] = None,
         target_audience: str = "General/Adult",
         target_duration: str = "2-3 minutes",
+        voice_gender: str = "female",
+        tts_provider: str = "edge",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None
@@ -441,7 +447,9 @@ class VideoGenerationService:
                 show_captions=captions_enabled,
                 html_quality=html_quality,
                 target_audience=target_audience,
-                target_duration=target_duration
+                target_duration=target_duration,
+                voice_gender=voice_gender,
+                tts_provider=tts_provider
             )
             
             with ThreadPoolExecutor() as executor:

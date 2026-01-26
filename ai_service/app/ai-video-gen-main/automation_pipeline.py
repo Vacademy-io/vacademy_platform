@@ -61,13 +61,75 @@ DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 DEFAULT_GEMINI_IMAGE_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 VOICE_MAPPING = {
-    "english": "en-US-AriaNeural",
-    "hindi": "hi-IN-SwaraNeural",
-    "spanish": "es-ES-ElviraNeural",
-    "french": "fr-FR-DeniseNeural",
-    "german": "de-DE-KatjaNeural",
-    "japanese": "ja-JP-NanamiNeural",
-    "chinese": "zh-CN-XiaoxiaoNeural",
+    # format: "lowercase language": {"edge": {"male": "...", "female": "..."}, "google": {"male": "...", "female": "..."}}
+    "english": {
+        "edge": {"female": "en-US-AriaNeural", "male": "en-US-ChristopherNeural"},
+        "google": {"female": "en-US-Journey-F", "male": "en-US-Journey-D"}
+    },
+    "english (us)": {
+        "edge": {"female": "en-US-AriaNeural", "male": "en-US-ChristopherNeural"},
+        "google": {"female": "en-US-Journey-F", "male": "en-US-Journey-D"}
+    },
+    "english (uk)": {
+        "edge": {"female": "en-GB-SoniaNeural", "male": "en-GB-RyanNeural"},
+        "google": {"female": "en-GB-Neural2-A", "male": "en-GB-Neural2-B"}
+    },
+    "english (india)": {
+        "edge": {"female": "en-IN-NeerjaNeural", "male": "en-IN-PrabhatNeural"},
+        "google": {"female": "en-IN-Neural2-A", "male": "en-IN-Neural2-B"}
+    },
+    "hindi": {
+        "edge": {"female": "hi-IN-SwaraNeural", "male": "hi-IN-MadhurNeural"},
+        "google": {"female": "hi-IN-Neural2-A", "male": "hi-IN-Neural2-B"}
+    },
+    "bengali": {
+        "edge": {"female": "bn-IN-TanishaaNeural", "male": "bn-IN-BashkarNeural"},
+        "google": {"female": "bn-IN-Wavenet-A", "male": "bn-IN-Wavenet-B"}
+    },
+    "tamil": {
+        "edge": {"female": "ta-IN-PallaviNeural", "male": "ta-IN-ValluvarNeural"},
+        "google": {"female": "ta-IN-Wavenet-A", "male": "ta-IN-Wavenet-B"}
+    },
+    "telugu": {
+        "edge": {"female": "te-IN-ShrutiNeural", "male": "te-IN-MohanNeural"},
+        "google": {"female": "te-IN-Standard-A", "male": "te-IN-Standard-B"}
+    },
+    "marathi": {
+        "edge": {"female": "mr-IN-AarohiNeural", "male": "mr-IN-ManoharNeural"},
+        "google": {"female": "mr-IN-Wavenet-A", "male": "mr-IN-Wavenet-B"}
+    },
+    "kannada": {
+        "edge": {"female": "kn-IN-SapnaNeural", "male": "kn-IN-GaganNeural"},
+        "google": {"female": "kn-IN-Wavenet-A", "male": "kn-IN-Wavenet-B"}
+    },
+    "gujarati": {
+        "edge": {"female": "gu-IN-DhwaniNeural", "male": "gu-IN-NiranjanNeural"},
+        "google": {"female": "gu-IN-Wavenet-A", "male": "gu-IN-Wavenet-B"}
+    },
+    "malayalam": {
+        "edge": {"female": "ml-IN-SobhanaNeural", "male": "ml-IN-MidhunNeural"},
+        "google": {"female": "ml-IN-Wavenet-A", "male": "ml-IN-Wavenet-B"}
+    },
+    "spanish": {
+        "edge": {"female": "es-ES-ElviraNeural", "male": "es-ES-AlvaroNeural"},
+        "google": {"female": "es-ES-Neural2-A", "male": "es-ES-Neural2-B"}
+    },
+    "french": {
+        "edge": {"female": "fr-FR-DeniseNeural", "male": "fr-FR-HenriNeural"},
+        "google": {"female": "fr-FR-Neural2-A", "male": "fr-FR-Neural2-B"}
+    },
+    "german": {
+        "edge": {"female": "de-DE-KatjaNeural", "male": "de-DE-ConradNeural"},
+        "google": {"female": "de-DE-Neural2-A", "male": "de-DE-Neural2-B"}
+    },
+    "japanese": {
+        "edge": {"female": "ja-JP-NanamiNeural", "male": "ja-JP-KeitaNeural"},
+        "google": {"female": "ja-JP-Neural2-B", "male": "ja-JP-Neural2-C"}
+    },
+    "chinese": {
+        "edge": {"female": "zh-CN-XiaoxiaoNeural", "male": "zh-CN-YunxiNeural"},
+        "google": {"female": "zh-CN-Neural2-C", "male": "zh-CN-Neural2-D"}
+    }
 }
 
 
@@ -263,25 +325,41 @@ class OpenRouterClient:
 
 
 class GoogleCloudTTSClient:
-    def __init__(self, credentials_path: str):
+    def __init__(self, credentials_path: Optional[str] = None, credentials_json: Optional[str] = None):
         self.credentials_path = credentials_path
+        self.credentials_json = credentials_json
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0)
-    def synthesize(self, text: str, output_path: Path, raw_json_path: Path) -> None:
+    def synthesize(
+        self, 
+        text: str, 
+        output_path: Path, 
+        raw_json_path: Path,
+        voice_name: str = "en-US-Journey-F",
+        language_code: str = "en-US"
+    ) -> None:
         try:
             from google.cloud import texttospeech
             from google.oauth2 import service_account
         except ImportError:
             raise RuntimeError("google-cloud-texttospeech not installed. Run `pip install google-cloud-texttospeech`.")
 
-        print(f"🔑 Using Service Account: {self.credentials_path}")
-        credentials = service_account.Credentials.from_service_account_file(self.credentials_path)
+        if self.credentials_json:
+            print(f"🔑 Using Service Account from Environment Variable")
+            info = json.loads(self.credentials_json)
+            credentials = service_account.Credentials.from_service_account_info(info)
+        elif self.credentials_path:
+            print(f"🔑 Using Service Account: {self.credentials_path}")
+            credentials = service_account.Credentials.from_service_account_file(self.credentials_path)
+        else:
+            raise RuntimeError("No Google Cloud credentials provided (path or json content).")
+
         client = texttospeech.TextToSpeechClient(credentials=credentials)
 
         input_text = texttospeech.SynthesisInput(text=text)
         voice = texttospeech.VoiceSelectionParams(
-            language_code="en-US",
-            name="en-US-Journey-F"
+            language_code=language_code,
+            name=voice_name
         )
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3
@@ -356,6 +434,8 @@ class VideoGenerationPipeline:
         background_type: str = "white",
         target_audience: str = "General/Adult",
         target_duration: str = "2-3 minutes",
+        voice_gender: str = "female",
+        tts_provider: str = "edge",
     ) -> Dict[str, Any]:
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
@@ -451,8 +531,14 @@ class VideoGenerationPipeline:
             }
 
         if do_tts:
-            # print("🗣️  Synthesizing narration ...") # Already printed in method
-            tts_outputs = self._synthesize_voice(script_plan["script_path"], run_dir, language=language)
+            # print("🗣️  Synthesize narration ...") # Already printed in method
+            tts_outputs = self._synthesize_voice(
+                script_plan["script_path"], 
+                run_dir, 
+                language=language,
+                voice_gender=voice_gender,
+                tts_provider=tts_provider
+            )
         else:
             self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
             self._require_file(audio_path, "narration.mp3 (decoded audio)")
@@ -579,8 +665,15 @@ class VideoGenerationPipeline:
     # --- Google TTS bridge -------------------------------------------------
     # --- Edge TTS bridge (Free, Timed) -------------------------------------------------
     @retry_with_backoff(max_retries=3, initial_delay=2.0)
-    def _synthesize_voice(self, script_path: Path, run_dir: Path, language: str = "English") -> Dict[str, Any]:
-        print("🗣️  Synthesizing narration (EdgeTTS) ...")
+    def _synthesize_voice(
+        self, 
+        script_path: Path, 
+        run_dir: Path, 
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "edge"
+    ) -> Dict[str, Any]:
+        print(f"🗣️  Synthesizing narration ({tts_provider}) - {language} [{voice_gender}]...")
         
         # Ensure local deps are available
         if str(LOCAL_DEPS_DIR) not in sys.path:
@@ -593,11 +686,69 @@ class VideoGenerationPipeline:
         response_json = run_dir / "narration_raw.json"
         audio_path = run_dir / "narration.mp3"
         script_text = script_path.read_text().strip()
-        voice = VOICE_MAPPING.get(language.lower(), "en-US-AriaNeural") 
-        print(f"    🗣️  Voice: {voice} (Language: {language})")
+        
+        # --- Voice Selection Logic ---
+        lang_key = language.lower().strip()
+        gender_key = voice_gender.lower().strip()
+        provider_key = tts_provider.lower().strip()
+        
+        if gender_key not in ["male", "female"]: gender_key = "female"
+        if provider_key not in ["edge", "google"]: provider_key = "edge"
+        
+        # Fallback to English if language not found
+        if lang_key not in VOICE_MAPPING:
+             print(f"    ⚠️  Language '{language}' not found in mapping, falling back to 'english'")
+             lang_key = "english"
+             
+        # Select voice
+        try:
+            selected_voice = VOICE_MAPPING[lang_key][provider_key][gender_key]
+        except KeyError:
+            # Deep fallback
+            selected_voice = VOICE_MAPPING["english"][provider_key][gender_key]
+            
+        print(f"    🗣️  Voice: {selected_voice} (Provider: {provider_key}, Lang: {language})")
+
+        # --- Google TTS Path ---
+        if provider_key == "google":
+            credentials_path = REPO_ROOT / "google_credentials.json"
+            credentials_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+            
+            gc_client = None
+            if credentials_path.exists():
+                gc_client = GoogleCloudTTSClient(credentials_path=str(credentials_path))
+            elif credentials_json:
+                gc_client = GoogleCloudTTSClient(credentials_json=credentials_json)
+            else:
+                 raise RuntimeError(
+                     "Google TTS requested but no credentials found.\n"
+                     "1. Place 'google_credentials.json' in ai-video-gen-main/ directory OR\n"
+                     "2. Set 'GOOGLE_APPLICATION_CREDENTIALS_JSON' env var with content."
+                 )
+            
+            try:
+                # Pass explicit voice name and verify language code from voice name (e.g. en-US-Journey-F -> en-US)
+                lang_code_parts = selected_voice.split("-")
+                lang_code = f"{lang_code_parts[0]}-{lang_code_parts[1]}"
+                
+                gc_client.synthesize(
+                    text=script_text, 
+                    output_path=audio_path, 
+                    raw_json_path=response_json,
+                    voice_name=selected_voice,
+                    language_code=lang_code 
+                )
+                print(f"    ✅ Google TTS generation successful.")
+                return {"response_json": response_json, "audio_path": audio_path}
+            except Exception as e:
+                print(f"    ❌ Google TTS failed: {e}")
+                raise e
+
+        # --- Edge TTS Path ---
+        # Default behavior: Use EdgeTTS with selected voice
         
         async def _run_tts():
-            communicate = edge_tts.Communicate(script_text, voice)
+            communicate = edge_tts.Communicate(script_text, selected_voice)
             
             # We will perform a TWO-PASS or single-pass-with-subs approach? 
             # stream() is easiest for single pass, but if it fails, we need subs.
@@ -605,7 +756,7 @@ class VideoGenerationPipeline:
             # Actually, `communicate.stream()` produces `type="WordBoundary"`.
             # If that fails, `submaker` is needed?
             
-            # Simple approach: AriaNeural generally works. 
+            # Simple approach: AriaNeural (and other neural voices) generally works. 
             # Let's stick to stream() but with Aria.
             
             audio_data = bytearray()
@@ -841,17 +992,38 @@ class VideoGenerationPipeline:
         except Exception as e:
             print(f"⚠️  EdgeTTS failed: {e}")
             credentials_path = REPO_ROOT / "google_credentials.json"
-            if credentials_path.exists():
+            credentials_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+            
+            if credentials_path.exists() or credentials_json:
                 print("    🔄 Falling back to Google Cloud TTS...")
                 try:
-                    gc_client = GoogleCloudTTSClient(str(credentials_path))
-                    # Note: GoogleCloudTTSClient currently hardcodes en-US-Journey-F
-                    gc_client.synthesize(script_text, audio_path, response_json)
+                    gc_client = None
+                    if credentials_path.exists():
+                         gc_client = GoogleCloudTTSClient(credentials_path=str(credentials_path))
+                    else:
+                         gc_client = GoogleCloudTTSClient(credentials_json=credentials_json)
+
+                    # Determine fallback google voice
+                    try:
+                        fallback_voice = VOICE_MAPPING[lang_key]["google"][gender_key]
+                    except KeyError:
+                         fallback_voice = VOICE_MAPPING["english"]["google"][gender_key]
+                         
+                    lang_code_parts = fallback_voice.split("-")
+                    lang_code = f"{lang_code_parts[0]}-{lang_code_parts[1]}"
+                    
+                    gc_client.synthesize(
+                        text=script_text, 
+                        output_path=audio_path, 
+                        raw_json_path=response_json,
+                        voice_name=fallback_voice,
+                        language_code=lang_code
+                    )
                 except Exception as e2:
                     print(f"    ❌ Google TTS Fallback also failed: {e2}")
                     raise e  # Raise original EdgeTTS error if fallback fails
             else:
-                print("    ❌ No google_credentials.json found for fallback.")
+                print("    ❌ No google_credentials.json found or env var set for fallback.")
                 raise e
         
         return {"response_json": response_json, "audio_path": audio_path}

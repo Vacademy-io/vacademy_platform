@@ -55,10 +55,10 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allow_origins or ["*"],
-        allow_credentials=settings.cors_allow_credentials,
-        allow_methods=allow_methods or ["*"],
-        allow_headers=allow_headers or ["*"],
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # Routers

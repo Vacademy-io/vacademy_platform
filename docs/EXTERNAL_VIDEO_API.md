@@ -108,7 +108,8 @@ Start a video generation process. This endpoint returns a Server-Sent Events (SS
   "html_quality": "advanced",
   "target_audience": "Class 5 (Ages 10-11)",
   "target_duration": "2-3 minutes",
-  "video_id": "optional-custom-id"
+  "video_id": "optional-custom-id",
+  "model": "xiaomi/mimo-v2-flash:free"
 }
 ```
 
@@ -121,6 +122,24 @@ Start a video generation process. This endpoint returns a Server-Sent Events (SS
 | `target_audience`  | string  | Target age group (e.g., "Class 5"). Default: "General/Adult".               |
 | `target_duration`  | string  | Target length (e.g., "5 minutes"). Default: "2-3 minutes".                  |
 | `video_id`         | string  | Optional. A unique ID for the video. One will be generated if not provided. |
+| `model`            | string  | Optional. AI model to use. Default: `google/gemini-2.0-flash-exp:free`.     |
+
+**Recommended Models:**
+
+You can use any model available on OpenRouter, but these are tested and valid free-tier options:
+
+- `google/gemini-2.0-flash-exp:free` (Default for External API)
+- `xiaomi/mimo-v2-flash:free`
+- `mistralai/devstral-2512:free`
+- `nvidia/nemotron-3-nano-30b-a3b:free`
+
+**Paid / High Performance Models:**
+
+For better quality scripts and HTML generation, consider using these models (requires sufficient OpenRouter credits):
+
+- `anthropic/claude-3.5-sonnet`
+- `openai/gpt-4o`
+- `meta_llama/llama-3.1-405b-instruct`
 
 **Response (SSE Stream):**
 

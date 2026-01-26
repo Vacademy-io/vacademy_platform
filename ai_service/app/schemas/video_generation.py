@@ -31,6 +31,10 @@ class VideoGenerationRequest(BaseModel):
         default=None,
         description="User identifier (optional, for logging/context)"
     )
+    model: Optional[str] = Field(
+        default=None, 
+        description="AI Model to use for generation (e.g. 'xiaomi/mimo-v2-flash:free')"
+    )
     
     class Config:
         json_schema_extra = {

@@ -282,13 +282,19 @@ class VideoGenerationService:
             logger.error(f"[VideoGenService] {error_msg}")
             raise ValueError(error_msg)
         
-        pipeline = VideoGenerationPipeline(
-            openrouter_key=openrouter_key,
-            gemini_image_key=gemini_key or "",  # Pass Gemini key for image generation
-            runs_dir=work_dir.parent,
-            script_model=model,  # Optional override
-            html_model=model     # Optional override
-        )
+        # Prepare pipeline arguments
+        pipeline_args = {
+            "openrouter_key": openrouter_key,
+            "gemini_image_key": gemini_key or "",  # Pass Gemini key for image generation
+            "runs_dir": work_dir.parent
+        }
+        
+        # Only pass model overrides if provided, otherwise use pipeline defaults
+        if model:
+            pipeline_args["script_model"] = model
+            pipeline_args["html_model"] = model
+            
+        pipeline = VideoGenerationPipeline(**pipeline_args)
         
         # Map stage indices to pipeline stage names and file keys
         stage_config = {

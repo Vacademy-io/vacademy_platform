@@ -2298,7 +2298,17 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if avatar_video_path:
             cmd.extend(["--avatar-video", str(avatar_video_path)])
             
-        subprocess.run(cmd, check=True, cwd=REPO_ROOT)
+            
+        try:
+            # Capture output to ensure we see errors in the logs
+            result = subprocess.run(cmd, check=True, cwd=REPO_ROOT, capture_output=True, text=True)
+            print(f"Render output: {result.stdout}")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Video generation command failed!")
+            print(f"STDOUT: {e.stdout}")
+            print(f"STDERR: {e.stderr}")
+            raise RuntimeError(f"Video generation failed with exit code {e.returncode}. Error: {e.stderr}")
+            
         if not output_video.exists():
             raise RuntimeError(f"Video not found at {output_video}")
         return output_video

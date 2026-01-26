@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # App
     app_name: str = "AI Service"
     app_env: str = "stage"
-    api_base_path: str = "/ai-service/api/v1"
+    api_base_path: str = "/ai-service"
     host: str = "0.0.0.0"
     port: int = 8077
 

@@ -177,8 +177,73 @@ Retrieve specific URLs needed to embed the video in a custom player (HTML timeli
   "html_url": "https://bucket.s3.amazonaws.com/.../time_based_frame.json",
   "audio_url": "https://bucket.s3.amazonaws.com/.../narration.mp3",
   "words_url": "https://bucket.s3.amazonaws.com/.../narration.words.json",
-  "status": "COMPLETED",
   "current_stage": "RENDER"
+}
+```
+
+---
+
+## 4. Regenerate Specific Frame
+
+Generate a new HTML preview for a specific frame based on your instructions (e.g., "Change background to blue", "Make text larger").
+This returns the new HTML but does NOT apply it to the timeline yet.
+
+**Endpoint:** `POST /api/v1/external/video/v1/frame/regenerate`
+
+**Request Body:**
+
+```json
+{
+  "video_id": "custom-video-id",
+  "timestamp": 12.5,
+  "user_prompt": "Change the background color to dark blue and make the font yellow."
+}
+```
+
+- `timestamp`: The time in seconds where the frame is visible.
+
+**Response:**
+
+```json
+{
+  "video_id": "custom-video-id",
+  "frame_index": 5,
+  "timestamp": 12.5,
+  "original_html": "<html>...</html>",
+  "new_html": "<html><style>body { background: darkblue; color: yellow; }</style>...</html>"
+}
+```
+
+---
+
+## 5. Update Frame
+
+Apply the confirmed HTML change to the video timeline. This updates the underlying `time_based_frame.json` file.
+Note: This updates the HTML timeline immediately. If a full MP4 exists, it will strictly _not_ match until re-rendered, but HTML players will show the update instantly.
+
+**Endpoint:** `POST /api/v1/external/video/v1/frame/update`
+
+**Request Body:**
+
+```json
+{
+  "video_id": "custom-video-id",
+  "frame_index": 5,
+  "new_html": "<html>...</html>"
+}
+```
+
+- `frame_index`: Returned from the generate/preview step.
+- `new_html`: The HTML content you want to save.
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "video_id": "custom-video-id",
+  "updated_frame_index": 5,
+  "message": "Frame updated successfully. Player should reflect changes immediately."
 }
 ```
 

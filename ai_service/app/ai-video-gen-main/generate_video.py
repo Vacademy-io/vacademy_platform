@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 import argparse
-from tqdm import tqdm
+
 
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
@@ -1660,7 +1660,7 @@ def render_video_from_json(
         if not show_character:
             page.evaluate("() => window.__updateCharacter && window.__updateCharacter(null)")
 
-        for frame_index in tqdm(range(total_frames), total=total_frames, desc="Rendering frames", unit="frame"):
+        for frame_index in range(total_frames):
             t = frame_index / float(fps)
             active = _active_entries_at(timeline, t)
             # Add branding if enabled

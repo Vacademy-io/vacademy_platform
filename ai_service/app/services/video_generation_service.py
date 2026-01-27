@@ -425,79 +425,13 @@ class VideoGenerationService:
             "video_id": video_id
         }
         
-        # Run pipeline and handle partial failures gracefully
-        loop = asyncio.get_event_loop()
-        outputs = None
-        pipeline_error = None
+        # Setup for pipeline execution
+        import asyncio
+        import functools
+        from concurrent.futures import ThreadPoolExecutor
         
-        try:
-            # Run pipeline in thread pool with stop_at to prevent rendering
-            logger.info(f"[VideoGenService] Running pipeline: start_from={start_from}, stop_at={stop_at}, language={language}, captions={captions_enabled}, html_quality={html_quality}, target_audience={target_audience}, target_duration={target_duration}")
-            
-            # Use functools.partial to pass keyword arguments
-            import functools
-            pipeline_run = functools.partial(
-                pipeline.run,
-                base_prompt=prompt,
-                run_name=video_id,
-                resume_run=None,
-                start_from=start_from,
-                stop_at=stop_at,
-                language=language,
-                show_captions=captions_enabled,
-                html_quality=html_quality,
-                target_audience=target_audience,
-                target_duration=target_duration,
-                voice_gender=voice_gender,
-                tts_provider=tts_provider
-            )
-            
-            with ThreadPoolExecutor() as executor:
-                outputs = await loop.run_in_executor(executor, pipeline_run)
-            
-            # Record token usage if available
-            if outputs and "token_usage" in outputs and db_session:
-                try:
-                    from .token_usage_service import TokenUsageService
-                    
-                    usage = outputs["token_usage"]
-                    # Don't record if no tokens used
-                    if usage.get("total_tokens", 0) > 0 or usage.get("image_count", 0) > 0:
-                        token_service = TokenUsageService(db_session)
-                        
-                        # Determine provider based on model or default to OPENAI (generic)
-                        # The pipeline is mixed, but mostly OpenRouter/LLM driven for tokens
-                        provider = ApiProvider.OPENAI
-                        if model and "gemini" in model.lower():
-                            provider = ApiProvider.GEMINI
-                            
-                        token_service.record_usage(
-                            api_provider=provider,
-                            prompt_tokens=usage.get("prompt_tokens", 0),
-                            completion_tokens=usage.get("completion_tokens", 0),
-                            total_tokens=usage.get("total_tokens", 0),
-                            request_type=RequestType.VIDEO,
-                            institute_id=institute_id,
-                            user_id=user_id,
-                            model=model or "video-gen-pipeline",
-                            metadata={
-                                "video_id": video_id,
-                                "image_count": usage.get("image_count", 0),
-                                "stages": f"{self.STAGES[start_stage_idx]}->{self.STAGES[target_stage_idx]}"
-                            }
-                        )
-                        logger.info(f"[VideoGenService] Recorded usage for video {video_id}: {usage.get('total_tokens')} tokens, {usage.get('image_count')} images")
-                except Exception as e:
-                    logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
-
-            logger.info(f"[VideoGenService] Pipeline completed successfully")
-        except Exception as e:
-            import traceback
-            pipeline_error = str(e)
-            error_traceback = traceback.format_exc()
-            logger.error(f"[VideoGenService] Pipeline failed: {pipeline_error}")
-            logger.error(f"[VideoGenService] Full traceback:\n{error_traceback}")
-            # Don't raise yet - try to recover partial files
+        loop = asyncio.get_event_loop()
+        pipeline_error = None
         
         # Map of expected files for each stage
         # Format: (output_key_from_pipeline, file_key_for_db_s3, file_name)
@@ -521,70 +455,102 @@ class VideoGenerationService:
             "render": [("video_path", "video", "output.mp4")]
         }
         
-        # Pipeline creates run_dir at runs_dir / video_id
-        # Since runs_dir = work_dir.parent and work_dir = temp_dir / video_id,
-        # the actual run_dir should be: work_dir.parent / video_id = temp_dir / video_id = work_dir
-        # But check both possibilities due to potential double nesting
-        possible_dirs = [
-            work_dir,  # Direct work_dir
-            work_dir.parent / video_id,  # runs_dir / video_id
-            work_dir / video_id,  # In case of double nesting
-        ]
-        
-        run_dir = None
-        for possible_dir in possible_dirs:
-            if possible_dir.exists():
-                # Verify it has expected files
-                if (possible_dir / "script.txt").exists() or (possible_dir / "narration.mp3").exists():
-                    run_dir = possible_dir
-                    logger.info(f"[VideoGenService] Found run_dir: {run_dir}")
-                    break
-        
-        if not run_dir:
-            # Default to work_dir if none found
-            run_dir = work_dir
-            logger.warning(f"[VideoGenService] Could not find run_dir, using default: {run_dir}")
-        
-        # Also check if outputs contain file paths to locate run_dir
-        if not run_dir.exists() and outputs:
-            for key, value in outputs.items():
-                if value and isinstance(value, (str, Path)):
-                    try:
-                        # Use raw string to avoid regex escape issues
-                        path_str = str(value).replace('\\', '/')  # Normalize path separators
-                        potential_dir = Path(value).parent
-                        if potential_dir.exists():
-                            # Check if video_id is in the path (normalized)
-                            path_str_normalized = str(potential_dir).replace('\\', '/')
-                            if video_id in path_str_normalized:
-                                run_dir = potential_dir
-                                logger.info(f"[VideoGenService] Found run_dir from output {key}: {run_dir}")
-                                break
-                    except Exception as e:
-                        logger.warning(f"[VideoGenService] Could not parse path from {key}: {e}")
-        
-        logger.info(f"[VideoGenService] Checking for generated files in {run_dir} (exists: {run_dir.exists()})")
-        
-        # List all files in run_dir if it exists (for debugging)
-        if run_dir.exists():
-            try:
-                all_files = list(run_dir.glob("*"))
-                logger.info(f"[VideoGenService] Found {len(all_files)} files in run_dir: {[f.name for f in all_files]}")
-            except Exception as e:
-                logger.warning(f"[VideoGenService] Could not list files in {run_dir}: {e}")
-        
-        # Process each stage and upload whatever files exist
-        # Store image path mapping for updating time_based_frame.json
+        # Store image path mapping across stages (needed for html stage)
         image_path_mapping = {}  # Maps local file paths to S3 URLs
         
+        # Iterate through stages individually
         for stage_idx in range(start_stage_idx, target_stage_idx + 1):
+            if pipeline_error:
+                logger.warning(f"[VideoGenService] Stopping stage loop due to error in previous stage")
+                break
+
             stage_name = self.STAGES[stage_idx]
             config = stage_config[stage_idx]
+            stage_pipeline_name = config["name"]
+            
+            # Yield progress at start of stage
+            # Calculate percentage for start of this stage
+            percentage = 5 + int((stage_idx - start_stage_idx) * percentage_per_stage)
+            
+            yield {
+                "type": "progress",
+                "stage": stage_name,
+                "message": f"Processing stage: {stage_pipeline_name.upper()}",
+                "percentage": percentage,
+                "video_id": video_id
+            }
+            
+            outputs = None
+            run_dir = work_dir # Default
+            
+            try:
+                logger.info(f"[VideoGenService] Running pipeline stage: {stage_pipeline_name} (idx {stage_idx})")
+                
+                pipeline_run = functools.partial(
+                    pipeline.run,
+                    base_prompt=prompt,
+                    run_name=video_id,
+                    resume_run=None,
+                    start_from=stage_pipeline_name,
+                    stop_at=stage_pipeline_name,
+                    language=language,
+                    show_captions=captions_enabled,
+                    html_quality=html_quality,
+                    target_audience=target_audience,
+                    target_duration=target_duration,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider
+                )
+                
+                with ThreadPoolExecutor() as executor:
+                    outputs = await loop.run_in_executor(executor, pipeline_run)
+                
+                # Record token usage per stage
+                if outputs and "token_usage" in outputs and db_session:
+                    try:
+                        from .token_usage_service import TokenUsageService
+                        usage = outputs["token_usage"]
+                        if usage.get("total_tokens", 0) > 0 or usage.get("image_count", 0) > 0:
+                            token_service = TokenUsageService(db_session)
+                            provider = ApiProvider.OPENAI
+                            if model and "gemini" in model.lower():
+                                provider = ApiProvider.GEMINI
+                            token_service.record_usage(
+                                api_provider=provider,
+                                prompt_tokens=usage.get("prompt_tokens", 0),
+                                completion_tokens=usage.get("completion_tokens", 0),
+                                total_tokens=usage.get("total_tokens", 0),
+                                request_type=RequestType.VIDEO,
+                                institute_id=institute_id,
+                                user_id=user_id,
+                                model=model or "video-gen-pipeline",
+                                metadata={
+                                    "video_id": video_id,
+                                    "image_count": usage.get("image_count", 0),
+                                    "stage": stage_pipeline_name
+                                }
+                            )
+                            logger.info(f"[VideoGenService] Recorded usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
+                    except Exception as e:
+                        logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
+                
+                if outputs and "run_dir" in outputs:
+                    run_dir = outputs["run_dir"]
+                    
+            except Exception as e:
+                import traceback
+                pipeline_error = str(e)
+                error_traceback = traceback.format_exc()
+                logger.error(f"[VideoGenService] Stage {stage_pipeline_name} failed: {pipeline_error}")
+                logger.error(f"[VideoGenService] Traceback: {error_traceback}")
+                # Loop continues to try to save partial files
+            
+            # Recalculate percentage for file processing (slightly higher)
             percentage = 5 + int((stage_idx - start_stage_idx + 1) * percentage_per_stage)
             
-            files_to_check = file_map.get(config["name"], [])
             uploaded_files = {}
             stage_has_files = False
+            files_to_check = file_map.get(config["name"], [])
             
             for output_key, file_key, file_name in files_to_check:
                 # Try to get from outputs first, then check directory

@@ -10,7 +10,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
-import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
+
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -50,9 +50,6 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
     @Autowired
     private AuthService authService;
 
-    @Autowired
-    private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
-
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
             LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
@@ -63,33 +60,9 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         log.info("Processing ONE_TIME payment enrollment for user: {}", userDTO.getEmail());
 
-        // Step 1: Create ABANDONED_CART entries first for tracking
-        List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
-        for (String actualPackageSessionId : packageSessionIds) {
-            PackageSession invitedPackageSession = learnerEnrollmentEntryService
-                    .findInvitedPackageSession(actualPackageSessionId);
-
-            PackageSession actualPackageSession = packageSessionRepository.findById(actualPackageSessionId)
-                    .orElseThrow(() -> new VacademyException("Package session not found: " + actualPackageSessionId));
-
-            // Mark previous ABANDONED_CART and PAYMENT_FAILED entries as DELETED
-            learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
-                    userDTO.getId(),
-                    invitedPackageSession.getId(),
-                    actualPackageSessionId,
-                    instituteId);
-
-            // Create ABANDONED_CART entry
-            learnerEnrollmentEntryService.createOnlyDetailsFilledEntry(
-                    userDTO.getId(),
-                    invitedPackageSession,
-                    actualPackageSession,
-                    instituteId,
-                    userPlan.getId());
-
-            log.info("Created ABANDONED_CART entry for ONE_TIME payment user {} in package session {}",
-                    userDTO.getId(), actualPackageSessionId);
-        }
+        // Step 1: ONLY_DETAILS_FILLED entries are now managed by the capture-lead step.
+        // We do not create them here to avoid duplication or incorrect timing.
+        // Payment success/failure handlers will clean them up.
 
         String learnerSessionStatus = null;
         if (extraData.containsKey("ENROLLMENT_STATUS")) {

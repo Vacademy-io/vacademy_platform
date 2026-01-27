@@ -23,6 +23,7 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.*;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerCouponService;
@@ -390,7 +391,9 @@ public class StudentRegistrationManager {
                         LearnerSessionStatusEnum.TERMINATED.name(),
                         LearnerSessionStatusEnum.INACTIVE.name(),
                         LearnerSessionStatusEnum.EXPIRED.name() // <-- ADDED
-                ));
+                ))
+                .filter(mapping -> !LearnerSessionTypeEnum.ABANDONED_CART.name().equals(mapping.getType()))
+                .filter(mapping -> !LearnerSessionTypeEnum.PAYMENT_FAILED.name().equals(mapping.getType()));
     }
 
     /**

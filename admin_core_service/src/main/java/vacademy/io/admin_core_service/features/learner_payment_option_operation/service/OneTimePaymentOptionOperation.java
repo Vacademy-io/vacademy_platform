@@ -66,13 +66,13 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
         // Step 1: Update existing ABANDONED_CART entries with userPlanId
         // (ABANDONED_CART entries are created during form-submit step via new API)
         List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
-        
+
         int updatedCount = learnerEnrollmentEntryService.updateAbandonedCartEntriesWithUserPlanId(
                 userDTO.getId(),
                 packageSessionIds,
                 instituteId,
                 userPlan.getId());
-        
+
         log.info("Updated {} ABANDONED_CART entries with userPlanId {} for ONE_TIME payment user {}",
                 updatedCount, userPlan.getId(), userDTO.getId());
 
@@ -96,6 +96,16 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 paymentPlan.getValidityInDays(),
                 learnerSessionStatus,
                 userPlan);
+
+        // Mark ABANDONED_CART entries as DELETED to clean up before creating actual
+        // enrollment
+        for (InstituteStudentDetails detail : instituteStudentDetails) {
+            learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                    userDTO.getId(),
+                    detail.getPackageSessionId(),
+                    detail.getDestinationPackageSessionId(),
+                    instituteId);
+        }
 
         // Create or update user
         UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(

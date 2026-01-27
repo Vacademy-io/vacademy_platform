@@ -546,6 +546,10 @@ class VideoGenerationPipeline:
         alignment_json = run_dir / "alignment.json"
         timeline_path = run_dir / "time_based_frame.json"
 
+        # Initialize outputs to safe defaults in case stages are skipped
+        tts_outputs = {"response_json": None, "audio_path": None}
+        word_outputs = {"words_json": None, "words_csv": None, "alignment_json": None}
+
         if do_script:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
@@ -568,41 +572,58 @@ class VideoGenerationPipeline:
                 "script_text": script_path.read_text(),
             }
 
-        if do_tts:
-            # print("🗣️  Synthesize narration ...") # Already printed in method
-            tts_outputs = self._synthesize_voice(
-                script_plan["script_path"], 
-                run_dir, 
-                language=language,
-                voice_gender=voice_gender,
-                tts_provider=tts_provider
-            )
-        else:
-            self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
-            self._require_file(audio_path, "narration.mp3 (decoded audio)")
-            tts_outputs = {"response_json": response_json, "audio_path": audio_path}
+        # Only proceed to TTS if we are not stopping before it
+        if self.STAGE_INDEX["tts"] < stop_idx:
+            if do_tts:
+                # print("🗣️  Synthesize narration ...") # Already printed in method
+                tts_outputs = self._synthesize_voice(
+                    script_plan["script_path"], 
+                    run_dir, 
+                    language=language,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider
+                )
+            else:
+                self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
+                self._require_file(audio_path, "narration.mp3 (decoded audio)")
+                tts_outputs = {"response_json": response_json, "audio_path": audio_path}
 
-        if do_words:
-            print("🔤 Deriving word timings ...")
-            word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
-        else:
-            self._require_file(words_json, "narration.words.json")
-            self._require_file(words_csv, "narration.words.csv")
-            # Note: alignment.json not required since phonemes disabled
-            word_outputs = {
-                "words_json": words_json,
-                "words_csv": words_csv,
-            }
+        # Only proceed to WORDS if we are not stopping before it
+        if self.STAGE_INDEX["words"] < stop_idx:
+            if do_words:
+                print("🔤 Deriving word timings ...")
+                # Ensure we have the necessary inputs from TTS stage (or loaded files)
+                if not tts_outputs["response_json"]:
+                     # This should not happen due to the check above and do_tts logic, 
+                     # but essentially if we are here, we must have tts outputs
+                     # If we skipped TTS generation (do_tts=False), we loaded them in the else block above.
+                     pass
+                word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
+            else:
+                self._require_file(words_json, "narration.words.json")
+                self._require_file(words_csv, "narration.words.csv")
+                # Note: alignment.json not required since phonemes disabled
+                word_outputs = {
+                    "words_json": words_json,
+                    "words_csv": words_csv,
+                }
 
-        words = self._load_words(word_outputs["words_json"])
-        if not words:
-            raise RuntimeError("No words parsed from timestamps; cannot continue.")
+            words = self._load_words(word_outputs["words_json"])
+            if not words:
+                raise RuntimeError("No words parsed from timestamps; cannot continue.")
+        else:
+            words = []
 
         if do_html:
             print("🎨 Designing Visual Style Guide ...")
             style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type)
             
             print("🧠 Building minute-level segments ...")
+            # We need words for segmentation. If words is empty, we can't segment.
+            # But do_html implies we are past words stage, so words should be populated.
+            if not words and self.STAGE_INDEX["words"] < stop_idx:
+                 pass # Warning?
+                 
             segments = self._segment_words(words)
             if not segments:
                 raise RuntimeError("Failed to derive segments from narration.")
@@ -617,6 +638,7 @@ class VideoGenerationPipeline:
             
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(html_segments, run_dir)
+        
         if do_render:
             print("🎥 Rendering final video with Playwright...")
             
@@ -655,9 +677,9 @@ class VideoGenerationPipeline:
         return {
             "run_dir": run_dir,
             "script_path": script_plan["script_path"],
-            "voice_json": tts_outputs["response_json"],
-            "audio_path": tts_outputs["audio_path"],
-            "words_json": word_outputs["words_json"],
+            "voice_json": tts_outputs.get("response_json"),
+            "audio_path": tts_outputs.get("audio_path"),
+            "words_json": word_outputs.get("words_json"),
             "words_csv": word_outputs.get("words_csv", words_csv),
             "alignment_json": word_outputs.get("alignment_json", alignment_json),
             "timeline_json": timeline_path,

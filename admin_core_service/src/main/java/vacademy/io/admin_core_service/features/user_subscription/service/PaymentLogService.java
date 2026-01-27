@@ -309,20 +309,21 @@ public class PaymentLogService {
                     paymentLog.getUserPlan().getId());
             userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
 
-            // Generate invoice for paid enrollments
-            if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
-                try {
-                    log.info("Generating invoice for payment log ID: {}", paymentLogId);
-                    invoiceService.generateInvoice(
+                // Generate invoice for paid enrollments
+                if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
+                    try {
+                        log.info("Generating invoice for payment log ID: {}", paymentLog.getId());
+                        invoiceService.generateInvoice(
                             paymentLog.getUserPlan(),
                             paymentLog,
-                            instituteId);
-                    log.info("Invoice generated successfully for payment log ID: {}", paymentLogId);
-                } catch (Exception e) {
-                    // Don't fail payment confirmation if invoice generation fails
-                    log.error(
-                            "Failed to generate invoice for payment log ID: {}. Payment confirmation will continue without invoice.",
-                            paymentLogId, e);
+                            instituteId
+                        );
+                        log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
+                    } catch (Exception e) {
+                        // Don't fail payment confirmation if invoice generation fails
+                        log.error("Failed to generate invoice for payment log ID: {}. Payment confirmation will continue without invoice.",
+                            paymentLog.getId(), e);
+                    }
                 }
             }
 

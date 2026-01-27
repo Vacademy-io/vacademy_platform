@@ -90,7 +90,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
             <CardHeader className="p-4 pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary uppercase">
                     <BookOpen className="w-5 h-5" />
-                    COURSES
+                    BOOKS
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">

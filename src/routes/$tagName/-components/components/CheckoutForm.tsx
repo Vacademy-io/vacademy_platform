@@ -11,6 +11,8 @@ import {
     ENROLLMENT_INVITE_URL,
     LIVE_SESSION_REQUEST_OTP,
     LIVE_SESSION_VERIFY_OTP,
+    REQUEST_WHATSAPP_OTP,
+    VERIFY_WHATSAPP_OTP,
     INSTITUTE_ID,
 } from "@/constants/urls";
 import { getBooksPreferenceFieldId } from "../../-services/custom-fields-service";
@@ -45,10 +47,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const [otp, setOtp] = useState("");
     const [loading, setLoading] = useState(false);
     const [isInitializing, setIsInitializing] = useState(false);
-    const [otpSent, setOtpSent] = useState(false);
-    const [isEmailVerified, setIsEmailVerified] = useState(false);
-    const [isLoadingOtp, setIsLoadingOtp] = useState(false);
-    const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+    const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+    const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+    const [isLoadingPhoneOtp, setIsLoadingPhoneOtp] = useState(false);
+    const [isVerifyingPhoneOtp, setIsVerifyingPhoneOtp] = useState(false);
 
     const [emailError, setEmailError] = useState("");
     const [phoneError, setPhoneError] = useState("");
@@ -75,9 +77,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     // Reset state when opening/closing
     useEffect(() => {
         if (!open) {
-            setOtpSent(false);
+            setPhoneOtpSent(false);
             setOtp("");
-            setIsEmailVerified(false);
+            setIsPhoneVerified(false);
         }
     }, [open]);
 
@@ -127,64 +129,65 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         return cleaned.length >= 10;
     };
 
-    const handleSendOTP = async () => {
-        if (!email.trim() || !validateEmail(email)) {
-            setEmailError("Valid email is required to send OTP");
+    const handleSendPhoneOTP = async () => {
+        if (!phone.trim() || !validatePhone(phone)) {
+            setPhoneError("Valid phone number is required to send OTP");
             return;
         }
 
-        setIsLoadingOtp(true);
+        setIsLoadingPhoneOtp(true);
         try {
             await axios.post(
-                LIVE_SESSION_REQUEST_OTP,
-                { to: email },
+                REQUEST_WHATSAPP_OTP,
                 {
-                    headers: { "Content-Type": "application/json" },
-                    params: { instituteId },
-                }
-            );
-
-            setOtpSent(true);
-            toast.success("OTP sent to your email");
-        } catch (error) {
-            console.error("Failed to send OTP:", error);
-            toast.error("Failed to send OTP. Please try again");
-        } finally {
-            setIsLoadingOtp(false);
-        }
-    };
-
-    const handleVerifyOTP = async () => {
-        if (!otp.trim()) {
-            toast.error("Please enter the OTP");
-            return;
-        }
-
-        setIsVerifyingOtp(true);
-        try {
-            await axios.post(
-                LIVE_SESSION_VERIFY_OTP,
-                {
-                    to: email,
-                    otp: otp,
-                    client_name: "LEARNER",
-                    institute_id: instituteId,
+                    phone_number: phone.replace(/\D/g, ""),
+                    institute_id: instituteId
                 },
                 {
                     headers: { "Content-Type": "application/json" },
                 }
             );
 
-            setIsEmailVerified(true);
-            setOtpSent(false);
-            setOtp("");
-            setEmailError("");
-            toast.success("Email verified successfully");
+            setPhoneOtpSent(true);
+            toast.success("OTP sent to your WhatsApp");
         } catch (error) {
-            console.error("Failed to verify OTP:", error);
+            console.error("Failed to send WhatsApp OTP:", error);
+            toast.error("Failed to send OTP. Please try again");
+        } finally {
+            setIsLoadingPhoneOtp(false);
+        }
+    };
+
+    const handleVerifyPhoneOTP = async () => {
+        if (!otp.trim()) {
+            toast.error("Please enter the OTP");
+            return;
+        }
+
+        setIsVerifyingPhoneOtp(true);
+        try {
+            await axios.post(
+                VERIFY_WHATSAPP_OTP,
+                {
+                    phone_number: phone.replace(/\D/g, ""),
+                    otp: otp,
+                    institute_id: instituteId
+                },
+                {
+                    headers: { "Content-Type": "application/json" },
+                }
+            );
+
+            setIsPhoneVerified(true);
+            setPhoneOtpSent(false);
+            setOtp("");
+            setPhoneError("");
+            toast.success("Phone verified successfully");
+        } catch (error) {
+            console.error("Failed to verify WhatsApp OTP:", error);
             toast.error("Invalid OTP. Please try again");
         } finally {
-            setIsVerifyingOtp(false);
+            setIsVerifyingPhoneOtp(false);
         }
     };
 
@@ -203,12 +206,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             setEmailError("Valid email is required");
             hasErrors = true;
         }
-        if (!isEmailVerified) {
-            setEmailError("Email must be verified before checkout");
-            hasErrors = true;
-        }
         if (!phone.trim() || !validatePhone(phone)) {
             setPhoneError("Valid phone number is required");
+            hasErrors = true;
+        }
+        if (!isPhoneVerified) {
+            setPhoneError("Phone verification is required");
             hasErrors = true;
         }
         if (!address.trim()) {
@@ -501,43 +504,60 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                     {nameError && <p className="text-red-500 text-[10px] font-semibold">{nameError}</p>}
                                 </div>
 
-                                {/* Email with Inline OTP */}
+                                {/* Email */}
                                 <div className="space-y-1">
                                     <label className="text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5">
                                         <Mail className="h-3 w-3" /> Email Address
                                     </label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className={`w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium ${emailError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
+                                        placeholder="email@example.com"
+                                    />
+                                    {emailError && <p className="text-red-500 text-[10px] font-semibold">{emailError}</p>}
+                                </div>
+
+                                {/* Phone */}
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5">
+                                        <Phone className="h-3 w-3" /> Phone Number (WhatsApp)
+                                    </label>
                                     <div className="flex gap-2">
                                         <div className="relative flex-1">
-                                            <input
-                                                type="email"
-                                                value={email}
-                                                disabled={isEmailVerified}
-                                                onChange={(e) => {
-                                                    setEmail(e.target.value);
-                                                    if (otpSent) setOtpSent(false);
+                                            <PhoneInput
+                                                country="in"
+                                                value={phone}
+                                                disabled={isPhoneVerified}
+                                                onChange={(value) => {
+                                                    setPhone(value);
+                                                    if (phoneOtpSent) setPhoneOtpSent(false);
                                                 }}
-                                                className={`w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium ${emailError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"} ${isEmailVerified ? "pr-8 text-green-700 bg-green-50/50 border-green-200" : ""}`}
-                                                placeholder="email@example.com"
+                                                inputClass={`!w-full !px-3 !py-2 !pl-12 !h-[38px] !bg-gray-50 !border ${phoneError ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-2 focus:!ring-primary-50 ${isPhoneVerified ? "!text-green-700 !bg-green-50/50 !border-green-200" : ""}`}
+                                                containerClass="!w-full"
+                                                buttonClass={`!rounded-l-lg !border-gray-200 !bg-gray-50 !w-10 ${isPhoneVerified ? "!bg-green-50/50 !border-green-200" : ""}`}
+                                                dropdownClass="!rounded-lg !shadow-xl"
                                             />
-                                            {isEmailVerified && <CheckCircle2 className="absolute right-2.5 top-2.5 h-4 w-4 text-green-500" />}
+                                            {isPhoneVerified && <CheckCircle2 className="absolute right-2.5 top-2.5 h-4 w-4 text-green-500 z-10" />}
                                         </div>
-                                        {!isEmailVerified && (
+                                        {!isPhoneVerified && (
                                             <MyButton
                                                 buttonType="secondary"
                                                 scale="small"
                                                 layoutVariant="default"
                                                 className="h-[38px] px-3 text-xs font-bold"
-                                                onClick={handleSendOTP}
-                                                disabled={isLoadingOtp || !email || otpSent}
+                                                onClick={handleSendPhoneOTP}
+                                                disabled={isLoadingPhoneOtp || !phone || phoneOtpSent}
                                             >
-                                                {isLoadingOtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : otpSent ? "Sent" : "Send OTP"}
+                                                {isLoadingPhoneOtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : phoneOtpSent ? "Sent" : "Verify"}
                                             </MyButton>
                                         )}
                                     </div>
-                                    {emailError && <p className="text-red-500 text-[10px] font-semibold">{emailError}</p>}
+                                    {phoneError && <p className="text-red-500 text-[10px] font-semibold ml-1">{phoneError}</p>}
 
-                                    {/* OTP Input - Inline appearance */}
-                                    {otpSent && !isEmailVerified && (
+                                    {/* OTP Input for Phone */}
+                                    {phoneOtpSent && !isPhoneVerified && (
                                         <div className="flex gap-2 mt-2 animate-in slide-in-from-top-1 duration-200">
                                             <input
                                                 type="text"
@@ -552,30 +572,13 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                 scale="small"
                                                 layoutVariant="default"
                                                 className="h-[34px] px-4 text-xs font-bold"
-                                                onClick={handleVerifyOTP}
-                                                disabled={isVerifyingOtp || otp.length < 4}
+                                                onClick={handleVerifyPhoneOTP}
+                                                disabled={isVerifyingPhoneOtp || otp.length < 4}
                                             >
-                                                {isVerifyingOtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Verify"}
+                                                {isVerifyingPhoneOtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Verify OTP"}
                                             </MyButton>
                                         </div>
                                     )}
-                                </div>
-
-                                {/* Phone */}
-                                <div className="space-y-1">
-                                    <label className="text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5">
-                                        <Phone className="h-3 w-3" /> Phone Number
-                                    </label>
-                                    <PhoneInput
-                                        country="in"
-                                        value={phone}
-                                        onChange={(value) => setPhone(value)}
-                                        inputClass={`!w-full !px-3 !py-2 !pl-12 !h-[38px] !bg-gray-50 !border ${phoneError ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-2 focus:!ring-primary-50`}
-                                        containerClass="!w-full"
-                                        buttonClass="!rounded-l-lg !border-gray-200 !bg-gray-50 !w-10"
-                                        dropdownClass="!rounded-lg !shadow-xl"
-                                    />
-                                    {phoneError && <p className="text-red-500 text-[10px] font-semibold ml-1">{phoneError}</p>}
                                 </div>
 
                                 {/* Address */}
@@ -618,7 +621,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                             layoutVariant="default"
                             className="w-full h-11 text-base font-bold shadow-lg shadow-primary-100 active:scale-[0.98] transition-all rounded-lg flex items-center justify-center gap-2"
                             onClick={handleCheckout}
-                            disabled={loading || isInitializing || !isEmailVerified}
+                            disabled={loading || isInitializing || !isPhoneVerified}
                         >
                             {loading ? (
                                 <Loader2 className="animate-spin h-5 w-5" />
@@ -629,8 +632,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                 </>
                             )}
                         </MyButton>
-                        {!isEmailVerified && (
-                            <p className="text-center text-[9px] text-red-400 mt-2 font-bold">Verification required to continue</p>
+                        {!isPhoneVerified && (
+                            <p className="text-center text-[9px] text-red-400 mt-2 font-bold">WhatsApp verification required to continue</p>
                         )}
                     </div>
                 </DialogPrimitive.Content>

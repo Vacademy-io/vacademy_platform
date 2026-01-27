@@ -634,10 +634,10 @@ const RegistrationStep = ({
                   scale="large"
                   layoutVariant="default"
                   onClick={handleNextClick}
-                  disable={isLoadingOtp}
+                  disable={isLoadingOtp || form.formState.isSubmitting}
                   className="min-w-[140px]"
                 >
-                  {isLoadingOtp ? (
+                  {isLoadingOtp || form.formState.isSubmitting ? (
                     <>
                       <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

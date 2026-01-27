@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.*;
+import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionEnrollInvitePaymentOptionPlanToReferralOption;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
@@ -75,7 +76,8 @@ public class EnrollInviteService {
         saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteCustomFields());
 
         // Automatically copy default custom fields to the new enroll invite
-        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(enrollInviteDTO.getInstituteId(), savedEnrollInvite.getId());
+        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(enrollInviteDTO.getInstituteId(),
+                savedEnrollInvite.getId());
 
         List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
                 .filter(Objects::nonNull)
@@ -115,7 +117,8 @@ public class EnrollInviteService {
         saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteCustomFields());
 
         // Automatically copy default custom fields to the updated enroll invite
-        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(enrollInviteDTO.getInstituteId(), savedEnrollInvite.getId());
+        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(enrollInviteDTO.getInstituteId(),
+                savedEnrollInvite.getId());
 
         List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
                 .filter(Objects::nonNull)

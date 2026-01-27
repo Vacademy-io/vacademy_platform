@@ -61,7 +61,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         log.info("Processing SUBSCRIPTION payment enrollment for user: {}", userDTO.getEmail());
 
-        // Step 1: Create ABANDONED_CART entries first for tracking
+        // Step 1: Create ONLY_DETAILS_FILLED entries first for tracking
         List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
         for (String actualPackageSessionId : packageSessionIds) {
             PackageSession invitedPackageSession = learnerEnrollmentEntryService
@@ -70,14 +70,14 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             PackageSession actualPackageSession = packageSessionRepository.findById(actualPackageSessionId)
                     .orElseThrow(() -> new VacademyException("Package session not found: " + actualPackageSessionId));
 
-            // Mark previous ABANDONED_CART and PAYMENT_FAILED entries as DELETED
+            // Mark previous ONLY_DETAILS_FILLED and PAYMENT_FAILED entries as DELETED
             learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
                     userDTO.getId(),
                     invitedPackageSession.getId(),
                     actualPackageSessionId,
                     instituteId);
 
-            // Create ABANDONED_CART entry
+            // Create ONLY_DETAILS_FILLED entry
             learnerEnrollmentEntryService.createOnlyDetailsFilledEntry(
                     userDTO.getId(),
                     invitedPackageSession,
@@ -85,7 +85,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                     instituteId,
                     userPlan.getId());
 
-            log.info("Created ABANDONED_CART entry for SUBSCRIPTION user {} in package session {}",
+            log.info("Created ONLY_DETAILS_FILLED entry for SUBSCRIPTION user {} in package session {}",
                     userDTO.getId(), actualPackageSessionId);
         }
 

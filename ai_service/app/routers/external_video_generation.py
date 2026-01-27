@@ -43,7 +43,7 @@ def get_video_service() -> VideoGenerationService:
 )
 async def generate_video_external(
     payload: VideoGenerationRequest,
-    target_stage: str = "RENDER",
+    target_stage: str = "HTML",
     service: VideoGenerationService = Depends(get_video_service),
     db: Session = Depends(db_dependency),
     institute_id: str = Depends(get_institute_from_api_key)

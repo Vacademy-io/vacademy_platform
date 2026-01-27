@@ -309,121 +309,119 @@ public class PaymentLogService {
                     paymentLog.getUserPlan().getId());
             userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
 
-                // Generate invoice for paid enrollments
-                if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
-                    try {
-                        log.info("Generating invoice for payment log ID: {}", paymentLog.getId());
-                        invoiceService.generateInvoice(
-                            paymentLog.getUserPlan(),
-                            paymentLog,
-                            instituteId
-                        );
-                        log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
-                    } catch (Exception e) {
-                        // Don't fail payment confirmation if invoice generation fails
-                        log.error("Failed to generate invoice for payment log ID: {}. Payment confirmation will continue without invoice.",
-                            paymentLog.getId(), e);
+            // Generate invoice for paid enrollments
+            if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
+                try {
+                    log.info("Generating invoice for payment log ID: {}", paymentLog.getId());
+                    invoiceService.generateInvoice(
+                        paymentLog.getUserPlan(),
+                        paymentLog,
+                        instituteId
+                    );
+                    log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
+                } catch (Exception e) {
+                    // Don't fail payment confirmation if invoice generation fails
+                    log.error("Failed to generate invoice for payment log ID: {}. Payment confirmation will continue without invoice.",
+                        paymentLog.getId(), e);
+                }
+            }
+
+            // Parse the paymentSpecificData which now contains both response and original
+            // request
+            Map<String, Object> paymentData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
+
+            if (paymentData == null) {
+                log.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
+                SentryLogger.logError(new IllegalStateException("Payment specific data is null"),
+                        "Failed to parse payment specific data", Map.of(
+                                "payment.log.id", paymentLog.getId(),
+                                "payment.status", PaymentStatusEnum.PAID.name(),
+                                "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown",
+                                "payment.vendor",
+                                paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                "operation", "parsePaymentData"));
+                return;
+            }
+
+            // Extract the response - handle nested response_data structure
+            Object responseObj = paymentData.get("response");
+            PaymentResponseDTO paymentResponseDTO = null;
+
+            if (responseObj != null) {
+                // First try to parse as PaymentResponseDTO (which has response_data nested)
+                paymentResponseDTO = JsonUtil.fromJson(
+                        JsonUtil.toJson(responseObj),
+                        PaymentResponseDTO.class);
+
+                if (paymentResponseDTO == null) {
+                    paymentResponseDTO = new PaymentResponseDTO();
+                }
+
+                if (paymentResponseDTO.getResponseData() == null) {
+                    paymentResponseDTO.setResponseData(new HashMap<>());
+                }
+
+                paymentResponseDTO.getResponseData().put("paymentStatus", paymentStatus);
+
+                // Ensure amount and transactionId are present for notifications
+                if (!paymentResponseDTO.getResponseData().containsKey("amount")) {
+                    paymentResponseDTO.getResponseData().put("amount", paymentLog.getPaymentAmount());
+                }
+                if (!paymentResponseDTO.getResponseData().containsKey("transactionId")) {
+                    paymentResponseDTO.getResponseData().put("transactionId", paymentLog.getId());
+                }
+
+                // If responseData field is empty but response_data exists, extract it
+                if (paymentResponseDTO != null &&
+                        (paymentResponseDTO.getResponseData() == null
+                                || paymentResponseDTO.getResponseData().isEmpty())) {
+
+                    Map<String, Object> responseMap = (Map<String, Object>) responseObj;
+                    if (responseMap.containsKey("response_data")) {
+                        // Use the nested response_data as the responseData
+                        paymentResponseDTO.setResponseData((Map<String, Object>) responseMap.get("response_data"));
+                        log.debug("Extracted nested response_data for payment log ID: {}", paymentLog.getId());
                     }
                 }
             }
 
-                // Parse the paymentSpecificData which now contains both response and original
-                // request
-                Map<String, Object> paymentData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO = JsonUtil.fromJson(
+                    JsonUtil.toJson(paymentData.get("originalRequest")),
+                    PaymentInitiationRequestDTO.class);
 
-                if (paymentData == null) {
-                    log.error("Payment specific data is null for payment log ID: {}", paymentLog.getId());
-                    SentryLogger.logError(new IllegalStateException("Payment specific data is null"),
-                            "Failed to parse payment specific data", Map.of(
-                                    "payment.log.id", paymentLog.getId(),
-                                    "payment.status", PaymentStatusEnum.PAID.name(),
-                                    "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown",
-                                    "payment.vendor",
-                                    paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
-                                    "operation", "parsePaymentData"));
-                    return;
+            if (paymentResponseDTO == null || paymentInitiationRequestDTO == null) {
+                log.error("Could not parse response or original request for payment log ID: {}",
+                        paymentLog.getId());
+                SentryLogger.logError(new IllegalStateException("Failed to parse payment response/request"),
+                        "Could not parse payment response or request data", Map.of(
+                                "payment.log.id", paymentLog.getId(),
+                                "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown",
+                                "payment.vendor",
+                                paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
+                                "has.response", String.valueOf(paymentResponseDTO != null),
+                                "has.request", String.valueOf(paymentInitiationRequestDTO != null),
+                                "operation", "parsePaymentResponseRequest"));
+                // For MultiPackage legacy mapping, ensure instituteId is set
+                if (paymentInitiationRequestDTO != null && paymentInitiationRequestDTO.getInstituteId() == null) {
+                    paymentInitiationRequestDTO.setInstituteId(instituteId);
                 }
-
-                // Extract the response - handle nested response_data structure
-                Object responseObj = paymentData.get("response");
-                PaymentResponseDTO paymentResponseDTO = null;
-
-                if (responseObj != null) {
-                    // First try to parse as PaymentResponseDTO (which has response_data nested)
-                    paymentResponseDTO = JsonUtil.fromJson(
-                            JsonUtil.toJson(responseObj),
-                            PaymentResponseDTO.class);
-
-                    if (paymentResponseDTO == null) {
-                        paymentResponseDTO = new PaymentResponseDTO();
-                    }
-
-                    if (paymentResponseDTO.getResponseData() == null) {
-                        paymentResponseDTO.setResponseData(new HashMap<>());
-                    }
-
-                    paymentResponseDTO.getResponseData().put("paymentStatus", paymentStatus);
-
-                    // Ensure amount and transactionId are present for notifications
-                    if (!paymentResponseDTO.getResponseData().containsKey("amount")) {
-                        paymentResponseDTO.getResponseData().put("amount", paymentLog.getPaymentAmount());
-                    }
-                    if (!paymentResponseDTO.getResponseData().containsKey("transactionId")) {
-                        paymentResponseDTO.getResponseData().put("transactionId", paymentLog.getId());
-                    }
-
-                    // If responseData field is empty but response_data exists, extract it
-                    if (paymentResponseDTO != null &&
-                            (paymentResponseDTO.getResponseData() == null
-                                    || paymentResponseDTO.getResponseData().isEmpty())) {
-
-                        Map<String, Object> responseMap = (Map<String, Object>) responseObj;
-                        if (responseMap.containsKey("response_data")) {
-                            // Use the nested response_data as the responseData
-                            paymentResponseDTO.setResponseData((Map<String, Object>) responseMap.get("response_data"));
-                            log.debug("Extracted nested response_data for payment log ID: {}", paymentLog.getId());
-                        }
-                    }
-                }
-
-                PaymentInitiationRequestDTO paymentInitiationRequestDTO = JsonUtil.fromJson(
-                        JsonUtil.toJson(paymentData.get("originalRequest")),
-                        PaymentInitiationRequestDTO.class);
-
-                if (paymentResponseDTO == null || paymentInitiationRequestDTO == null) {
-                    log.error("Could not parse response or original request for payment log ID: {}",
-                            paymentLog.getId());
-                    SentryLogger.logError(new IllegalStateException("Failed to parse payment response/request"),
-                            "Could not parse payment response or request data", Map.of(
-                                    "payment.log.id", paymentLog.getId(),
-                                    "user.id", paymentLog.getUserId() != null ? paymentLog.getUserId() : "unknown",
-                                    "payment.vendor",
-                                    paymentLog.getVendor() != null ? paymentLog.getVendor() : "unknown",
-                                    "has.response", String.valueOf(paymentResponseDTO != null),
-                                    "has.request", String.valueOf(paymentInitiationRequestDTO != null),
-                                    "operation", "parsePaymentResponseRequest"));
-                    // For MultiPackage legacy mapping, ensure instituteId is set
-                    if (paymentInitiationRequestDTO != null && paymentInitiationRequestDTO.getInstituteId() == null) {
-                        paymentInitiationRequestDTO.setInstituteId(instituteId);
-                    }
-                    return;
-                }
-
-                // Handle case where email is null in originalRequest - extract from
-                // gateway-specific request
-                if (paymentInitiationRequestDTO.getEmail() == null) {
-                    String extractedEmail = extractEmailFromGatewayRequest(paymentInitiationRequestDTO,
-                            paymentLog.getId());
-                    if (extractedEmail != null) {
-                        paymentInitiationRequestDTO.setEmail(extractedEmail);
-                        log.debug("Extracted email from payment gateway request: {}", extractedEmail);
-                    }
-                }
-
-                UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
-                paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
-                        paymentInitiationRequestDTO, userDTO);
+                return;
             }
+
+            // Handle case where email is null in originalRequest - extract from
+            // gateway-specific request
+            if (paymentInitiationRequestDTO.getEmail() == null) {
+                String extractedEmail = extractEmailFromGatewayRequest(paymentInitiationRequestDTO,
+                        paymentLog.getId());
+                if (extractedEmail != null) {
+                    paymentInitiationRequestDTO.setEmail(extractedEmail);
+                    log.debug("Extracted email from payment gateway request: {}", extractedEmail);
+                }
+            }
+
+            UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
+            paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
+                    paymentInitiationRequestDTO, userDTO);
         }
     }
 

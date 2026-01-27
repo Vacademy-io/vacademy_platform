@@ -84,7 +84,8 @@ public class InvoiceService {
     @Autowired
     private PackageSessionRepository packageSessionRepository;
 
-    // PaymentNotificatonService can be used for sending invoice emails in the future
+    // PaymentNotificatonService can be used for sending invoice emails in the
+    // future
     // @Autowired
     // private PaymentNotificatonService paymentNotificatonService;
 
@@ -99,7 +100,8 @@ public class InvoiceService {
 
     /**
      * Main method to generate invoice after payment confirmation
-     * This method supports multiple payment logs for a single invoice (v2 multi-package enrollments)
+     * This method supports multiple payment logs for a single invoice (v2
+     * multi-package enrollments)
      */
     @Transactional
     public Invoice generateInvoice(UserPlan userPlan, PaymentLog paymentLog, String instituteId) {
@@ -177,11 +179,13 @@ public class InvoiceService {
 
     /**
      * Find related payment logs that should be grouped in the same invoice
-     * This method detects v2 multi-package enrollments by checking for payment logs with the same order ID
+     * This method detects v2 multi-package enrollments by checking for payment logs
+     * with the same order ID
      *
-     * @param paymentLog The payment log to check for related logs
+     * @param paymentLog  The payment log to check for related logs
      * @param instituteId The institute ID
-     * @return List of payment logs that should be grouped together (single log if no related logs found)
+     * @return List of payment logs that should be grouped together (single log if
+     *         no related logs found)
      */
     private List<PaymentLog> findRelatedPaymentLogsForMultiPackage(PaymentLog paymentLog, String instituteId) {
         try {
@@ -191,7 +195,8 @@ public class InvoiceService {
             if (orderId != null && isMultiPackageOrderId(orderId)) {
                 log.debug("Detected v2 multi-package order ID: {} for payment log: {}", orderId, paymentLog.getId());
 
-                // Find all payment logs with the same order ID that are PAID and not already invoiced
+                // Find all payment logs with the same order ID that are PAID and not already
+                // invoiced
                 List<PaymentLog> relatedLogs = paymentLogRepository.findAllByOrderIdInOriginalRequest(orderId);
 
                 // Filter out logs that are already invoiced and ensure they have correct status
@@ -224,7 +229,8 @@ public class InvoiceService {
                 // Parse the JSON payment_specific_data
                 ObjectMapper objectMapper = new ObjectMapper();
                 @SuppressWarnings("unchecked")
-                Map<String, Object> paymentData = objectMapper.readValue(paymentLog.getPaymentSpecificData(), Map.class);
+                Map<String, Object> paymentData = objectMapper.readValue(paymentLog.getPaymentSpecificData(),
+                        Map.class);
 
                 // Check for originalRequest -> orderId
                 if (paymentData.containsKey("originalRequest")) {
@@ -252,7 +258,8 @@ public class InvoiceService {
     /**
      * Find related payment logs that should be grouped in the same invoice
      *
-     * NOTE: This legacy method is kept for backward compatibility but is now replaced by
+     * NOTE: This legacy method is kept for backward compatibility but is now
+     * replaced by
      * findRelatedPaymentLogsForMultiPackage for v2 multi-package support
      */
     @Deprecated
@@ -264,14 +271,15 @@ public class InvoiceService {
      * Build invoice data from multiple PaymentLogs (for multi-batch enrollment)
      * This method works for BOTH single and multiple payment log scenarios:
      * - Single payment log: Creates invoice with 1 line item (1 plan/course)
-     * - Multiple payment logs: Creates invoice with multiple line items (multiple plans/courses)
+     * - Multiple payment logs: Creates invoice with multiple line items (multiple
+     * plans/courses)
      */
     private InvoiceData buildInvoiceDataFromMultiplePaymentLogs(List<PaymentLog> paymentLogs, String instituteId) {
         if (paymentLogs == null || paymentLogs.isEmpty()) {
             throw new VacademyException("Payment logs list cannot be empty");
         }
 
-        log.debug("Building invoice data from {} payment log(s) - supports both single and multiple scenarios", 
+        log.debug("Building invoice data from {} payment log(s) - supports both single and multiple scenarios",
                 paymentLogs.size());
 
         // Get first payment log for user and basic info
@@ -294,8 +302,9 @@ public class InvoiceService {
         // Get invoice settings
         Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
         Boolean taxIncluded = (Boolean) invoiceSettings.getOrDefault("taxIncluded", false);
-        Double taxRateValue = invoiceSettings.get("taxRate") != null ? 
-                ((Number) invoiceSettings.get("taxRate")).doubleValue() : 0.0;
+        Double taxRateValue = invoiceSettings.get("taxRate") != null
+                ? ((Number) invoiceSettings.get("taxRate")).doubleValue()
+                : 0.0;
         BigDecimal taxRate = BigDecimal.valueOf(taxRateValue);
         String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
@@ -304,23 +313,27 @@ public class InvoiceService {
         BigDecimal totalPlanPrice = BigDecimal.ZERO;
         BigDecimal totalDiscountAmount = BigDecimal.ZERO;
         List<InvoiceLineItemData> allLineItems = new ArrayList<>();
-        // Use currency from payment log (primary source), fallback to plan currency if needed
+        // Use currency from payment log (primary source), fallback to plan currency if
+        // needed
         String paymentLogCurrency = firstPaymentLog.getCurrency();
-        String planCurrency = firstPaymentLog.getUserPlan() != null && firstPaymentLog.getUserPlan().getPaymentPlan() != null ? 
-                firstPaymentLog.getUserPlan().getPaymentPlan().getCurrency() : null;
-        
+        String planCurrency = firstPaymentLog.getUserPlan() != null
+                && firstPaymentLog.getUserPlan().getPaymentPlan() != null
+                        ? firstPaymentLog.getUserPlan().getPaymentPlan().getCurrency()
+                        : null;
+
         log.info("Building invoice - PaymentLog currency: '{}', Plan currency: '{}'", paymentLogCurrency, planCurrency);
-        
-        // Validate and normalize currency - filter out invalid values like "#" or single characters
+
+        // Validate and normalize currency - filter out invalid values like "#" or
+        // single characters
         String currency = normalizeAndValidateCurrency(paymentLogCurrency, planCurrency);
-        
+
         log.info("Final currency used for invoice: '{}'", currency);
-        
+
         String paymentMethod = firstPaymentLog.getVendor();
         String transactionId = firstPaymentLog.getVendorId();
-        LocalDateTime paymentDate = firstPaymentLog.getDate() != null ? 
-                firstPaymentLog.getDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() : 
-                LocalDateTime.now();
+        LocalDateTime paymentDate = firstPaymentLog.getDate() != null
+                ? firstPaymentLog.getDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                : LocalDateTime.now();
 
         // Process each payment log
         for (PaymentLog paymentLog : paymentLogs) {
@@ -341,14 +354,14 @@ public class InvoiceService {
 
             // Calculate plan price first
             BigDecimal planPrice = BigDecimal.valueOf(paymentPlan.getActualPrice());
-            
+
             // Use payment amount from payment log
             BigDecimal paymentAmount;
             if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
                 paymentAmount = BigDecimal.valueOf(paymentLog.getPaymentAmount());
             } else {
                 // Fallback to plan price if payment amount is not set
-                log.warn("Payment log {} has no payment amount, using plan price {} as fallback", 
+                log.warn("Payment log {} has no payment amount, using plan price {} as fallback",
                         paymentLog.getId(), planPrice);
                 paymentAmount = planPrice;
             }
@@ -368,7 +381,7 @@ public class InvoiceService {
 
         // Use payment amount from payment log as the total amount
         BigDecimal totalAmount = totalPaymentAmount;
-        
+
         // Calculate tax and subtotal based on payment amount
         BigDecimal subtotal;
         BigDecimal taxAmount;
@@ -429,21 +442,22 @@ public class InvoiceService {
 
     /**
      * Build line items for a single plan (used in multi-payment log scenario)
-     * For multi-package enrollments, creates descriptive line items for each package session
+     * For multi-package enrollments, creates descriptive line items for each
+     * package session
      */
     private List<InvoiceLineItemData> buildLineItemsForPlan(PaymentPlan paymentPlan,
-                                                           List<PaymentLogLineItem> paymentLogLineItems,
-                                                           String paymentLogId,
-                                                           BigDecimal paymentAmount) {
+            List<PaymentLogLineItem> paymentLogLineItems,
+            String paymentLogId,
+            BigDecimal paymentAmount) {
         List<InvoiceLineItemData> lineItems = new ArrayList<>();
 
         // For multi-package enrollments, try to get package session details
         String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
-        
+
         // Ensure description is never null or empty
         if (description == null || description.trim().isEmpty()) {
-            description = paymentPlan != null && paymentPlan.getName() != null ? 
-                    paymentPlan.getName() : "Package Enrollment";
+            description = paymentPlan != null && paymentPlan.getName() != null ? paymentPlan.getName()
+                    : "Package Enrollment";
             log.warn("Using fallback description for payment log: {}", paymentLogId);
         }
 
@@ -461,7 +475,7 @@ public class InvoiceService {
         // Discount items for this plan
         for (PaymentLogLineItem item : paymentLogLineItems) {
             if (item.getType() != null && (item.getType().contains("DISCOUNT") ||
-                item.getType().contains("COUPON") || item.getType().contains("REFERRAL"))) {
+                    item.getType().contains("COUPON") || item.getType().contains("REFERRAL"))) {
 
                 BigDecimal discountValue = BigDecimal.ZERO;
                 if (item.getAmount() != null) {
@@ -475,8 +489,7 @@ public class InvoiceService {
                 if (discountValue.compareTo(BigDecimal.ZERO) > 0) {
                     InvoiceLineItemData discountItem = InvoiceLineItemData.builder()
                             .itemType(item.getType())
-                            .description(item.getSource() != null ?
-                                    "Discount: " + item.getSource() : "Discount")
+                            .description(item.getSource() != null ? "Discount: " + item.getSource() : "Discount")
                             .quantity(1)
                             .unitPrice(discountValue.negate())
                             .amount(discountValue.negate())
@@ -502,29 +515,29 @@ public class InvoiceService {
                 log.warn("Payment log not found for ID: {}", paymentLogId);
                 return getFallbackDescription(paymentPlan);
             }
-            
+
             if (paymentLog.getUserPlan() == null) {
                 log.warn("Payment log {} has no user plan", paymentLogId);
                 return getFallbackDescription(paymentPlan);
             }
-            
+
             UserPlan userPlan = paymentLog.getUserPlan();
 
             // Get package session information from student session mappings
             List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
                     .findAllByUserPlanIdAndStatusIn(userPlan.getId(), List.of("ACTIVE"));
-            
+
             if (mappings == null || mappings.isEmpty()) {
                 log.warn("No active student session mappings found for userPlanId: {}", userPlan.getId());
                 return getFallbackDescription(paymentPlan);
             }
-            
+
             StudentSessionInstituteGroupMapping mapping = mappings.get(0);
             if (mapping == null || mapping.getPackageSession() == null) {
                 log.warn("Student session mapping has no package session for userPlanId: {}", userPlan.getId());
                 return getFallbackDescription(paymentPlan);
             }
-            
+
             String packageSessionId = mapping.getPackageSession().getId();
             if (packageSessionId == null || packageSessionId.isEmpty()) {
                 log.warn("Package session ID is null or empty for userPlanId: {}", userPlan.getId());
@@ -532,29 +545,30 @@ public class InvoiceService {
             }
 
             // Get batch/institute info for the package session
-            Optional<BatchInstituteProjection> batchInfoOpt =
-                    packageSessionRepository.findBatchAndInstituteByPackageSessionId(packageSessionId);
+            Optional<BatchInstituteProjection> batchInfoOpt = packageSessionRepository
+                    .findBatchAndInstituteByPackageSessionId(packageSessionId);
 
             if (batchInfoOpt.isPresent()) {
                 BatchInstituteProjection info = batchInfoOpt.get();
                 // Format: "Level Name Package Name" (no institute name)
-                // Batch name already includes level name and package name: CONCAT(l.level_name, ' ', p.package_name)
+                // Batch name already includes level name and package name: CONCAT(l.level_name,
+                // ' ', p.package_name)
                 String batchName = info.getBatchName();
                 if (batchName != null && !batchName.trim().isEmpty()) {
                     return batchName.trim();
                 }
             }
-            
+
             log.warn("Could not get batch info for packageSessionId: {}", packageSessionId);
         } catch (Exception e) {
-            log.error("Error building package session description for payment log {}: {}", 
+            log.error("Error building package session description for payment log {}: {}",
                     paymentLogId, e.getMessage(), e);
         }
 
         // Fallback to basic plan description
         return getFallbackDescription(paymentPlan);
     }
-    
+
     /**
      * Get fallback description when package session info is not available
      */
@@ -564,19 +578,20 @@ public class InvoiceService {
         }
         String planName = paymentPlan.getName();
         String planDesc = paymentPlan.getDescription();
-        
+
         if (planName != null && !planName.trim().isEmpty()) {
             if (planDesc != null && !planDesc.trim().isEmpty()) {
                 return planName.trim() + " - " + planDesc.trim();
             }
             return planName.trim();
         }
-        
+
         return "Package Enrollment";
     }
 
     /**
-     * Build invoice data from UserPlan, PaymentLog, and related entities (legacy method for single payment log)
+     * Build invoice data from UserPlan, PaymentLog, and related entities (legacy
+     * method for single payment log)
      */
     private InvoiceData buildInvoiceData(UserPlan userPlan, PaymentLog paymentLog, String instituteId) {
         log.debug("Building invoice data for userPlanId: {}", userPlan.getId());
@@ -605,27 +620,28 @@ public class InvoiceService {
 
         // Extract tax configuration
         Boolean taxIncluded = (Boolean) invoiceSettings.getOrDefault("taxIncluded", false);
-        Double taxRateValue = invoiceSettings.get("taxRate") != null ? 
-                ((Number) invoiceSettings.get("taxRate")).doubleValue() : 0.0;
+        Double taxRateValue = invoiceSettings.get("taxRate") != null
+                ? ((Number) invoiceSettings.get("taxRate")).doubleValue()
+                : 0.0;
         BigDecimal taxRate = BigDecimal.valueOf(taxRateValue);
         String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
         // Use payment amount from payment log
         BigDecimal planPrice = BigDecimal.valueOf(paymentPlan.getActualPrice());
         BigDecimal paymentAmount;
-        
+
         if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
             paymentAmount = BigDecimal.valueOf(paymentLog.getPaymentAmount());
         } else {
             // Fallback to plan price if payment amount is not set
-            log.warn("Payment log {} has no payment amount, using plan price {} as fallback", 
+            log.warn("Payment log {} has no payment amount, using plan price {} as fallback",
                     paymentLog.getId(), planPrice);
             paymentAmount = planPrice;
         }
-        
+
         // Calculate discount for line items display
         BigDecimal discountAmount = calculateDiscountAmount(paymentLogLineItems, planPrice);
-        
+
         // Use payment amount as total, then calculate tax and subtotal
         BigDecimal totalAmount = paymentAmount;
         BigDecimal subtotal;
@@ -644,7 +660,7 @@ public class InvoiceService {
         }
 
         // Build line items - use package session description instead of plan name
-        List<InvoiceLineItemData> lineItems = buildLineItems(paymentPlan, paymentLogLineItems, 
+        List<InvoiceLineItemData> lineItems = buildLineItems(paymentPlan, paymentLogLineItems,
                 taxIncluded, taxRate, taxLabel, subtotal, taxAmount, totalAmount, paymentLog.getId());
 
         // Build invoice data
@@ -668,9 +684,9 @@ public class InvoiceService {
                 .taxLabel(taxLabel)
                 .paymentMethod(paymentLog.getVendor())
                 .transactionId(paymentLog.getVendorId())
-                .paymentDate(paymentLog.getDate() != null ? 
-                        paymentLog.getDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime() : 
-                        LocalDateTime.now())
+                .paymentDate(paymentLog.getDate() != null
+                        ? paymentLog.getDate().toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                        : LocalDateTime.now())
                 .lineItems(lineItems)
                 .build();
 
@@ -688,9 +704,9 @@ public class InvoiceService {
             if (item.getAmount() != null && item.getAmount() < 0) {
                 // Discounts are negative amounts
                 totalDiscount = totalDiscount.add(BigDecimal.valueOf(Math.abs(item.getAmount())));
-            } else if (item.getAmount() != null && item.getAmount() > 0 && 
-                      (item.getType() != null && (item.getType().contains("DISCOUNT") || 
-                       item.getType().contains("COUPON") || item.getType().contains("REFERRAL")))) {
+            } else if (item.getAmount() != null && item.getAmount() > 0 &&
+                    (item.getType() != null && (item.getType().contains("DISCOUNT") ||
+                            item.getType().contains("COUPON") || item.getType().contains("REFERRAL")))) {
                 // Some systems store discounts as positive amounts
                 totalDiscount = totalDiscount.add(BigDecimal.valueOf(item.getAmount()));
             }
@@ -703,27 +719,28 @@ public class InvoiceService {
     /**
      * Build line items for invoice
      */
-    private List<InvoiceLineItemData> buildLineItems(PaymentPlan paymentPlan, 
-                                                      List<PaymentLogLineItem> paymentLogLineItems,
-                                                      Boolean taxIncluded,
-                                                      BigDecimal taxRate,
-                                                      String taxLabel,
-                                                      BigDecimal subtotal,
-                                                      BigDecimal taxAmount,
-                                                      BigDecimal totalAmount,
-                                                      String paymentLogId) {
+    private List<InvoiceLineItemData> buildLineItems(PaymentPlan paymentPlan,
+            List<PaymentLogLineItem> paymentLogLineItems,
+            Boolean taxIncluded,
+            BigDecimal taxRate,
+            String taxLabel,
+            BigDecimal subtotal,
+            BigDecimal taxAmount,
+            BigDecimal totalAmount,
+            String paymentLogId) {
         List<InvoiceLineItemData> lineItems = new ArrayList<>();
 
         // Get package session description (package name) instead of plan name
         String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
-        
+
         // Ensure description is never null or empty
         if (description == null || description.trim().isEmpty()) {
-            description = paymentPlan != null && paymentPlan.getName() != null ? 
-                    paymentPlan.getName() : "Package Enrollment";
+            description = paymentPlan != null && paymentPlan.getName() != null ? paymentPlan.getName()
+                    : "Package Enrollment";
         }
 
-        // Main plan item - use total amount from payment log (which is the actual paid amount)
+        // Main plan item - use total amount from payment log (which is the actual paid
+        // amount)
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
                 .description(description.trim())
@@ -735,9 +752,9 @@ public class InvoiceService {
 
         // Discount items
         for (PaymentLogLineItem item : paymentLogLineItems) {
-            if (item.getType() != null && (item.getType().contains("DISCOUNT") || 
-                item.getType().contains("COUPON") || item.getType().contains("REFERRAL"))) {
-                
+            if (item.getType() != null && (item.getType().contains("DISCOUNT") ||
+                    item.getType().contains("COUPON") || item.getType().contains("REFERRAL"))) {
+
                 BigDecimal discountValue = BigDecimal.ZERO;
                 if (item.getAmount() != null) {
                     if (item.getAmount() < 0) {
@@ -750,8 +767,7 @@ public class InvoiceService {
                 if (discountValue.compareTo(BigDecimal.ZERO) > 0) {
                     InvoiceLineItemData discountItem = InvoiceLineItemData.builder()
                             .itemType(item.getType())
-                            .description(item.getSource() != null ? 
-                                    "Discount: " + item.getSource() : "Discount")
+                            .description(item.getSource() != null ? "Discount: " + item.getSource() : "Discount")
                             .quantity(1)
                             .unitPrice(discountValue.negate())
                             .amount(discountValue.negate())
@@ -856,7 +872,8 @@ public class InvoiceService {
     }
 
     /**
-     * Load default invoice template from resources/templates/invoice/default_invoice.html
+     * Load default invoice template from
+     * resources/templates/invoice/default_invoice.html
      */
     private String loadDefaultInvoiceTemplateFromResources() {
         try {
@@ -875,8 +892,10 @@ public class InvoiceService {
                     return template.toString();
                 }
             } else {
-                log.error("Default invoice template file not found in resources/templates/invoice/default_invoice.html");
-                throw new VacademyException("Default invoice template not found. Please ensure the template file exists at resources/templates/invoice/default_invoice.html");
+                log.error(
+                        "Default invoice template file not found in resources/templates/invoice/default_invoice.html");
+                throw new VacademyException(
+                        "Default invoice template not found. Please ensure the template file exists at resources/templates/invoice/default_invoice.html");
             }
         } catch (VacademyException e) {
             throw e;
@@ -893,31 +912,32 @@ public class InvoiceService {
         String filled = template;
 
         // Basic invoice info
-        filled = filled.replace("{{invoice_number}}", invoiceData.getInvoiceNumber() != null ? 
-                invoiceData.getInvoiceNumber() : "");
-        filled = filled.replace("{{invoice_date}}", invoiceData.getInvoiceDate() != null ? 
-                invoiceData.getInvoiceDate().format(DISPLAY_DATE_FORMATTER) : "");
-        filled = filled.replace("{{due_date}}", invoiceData.getDueDate() != null ? 
-                invoiceData.getDueDate().format(DISPLAY_DATE_FORMATTER) : "");
+        filled = filled.replace("{{invoice_number}}",
+                invoiceData.getInvoiceNumber() != null ? invoiceData.getInvoiceNumber() : "");
+        filled = filled.replace("{{invoice_date}}",
+                invoiceData.getInvoiceDate() != null ? invoiceData.getInvoiceDate().format(DISPLAY_DATE_FORMATTER)
+                        : "");
+        filled = filled.replace("{{due_date}}",
+                invoiceData.getDueDate() != null ? invoiceData.getDueDate().format(DISPLAY_DATE_FORMATTER) : "");
 
         // Institute info
         Institute institute = invoiceData.getInstitute();
-        filled = filled.replace("{{institute_name}}", institute.getInstituteName() != null ? 
-                institute.getInstituteName() : "");
-        filled = filled.replace("{{institute_address}}", institute.getAddress() != null ? 
-                institute.getAddress() : "");
-        filled = filled.replace("{{institute_contact}}", institute.getMobileNumber() != null ? 
-                institute.getMobileNumber() : (institute.getEmail() != null ? institute.getEmail() : ""));
+        filled = filled.replace("{{institute_name}}",
+                institute.getInstituteName() != null ? institute.getInstituteName() : "");
+        filled = filled.replace("{{institute_address}}", institute.getAddress() != null ? institute.getAddress() : "");
+        filled = filled.replace("{{institute_contact}}",
+                institute.getMobileNumber() != null ? institute.getMobileNumber()
+                        : (institute.getEmail() != null ? institute.getEmail() : ""));
 
         // Institute logo
         String instituteLogoHtml = buildInstituteLogoHtml(institute);
         filled = filled.replace("{{institute_logo}}", instituteLogoHtml);
-        
+
         // Institute theme color - replace in CSS and HTML
         // Use dark turquoise for BILL TO section and footer
         String defaultColor = "#124a34"; // Dark turquoise
         filled = filled.replace("{{theme_color}}", defaultColor);
-        
+
         // Table header uses hardcoded orange color (#f78f1e) - no replacement needed
 
         // User info
@@ -930,32 +950,37 @@ public class InvoiceService {
         String invoiceCurrency = invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR";
         log.info("Invoice currency from invoiceData: '{}'", invoiceCurrency);
         String currencySymbol = getCurrencySymbol(invoiceCurrency);
-        
+
         // Final safeguard: ensure currency symbol is never "#"
         if ("#".equals(currencySymbol) || currencySymbol == null || currencySymbol.trim().isEmpty()) {
-            log.error("CRITICAL: Currency symbol is '#', null, or empty! Defaulting to ₹. Currency was: '{}'", invoiceCurrency);
+            log.error("CRITICAL: Currency symbol is '#', null, or empty! Defaulting to ₹. Currency was: '{}'",
+                    invoiceCurrency);
             currencySymbol = "₹";
         }
-        
+
         log.info("Currency symbol resolved: '{}' for currency code: '{}'", currencySymbol, invoiceCurrency);
-        
-        filled = filled.replace("{{subtotal}}", invoiceData.getSubtotal() != null ? 
-                currencySymbol + invoiceData.getSubtotal().toString() : currencySymbol + "0.00");
-        filled = filled.replace("{{tax_amount}}", invoiceData.getTaxAmount() != null ? 
-                currencySymbol + invoiceData.getTaxAmount().toString() : currencySymbol + "0.00");
-        filled = filled.replace("{{total_amount}}", invoiceData.getTotalAmount() != null ? 
-                currencySymbol + invoiceData.getTotalAmount().toString() : currencySymbol + "0.00");
+
+        filled = filled.replace("{{subtotal}}",
+                invoiceData.getSubtotal() != null ? currencySymbol + invoiceData.getSubtotal().toString()
+                        : currencySymbol + "0.00");
+        filled = filled.replace("{{tax_amount}}",
+                invoiceData.getTaxAmount() != null ? currencySymbol + invoiceData.getTaxAmount().toString()
+                        : currencySymbol + "0.00");
+        filled = filled.replace("{{total_amount}}",
+                invoiceData.getTotalAmount() != null ? currencySymbol + invoiceData.getTotalAmount().toString()
+                        : currencySymbol + "0.00");
         filled = filled.replace("{{currency}}", invoiceCurrency);
         // Replace currency_symbol placeholder if template uses it
         filled = filled.replace("{{currency_symbol}}", currencySymbol);
 
         // Payment info
-        filled = filled.replace("{{payment_method}}", invoiceData.getPaymentMethod() != null ? 
-                invoiceData.getPaymentMethod() : "");
-        filled = filled.replace("{{transaction_id}}", invoiceData.getTransactionId() != null ? 
-                invoiceData.getTransactionId() : "");
-        filled = filled.replace("{{payment_date}}", invoiceData.getPaymentDate() != null ? 
-                invoiceData.getPaymentDate().format(DISPLAY_DATE_FORMATTER) : "");
+        filled = filled.replace("{{payment_method}}",
+                invoiceData.getPaymentMethod() != null ? invoiceData.getPaymentMethod() : "");
+        filled = filled.replace("{{transaction_id}}",
+                invoiceData.getTransactionId() != null ? invoiceData.getTransactionId() : "");
+        filled = filled.replace("{{payment_date}}",
+                invoiceData.getPaymentDate() != null ? invoiceData.getPaymentDate().format(DISPLAY_DATE_FORMATTER)
+                        : "");
 
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
@@ -977,12 +1002,12 @@ public class InvoiceService {
             // Get logo URL from file ID (public URL without expiry)
             String logoUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(institute.getLogoFileId());
             if (logoUrl != null && !logoUrl.trim().isEmpty()) {
-                return "<div class=\"logo-container\"><img src=\"" + logoUrl + "\" alt=\"" + 
-                       (institute.getInstituteName() != null ? institute.getInstituteName() : "Logo") + 
-                       " Logo\" /></div>";
+                return "<div class=\"logo-container\"><img src=\"" + logoUrl + "\" alt=\"" +
+                        (institute.getInstituteName() != null ? institute.getInstituteName() : "Logo") +
+                        " Logo\" /></div>";
             }
         } catch (Exception e) {
-            log.warn("Failed to get logo URL for institute: {}. Error: {}", 
+            log.warn("Failed to get logo URL for institute: {}. Error: {}",
                     institute.getId(), e.getMessage());
         }
 
@@ -995,18 +1020,18 @@ public class InvoiceService {
      * Returns the actual institute theme color, or default dark green if not set
      */
     private String getInstituteThemeColor(Institute institute) {
-        if (institute == null || institute.getInstituteThemeCode() == null || 
-            institute.getInstituteThemeCode().trim().isEmpty()) {
+        if (institute == null || institute.getInstituteThemeCode() == null ||
+                institute.getInstituteThemeCode().trim().isEmpty()) {
             return "#1a5f3f"; // Default dark green color
         }
-        
+
         String themeCode = institute.getInstituteThemeCode().trim();
-        
+
         // If theme code is already a hex color, return it
         if (themeCode.startsWith("#") && themeCode.length() == 7) {
             return themeCode;
         }
-        
+
         // If theme code is a hex color without #, add it
         if (themeCode.matches("^[0-9A-Fa-f]{6}$")) {
             return "#" + themeCode;
@@ -1014,9 +1039,10 @@ public class InvoiceService {
 
         return "#1a5f3f"; // Default dark green color
     }
-    
+
     /**
      * Get theme color from institute (deprecated - kept for backward compatibility)
+     * 
      * @deprecated Use getInstituteThemeColor instead
      */
     @Deprecated
@@ -1033,13 +1059,14 @@ public class InvoiceService {
         }
 
         String currencySymbol = getCurrencySymbol(currency != null ? currency : "INR");
-        
+
         // Final safeguard: ensure currency symbol is never "#"
         if ("#".equals(currencySymbol) || currencySymbol == null || currencySymbol.trim().isEmpty()) {
-            log.error("CRITICAL: Currency symbol is '#', null, or empty! Defaulting to ₹. Currency was: '{}'", currency);
+            log.error("CRITICAL: Currency symbol is '#', null, or empty! Defaulting to ₹. Currency was: '{}'",
+                    currency);
             currencySymbol = "₹";
         }
-        
+
         StringBuilder html = new StringBuilder();
         for (InvoiceLineItemData item : lineItems) {
             html.append("<tr>");
@@ -1062,51 +1089,54 @@ public class InvoiceService {
     private String getCurrencyFromPaymentLog(PaymentLog paymentLog, PaymentPlan paymentPlan) {
         String paymentLogCurrency = paymentLog != null ? paymentLog.getCurrency() : null;
         String planCurrency = paymentPlan != null ? paymentPlan.getCurrency() : null;
-        
+
         log.info("Getting currency - PaymentLog currency: '{}', Plan currency: '{}'", paymentLogCurrency, planCurrency);
-        
+
         // Validate and normalize currency
         String currency = normalizeAndValidateCurrency(paymentLogCurrency, planCurrency);
-        
+
         log.info("Final currency selected: '{}'", currency);
         return currency;
     }
-    
+
     /**
-     * Normalize and validate currency code, filtering out invalid values like "#" or symbols
+     * Normalize and validate currency code, filtering out invalid values like "#"
+     * or symbols
      */
     private String normalizeAndValidateCurrency(String paymentLogCurrency, String planCurrency) {
         // List of valid currency codes
-        Set<String> validCurrencyCodes = Set.of("INR", "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "SGD", "AED", "GBP");
-        
+        Set<String> validCurrencyCodes = Set.of("INR", "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "SGD", "AED");
+
         // Try payment log currency first
         if (paymentLogCurrency != null && !paymentLogCurrency.trim().isEmpty()) {
             String normalized = paymentLogCurrency.trim().toUpperCase();
             // Reject if it's a single character (like "#") or not a valid currency code
-            if (normalized.length() >= 3 && (validCurrencyCodes.contains(normalized) || normalized.matches("^[A-Z]{3}$"))) {
+            if (normalized.length() >= 3
+                    && (validCurrencyCodes.contains(normalized) || normalized.matches("^[A-Z]{3}$"))) {
                 log.debug("Using payment log currency: '{}'", normalized);
                 return normalized;
             } else {
                 log.warn("Invalid payment log currency code: '{}', trying plan currency", paymentLogCurrency);
             }
         }
-        
+
         // Try plan currency
         if (planCurrency != null && !planCurrency.trim().isEmpty()) {
             String normalized = planCurrency.trim().toUpperCase();
-            if (normalized.length() >= 3 && (validCurrencyCodes.contains(normalized) || normalized.matches("^[A-Z]{3}$"))) {
+            if (normalized.length() >= 3
+                    && (validCurrencyCodes.contains(normalized) || normalized.matches("^[A-Z]{3}$"))) {
                 log.debug("Using plan currency: '{}'", normalized);
                 return normalized;
             } else {
                 log.warn("Invalid plan currency code: '{}', defaulting to INR", planCurrency);
             }
         }
-        
+
         // Default to INR
         log.info("No valid currency found, defaulting to INR");
         return "INR";
     }
-    
+
     /**
      * Get currency symbol based on currency code
      * This method ensures we never return "#" or invalid symbols
@@ -1116,20 +1146,21 @@ public class InvoiceService {
             log.debug("Currency code is null or empty, defaulting to INR symbol");
             return "₹"; // Default to INR symbol
         }
-        
+
         // Normalize currency code: trim whitespace and convert to uppercase
         String normalizedCurrency = currencyCode.trim().toUpperCase();
-        
+
         // Reject invalid currency codes (single characters, symbols, etc.)
-        if (normalizedCurrency.length() < 3 || normalizedCurrency.equals("#") || 
-            normalizedCurrency.matches("^[#\\$€£¥₹]+$")) {
+        if (normalizedCurrency.length() < 3 || normalizedCurrency.equals("#") ||
+                normalizedCurrency.matches("^[#\\$€£¥₹]+$")) {
             log.warn("Invalid currency code detected: '{}', defaulting to INR symbol", currencyCode);
             return "₹";
         }
-        
+
         // Log the currency code being used for debugging
-        log.debug("Getting currency symbol for currency code: '{}' (normalized: '{}')", currencyCode, normalizedCurrency);
-        
+        log.debug("Getting currency symbol for currency code: '{}' (normalized: '{}')", currencyCode,
+                normalizedCurrency);
+
         switch (normalizedCurrency) {
             case "INR":
                 return "₹";
@@ -1150,8 +1181,10 @@ public class InvoiceService {
             case "AED":
                 return "د.إ"; // UAE Dirham
             default:
-                log.warn("Unknown currency code: '{}', defaulting to INR symbol instead of using code as symbol", normalizedCurrency);
-                // Always default to INR symbol for unknown currencies to avoid showing invalid symbols
+                log.warn("Unknown currency code: '{}', defaulting to INR symbol instead of using code as symbol",
+                        normalizedCurrency);
+                // Always default to INR symbol for unknown currencies to avoid showing invalid
+                // symbols
                 return "₹";
         }
     }
@@ -1245,7 +1278,7 @@ public class InvoiceService {
 
             if (connection.getResponseCode() == 200) {
                 try (java.io.InputStream inputStream = connection.getInputStream();
-                     java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream()) {
+                        java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream()) {
 
                     byte[] buffer = new byte[4096];
                     int bytesRead;
@@ -1279,12 +1312,11 @@ public class InvoiceService {
                     fileName,
                     fileName,
                     "application/pdf",
-                    pdfBytes
-            );
+                    pdfBytes);
 
             FileDetailsDTO fileDetails = mediaService.uploadFileV2(multipartFile);
             if (fileDetails != null && fileDetails.getId() != null) {
-                log.debug("Invoice PDF uploaded to S3. File ID: {}, URL: {}", 
+                log.debug("Invoice PDF uploaded to S3. File ID: {}, URL: {}",
                         fileDetails.getId(), fileDetails.getUrl());
                 return fileDetails.getId();
             } else {
@@ -1300,7 +1332,7 @@ public class InvoiceService {
      * Save invoice to database with multiple payment logs
      */
     private Invoice saveInvoiceWithMultiplePaymentLogs(InvoiceData invoiceData, String invoiceNumber, String pdfFileId,
-                                                       List<PaymentLog> paymentLogs, String instituteId) {
+            List<PaymentLog> paymentLogs, String instituteId) {
         try {
             if (paymentLogs == null || paymentLogs.isEmpty()) {
                 throw new VacademyException("Payment logs list cannot be empty");
@@ -1368,16 +1400,17 @@ public class InvoiceService {
 
     /**
      * Save invoice to database (legacy method for single payment log)
+     * 
      * @deprecated Use saveInvoiceWithMultiplePaymentLogs instead
      */
     @Deprecated
     private Invoice saveInvoice(InvoiceData invoiceData, String invoiceNumber, String pdfFileId,
-                                 UserPlan userPlan, PaymentLog paymentLog, String instituteId) {
+            UserPlan userPlan, PaymentLog paymentLog, String instituteId) {
         try {
             Invoice invoice = new Invoice();
             invoice.setInvoiceNumber(invoiceNumber);
             invoice.setUserId(paymentLog.getUserId());
-            
+
             // Create payment log mapping for single payment log (legacy support)
             InvoicePaymentLogMapping mapping = new InvoicePaymentLogMapping();
             mapping.setInvoice(invoice);
@@ -1403,7 +1436,7 @@ public class InvoiceService {
             }
 
             invoice = invoiceRepository.save(invoice);
-            
+
             // Save payment log mapping
             mapping.setInvoice(invoice);
             invoicePaymentLogMappingRepository.save(mapping);
@@ -1438,13 +1471,14 @@ public class InvoiceService {
     private void sendInvoiceEmail(Invoice invoice, UserDTO user, String instituteId) {
         try {
             // This will be implemented to send email with invoice PDF attachment
-            // For now, we'll use the existing payment notification service or create a new method
-            log.info("Invoice email would be sent to: {} for invoice: {}", 
+            // For now, we'll use the existing payment notification service or create a new
+            // method
+            log.info("Invoice email would be sent to: {} for invoice: {}",
                     user.getEmail(), invoice.getInvoiceNumber());
-            
+
             // TODO: Implement email sending with invoice PDF attachment
             // You can extend PaymentNotificatonService or create a new InvoiceEmailService
-            
+
         } catch (Exception e) {
             log.error("Error sending invoice email", e);
             // Don't throw - email failure shouldn't fail invoice generation
@@ -1470,8 +1504,10 @@ public class InvoiceService {
 
     /**
      * Test method: Manually trigger invoice generation for testing purposes
-     * This method will group related payment logs (same vendor_id or time window) into one invoice
-     * This method is useful for testing invoice generation without going through the full payment flow
+     * This method will group related payment logs (same vendor_id or time window)
+     * into one invoice
+     * This method is useful for testing invoice generation without going through
+     * the full payment flow
      */
     public String testGenerateInvoice(String paymentLogId) {
         try {
@@ -1483,13 +1519,14 @@ public class InvoiceService {
             }
 
             if (paymentLog.getPaymentStatus() == null || !paymentLog.getPaymentStatus().equals("PAID")) {
-                throw new VacademyException("Payment log status must be PAID. Current status: " + 
+                throw new VacademyException("Payment log status must be PAID. Current status: " +
                         paymentLog.getPaymentStatus());
             }
 
             // Get institute ID from user plan
-            String instituteId = paymentLog.getUserPlan().getEnrollInvite() != null ?
-                    paymentLog.getUserPlan().getEnrollInvite().getInstituteId() : null;
+            String instituteId = paymentLog.getUserPlan().getEnrollInvite() != null
+                    ? paymentLog.getUserPlan().getEnrollInvite().getInstituteId()
+                    : null;
 
             if (instituteId == null) {
                 throw new VacademyException("Could not determine institute ID from payment log");
@@ -1499,15 +1536,15 @@ public class InvoiceService {
             Invoice invoice = generateInvoice(
                     paymentLog.getUserPlan(),
                     paymentLog,
-                    instituteId
-            );
+                    instituteId);
 
-            String pdfUrl = invoice.getPdfFileId() != null ? 
-                    mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId()) : null;
-            return "Invoice generated successfully! Invoice Number: " + invoice.getInvoiceNumber() + 
-                   ", PDF File ID: " + invoice.getPdfFileId() + 
-                   (pdfUrl != null ? ", PDF URL: " + pdfUrl : "") +
-                   ", Payment Logs: " + invoice.getPaymentLogMappings().size();
+            String pdfUrl = invoice.getPdfFileId() != null
+                    ? mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId())
+                    : null;
+            return "Invoice generated successfully! Invoice Number: " + invoice.getInvoiceNumber() +
+                    ", PDF File ID: " + invoice.getPdfFileId() +
+                    (pdfUrl != null ? ", PDF URL: " + pdfUrl : "") +
+                    ", Payment Logs: " + invoice.getPaymentLogMappings().size();
         } catch (Exception e) {
             log.error("Test: Failed to generate invoice for payment log: {}", paymentLogId, e);
             throw new VacademyException("Failed to generate invoice: " + e.getMessage());
@@ -1516,7 +1553,8 @@ public class InvoiceService {
 
     /**
      * Test method: Generate invoice for MULTI-PACKAGE enrollment (v2 API)
-     * This method simulates the v2 API scenario where multiple payment logs have the same order ID
+     * This method simulates the v2 API scenario where multiple payment logs have
+     * the same order ID
      * and should be grouped into a single invoice with multiple line items
      */
     @Transactional
@@ -1538,7 +1576,8 @@ public class InvoiceService {
                     .collect(Collectors.toList());
 
             if (eligibleLogs.isEmpty()) {
-                return "No eligible payment logs found (must be PAID and not already invoiced) for order ID: " + orderId;
+                return "No eligible payment logs found (must be PAID and not already invoiced) for order ID: "
+                        + orderId;
             }
 
             log.info("Found {} eligible payment logs for multi-package invoice", eligibleLogs.size());
@@ -1551,8 +1590,9 @@ public class InvoiceService {
             }
 
             // Get institute ID from user plan
-            String instituteId = firstPaymentLog.getUserPlan().getEnrollInvite() != null ?
-                    firstPaymentLog.getUserPlan().getEnrollInvite().getInstituteId() : null;
+            String instituteId = firstPaymentLog.getUserPlan().getEnrollInvite() != null
+                    ? firstPaymentLog.getUserPlan().getEnrollInvite().getInstituteId()
+                    : null;
 
             if (instituteId == null) {
                 throw new VacademyException("Could not determine institute ID from payment log");
@@ -1585,15 +1625,17 @@ public class InvoiceService {
             try {
                 sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId);
             } catch (Exception e) {
-                log.error("Failed to send invoice email for multi-package invoice: {}. Invoice generation will continue.",
+                log.error(
+                        "Failed to send invoice email for multi-package invoice: {}. Invoice generation will continue.",
                         invoiceNumber, e);
             }
 
-            String pdfUrl = invoice.getPdfFileId() != null ?
-                    mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId()) : null;
+            String pdfUrl = invoice.getPdfFileId() != null
+                    ? mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId())
+                    : null;
             return "Multi-package invoice generated successfully! Invoice Number: " + invoice.getInvoiceNumber() +
-                   ", PDF File ID: " + invoice.getPdfFileId() + ", Package Sessions: " + eligibleLogs.size() +
-                   (pdfUrl != null ? ", PDF URL: " + pdfUrl : "");
+                    ", PDF File ID: " + invoice.getPdfFileId() + ", Package Sessions: " + eligibleLogs.size() +
+                    (pdfUrl != null ? ", PDF URL: " + pdfUrl : "");
         } catch (Exception e) {
             log.error("Test: Failed to generate multi-package invoice for order ID: {}", orderId, e);
             throw new VacademyException("Failed to generate multi-package invoice: " + e.getMessage());
@@ -1602,8 +1644,10 @@ public class InvoiceService {
 
     /**
      * Test method: Generate invoice for a SINGLE payment log only (no grouping)
-     * This bypasses the grouping logic and creates an invoice for just this one payment log
-     * Useful for testing single payment log scenarios without worrying about related logs
+     * This bypasses the grouping logic and creates an invoice for just this one
+     * payment log
+     * Useful for testing single payment log scenarios without worrying about
+     * related logs
      */
     @Transactional
     public String testGenerateInvoiceSingle(String paymentLogId) {
@@ -1616,23 +1660,25 @@ public class InvoiceService {
             }
 
             if (paymentLog.getPaymentStatus() == null || !paymentLog.getPaymentStatus().equals("PAID")) {
-                throw new VacademyException("Payment log status must be PAID. Current status: " + 
+                throw new VacademyException("Payment log status must be PAID. Current status: " +
                         paymentLog.getPaymentStatus());
             }
 
             // Check if already invoiced
             if (invoicePaymentLogMappingRepository.existsByPaymentLogId(paymentLog.getId())) {
                 Invoice existingInvoice = findInvoiceByPaymentLogId(paymentLog.getId());
-                String pdfUrl = existingInvoice.getPdfFileId() != null ? 
-                        mediaService.getFileUrlById(existingInvoice.getPdfFileId()) : null;
-                return "Payment log is already invoiced! Invoice Number: " + existingInvoice.getInvoiceNumber() + 
-                       ", PDF File ID: " + existingInvoice.getPdfFileId() +
-                       (pdfUrl != null ? ", PDF URL: " + pdfUrl : "");
+                String pdfUrl = existingInvoice.getPdfFileId() != null
+                        ? mediaService.getFileUrlById(existingInvoice.getPdfFileId())
+                        : null;
+                return "Payment log is already invoiced! Invoice Number: " + existingInvoice.getInvoiceNumber() +
+                        ", PDF File ID: " + existingInvoice.getPdfFileId() +
+                        (pdfUrl != null ? ", PDF URL: " + pdfUrl : "");
             }
 
             // Get institute ID from user plan
-            String instituteId = paymentLog.getUserPlan().getEnrollInvite() != null ?
-                    paymentLog.getUserPlan().getEnrollInvite().getInstituteId() : null;
+            String instituteId = paymentLog.getUserPlan().getEnrollInvite() != null
+                    ? paymentLog.getUserPlan().getEnrollInvite().getInstituteId()
+                    : null;
 
             if (instituteId == null) {
                 throw new VacademyException("Could not determine institute ID from payment log");
@@ -1643,8 +1689,7 @@ public class InvoiceService {
             // Build invoice data from ONLY this payment log (no grouping)
             InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(
                     List.of(paymentLog), // Only this one payment log
-                    instituteId
-            );
+                    instituteId);
 
             // Generate invoice number and set it in invoice data
             String invoiceNumber = generateInvoiceNumber(instituteId);
@@ -1664,26 +1709,26 @@ public class InvoiceService {
 
             // Save invoice with only this payment log
             Invoice invoice = saveInvoiceWithMultiplePaymentLogs(
-                    invoiceData, 
-                    invoiceNumber, 
-                    pdfFileId, 
+                    invoiceData,
+                    invoiceNumber,
+                    pdfFileId,
                     List.of(paymentLog), // Only this one payment log
-                    instituteId
-            );
+                    instituteId);
 
             // Send email (async)
             try {
                 sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId);
             } catch (Exception e) {
-                log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.", 
+                log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.",
                         invoiceNumber, e);
             }
 
-            String pdfUrl = invoice.getPdfFileId() != null ? 
-                    mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId()) : null;
-            return "Invoice generated successfully for SINGLE payment log! Invoice Number: " + 
-                   invoice.getInvoiceNumber() + ", PDF File ID: " + invoice.getPdfFileId() +
-                   (pdfUrl != null ? ", PDF URL: " + pdfUrl : "");
+            String pdfUrl = invoice.getPdfFileId() != null
+                    ? mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId())
+                    : null;
+            return "Invoice generated successfully for SINGLE payment log! Invoice Number: " +
+                    invoice.getInvoiceNumber() + ", PDF File ID: " + invoice.getPdfFileId() +
+                    (pdfUrl != null ? ", PDF URL: " + pdfUrl : "");
         } catch (Exception e) {
             log.error("Test: Failed to generate invoice for single payment log: {}", paymentLogId, e);
             throw new VacademyException("Failed to generate invoice: " + e.getMessage());
@@ -1719,7 +1764,7 @@ public class InvoiceService {
                     .map(m -> m.getPaymentLog().getId())
                     .collect(Collectors.toList());
             primaryPaymentLogId = paymentLogIds.get(0); // First one as primary
-            
+
             // Get user plan ID from first payment log (via mapping)
             if (!invoice.getPaymentLogMappings().isEmpty()) {
                 PaymentLog firstPaymentLog = invoice.getPaymentLogMappings().get(0).getPaymentLog();
@@ -1746,8 +1791,11 @@ public class InvoiceService {
                 .currency(invoice.getCurrency())
                 .status(invoice.getStatus())
                 .pdfFileId(invoice.getPdfFileId())
-                .pdfUrl(invoice.getPdfFileId() != null ? 
-                        mediaService.getFileUrlById(invoice.getPdfFileId()) : null) // Computed URL from file ID
+                .pdfUrl(invoice.getPdfFileId() != null ? mediaService.getFileUrlById(invoice.getPdfFileId()) : null) // Computed
+                                                                                                                     // URL
+                                                                                                                     // from
+                                                                                                                     // file
+                                                                                                                     // ID
                 .taxIncluded(invoice.getTaxIncluded())
                 .createdAt(invoice.getCreatedAt())
                 .updatedAt(invoice.getUpdatedAt())
@@ -1755,4 +1803,3 @@ public class InvoiceService {
                 .build();
     }
 }
-

@@ -286,6 +286,9 @@ public class InstituteSettingService {
 
     public Object getSettingData(Institute institute, String settingKey) {
         SettingDto setting = getSpecificSetting(institute, settingKey);
+        if (setting == null) {
+            return null;
+        }
         return setting.getData();
     }
 
@@ -633,8 +636,9 @@ public class InstituteSettingService {
         return "Certificate Template Updated Successfully!";
     }
 
-    public Object getSettingByInstituteIdAndKey(String instituteId,String settingKey){
-        Institute institute = instituteRepository.findById(instituteId).orElseThrow(() -> new VacademyException("Institute Not Found"));
-        return getSettingData(institute,settingKey);
+    public Object getSettingByInstituteIdAndKey(String instituteId, String settingKey) {
+        Institute institute = instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new VacademyException("Institute Not Found"));
+        return getSettingData(institute, settingKey);
     }
 }

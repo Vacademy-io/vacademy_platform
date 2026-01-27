@@ -14,8 +14,6 @@ import java.util.List;
 @Repository
 public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                 extends JpaRepository<PackageSessionLearnerInvitationToPaymentOption, String> {
-        List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInvite_Id(String enrollInviteId);
-
         List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteAndStatusIn(
                         EnrollInvite enrollInvite,
                         List<String> statusList);

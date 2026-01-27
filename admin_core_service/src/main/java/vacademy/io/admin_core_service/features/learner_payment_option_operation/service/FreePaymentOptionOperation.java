@@ -65,39 +65,10 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                 List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
                 List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
 
-                // Step 1: For each package session, create ONLY_DETAILS_FILLED entry first
-                // and mark previous entries as DELETED
-                for (String actualPackageSessionId : packageSessionIds) {
-                        // Find the INVITED package session for this actual package session
-                        PackageSession invitedPackageSession = learnerEnrollmentEntryService
-                                        .findInvitedPackageSession(actualPackageSessionId);
+                // Note: For FREE payment option, frontend skips ABANDONED_CART step
+                // So we directly proceed to enrollment
 
-                        PackageSession actualPackageSession = packageSessionRepository.findById(actualPackageSessionId)
-                                        .orElseThrow(() -> new VacademyException(
-                                                        "Package session not found: " + actualPackageSessionId));
-
-                        // Mark previous ONLY_DETAILS_FILLED and PAYMENT_FAILED entries as DELETED
-                        learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
-                                        userDTO.getId(),
-                                        invitedPackageSession.getId(),
-                                        actualPackageSessionId,
-                                        instituteId);
-
-                        // Create ONLY_DETAILS_FILLED entry
-                        learnerEnrollmentEntryService.createOnlyDetailsFilledEntry(
-                                        userDTO.getId(),
-                                        invitedPackageSession,
-                                        actualPackageSession,
-                                        instituteId,
-                                        userPlan.getId());
-
-                        log.info("Created ONLY_DETAILS_FILLED entry for user {} in package session {}",
-                                        userDTO.getId(), actualPackageSessionId);
-                }
-
-                // Step 2: Check if workflow is configured for the destination package session
-                // If workflow exists, return early - only ONLY_DETAILS_FILLED entry should
-                // exist
+                // Step 1: Check if workflow is configured for the destination package session
                 boolean hasWorkflow = false;
                 for (String packageSessionId : packageSessionIds) {
                         PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
@@ -105,26 +76,29 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                         if (packageSession != null
                                         && learnerEnrollmentEntryService.hasWorkflowConfiguration(packageSession)) {
                                 hasWorkflow = true;
-                                log.info("Workflow configuration found for package session: {}. Returning with only ONLY_DETAILS_FILLED entry.",
+                                log.info("Workflow configuration found for package session: {}",
                                                 packageSessionId);
                                 break;
                         }
                 }
 
-                // If workflow exists, return early - workflow will handle the rest
+                // Step 2: Build enrollment details
+                // For FREE enrollment, we enroll directly to the ACTUAL package session (not INVITED)
+                String status;
                 if (hasWorkflow) {
-                        log.info("Workflow will handle enrollment for user: {}. Only ONLY_DETAILS_FILLED entry created.",
-                                        userDTO.getEmail());
-                        LearnerEnrollResponseDTO response = new LearnerEnrollResponseDTO();
-                        response.setUser(userDTO);
-                        return response;
+                        // Workflow exists - enroll to INVITED PS and let workflow handle activation
+                        status = LearnerStatusEnum.INVITED.name();
+                } else if (paymentOption.isRequireApproval()) {
+                        status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
+                } else {
+                        status = LearnerStatusEnum.ACTIVE.name();
                 }
 
-                // Step 3: No workflow - proceed with current enrollment flow (create ACTIVE
-                // entry)
-                if (paymentOption.isRequireApproval()) {
-                        String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
-                        for (String packageSessionId : packageSessionIds) {
+                Integer accessDays = enrollInvite.getLearnerAccessDays();
+
+                for (String packageSessionId : packageSessionIds) {
+                        if (hasWorkflow || paymentOption.isRequireApproval()) {
+                                // Use INVITED package session with destination
                                 Optional<PackageSession> invitedPackageSession = packageSessionRepository
                                                 .findInvitedPackageSessionForPackage(
                                                                 packageSessionId,
@@ -147,21 +121,17 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                                                 status,
                                                 enrollmentDate,
                                                 null,
-                                                enrollInvite.getLearnerAccessDays() != null
-                                                                ? enrollInvite.getLearnerAccessDays().toString()
-                                                                : null,
-                                                packageSessionId,
+                                                accessDays != null ? accessDays.toString() : null,
+                                                packageSessionId, // destination package session
                                                 userPlan.getId(), null, null);
                                 instituteStudentDetails.add(detail);
-                        }
-                } else {
-                        String status = LearnerStatusEnum.ACTIVE.name();
-                        Integer accessDays = enrollInvite.getLearnerAccessDays();
-                        for (String packageSessionId : packageSessionIds) {
+                        } else {
+                                // Direct enrollment to actual package session
                                 InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(
                                                 instituteId,
                                                 packageSessionId, null, status, enrollmentDate, null,
-                                                (accessDays != null ? accessDays.toString() : null), null,
+                                                accessDays != null ? accessDays.toString() : null, 
+                                                null, // no destination needed for direct enrollment
                                                 userPlan.getId(), null, null);
                                 instituteStudentDetails.add(instituteStudentDetail);
                         }
@@ -171,19 +141,6 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                                 instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
                                 extraData,
                                 learnerExtraDetails, enrollInvite, userPlan);
-
-                // Step 4: Mark the ONLY_DETAILS_FILLED entries as DELETED since enrollment is
-                // complete
-                for (String actualPackageSessionId : packageSessionIds) {
-                        PackageSession invitedPackageSession = learnerEnrollmentEntryService
-                                        .findInvitedPackageSession(actualPackageSessionId);
-
-                        learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
-                                        user.getId(),
-                                        invitedPackageSession.getId(),
-                                        actualPackageSessionId,
-                                        instituteId);
-                }
 
                 // Process referral request if present - for free payments, benefits are
                 // activated immediately

@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.policy.Enro
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -23,7 +24,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.common.institute.entity.Institute;
 
 /**
- * Service to handle learner enrollment entry creation with ONLY_DETAILS_FILLED
+ * Service to handle learner enrollment entry creation with ABANDONED_CART
  * type tracking.
  * This creates an initial tracking entry before payment/workflow processing.
  */
@@ -70,7 +71,7 @@ public class LearnerEnrollmentEntryService {
     }
 
     /**
-     * Marks previous ONLY_DETAILS_FILLED and PAYMENT_FAILED entries as DELETED.
+     * Marks previous ABANDONED_CART and PAYMENT_FAILED entries as DELETED.
      * Called when a user re-submits the enrollment form.
      *
      * @param userId                  The user ID
@@ -82,7 +83,7 @@ public class LearnerEnrollmentEntryService {
     public int markPreviousEntriesAsDeleted(String userId, String invitedPackageSessionId,
             String actualPackageSessionId, String instituteId) {
         List<String> typesToDelete = List.of(
-                LearnerSessionTypeEnum.ONLY_DETAILS_FILLED.name(),
+                LearnerSessionTypeEnum.ABANDONED_CART.name(),
                 LearnerSessionTypeEnum.PAYMENT_FAILED.name());
 
         int deletedCount = studentSessionRepository.markEntriesAsDeleted(
@@ -98,13 +99,13 @@ public class LearnerEnrollmentEntryService {
     }
 
     /**
-     * Creates an ONLY_DETAILS_FILLED entry for initial form submission tracking.
+     * Creates an ABANDONED_CART entry for initial form submission tracking.
      *
      * @param userId                The user ID
      * @param invitedPackageSession The INVITED package session
      * @param actualPackageSession  The actual (destination) package session
      * @param instituteId           The institute ID
-     * @param userPlanId            The user plan ID
+     * @param userPlanId            The user plan ID (can be null for form-fill step, updated later during payment)
      * @return The created mapping
      */
     public StudentSessionInstituteGroupMapping createOnlyDetailsFilledEntry(
@@ -124,15 +125,17 @@ public class LearnerEnrollmentEntryService {
         mapping.setUserId(userId);
         mapping.setPackageSession(invitedPackageSession);
         mapping.setDestinationPackageSession(actualPackageSession);
-        mapping.setType(LearnerSessionTypeEnum.ONLY_DETAILS_FILLED.name());
+        mapping.setType(LearnerSessionTypeEnum.ABANDONED_CART.name());
         mapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
         mapping.setEnrolledDate(new Date());
-        mapping.setUserPlanId(userPlanId);
+        if (userPlanId != null) {
+            mapping.setUserPlanId(userPlanId);
+        }
         mapping.setInstitute(institute);
 
         StudentSessionInstituteGroupMapping saved = studentSessionRepository.save(mapping);
-        log.info("Created ONLY_DETAILS_FILLED entry with ID: {} for user: {}, destination: {}, institute: {}",
-                saved.getId(), userId, actualPackageSession.getId(), instituteId);
+        log.info("Created ABANDONED_CART entry with ID: {} for user: {}, destination: {}, institute: {}, userPlanId: {}",
+                saved.getId(), userId, actualPackageSession.getId(), instituteId, userPlanId);
 
         return saved;
     }
@@ -266,7 +269,7 @@ public class LearnerEnrollmentEntryService {
     }
 
     /**
-     * Finds ONLY_DETAILS_FILLED entries for a specific user plan.
+     * Finds ABANDONED_CART entries for a specific user plan.
      * Used during payment webhook processing.
      *
      * @param userId      The user ID
@@ -280,27 +283,83 @@ public class LearnerEnrollmentEntryService {
         return studentSessionRepository.findAllByUserPlanIdAndStatusIn(
                 userPlanId,
                 List.of(LearnerSessionStatusEnum.ACTIVE.name())).stream()
-                .filter(m -> LearnerSessionTypeEnum.ONLY_DETAILS_FILLED.name().equals(m.getType()))
+                .filter(m -> LearnerSessionTypeEnum.ABANDONED_CART.name().equals(m.getType()))
                 .filter(m -> m.getInstitute() != null && instituteId.equals(m.getInstitute().getId()))
                 .toList();
     }
 
     /**
-     * Finds ONLY_DETAILS_FILLED and PAYMENT_FAILED entries for cleanup given a list
-     * of
-     * destination
-     * package sessions.
-     * This is robust against missing userPlanId in the Only Details Filled entry.
+     * Updates ABANDONED_CART entries with the userPlanId when payment is initiated.
+     * Called during the enroll/payment step after form-fill.
+     *
+     * @param userId                 The user ID
+     * @param destinationPackageSessionIds The destination package session IDs
+     * @param instituteId            The institute ID
+     * @param userPlanId             The user plan ID to set
+     * @return Number of entries updated
      */
-    public List<StudentSessionInstituteGroupMapping> findAbandonedCartsForCleanup(
-            String userId, String instituteId, List<String> destinationPackageSessionIds) {
+    public int updateAbandonedCartEntriesWithUserPlanId(
+            String userId,
+            List<String> destinationPackageSessionIds,
+            String instituteId,
+            String userPlanId) {
 
-        return studentSessionRepository.findByUserAndDestinationsAndTypeAndStatus(
-                userId,
-                destinationPackageSessionIds,
-                instituteId,
-                List.of(LearnerSessionTypeEnum.ONLY_DETAILS_FILLED.name(),
-                        LearnerSessionTypeEnum.PAYMENT_FAILED.name()),
-                List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+        int updatedCount = 0;
+
+        for (String destinationPackageSessionId : destinationPackageSessionIds) {
+            List<StudentSessionInstituteGroupMapping> entries = studentSessionRepository
+                    .findByUserIdAndDestinationPackageSession_IdAndStatusIn(
+                            userId,
+                            destinationPackageSessionId,
+                            List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+
+            for (StudentSessionInstituteGroupMapping entry : entries) {
+                if (LearnerSessionTypeEnum.ABANDONED_CART.name().equals(entry.getType())
+                        && entry.getInstitute() != null
+                        && instituteId.equals(entry.getInstitute().getId())
+                        && entry.getUserPlanId() == null) {
+                    entry.setUserPlanId(userPlanId);
+                    studentSessionRepository.save(entry);
+                    updatedCount++;
+                    log.info("Updated ABANDONED_CART entry {} with userPlanId: {}", entry.getId(), userPlanId);
+                }
+            }
+        }
+
+        log.info("Updated {} ABANDONED_CART entries with userPlanId: {} for user: {}",
+                updatedCount, userPlanId, userId);
+        return updatedCount;
+    }
+
+    /**
+     * Finds existing ABANDONED_CART entries for a user and destination package sessions.
+     * Used to check if form-fill step was already completed.
+     *
+     * @param userId                       The user ID
+     * @param destinationPackageSessionIds The destination package session IDs
+     * @param instituteId                  The institute ID
+     * @return List of ABANDONED_CART entries
+     */
+    public List<StudentSessionInstituteGroupMapping> findExistingAbandonedCartEntries(
+            String userId,
+            List<String> destinationPackageSessionIds,
+            String instituteId) {
+
+        List<StudentSessionInstituteGroupMapping> allEntries = new ArrayList<>();
+
+        for (String destinationPackageSessionId : destinationPackageSessionIds) {
+            List<StudentSessionInstituteGroupMapping> entries = studentSessionRepository
+                    .findByUserIdAndDestinationPackageSession_IdAndStatusIn(
+                            userId,
+                            destinationPackageSessionId,
+                            List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+
+            entries.stream()
+                    .filter(e -> LearnerSessionTypeEnum.ABANDONED_CART.name().equals(e.getType()))
+                    .filter(e -> e.getInstitute() != null && instituteId.equals(e.getInstitute().getId()))
+                    .forEach(allEntries::add);
+        }
+
+        return allEntries;
     }
 }

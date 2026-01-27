@@ -61,33 +61,18 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         log.info("Processing SUBSCRIPTION payment enrollment for user: {}", userDTO.getEmail());
 
-        // Step 1: Create ONLY_DETAILS_FILLED entries first for tracking
+        // Step 1: Update existing ABANDONED_CART entries with userPlanId
+        // (ABANDONED_CART entries are created during form-submit step via new API)
         List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
-        for (String actualPackageSessionId : packageSessionIds) {
-            PackageSession invitedPackageSession = learnerEnrollmentEntryService
-                    .findInvitedPackageSession(actualPackageSessionId);
-
-            PackageSession actualPackageSession = packageSessionRepository.findById(actualPackageSessionId)
-                    .orElseThrow(() -> new VacademyException("Package session not found: " + actualPackageSessionId));
-
-            // Mark previous ONLY_DETAILS_FILLED and PAYMENT_FAILED entries as DELETED
-            learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
-                    userDTO.getId(),
-                    invitedPackageSession.getId(),
-                    actualPackageSessionId,
-                    instituteId);
-
-            // Create ONLY_DETAILS_FILLED entry
-            learnerEnrollmentEntryService.createOnlyDetailsFilledEntry(
-                    userDTO.getId(),
-                    invitedPackageSession,
-                    actualPackageSession,
-                    instituteId,
-                    userPlan.getId());
-
-            log.info("Created ONLY_DETAILS_FILLED entry for SUBSCRIPTION user {} in package session {}",
-                    userDTO.getId(), actualPackageSessionId);
-        }
+        
+        int updatedCount = learnerEnrollmentEntryService.updateAbandonedCartEntriesWithUserPlanId(
+                userDTO.getId(),
+                packageSessionIds,
+                instituteId,
+                userPlan.getId());
+        
+        log.info("Updated {} ABANDONED_CART entries with userPlanId {} for SUBSCRIPTION user {}",
+                updatedCount, userPlan.getId(), userDTO.getId());
 
         // Use startDate from DTO if provided, otherwise default to current date
         Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null

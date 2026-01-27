@@ -30,7 +30,7 @@ import java.util.*;
  * 
  * This strategy:
  * 1. Finds user by phone number
- * 2. Finds ONLY_DETAILS_FILLED entry matching the criteria
+ * 2. Finds ABANDONED_CART entry matching the criteria
  * 3. Marks it as DELETED
  * 4. Creates new ACTIVE entry in the actual package session
  * 
@@ -108,28 +108,28 @@ public class ActivateEnrollmentProcessorStrategy implements DataProcessorStrateg
             String userId = userDTO.getUser().getId();
             log.info("ACTIVATE_ENROLLMENT: Found user ID: {} for phone: {}", userId, phoneNumber);
 
-            // Step 2: Find ONLY_DETAILS_FILLED entry
+            // Step 2: Find ABANDONED_CART entry
             List<StudentSessionInstituteGroupMapping> entries = studentSessionRepository
                     .findByUserAndPackageSessionAndDestinationAndTypeAndStatus(
                             userId,
                             packageSessionId,
                             destinationPackageSessionId,
-                            LearnerSessionTypeEnum.ONLY_DETAILS_FILLED.name(),
+                            LearnerSessionTypeEnum.ABANDONED_CART.name(),
                             LearnerSessionStatusEnum.ACTIVE.name());
 
             if (entries.isEmpty()) {
                 log.warn(
-                        "ACTIVATE_ENROLLMENT: No ONLY_DETAILS_FILLED entry found for user={}, package={}, destination={}",
+                        "ACTIVATE_ENROLLMENT: No ABANDONED_CART entry found for user={}, package={}, destination={}",
                         userId, packageSessionId, destinationPackageSessionId);
                 result.put("success", false);
-                result.put("error", "No ONLY_DETAILS_FILLED entry found");
+                result.put("error", "No ABANDONED_CART entry found");
                 return result;
             }
 
             StudentSessionInstituteGroupMapping originalEntry = entries.get(0);
-            log.info("ACTIVATE_ENROLLMENT: Found ONLY_DETAILS_FILLED entry with ID: {}", originalEntry.getId());
+            log.info("ACTIVATE_ENROLLMENT: Found ABANDONED_CART entry with ID: {}", originalEntry.getId());
 
-            // Step 3: Mark ONLY_DETAILS_FILLED as DELETED
+            // Step 3: Mark ABANDONED_CART as DELETED
             originalEntry.setStatus(LearnerSessionStatusEnum.DELETED.name());
             studentSessionRepository.save(originalEntry);
             log.info("ACTIVATE_ENROLLMENT: Marked entry {} as DELETED", originalEntry.getId());

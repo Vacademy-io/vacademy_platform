@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.common.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.util.CustomFieldKeyGenerator;
@@ -63,6 +64,7 @@ public class InstituteCustomFiledService {
                 cf = findOrCreateCustomFieldWithLock(fieldKey, cfDto);
             }
 
+            // First try to find ACTIVE field
             Optional<InstituteCustomField> optionalInstCF = instituteCustomFieldRepository
                     .findTopByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatusOrderByCreatedAtDesc(
                             dto.getInstituteId(),
@@ -71,10 +73,28 @@ public class InstituteCustomFiledService {
                             dto.getTypeId(),
                             StatusEnum.ACTIVE.name());
 
+            // If not found, try to find any field (including DELETED) to reactivate it
+            if (optionalInstCF.isEmpty()) {
+                List<InstituteCustomField> allFields = instituteCustomFieldRepository
+                        .findByInstituteIdAndTypeAndTypeIdAndStatusIn(
+                                dto.getInstituteId(),
+                                dto.getType(),
+                                dto.getTypeId(),
+                                List.of(StatusEnum.ACTIVE.name(), StatusEnum.DELETED.name()));
+                
+                optionalInstCF = allFields.stream()
+                        .filter(field -> field.getCustomFieldId().equals(cf.getId()))
+                        .findFirst();
+            }
+
             InstituteCustomField instCF;
 
             if (optionalInstCF.isPresent()) {
                 instCF = optionalInstCF.get();
+                // Reactivate if it was deleted
+                if (StatusEnum.DELETED.name().equals(instCF.getStatus())) {
+                    instCF.setStatus(StatusEnum.ACTIVE.name());
+                }
                 // Update mutable fields for existing mapping
                 if (StringUtils.hasText(dto.getGroupName())) {
                     instCF.setGroupName(dto.getGroupName());
@@ -89,6 +109,8 @@ public class InstituteCustomFiledService {
                 instCF = new InstituteCustomField(dto);
                 instCF.setCustomFieldId(cf.getId());
             }
+            
+            instCFList.add(instCF);
         }
 
         if (!instCFList.isEmpty()) {
@@ -119,9 +141,10 @@ public class InstituteCustomFiledService {
         List<Object[]> results = instituteCustomFieldRepository.findInstituteCustomFieldsWithDetails(instituteId, type,
                 typeId);
 
-        // Step 2: Convert the list of results into a list of InstituteCustomFieldDTOs
+        // Step 2: Convert the list of results into a list of InstituteCustomFieldDTOs and filter only ACTIVE ones
         List<InstituteCustomFieldDTO> dtoList = results.stream()
                 .map(this::convertToInstituteCustomFieldDto)
+                .filter(dto -> StatusEnum.ACTIVE.name().equals(dto.getStatus()))
                 .collect(Collectors.toList());
 
         return dtoList;
@@ -402,6 +425,10 @@ public class InstituteCustomFiledService {
      * Copy default custom fields for an institute to enroll invite type
      */
     public void copyDefaultCustomFieldsToEnrollInvite(String instituteId, String enrollInviteId) {
+        if (instituteId == null || enrollInviteId == null) {
+            return;
+        }
+        
         List<InstituteCustomFieldDTO> defaultCustomFieldsToCopy = getDefaultCustomFieldsForEnrollInvite(instituteId, enrollInviteId);
         if (!defaultCustomFieldsToCopy.isEmpty()) {
             addOrUpdateCustomField(defaultCustomFieldsToCopy);
@@ -415,6 +442,7 @@ public class InstituteCustomFiledService {
         List<InstituteCustomField> defaultCustomFields = findDefaultCustomFieldsByInstituteId(instituteId);
 
         return defaultCustomFields.stream()
+                .filter(defaultField -> defaultField.getCustomFieldId() != null) // Filter out any null customFieldIds
                 .map(defaultField -> {
                     InstituteCustomFieldDTO dto = new InstituteCustomFieldDTO();
                     dto.setInstituteId(instituteId);
@@ -519,6 +547,24 @@ public class InstituteCustomFiledService {
                     .build();
         }
         throw new VacademyException("Custom Field Not Found");
+    }
+
+    /**
+     * Find custom fields by institute, type, and typeId (all statuses)
+     */
+    public List<InstituteCustomField> findByInstituteIdAndTypeAndTypeId(String instituteId, String type, String typeId) {
+        return instituteCustomFieldRepository.findByInstituteIdAndTypeAndTypeIdAndStatusIn(
+                instituteId, type, typeId, List.of(StatusEnum.ACTIVE.name(), StatusEnum.DELETED.name()));
+    }
+
+    /**
+     * Update status of multiple custom fields
+     */
+    @Transactional
+    public void updateCustomFieldStatus(List<InstituteCustomField> fields) {
+        if (!CollectionUtils.isEmpty(fields)) {
+            instituteCustomFieldRepository.saveAll(fields);
+        }
     }
 
     public List<InstituteCustomField> getAllMappingFromFieldsIds(String instituteId, List<CustomFields> allFields,

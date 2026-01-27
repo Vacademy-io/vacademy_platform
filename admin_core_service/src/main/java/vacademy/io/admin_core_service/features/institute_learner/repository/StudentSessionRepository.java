@@ -116,11 +116,11 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
   Optional<StudentSessionInstituteGroupMapping> findByInstituteIdAndUserIdNative(
       @Param("instituteId") String instituteId, @Param("userId") String userId);
 
-  @Query("SELECT s FROM StudentSessionInstituteGroupMapping s " +
-      "WHERE s.packageSession.id = :packageSessionId " +
-      "AND s.userId = :userId " +
-      "AND s.status IN :statuses AND s.institute.id = :instituteId " +
-      "ORDER BY s.createdAt DESC")
+  @Query(value = "SELECT * FROM student_session_institute_group_mapping " +
+      "WHERE package_session_id = :packageSessionId " +
+      "AND user_id = :userId " +
+      "AND status IN (:statuses) AND institute_id = :instituteId " +
+      "ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
   Optional<StudentSessionInstituteGroupMapping> findTopByPackageSessionIdAndUserIdAndStatusIn(
       @Param("packageSessionId") String packageSessionId,
       @Param("instituteId") String instituteId,

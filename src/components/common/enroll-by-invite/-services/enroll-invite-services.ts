@@ -4,6 +4,7 @@ import {
   ENROLL_USER_INVITE_PAYMENT_URL,
   GET_PAYMENT_GATEWAY_DETAILS_URL,
   PEYMENT_LOG_STATUS_URL,
+  ENROLLMENT_FORM_SUBMIT,
 } from "@/constants/urls";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import axios from "axios";
@@ -11,6 +12,7 @@ import {
   FieldRenderType,
   getFieldRenderType,
 } from "../-utils/custom-field-helpers";
+import { format } from "date-fns";
 
 export const getEnrollInviteData = async ({
   instituteId,
@@ -121,6 +123,8 @@ interface EnrollLearnerForPaymentProps {
   paymentVendor?: "STRIPE" | "EWAY" | "RAZORPAY";
   // Flag to indicate if using institute custom fields (don't exclude from custom_field_values)
   isUsingInstituteCustomFields?: boolean;
+  // Optional User ID from form-submit step
+  userId?: string;
 }
 
 /**
@@ -260,6 +264,90 @@ const getKeysToExclude = (registrationData: RegistrationDataType): string[] => {
   return keysToExclude;
 };
 
+/**
+ * Helper to extract learner extra details from registration data
+ */
+const getLearnerExtraDetails = (registrationData: RegistrationDataType) => {
+  const getKey = (searchTerms: string[]) => {
+    const entry = Object.entries(registrationData).find(([key]) => {
+      const lowerKey = key.toLowerCase();
+      return searchTerms.some((term) => lowerKey.includes(term));
+    });
+    return entry ? entry[1].value : "";
+  };
+
+  return {
+    fathers_name: getKey(["father_name", "fathers_name", "father name"]),
+    mothers_name: getKey(["mother_name", "mothers_name", "mother name"]),
+    parents_mobile_number: getKey(["parent_mobile", "parent_phone"]),
+    parents_email: getKey(["parent_email"]),
+    parents_to_mother_mobile_number: "", // Less common, leave empty
+    parents_to_mother_email: "",
+    linked_institute_name: "",
+  };
+};
+
+export const submitEnrollmentForm = async ({
+  registrationData,
+  instituteId,
+  enrollInviteId,
+  package_session_ids,
+  isUsingInstituteCustomFields = false,
+}: {
+  registrationData: RegistrationDataType;
+  instituteId: string;
+  enrollInviteId: string;
+  package_session_ids: string[];
+  isUsingInstituteCustomFields?: boolean;
+}) => {
+  // Extract user details
+  const email = getEmailField(registrationData);
+  const phoneNumber = getPhoneField(registrationData);
+  const fullName = getFullNameField(registrationData);
+  const extraDetails = getLearnerExtraDetails(registrationData);
+
+  // Identify keys to exclude from custom fields
+  const keysToExclude = isUsingInstituteCustomFields
+    ? []
+    : getKeysToExclude(registrationData);
+
+  // Filter custom fields
+  const customFieldValues = Object.entries(registrationData)
+    .filter(([key]) => !keysToExclude.includes(key))
+    .map(([, field]) => ({
+      custom_field_id: field.id,
+      value: field.value,
+    }));
+
+  const payload = {
+    enroll_invite_id: enrollInviteId,
+    institute_id: instituteId,
+    package_session_ids: package_session_ids,
+    user_details: {
+      email: email,
+      username: email, // Use email as username by default
+      mobile_number: phoneNumber,
+      full_name: fullName,
+      address_line: "",
+      region: "",
+      city: "",
+      pin_code: "",
+      date_of_birth: format(new Date(), "yyyy-MM-dd"), // Default to current date if not found
+      gender: "",
+    },
+    learner_extra_details: extraDetails,
+    custom_field_values: customFieldValues,
+  };
+
+  const response = await axios({
+    method: "POST",
+    url: ENROLLMENT_FORM_SUBMIT,
+    data: payload,
+  });
+
+  return response?.data;
+};
+
 export const handleEnrollLearnerForPayment = async ({
   registrationData,
   enrollmentData,
@@ -275,6 +363,7 @@ export const handleEnrollLearnerForPayment = async ({
   razorpayPaymentData,
   paymentVendor = "STRIPE",
   isUsingInstituteCustomFields = false,
+  userId,
 }: EnrollLearnerForPaymentProps) => {
   // Dynamically extract email, phone, and full name using helper functions
   const email = getEmailField(registrationData);
@@ -347,6 +436,7 @@ export const handleEnrollLearnerForPayment = async ({
         ? ["STUDENT", "TEACHER"]
         : ["STUDENT"],
       root_user: true,
+      ...(userId ? { id: userId } : {}),
     },
     institute_id: instituteId,
     subject_id: "",

@@ -8,6 +8,7 @@ import {
   handleGetEnrollInviteData,
   handleGetPublicInstituteDetails,
   ReferRequest,
+  submitEnrollmentForm,
 } from "./-services/enroll-invite-services";
 import { handleGetInstituteCustomFields } from "./-services/custom-fields-setup";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -114,6 +115,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   const [activePackageSessionId, setActivePackageSessionId] = useState<
     string | null
   >(null);
+  const [submittedUserId, setSubmittedUserId] = useState<string | null>(null);
 
   const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
   const [privacyPolicyUrl, setPrivacyPolicyUrl] = useState<string | null>(null);
@@ -356,7 +358,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     );
   };
 
-  function onSubmit(values: FormValues) {
+  async function onSubmit(values: FormValues) {
     setEnrollmentData((prev) => ({
       ...prev,
       registrationData: values,
@@ -367,6 +369,8 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       inviteData?.package_session_to_payment_options?.[0]?.payment_option;
     const plans = paymentOptionMeta?.payment_plans || [];
     const hasSinglePlan = plans.length === 1;
+
+    let targetStep = 1;
 
     // If there's exactly one plan, preselect and skip selection step
     if (hasSinglePlan && paymentType !== "DONATION") {
@@ -404,13 +408,40 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           // ignore parse errors and continue normal flow
         }
       }
-      setCurrentStep(2);
-      return;
+      targetStep = 2;
+    } else if (paymentType === "FREE") {
+      targetStep = 2; // For FREE payments, go directly to review step
     }
 
-    // For FREE payments, go directly to review step (step 2)
-    // For other payment types, go to payment selection step (step 1)
-    setCurrentStep(paymentType === "FREE" ? 2 : 1);
+    // Step 1: Submit Form API (Abandoned Cart Tracking) - SKIP for FREE courses
+    if (paymentType !== "FREE") {
+      setLoading(true);
+      try {
+        const packageSessionIds =
+          inviteData?.package_session_to_payment_options.map(
+            (ps: { package_session_id: string }) => ps?.package_session_id
+          ) || [""];
+
+        const response = await submitEnrollmentForm({
+          registrationData: values,
+          instituteId,
+          enrollInviteId: inviteData?.id,
+          package_session_ids: packageSessionIds,
+          isUsingInstituteCustomFields,
+        });
+
+        if (response?.user_id) {
+          setSubmittedUserId(response.user_id);
+        }
+      } catch (error) {
+        console.error("Form submission failed (non-blocking):", error);
+        // We do not block the user; they can proceed to payment step without this
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    setCurrentStep(targetStep);
   }
 
   const handlePaymentSelection = (payment: SelectedPayment) => {
@@ -552,6 +583,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           referRequest: referRequest,
           paymentVendor: "STRIPE", // Default for FREE payments
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
         setCurrentStep(5); // Go directly to success for FREE payments
@@ -601,6 +633,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           ewayPaymentData: ewayEncryptedData,
           paymentVendor: "EWAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          userId: submittedUserId || undefined,
         });
         setOrderId(paymentResponse?.payment_response?.order_id);
         setPaymentCompletionResponse(paymentResponse);
@@ -653,6 +686,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
           paymentVendor: "RAZORPAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          userId: submittedUserId || undefined,
         });
 
         // Step 2: Extract order details from response
@@ -741,6 +775,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         referRequest: referRequest,
         paymentVendor: "STRIPE",
         isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+        userId: submittedUserId || undefined,
       });
       setOrderId(paymentResponse?.payment_response?.order_id);
       setPaymentCompletionResponse(paymentResponse);
@@ -802,6 +837,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             razorpayPaymentData: razorpayPaymentData, // Now includes payment details
             paymentVendor: "RAZORPAY",
             isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+            userId: submittedUserId || undefined,
           });
 
           setPaymentCompletionResponse(paymentResponse);

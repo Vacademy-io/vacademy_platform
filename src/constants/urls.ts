@@ -63,6 +63,7 @@ export const GET_QUESTIONS_OF_SECTIONS = `${BASE_URL}/assessment-service/assessm
 export const UPDATE_ROLE = `${BASE_URL}/auth-service/v1/user-roles/update-role-status`;
 export const GET_ENROLL_DETAILS = `${BASE_URL}/admin-core-service/learner-invitation-response/form`;
 export const ENROLL_OPEN_STUDENT_URL = `${BASE_URL}/admin-core-service/open/learner/enroll-invite`;
+export const ENROLLMENT_FORM_SUBMIT = `${BASE_URL}/admin-core-service/open/v1/enrollment/form-submit`;
 export const PEYMENT_LOG_STATUS_URL = `${BASE_URL}/admin-core-service/open/v1/payment-log`;
 export const GET_PAYMENT_GATEWAY_DETAILS_URL = `${BASE_URL}/admin-core-service/open/v1/institute/payment-setting/payment-gateway-details`;
 export const ENROLLMENT_INVITE_URL = `${BASE_URL}/admin-core-service/open/learner/enroll-invite`;

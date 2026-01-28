@@ -154,31 +154,53 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
             PaymentInitiationRequestDTO paymentInitiationRequestDTO = learnerPackageSessionsEnrollDTO
                     .getPaymentInitiationRequest();
 
+            PaymentResponseDTO paymentResponseDTO;
             if (extraData.containsKey("SKIP_PAYMENT_INITIATION")
                     && Boolean.TRUE.equals(extraData.get("SKIP_PAYMENT_INITIATION"))) {
                 log.info("Skipping payment initiation for user: {}", user.getId());
-                PaymentResponseDTO paymentResponseDTO = paymentService.handlePaymentWithoutGateway(
+                paymentResponseDTO = paymentService.handlePaymentWithoutGateway(
                         user,
                         learnerPackageSessionsEnrollDTO,
                         instituteId,
                         enrollInvite,
                         userPlan);
-                learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
             } else {
                 log.info("Initiating payment through PaymentService for user: {}", user.getId());
-                PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
+                paymentResponseDTO = paymentService.handlePayment(
                         user,
                         learnerPackageSessionsEnrollDTO,
                         instituteId,
                         enrollInvite,
                         userPlan);
-                learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+            }
+            learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+
+            // For synchronous payment gateways (e.g., Eway) that return PAID immediately,
+            // shift the user from INVITED to ACTIVE in the destination package session
+            if (isPaymentSuccessful(paymentResponseDTO)) {
+                log.info("Payment successful for user: {}. Shifting to ACTIVE status.", user.getId());
+                learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(
+                        learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
+                        user.getId(),
+                        enrollInvite.getId());
             }
         } else {
             throw new VacademyException("PaymentInitiationRequest is null");
         }
 
         return learnerEnrollResponseDTO;
+    }
+
+    /**
+     * Checks if payment was successful based on the payment response.
+     * Handles synchronous payment gateways like Eway that return PAID immediately.
+     */
+    private boolean isPaymentSuccessful(PaymentResponseDTO paymentResponseDTO) {
+        if (paymentResponseDTO == null || paymentResponseDTO.getResponseData() == null) {
+            return false;
+        }
+        Object paymentStatus = paymentResponseDTO.getResponseData().get("paymentStatus");
+        return "PAID".equals(paymentStatus);
     }
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,

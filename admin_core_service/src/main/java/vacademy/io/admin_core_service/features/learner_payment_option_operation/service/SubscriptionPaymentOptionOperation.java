@@ -162,11 +162,33 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                         userPlan);
             }
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+
+            // For synchronous payment gateways (e.g., Eway) that return PAID immediately,
+            // shift the user from INVITED to ACTIVE in the destination package session
+            if (isPaymentSuccessful(paymentResponseDTO)) {
+                log.info("Subscription payment successful for user: {}. Shifting to ACTIVE status.", user.getId());
+                learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(
+                        learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
+                        user.getId(),
+                        enrollInvite.getId());
+            }
         } else {
             throw new VacademyException("PaymentInitiationRequest is null");
         }
 
         return learnerEnrollResponseDTO;
+    }
+
+    /**
+     * Checks if payment was successful based on the payment response.
+     * Handles synchronous payment gateways like Eway that return PAID immediately.
+     */
+    private boolean isPaymentSuccessful(PaymentResponseDTO paymentResponseDTO) {
+        if (paymentResponseDTO == null || paymentResponseDTO.getResponseData() == null) {
+            return false;
+        }
+        Object paymentStatus = paymentResponseDTO.getResponseData().get("paymentStatus");
+        return "PAID".equals(paymentStatus);
     }
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,

@@ -252,13 +252,14 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
    */
   @Modifying
   @Transactional
-  @Query("UPDATE StudentSessionInstituteGroupMapping s SET s.status = 'DELETED' " +
-      "WHERE s.userId = :userId " +
-      "AND s.packageSession.id = :packageSessionId " +
-      "AND s.destinationPackageSession.id = :destinationPackageSessionId " +
-      "AND s.institute.id = :instituteId " +
-      "AND s.type IN :types " +
-      "AND s.status != 'DELETED'")
+  @Query(value = "UPDATE student_session_institute_group_mapping " +
+      "SET status = 'DELETED', updated_at = NOW() " +
+      "WHERE user_id = :userId " +
+      "AND package_session_id = :packageSessionId " +
+      "AND destination_package_session_id = :destinationPackageSessionId " +
+      "AND institute_id = :instituteId " +
+      "AND type IN (:types) " +
+      "AND status != 'DELETED'", nativeQuery = true)
   int markEntriesAsDeleted(
       @Param("userId") String userId,
       @Param("packageSessionId") String packageSessionId,

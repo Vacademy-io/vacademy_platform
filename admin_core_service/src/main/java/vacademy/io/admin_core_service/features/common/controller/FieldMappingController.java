@@ -59,7 +59,7 @@ public class FieldMappingController {
      */
     @PostMapping
     public ResponseEntity<SystemFieldCustomFieldMappingDTO> createMapping(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestBody SystemFieldCustomFieldMappingDTO request) {
         return ResponseEntity.ok(fieldMappingManager.createMapping(request));
     }
@@ -69,7 +69,7 @@ public class FieldMappingController {
      */
     @PutMapping("/{mappingId}")
     public ResponseEntity<SystemFieldCustomFieldMappingDTO> updateMapping(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable("mappingId") String mappingId,
             @RequestBody SystemFieldCustomFieldMappingDTO request) {
         return ResponseEntity.ok(fieldMappingManager.updateMapping(mappingId, request));
@@ -80,7 +80,7 @@ public class FieldMappingController {
      */
     @DeleteMapping("/{mappingId}")
     public ResponseEntity<String> deleteMapping(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable("mappingId") String mappingId) {
         fieldMappingManager.deleteMapping(mappingId);
         return ResponseEntity.ok("Mapping deleted successfully");
@@ -92,7 +92,7 @@ public class FieldMappingController {
      */
     @PostMapping("/sync/system-to-custom")
     public ResponseEntity<String> syncSystemToCustom(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId,
             @RequestParam("entityType") String entityType,
             @RequestParam("entityId") String entityId) {
@@ -105,7 +105,7 @@ public class FieldMappingController {
      */
     @PostMapping("/sync/custom-to-system")
     public ResponseEntity<String> syncCustomToSystem(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId,
             @RequestParam("entityType") String entityType,
             @RequestParam("entityId") String entityId) {

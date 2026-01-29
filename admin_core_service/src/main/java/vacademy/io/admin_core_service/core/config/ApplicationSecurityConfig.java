@@ -54,7 +54,7 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/course/ai/v1/**",
             "/admin-core-service/payments/webhook/callback/**",
             "/admin-core-service/v1/learner/enroll/**",
-             "/admin-core-service/v2/learner/enroll/**",
+            "/admin-core-service/v2/learner/enroll/**",
             "/admin-core-service/workflow/schedule/**",
             "/admin-core-service/payments/user-plan/**/status/**",
             "/admin-core-service/llm-analytics/**",
@@ -78,7 +78,11 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/api/v1/audience/webhook/**",
             "/admin-core-service/health/**",
             // Invoice test endpoints (for testing only)
-            "/admin-core-service/v1/invoices/test/**"
+            "/admin-core-service/v1/invoices/test/**",
+            // Applicant public APIs for application form
+            "/admin-core-service/applicant/v1/enquiry/**",
+            "/admin-core-service/v1/applicant/apply"
+
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;

@@ -34,33 +34,37 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
     Optional<Audience> findByIdAndInstituteId(String id, String instituteId);
 
     /**
+     * Find campaign by institute ID and session ID (for manual applications)
+     */
+    Optional<Audience> findByInstituteIdAndSessionId(String instituteId, String sessionId);
+
+    /**
      * Find active campaigns for an institute
      */
     @Query("SELECT a FROM Audience a " +
-           "WHERE a.instituteId = :instituteId " +
-           "AND a.status = 'ACTIVE' " +
-           "AND (a.startDate IS NULL OR a.startDate <= :currentTime) " +
-           "AND (a.endDate IS NULL OR a.endDate >= :currentTime)")
+            "WHERE a.instituteId = :instituteId " +
+            "AND a.status = 'ACTIVE' " +
+            "AND (a.startDate IS NULL OR a.startDate <= :currentTime) " +
+            "AND (a.endDate IS NULL OR a.endDate >= :currentTime)")
     List<Audience> findActiveAudiencesForInstitute(
             @Param("instituteId") String instituteId,
-            @Param("currentTime") Timestamp currentTime
-    );
+            @Param("currentTime") Timestamp currentTime);
 
     /**
      * Find campaigns with filters and pagination
      */
     @Query("""
-        SELECT a FROM Audience a
-        WHERE a.instituteId = :instituteId
-          AND (:status IS NULL OR a.status = :status)
-          AND (COALESCE(:campaignType, '') = '' OR
-               LOWER(a.campaignType) LIKE LOWER(CONCAT('%', :campaignType, '%')))
-          AND (COALESCE(:searchName, '') = '' OR
-               LOWER(a.campaignName) LIKE LOWER(CONCAT('%', :searchName, '%')))
-          AND (:startDateFromProvided = false OR a.startDate IS NULL OR a.startDate >= :startDateFrom)
-          AND (:startDateToProvided = false OR a.startDate IS NULL OR a.startDate <= :startDateTo)
-        ORDER BY a.createdAt DESC
-    """)
+                SELECT a FROM Audience a
+                WHERE a.instituteId = :instituteId
+                  AND (:status IS NULL OR a.status = :status)
+                  AND (COALESCE(:campaignType, '') = '' OR
+                       LOWER(a.campaignType) LIKE LOWER(CONCAT('%', :campaignType, '%')))
+                  AND (COALESCE(:searchName, '') = '' OR
+                       LOWER(a.campaignName) LIKE LOWER(CONCAT('%', :searchName, '%')))
+                  AND (:startDateFromProvided = false OR a.startDate IS NULL OR a.startDate >= :startDateFrom)
+                  AND (:startDateToProvided = false OR a.startDate IS NULL OR a.startDate <= :startDateTo)
+                ORDER BY a.createdAt DESC
+            """)
     Page<Audience> findAudiencesWithFilters(
             @Param("instituteId") String instituteId,
             @Param("status") String status,
@@ -70,8 +74,7 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             @Param("startDateFromProvided") boolean startDateFromProvided,
             @Param("startDateTo") Timestamp startDateTo,
             @Param("startDateToProvided") boolean startDateToProvided,
-            Pageable pageable
-    );
+            Pageable pageable);
 
     /**
      * Count campaigns by institute and status
@@ -88,15 +91,15 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
      * Find audience IDs with filters for combined users API
      */
     @Query("""
-        SELECT a.id FROM Audience a
-        WHERE a.instituteId = :instituteId
-          AND (COALESCE(:campaignName, '') = '' OR 
-               LOWER(a.campaignName) LIKE LOWER(CONCAT('%', :campaignName, '%')))
-          AND (COALESCE(:status, '') = '' OR a.status = :status)
-          AND (COALESCE(:campaignType, '') = '' OR a.campaignType = :campaignType)
-          AND (:startDateFromProvided = false OR a.startDate IS NULL OR a.startDate >= :startDateFrom)
-          AND (:startDateToProvided = false OR a.startDate IS NULL OR a.startDate <= :startDateTo)
-    """)
+                SELECT a.id FROM Audience a
+                WHERE a.instituteId = :instituteId
+                  AND (COALESCE(:campaignName, '') = '' OR
+                       LOWER(a.campaignName) LIKE LOWER(CONCAT('%', :campaignName, '%')))
+                  AND (COALESCE(:status, '') = '' OR a.status = :status)
+                  AND (COALESCE(:campaignType, '') = '' OR a.campaignType = :campaignType)
+                  AND (:startDateFromProvided = false OR a.startDate IS NULL OR a.startDate >= :startDateFrom)
+                  AND (:startDateToProvided = false OR a.startDate IS NULL OR a.startDate <= :startDateTo)
+            """)
     List<String> findAudienceIdsWithFilters(
             @Param("instituteId") String instituteId,
             @Param("campaignName") String campaignName,
@@ -105,16 +108,16 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             @Param("startDateFrom") Timestamp startDateFrom,
             @Param("startDateFromProvided") boolean startDateFromProvided,
             @Param("startDateTo") Timestamp startDateTo,
-            @Param("startDateToProvided") boolean startDateToProvided
-    );
+            @Param("startDateToProvided") boolean startDateToProvided);
 
     /**
-     * Get center heatmap data by fetching audience campaigns and their response counts
+     * Get center heatmap data by fetching audience campaigns and their response
+     * counts
      * 
      * @param instituteId Institute ID to filter audiences
-     * @param startDate Optional start date filter (empty string for no filter)
-     * @param endDate Optional end date filter (empty string for no filter)
-     * @param status Optional status filter (empty string for all statuses)
+     * @param startDate   Optional start date filter (empty string for no filter)
+     * @param endDate     Optional end date filter (empty string for no filter)
+     * @param status      Optional status filter (empty string for all statuses)
      * @return List of Object arrays containing:
      *         [0] audience_id (String)
      *         [1] campaign_name (String)
@@ -128,32 +131,30 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
      *         [9] total_responses (Long)
      */
     @Query(value = """
-        SELECT 
-            a.id,
-            a.campaign_name,
-            a.campaign_type,
-            a.description,
-            a.campaign_objective,
-            a.status,
-            a.start_date,
-            a.end_date,
-            COUNT(DISTINCT ar.user_id) as unique_users,
-            COUNT(ar.id) as total_responses
-        FROM audience a
-        LEFT JOIN audience_response ar ON ar.audience_id = a.id
-            AND (COALESCE(:startDate, '') = '' OR ar.created_at >= CAST(:startDate AS TIMESTAMP))
-            AND (COALESCE(:endDate, '') = '' OR ar.created_at <= CAST(:endDate AS TIMESTAMP))
-        WHERE a.institute_id = :instituteId
-            AND (COALESCE(:status, '') = '' OR a.status = :status)
-        GROUP BY a.id, a.campaign_name, a.campaign_type, a.description, 
-                 a.campaign_objective, a.status, a.start_date, a.end_date
-        ORDER BY COUNT(ar.id) DESC
-        """, nativeQuery = true)
+            SELECT
+                a.id,
+                a.campaign_name,
+                a.campaign_type,
+                a.description,
+                a.campaign_objective,
+                a.status,
+                a.start_date,
+                a.end_date,
+                COUNT(DISTINCT ar.user_id) as unique_users,
+                COUNT(ar.id) as total_responses
+            FROM audience a
+            LEFT JOIN audience_response ar ON ar.audience_id = a.id
+                AND (COALESCE(:startDate, '') = '' OR ar.created_at >= CAST(:startDate AS TIMESTAMP))
+                AND (COALESCE(:endDate, '') = '' OR ar.created_at <= CAST(:endDate AS TIMESTAMP))
+            WHERE a.institute_id = :instituteId
+                AND (COALESCE(:status, '') = '' OR a.status = :status)
+            GROUP BY a.id, a.campaign_name, a.campaign_type, a.description,
+                     a.campaign_objective, a.status, a.start_date, a.end_date
+            ORDER BY COUNT(ar.id) DESC
+            """, nativeQuery = true)
     List<Object[]> getCenterHeatmapByInstitute(
             @Param("instituteId") String instituteId,
             @Param("startDate") String startDate,
             @Param("endDate") String endDate,
-            @Param("status") String status
-    );
+            @Param("status") String status);
 }
-

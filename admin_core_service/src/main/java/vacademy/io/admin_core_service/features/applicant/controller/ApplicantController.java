@@ -8,7 +8,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplicantDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplicantFilterDTO;
-import vacademy.io.admin_core_service.features.applicant.dto.ApplicationStageDTO;
+import vacademy.io.admin_core_service.features.applicant.dto.ApplyRequestDTO;
+import vacademy.io.admin_core_service.features.applicant.dto.ApplyResponseDTO;
 import vacademy.io.admin_core_service.features.applicant.service.ApplicantService;
 import vacademy.io.common.auth.config.PageConstants;
 
@@ -30,6 +31,18 @@ public class ApplicantController {
         logger.info("Request to onboard Applicant for stage: {}", applicantDTO.getApplicationStageId());
         String applicantId = applicantService.onboardApplicant(applicantDTO);
         return ResponseEntity.ok(applicantId);
+    }
+
+    /**
+     * Submit application form - handles both pre-filled (from enquiry) and manual
+     * (direct) submissions
+     */
+    @PostMapping("/apply")
+    public ResponseEntity<ApplyResponseDTO> submitApplication(@RequestBody ApplyRequestDTO request) {
+        logger.info("Request to submit application. InstituteId: {}, Source: {}, SourceId: {}, EnquiryId: {}",
+                request.getInstituteId(), request.getSource(), request.getSourceId(), request.getEnquiryId());
+        ApplyResponseDTO response = applicantService.submitApplication(request);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/list")

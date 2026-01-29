@@ -9,7 +9,8 @@ import java.sql.Timestamp;
 
 /**
  * Entity representing a Lead/Response submission to an Audience Campaign
- * Captures leads from multiple sources (website forms, Google Ads, Facebook Ads, etc.)
+ * Captures leads from multiple sources (website forms, Google Ads, Facebook
+ * Ads, etc.)
  */
 @Entity
 @Table(name = "audience_response")
@@ -60,6 +61,9 @@ public class AudienceResponse {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
+    @Column(name = "applicant_id")
+    private String applicantId;
+
     /**
      * Constructor from DTO
      */
@@ -71,4 +75,3 @@ public class AudienceResponse {
         this.sourceId = dto.getSourceId();
     }
 }
-

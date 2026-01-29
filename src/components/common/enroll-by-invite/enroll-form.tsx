@@ -312,21 +312,35 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     }, []);
   }, [inviteData?.package_session_to_payment_options]);
 
+  const currentLevelName = useMemo(() => {
+    const pId =
+      activePackageSessionId ??
+      inviteData?.package_session_to_payment_options?.[0]?.package_session_id ??
+      "";
+    return (
+      getDetailsFromPackageSessionId({ packageSessionId: pId })?.level
+        ?.level_name || "-"
+    );
+  }, [
+    activePackageSessionId,
+    inviteData?.package_session_to_payment_options,
+    getDetailsFromPackageSessionId,
+  ]);
+
+  const hasLevelName = useMemo(() => {
+    const normalized = (currentLevelName || "").trim().toLowerCase();
+    return normalized && normalized !== "default" && normalized !== "-";
+  }, [currentLevelName]);
+
   // Check if right section (CourseInfoCard) has meaningful data beyond just the course name
   const hasRightSectionContent = useMemo(() => {
     return (
-      (courseData.description && courseData.description.trim() !== "") ||
       (courseData.aboutCourse && courseData.aboutCourse.trim() !== "") ||
       (courseData.learningOutcome &&
         courseData.learningOutcome.trim() !== "") ||
-      (courseData.tags && courseData.tags.length > 0)
+      hasLevelName
     );
-  }, [
-    courseData.description,
-    courseData.aboutCourse,
-    courseData.learningOutcome,
-    courseData.tags,
-  ]);
+  }, [courseData.aboutCourse, courseData.learningOutcome, hasLevelName]);
 
   useEffect(() => {
     if (bundledPackageSessions.length > 0) {
@@ -1588,13 +1602,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                     instituteLogo: "",
                     course: inviteData?.name || courseData.course,
                   }}
-                  levelName={
-                    getDetailsFromPackageSessionId({
-                      packageSessionId:
-                        activePackageSessionId ??
-                        inviteData?.package_session_to_payment_options?.[0]?.package_session_id ?? "",
-                    })?.level?.level_name || "-"
-                  }
+                  levelName={currentLevelName}
                 />
               </div>
             </div>

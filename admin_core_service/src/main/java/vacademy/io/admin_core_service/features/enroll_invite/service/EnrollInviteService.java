@@ -74,7 +74,8 @@ public class EnrollInviteService {
         EnrollInvite enrollInviteToSave = new EnrollInvite(enrollInviteDTO);
         final EnrollInvite savedEnrollInvite = repository.save(enrollInviteToSave);
 
-        saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteId(), enrollInviteDTO.getInstituteCustomFields());
+        saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteId(),
+                enrollInviteDTO.getInstituteCustomFields());
 
         // Automatically copy default custom fields to the new enroll invite
         instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(enrollInviteDTO.getInstituteId(),
@@ -115,7 +116,8 @@ public class EnrollInviteService {
         updateEnrollInvite(enrollInviteDTO, enrollInviteToSave);
         final EnrollInvite savedEnrollInvite = repository.save(enrollInviteToSave);
 
-        saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteId(), enrollInviteDTO.getInstituteCustomFields());
+        saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteId(),
+                enrollInviteDTO.getInstituteCustomFields());
 
         // Note: copyDefaultCustomFieldsToEnrollInvite is NOT called on update
         // to allow users to control which custom fields are active via the payload
@@ -140,6 +142,28 @@ public class EnrollInviteService {
         if (mappingEntities.isEmpty()) {
             throw new VacademyException("No valid packageSession-paymentOption mappings were provided.");
         }
+
+        // Logic to soft-delete existing mappings that are not present in the incoming
+        // DTO list
+        List<PackageSessionLearnerInvitationToPaymentOption> existingMappings = packageSessionEnrollInviteToPaymentOptionService
+                .findByInvite(enrollInviteToSave);
+        Set<String> incomingIds = mappingDTOs.stream()
+                .map(PackageSessionToPaymentOptionDTO::getId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+
+        List<String> idsToDelete = existingMappings.stream()
+                .map(PackageSessionLearnerInvitationToPaymentOption::getId)
+                .filter(id -> !incomingIds.contains(id))
+                .collect(Collectors.toList());
+
+        if (!idsToDelete.isEmpty()) {
+            packageSessionEnrollInviteToPaymentOptionService.updateStatusByIds(idsToDelete, StatusEnum.DELETED.name());
+            packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService
+                    .updateStatusByPackageSessionLearnerInvitationToPaymentOptionIds(idsToDelete,
+                            StatusEnum.DELETED.name());
+        }
+
         packageSessionEnrollInviteToPaymentOptionService
                 .createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
         validateSaveOrUpdate(mappingEntities, mappingDTOs);
@@ -277,7 +301,8 @@ public class EnrollInviteService {
     }
 
     private void saveInstituteCustomFields(String inviteId, String instituteId, List<InstituteCustomFieldDTO> dtos) {
-        // Step 1: Mark existing custom fields as DELETED if they're not in the incoming array
+        // Step 1: Mark existing custom fields as DELETED if they're not in the incoming
+        // array
         if (StringUtils.hasText(instituteId) && StringUtils.hasText(inviteId)) {
             markMissingCustomFieldsAsDeleted(instituteId, inviteId, dtos);
         }
@@ -299,14 +324,14 @@ public class EnrollInviteService {
         }
     }
 
-    private void markMissingCustomFieldsAsDeleted(String instituteId, String enrollInviteId, List<InstituteCustomFieldDTO> incomingDtos) {
+    private void markMissingCustomFieldsAsDeleted(String instituteId, String enrollInviteId,
+            List<InstituteCustomFieldDTO> incomingDtos) {
         // Fetch all existing ACTIVE custom fields for this enroll invite
         List<InstituteCustomField> existingFields = instituteCustomFiledService.getCusFieldByInstituteAndTypeAndTypeId(
                 instituteId,
                 CustomFieldTypeEnum.ENROLL_INVITE.name(),
                 enrollInviteId,
-                List.of(StatusEnum.ACTIVE.name())
-        );
+                List.of(StatusEnum.ACTIVE.name()));
 
         if (CollectionUtils.isEmpty(existingFields)) {
             return; // No existing fields to delete

@@ -72,6 +72,60 @@ public class Student {
     @Column(name = "face_file_id")
     private String faceFileId;
 
+    // --- New Fields (V96) ---
+    @Column(name = "id_number")
+    private String idNumber;
+    @Column(name = "id_type")
+    private String idType;
+
+    @Column(name = "previous_school_name")
+    private String previousSchoolName;
+    @Column(name = "previous_school_board")
+    private String previousSchoolBoard;
+    @Column(name = "last_class_attended")
+    private String lastClassAttended;
+    @Column(name = "last_exam_result")
+    private String lastExamResult;
+    @Column(name = "subjects_studied")
+    private String subjectsStudied;
+
+    @Column(name = "applying_for_class")
+    private String applyingForClass;
+    @Column(name = "academic_year")
+    private String academicYear;
+    @Column(name = "board_preference")
+    private String boardPreference;
+
+    @Column(name = "tc_number")
+    private String tcNumber;
+    @Column(name = "tc_issue_date")
+    private Date tcIssueDate;
+    @Column(name = "tc_pending")
+    @Builder.Default
+    private Boolean tcPending = false;
+
+    @Column(name = "has_special_education_needs")
+    @Builder.Default
+    private Boolean hasSpecialEducationNeeds = false;
+    @Column(name = "is_physically_challenged")
+    @Builder.Default
+    private Boolean isPhysicallyChallenged = false;
+    @Column(name = "medical_conditions")
+    private String medicalConditions;
+    @Column(name = "dietary_restrictions")
+    private String dietaryRestrictions;
+
+    @Column(name = "blood_group")
+    private String bloodGroup;
+    @Column(name = "mother_tongue")
+    private String motherTongue;
+    @Column(name = "languages_known")
+    private String languagesKnown;
+    @Column(name = "category")
+    private String category;
+    @Column(name = "nationality")
+    private String nationality;
+
     public Student(UserDTO userDTO) {
         this.id = userDTO.getId();
         this.username = userDTO.getUsername();

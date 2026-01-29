@@ -15,6 +15,8 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageReposi
 import vacademy.io.admin_core_service.features.workflow.engine.QueryNodeHandler;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
+import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
+import vacademy.io.admin_core_service.features.common.dto.request.CustomFieldValueDto;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
@@ -50,6 +52,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final CustomFieldRepository customFieldRepository;
     private final PackageRepository packageRepository;
     private final ObjectMapper objectMapper;
+    private final CustomFieldValueService customFieldValueService;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -76,6 +79,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return getAudienceResponsesByDayDifference(params);
             case "fetchPackageLMSSetting":
                 return fetchPackageLMSSetting(params);
+            case "upsertUserCustomField":
+                return upsertUserCustomField(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -804,6 +809,47 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
         } catch (Exception e) {
             log.error("Error executing fetchPackageLMSSetting", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    /**
+     * Generic upsert of a single user custom field value.
+     * Params: userId, customFieldId, value. sourceType is "USER".
+     * Use for Moodle creds, or any other user custom field (dynamic use case).
+     * Coerces params to String so SpEL-evaluated UUIDs or other types from context work.
+     */
+    private Map<String, Object> upsertUserCustomField(Map<String, Object> params) {
+        try {
+            Object userIdObj = params.get("userId");
+            Object customFieldIdObj = params.get("customFieldId");
+            Object valueObj = params.get("value");
+
+            String userId = userIdObj != null ? String.valueOf(userIdObj).strip() : null;
+            String customFieldId = customFieldIdObj != null ? String.valueOf(customFieldIdObj).strip() : null;
+            String value = valueObj != null ? String.valueOf(valueObj) : null;
+
+            if (userId == null || userId.isBlank()) {
+                return Map.of("error", "Missing userId");
+            }
+            if (customFieldId == null || customFieldId.isBlank()) {
+                return Map.of("error", "Missing customFieldId");
+            }
+
+            CustomFieldValueDto dto = new CustomFieldValueDto();
+            dto.setCustomFieldId(customFieldId);
+            dto.setSourceType("USER");
+            dto.setSourceId(userId);
+            dto.setValue(value);
+
+            customFieldValueService.upsertCustomFieldValues(List.of(dto));
+            return Map.of(
+                    "userId", userId,
+                    "customFieldId", customFieldId,
+                    "customFieldValueUpserted", true
+            );
+        } catch (Exception e) {
+            log.error("Error executing upsertUserCustomField", e);
             return Map.of("error", e.getMessage());
         }
     }

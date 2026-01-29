@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.applicant.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -7,18 +9,29 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vacademy.io.admin_core_service.features.applicant.dto.ApplicantDTO;
-import vacademy.io.admin_core_service.features.applicant.dto.ApplicantFilterDTO;
-import vacademy.io.admin_core_service.features.applicant.dto.ApplicationStageDTO;
+import vacademy.io.admin_core_service.features.applicant.dto.*;
 import vacademy.io.admin_core_service.features.applicant.entity.Applicant;
 import vacademy.io.admin_core_service.features.applicant.entity.ApplicantStage;
 import vacademy.io.admin_core_service.features.applicant.entity.ApplicationStage;
 import vacademy.io.admin_core_service.features.applicant.repository.ApplicantRepository;
 import vacademy.io.admin_core_service.features.applicant.repository.ApplicantStageRepository;
 import vacademy.io.admin_core_service.features.applicant.repository.ApplicationStageRepository;
+import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
+import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.audience.entity.Audience;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
+import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
-import java.util.UUID;
+
+import java.util.List;
 import java.util.Optional;
+import java.util.Random;
+import java.util.UUID;
 
 @Service
 public class ApplicantService {
@@ -31,6 +44,23 @@ public class ApplicantService {
 
         @Autowired
         private ApplicantStageRepository applicantStageRepository;
+
+        @Autowired
+        private AudienceResponseRepository audienceResponseRepository;
+
+        @Autowired
+        private EnquiryRepository enquiryRepository;
+
+        @Autowired
+        private AuthService authService;
+
+        @Autowired
+        private InstituteStudentRepository instituteStudentRepository;
+
+        @Autowired
+        private AudienceRepository audienceRepository;
+
+        private final ObjectMapper objectMapper = new ObjectMapper();
 
         /**
          * Create a new Application Stage configuration
@@ -133,5 +163,393 @@ public class ApplicantService {
                                 .stream()
                                 .map(stage -> new ApplicationStageDTO(stage))
                                 .collect(java.util.stream.Collectors.toList());
+        }
+
+        /**
+         * Get enquiry details by enquiry ID for form pre-fill
+         */
+        public EnquiryDetailsResponseDTO getEnquiryDetailsByEnquiryId(String enquiryId) {
+                AudienceResponse audienceResponse = audienceResponseRepository.findByEnquiryId(enquiryId)
+                                .orElseThrow(() -> new VacademyException("No enquiry found for ID: " + enquiryId));
+
+                return buildEnquiryDetailsResponse(audienceResponse);
+        }
+
+        /**
+         * Get enquiry details by phone number for form pre-fill
+         */
+        public EnquiryDetailsResponseDTO getEnquiryDetailsByPhone(String phone) {
+                AudienceResponse audienceResponse = audienceResponseRepository
+                                .findFirstByParentMobileOrderByCreatedAtDesc(phone)
+                                .orElseThrow(() -> new VacademyException("No enquiry found for phone: " + phone));
+
+                return buildEnquiryDetailsResponse(audienceResponse);
+        }
+
+        /**
+         * Build EnquiryDetailsResponseDTO from AudienceResponse
+         */
+        private EnquiryDetailsResponseDTO buildEnquiryDetailsResponse(AudienceResponse audienceResponse) {
+                EnquiryDetailsResponseDTO.ParentDetails parentDetails = EnquiryDetailsResponseDTO.ParentDetails
+                                .builder()
+                                .name(audienceResponse.getParentName())
+                                .phone(audienceResponse.getParentMobile())
+                                .email(audienceResponse.getParentEmail())
+                                .build();
+
+                EnquiryDetailsResponseDTO.ChildDetails childDetails = null;
+
+                // If user_id exists, fetch user details from auth-service
+                if (audienceResponse.getUserId() != null) {
+                        try {
+                                List<vacademy.io.common.auth.dto.ParentWithChildDTO> usersWithChildren = authService
+                                                .getUsersWithChildren(List.of(audienceResponse.getUserId()));
+                                if (!usersWithChildren.isEmpty()) {
+                                        vacademy.io.common.auth.dto.ParentWithChildDTO parentWithChild = usersWithChildren
+                                                        .get(0);
+                                        UserDTO parentUser = parentWithChild.getParent();
+                                        UserDTO childUser = parentWithChild.getChild();
+
+                                        if (parentUser != null) {
+                                                parentDetails = EnquiryDetailsResponseDTO.ParentDetails.builder()
+                                                                .id(parentUser.getId())
+                                                                .name(parentUser.getFullName())
+                                                                .phone(parentUser.getMobileNumber())
+                                                                .email(parentUser.getEmail())
+                                                                .addressLine(parentUser.getAddressLine())
+                                                                .city(parentUser.getCity())
+                                                                .pinCode(parentUser.getPinCode())
+                                                                .build();
+                                        }
+
+                                        if (childUser != null) {
+                                                childDetails = EnquiryDetailsResponseDTO.ChildDetails.builder()
+                                                                .id(childUser.getId())
+                                                                .name(childUser.getFullName())
+                                                                .dob(childUser.getDateOfBirth())
+                                                                .gender(childUser.getGender())
+                                                                .build();
+                                        }
+                                }
+                        } catch (Exception e) {
+                                // Continue with audience_response data if auth-service call fails
+                        }
+                }
+
+                // Get tracking ID from enquiry if available
+                String trackingId = null;
+                if (audienceResponse.getEnquiryId() != null) {
+                        Optional<Enquiry> enquiry = enquiryRepository.findById(
+                                        UUID.fromString(audienceResponse.getEnquiryId()));
+                        if (enquiry.isPresent()) {
+                                trackingId = enquiry.get().getEnquiryTrackingId();
+                        }
+                }
+
+                return EnquiryDetailsResponseDTO.builder()
+                                .enquiryId(audienceResponse.getEnquiryId())
+                                .trackingId(trackingId)
+                                .alreadyApplied(audienceResponse.getApplicantId() != null)
+                                .applicantId(audienceResponse.getApplicantId())
+                                .parent(parentDetails)
+                                .child(childDetails)
+                                .build();
+        }
+
+        /**
+         * Submit application - handles both linked (from enquiry) and direct (manual)
+         * applications
+         */
+        @Transactional
+        public ApplyResponseDTO submitApplication(ApplyRequestDTO request) {
+                // Validate required fields
+                if (request.getInstituteId() == null || request.getSource() == null || request.getSourceId() == null) {
+                        throw new VacademyException("institute_id, source, and source_id are required");
+                }
+
+                // Find the first application stage for this workflow
+                List<ApplicationStage> stages = applicationStageRepository.findByFilters(
+                                request.getInstituteId(), request.getSource(), request.getSourceId());
+
+                if (stages.isEmpty()) {
+                        throw new VacademyException("No application stage found for the given configuration");
+                }
+
+                // Get first stage (minimum sequence)
+                ApplicationStage firstStage = stages.stream()
+                                .min((s1, s2) -> Integer.compare(
+                                                s1.getSequence() != null ? Integer.parseInt(s1.getSequence()) : 0,
+                                                s2.getSequence() != null ? Integer.parseInt(s2.getSequence()) : 0))
+                                .orElse(stages.get(0));
+
+                String enquiryId = request.getEnquiryId();
+                String trackingId = generateCustomTrackingId(); // Generate NEW independent ID
+                AudienceResponse audienceResponse = null;
+
+                if (enquiryId != null) {
+                        // === Path 1: Pre-filled from Enquiry ===
+                        audienceResponse = audienceResponseRepository.findByEnquiryId(enquiryId)
+                                        .orElseThrow(() -> new VacademyException(
+                                                        "No enquiry found for ID: " + enquiryId));
+
+                        // Check if already applied
+                        if (audienceResponse.getApplicantId() != null) {
+                                throw new VacademyException("Application already submitted for this enquiry");
+                        }
+
+                        // Sync/Create Student record using existing User ID
+                        if (audienceResponse.getUserId() != null) {
+                                // Fetch child user details to populate student
+                                List<vacademy.io.common.auth.dto.ParentWithChildDTO> users = authService
+                                                .getUsersWithChildren(List.of(audienceResponse.getUserId()));
+                                if (!users.isEmpty() && users.get(0).getChild() != null) {
+                                        UserDTO childUser = users.get(0).getChild();
+                                        createStudentProfile(childUser, request.getFormData(),
+                                                        request.getInstituteId());
+                                }
+                        }
+
+                } else {
+                        // === Path 2: Manual / Direct Application ===
+
+                        // 1. Find Audience by Session (or default)
+                        if (request.getSessionId() == null) {
+                                throw new VacademyException("session_id is required for manual application");
+                        }
+
+                        Audience audience = audienceRepository
+                                        .findByInstituteIdAndSessionId(request.getInstituteId(), request.getSessionId())
+                                        .orElseThrow(() -> new VacademyException(
+                                                        "No audience campaign found for this session. Please contact admin."));
+
+                        // 2. Create Users (Parent & Child)
+                        UserDTO parentUser = createParentUser(request);
+                        UserDTO childUser = createChildUser(request, parentUser.getId());
+
+                        // 3. Create Student
+                        if (childUser != null) {
+                                createStudentProfile(childUser, request.getFormData(), request.getInstituteId());
+                        }
+
+                        // 4. Create Audience Response (New record)
+                        audienceResponse = AudienceResponse.builder()
+                                        .audienceId(audience.getId())
+                                        .userId(parentUser.getId())
+                                        .sourceType("DIRECT_APPLICATION")
+                                        .sourceId(request.getSourceId())
+                                        .enquiryId(null) // Skip Enquiry
+                                        .parentName(getFormDataString(request.getFormData(), "parent_name"))
+                                        .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
+                                        .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
+                                        .build();
+                        audienceResponse = audienceResponseRepository.save(audienceResponse);
+                }
+
+                // === Common Path: Create Applicant & Link ===
+
+                // Create applicant
+                Applicant applicant = Applicant.builder()
+                                .trackingId(trackingId)
+                                .applicationStageId(firstStage.getId().toString())
+                                .applicationStageStatus("INITIATED")
+                                .overallStatus("PENDING")
+                                .build();
+                Applicant savedApplicant = applicantRepository.save(applicant);
+
+                // Create applicant_stage with form data
+                String responseJson = null;
+                try {
+                        responseJson = objectMapper.writeValueAsString(request.getFormData());
+                } catch (JsonProcessingException e) {
+                        responseJson = "{}";
+                }
+
+                ApplicantStage applicantStage = ApplicantStage.builder()
+                                .applicantId(savedApplicant.getId().toString())
+                                .stageId(firstStage.getId().toString())
+                                .stageStatus("INITIATED")
+                                .responseJson(responseJson)
+                                .build();
+                applicantStageRepository.save(applicantStage);
+
+                // Update audience_response with applicant_id
+                audienceResponse.setApplicantId(savedApplicant.getId().toString());
+                audienceResponseRepository.save(audienceResponse);
+
+                return ApplyResponseDTO.builder()
+                                .applicantId(savedApplicant.getId().toString())
+                                .trackingId(trackingId)
+                                .currentStage(firstStage.getStageName())
+                                .status("INITIATED")
+                                .message("Application submitted successfully")
+                                .build();
+        }
+
+        /**
+         * Create Student profile from Form Data
+         * THROWS exception if student already exists for this user.
+         */
+        private void createStudentProfile(UserDTO childUser, java.util.Map<String, Object> formData,
+                        String instituteId) {
+                try {
+                        Optional<Student> existingStudent = instituteStudentRepository
+                                        .findTopByUserId(childUser.getId());
+
+                        if (existingStudent.isPresent()) {
+                                throw new VacademyException(
+                                                "Student profile already exists for this user. Cannot overwrite.");
+                        }
+
+                        Student student = new Student(childUser); // Initialize from UserDTO
+                        student.setLinkedInstituteName("Vacademy"); // Placeholder or fetch actual
+
+                        // --- Standard Fields ---
+                        student.setAddressLine(getFormDataString(formData, "address_line"));
+                        student.setCity(getFormDataString(formData, "city"));
+                        student.setPinCode(getFormDataString(formData, "pin_code"));
+                        student.setFatherName(getFormDataString(formData, "father_name"));
+                        student.setMotherName(getFormDataString(formData, "mother_name"));
+
+                        // --- New Fields (V96) ---
+                        student.setIdNumber(getFormDataString(formData, "id_number"));
+                        student.setIdType(getFormDataString(formData, "id_type"));
+
+                        student.setPreviousSchoolName(getFormDataString(formData, "previous_school_name"));
+                        student.setPreviousSchoolBoard(getFormDataString(formData, "previous_school_board"));
+                        student.setLastClassAttended(getFormDataString(formData, "last_class_attended"));
+                        student.setLastExamResult(getFormDataString(formData, "last_exam_result"));
+                        student.setSubjectsStudied(getFormDataString(formData, "subjects_studied"));
+
+                        student.setApplyingForClass(getFormDataString(formData, "applying_for_class"));
+                        student.setAcademicYear(getFormDataString(formData, "academic_year"));
+                        student.setBoardPreference(getFormDataString(formData, "board_preference"));
+
+                        student.setTcNumber(getFormDataString(formData, "tc_number"));
+                        student.setTcPending(getFormDataBoolean(formData, "tc_pending"));
+                        student.setTcIssueDate(getFormDataDate(formData, "tc_issue_date"));
+
+                        student.setHasSpecialEducationNeeds(
+                                        getFormDataBoolean(formData, "has_special_education_needs"));
+                        student.setIsPhysicallyChallenged(getFormDataBoolean(formData, "is_physically_challenged"));
+                        student.setMedicalConditions(getFormDataString(formData, "medical_conditions"));
+                        student.setDietaryRestrictions(getFormDataString(formData, "dietary_restrictions"));
+
+                        student.setBloodGroup(getFormDataString(formData, "blood_group"));
+                        student.setMotherTongue(getFormDataString(formData, "mother_tongue"));
+                        student.setLanguagesKnown(getFormDataString(formData, "languages_known"));
+                        student.setCategory(getFormDataString(formData, "category"));
+                        student.setNationality(getFormDataString(formData, "nationality"));
+
+                        instituteStudentRepository.save(student);
+                } catch (VacademyException ve) {
+                        throw ve;
+                } catch (Exception e) {
+                        throw new RuntimeException("Failed to create student record: " + e.getMessage());
+                }
+        }
+
+        private Boolean getFormDataBoolean(java.util.Map<String, Object> formData, String key) {
+                if (formData == null || !formData.containsKey(key))
+                        return false;
+                Object val = formData.get(key);
+                if (val instanceof Boolean)
+                        return (Boolean) val;
+                if (val instanceof String)
+                        return Boolean.parseBoolean((String) val);
+                return false;
+        }
+
+        private java.util.Date getFormDataDate(java.util.Map<String, Object> formData, String key) {
+                if (formData == null || !formData.containsKey(key))
+                        return null;
+                Object val = formData.get(key);
+                if (val == null)
+                        return null;
+
+                try {
+                        if (val instanceof String) {
+                                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+                                return sdf.parse((String) val);
+                        }
+                } catch (Exception e) {
+                        // Return null if parsing fails
+                }
+                return null;
+        }
+
+        /**
+         * Generate a 5-character alphanumeric tracking ID
+         */
+        private String generateCustomTrackingId() {
+                String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+                StringBuilder sb = new StringBuilder();
+                Random random = new Random();
+                for (int i = 0; i < 5; i++) {
+                        sb.append(chars.charAt(random.nextInt(chars.length())));
+                }
+                return sb.toString();
+        }
+
+        /**
+         * Create parent user in auth-service
+         */
+        private UserDTO createParentUser(ApplyRequestDTO request) {
+                UserDTO parentDTO = UserDTO.builder()
+                                .fullName(getFormDataString(request.getFormData(), "parent_name"))
+                                .mobileNumber(getFormDataString(request.getFormData(), "parent_phone"))
+                                .email(getFormDataString(request.getFormData(), "parent_email"))
+                                .isParent(true)
+                                .roles(List.of("PARENT"))
+                                .build();
+
+                return authService.createUserFromAuthService(parentDTO, request.getInstituteId(), false);
+        }
+
+        /**
+         * Create child user in auth-service linked to parent
+         */
+        private UserDTO createChildUser(ApplyRequestDTO request, String parentId) {
+                String childName = getFormDataString(request.getFormData(), "child_name");
+                if (childName == null || childName.isEmpty()) {
+                        return null;
+                }
+
+                UserDTO childDTO = UserDTO.builder()
+                                .fullName(childName)
+                                .gender(getFormDataString(request.getFormData(), "child_gender"))
+                                .isParent(false)
+                                .linkedParentId(parentId)
+                                .roles(List.of("STUDENT"))
+                                .build();
+
+                // Generate dummy email for child if not provided
+                String dummyEmail = "child_" + System.currentTimeMillis() + "@vacademy.io";
+                childDTO.setEmail(dummyEmail);
+
+                // Handle date of birth
+                Object dobValue = request.getFormData().get("child_dob");
+                if (dobValue != null) {
+                        try {
+                                if (dobValue instanceof String) {
+                                        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
+                                        childDTO.setDateOfBirth(sdf.parse((String) dobValue));
+                                }
+                        } catch (Exception e) {
+                                // Ignore date parsing errors
+                        }
+                }
+
+                return authService.createUserFromAuthService(childDTO, request.getInstituteId(), false);
+        }
+
+        /**
+         * Helper to get string value from form data map
+         */
+        private String getFormDataString(java.util.Map<String, Object> formData, String key) {
+                if (formData == null || !formData.containsKey(key)) {
+                        return null;
+                }
+                Object value = formData.get(key);
+                return value != null ? value.toString() : null;
         }
 }

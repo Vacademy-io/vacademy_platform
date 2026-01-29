@@ -61,11 +61,13 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
         @Query("UPDATE PackageSessionLearnerInvitationToPaymentOption psl " +
                         "SET psl.status = :status " +
                         "WHERE psl.packageSession.id IN :packageSessionIds")
-        void updateStatusByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds, @Param("status") String status);
+        void updateStatusByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("status") String status);
 
         @Query("SELECT DISTINCT psl.enrollInvite.id FROM PackageSessionLearnerInvitationToPaymentOption psl " +
                         "WHERE psl.packageSession.id IN :packageSessionIds")
-        List<String> findDistinctEnrollInviteIdsByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds);
+        List<String> findDistinctEnrollInviteIdsByPackageSessionIds(
+                        @Param("packageSessionIds") List<String> packageSessionIds);
 
         @Query("SELECT psl.enrollInvite.id, COUNT(psl) " +
                         "FROM PackageSessionLearnerInvitationToPaymentOption psl " +

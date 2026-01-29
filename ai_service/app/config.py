@@ -51,8 +51,8 @@ class Settings(BaseSettings):
     # CORS
     cors_allow_origins: str = "*"  # comma-separated list
     cors_allow_credentials: bool = True
-    cors_allow_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-    cors_allow_headers: str = "Authorization,Content-Type"
+    cors_allow_methods: str = "*"
+    cors_allow_headers: str = "*"
 
     # Database (connect to admin-core-service DB)
     # Preferred: provide a SQLAlchemy/Psycopg URL via DATABASE_URL

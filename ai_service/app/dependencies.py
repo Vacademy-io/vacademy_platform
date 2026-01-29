@@ -23,7 +23,8 @@ from .services.ai_chat_agent_service import AiChatAgentService
 from .config import get_settings
 from .db import db_dependency
 from sqlalchemy.orm import Session
-from fastapi import Depends
+from fastapi import Depends, Header, HTTPException, status
+from typing import Optional
 
 
 @lru_cache(maxsize=1)
@@ -151,7 +152,25 @@ def get_chat_agent_service(db: Session = Depends(db_dependency)) -> AiChatAgentS
     )
 
 
-__all__ = ["get_course_outline_service", "get_image_service", "get_ai_chat_service", "get_chat_agent_service"]
+
+def get_institute_from_api_key(
+    x_institute_key: str = Header(..., description="API Key for Institute Authentication"),
+    db: Session = Depends(db_dependency)
+) -> str:
+    """
+    Validate API key and return institute_id.
+    """
+    settings_service = InstituteSettingsService(db)
+    institute_id = settings_service.validate_api_key(x_institute_key)
+    
+    if not institute_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or inactive API Key"
+        )
+    return institute_id
+
+__all__ = ["get_course_outline_service", "get_image_service", "get_ai_chat_service", "get_chat_agent_service", "get_institute_from_api_key"]
 
 
 

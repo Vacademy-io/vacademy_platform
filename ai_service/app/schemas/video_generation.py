@@ -15,6 +15,34 @@ class VideoGenerationRequest(BaseModel):
     captions_enabled: bool = Field(default=True, description="Enable/disable captions in the video")
     html_quality: str = Field(default="advanced", description="HTML quality mode: 'classic' (frames/animation only) or 'advanced' (all features)")
     video_id: Optional[str] = Field(default=None, description="Optional video ID (generated if not provided)")
+    target_audience: str = Field(
+        default="General/Adult", 
+        description="Target audience for age-appropriate content. Examples: 'Class 3 (Ages 7-8)', 'Class 9-10 (Ages 14-15)', 'College/Adult'"
+    )
+    target_duration: str = Field(
+        default="2-3 minutes", 
+        description="Target video duration. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'"
+    )
+    institute_id: Optional[str] = Field(
+        default=None,
+        description="Institute identifier (optional, for logging/context)"
+    )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="User identifier (optional, for logging/context)"
+    )
+    model: Optional[str] = Field(
+        default=None, 
+        description="AI Model to use for generation (e.g. 'xiaomi/mimo-v2-flash:free')"
+    )
+    voice_gender: str = Field(
+        default="female",
+        description="Voice gender for TTS: 'male' or 'female'. Default is 'female'."
+    )
+    tts_provider: str = Field(
+        default="edge",
+        description="TTS Provider: 'edge' (Microsoft Edge TTS, default) or 'google' (Google Cloud TTS)."
+    )
     
     class Config:
         json_schema_extra = {
@@ -23,7 +51,11 @@ class VideoGenerationRequest(BaseModel):
                 "language": "English",
                 "captions_enabled": True,
                 "html_quality": "advanced",
-                "video_id": "quantum-entanglement-101"
+                "video_id": "quantum-entanglement-101",
+                "target_audience": "Class 3 (Ages 7-8)",
+                "target_duration": "5 minutes",
+                "voice_gender": "female",
+                "tts_provider": "edge"
             }
         }
 
@@ -94,6 +126,7 @@ class VideoUrlsResponse(BaseModel):
     video_id: str
     html_url: Optional[str] = Field(None, description="URL to HTML timeline file (time_based_frame.json)")
     audio_url: Optional[str] = Field(None, description="URL to audio file (narration.mp3)")
+    words_url: Optional[str] = Field(None, description="URL to time-synced words JSON for captions")
     status: str = Field(..., description="Current video generation status")
     current_stage: str = Field(..., description="Current generation stage")
     
@@ -103,8 +136,32 @@ class VideoUrlsResponse(BaseModel):
                 "video_id": "quantum-entanglement-101",
                 "html_url": "https://bucket.s3.amazonaws.com/ai-videos/quantum-entanglement-101/timeline/time_based_frame.json",
                 "audio_url": "https://bucket.s3.amazonaws.com/ai-videos/quantum-entanglement-101/audio/narration.mp3",
+                "words_url": "https://bucket.s3.amazonaws.com/ai-videos/quantum-entanglement-101/audio/words.json",
                 "status": "COMPLETED",
                 "current_stage": "HTML"
             }
         }
 
+
+class RegenerateFrameRequest(BaseModel):
+    """Request for regenerating a specific frame's HTML."""
+    video_id: str = Field(..., description="Video ID")
+    timestamp: float = Field(..., description="Timestamp of the frame in seconds")
+    user_prompt: str = Field(..., description="User's instruction for modification")
+    institute_id: Optional[str] = Field(None, description="Institute ID (optional)")
+
+
+class RegenerateFrameResponse(BaseModel):
+    """Response with new HTML content."""
+    video_id: str
+    frame_index: int
+    timestamp: float
+    original_html: str
+    new_html: str
+
+
+class UpdateFrameRequest(BaseModel):
+    """Request for updating a specific frame's HTML."""
+    video_id: str = Field(..., description="Video ID")
+    frame_index: int = Field(..., description="Index of the frame to update")
+    new_html: str = Field(..., description="New HTML content")

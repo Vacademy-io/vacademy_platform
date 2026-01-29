@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.common.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -140,5 +142,15 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
   Optional<CustomFields> findByFieldKeyAndInstituteId(
       @Param("fieldKey") String fieldKey,
       @Param("instituteId") String instituteId);
+
+  /**
+   * Find custom field by field_key with pessimistic lock to prevent race conditions
+   * Used during custom field creation to ensure no duplicates
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT cf FROM CustomFields cf WHERE cf.fieldKey = :fieldKey AND cf.status = :status ORDER BY cf.createdAt DESC")
+  Optional<CustomFields> findByFieldKeyWithLock(
+      @Param("fieldKey") String fieldKey,
+      @Param("status") String status);
 
 }

@@ -27,6 +27,7 @@ public class EnrollmentPolicyJsonDTOs {
         private List<NotificationConfigDTO> notifications;
         private OnExpiryPolicyDTO onExpiry;
         private ReenrollmentPolicyDTO reenrollmentPolicy;
+        private WorkflowConfigDTO workflow;
     }
 
     @Data
@@ -76,5 +77,27 @@ public class EnrollmentPolicyJsonDTOs {
         private Boolean allowReenrollmentAfterExpiry;
         private Integer reenrollmentGapInDays;
         private String activeRepurchaseBehavior;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class WorkflowConfigDTO {
+        private Boolean enabled;
+        private List<WorkflowItemDTO> workflows;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.LowerCamelCaseStrategy.class)
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class WorkflowItemDTO {
+        private String workflowId;
+        private String triggerOn; // ENROLLMENT, PAYMENT_SUCCESS, etc.
     }
 }

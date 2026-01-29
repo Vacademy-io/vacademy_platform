@@ -15,6 +15,10 @@ from .routers.chat_bot import router as chat_bot_router
 from .routers.chat_agent import router as chat_agent_router
 from .routers.validation import router as validation_router
 from .routers.institute_settings import router as institute_settings_router
+from .routers.utils import router as utils_router
+from .routers.institute_api_keys import router as institute_api_keys_router
+from .routers.external_video_generation import router as external_video_generation_router
+
 
 
 # Configure logging
@@ -51,10 +55,10 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allow_origins or ["*"],
-        allow_credentials=settings.cors_allow_credentials,
-        allow_methods=allow_methods or ["*"],
-        allow_headers=allow_headers or ["*"],
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # Routers
@@ -69,6 +73,10 @@ def create_app() -> FastAPI:
     app.include_router(chat_agent_router, prefix=settings.api_base_path)
     app.include_router(validation_router, prefix=settings.api_base_path)
     app.include_router(institute_settings_router, prefix=settings.api_base_path)
+    app.include_router(utils_router, prefix=settings.api_base_path)
+    app.include_router(institute_api_keys_router, prefix=settings.api_base_path)
+    app.include_router(external_video_generation_router, prefix=settings.api_base_path)
+
 
 
     return app

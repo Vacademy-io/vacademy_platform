@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 import argparse
-from tqdm import tqdm
+
 
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
@@ -347,40 +347,71 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     )
 
     # Base content with background color. HTML overlays are transparent.
-    # We also inject educational libraries here (KaTeX, Prism, Mermaid, GSAP).
+    # We inject educational libraries: KaTeX, Prism, Mermaid, GSAP, Vivus, Rough Notation, Howler
     html_content = """
             <!DOCTYPE html>
             <html>
               <head>
                 <meta charset="utf-8" />
                 
-                <!-- KaTeX for Math -->
-                <link rel="stylesheet" href="REPLACE_LIBS/katex.min.css">
-                <script defer src="REPLACE_LIBS/katex.min.js"></script>
-                <script defer src="REPLACE_LIBS/auto-render.min.js"></script>
+                <!-- GSAP -->
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MorphSVGPlugin.min.js"></script>
+                <script>
+                    if (typeof window.MorphSVGPlugin === 'undefined') {
+                        window.MorphSVGPlugin = { version: '3.12.5', name: 'MorphSVGPlugin', default: {} };
+                    }
+                </script>
 
-                <!-- Prism.js for Syntax Highlighting (Monokai theme) -->
-                <link href="REPLACE_LIBS/prism-okaidia.min.css" rel="stylesheet" />
-                <script src="REPLACE_LIBS/prism.min.js"></script>
-                <script src="REPLACE_LIBS/prism-python.min.js"></script>
-                <script src="REPLACE_LIBS/prism-javascript.min.js"></script>
-                <script src="REPLACE_LIBS/prism-css.min.js"></script>
-                <script src="REPLACE_LIBS/prism-json.min.js"></script>
-                <script src="REPLACE_LIBS/prism-bash.min.js"></script>
+                <!-- Mermaid -->
+                <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 
-                <!-- Mermaid.js for Diagrams -->
-                <script src="REPLACE_LIBS/mermaid.min.js"></script>
+                <!-- Rough Notation -->
+                <script src="https://unpkg.com/rough-notation/lib/rough-notation.iife.js"></script>
 
-                <!-- GSAP for Animations -->
-                <script src="REPLACE_LIBS/gsap.min.js"></script>
-                <script src="REPLACE_LIBS/TextPlugin.min.js"></script>
-                <script src="REPLACE_LIBS/MotionPathPlugin.min.js"></script>
+                <!-- Vivus -->
+                <script src="https://cdn.jsdelivr.net/npm/vivus@0.4.6/dist/vivus.min.js"></script>
+
+                <!-- KaTeX -->
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+                <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+                <!-- Prism -->
+                <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+
+                <!-- Howler -->
+                <script src="https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"></script>
 
                 <style>
                   html, body { margin:0; padding:0; width:100%; height:100%; background:REPLACE_BG; overflow:hidden; }
                   body { position:relative; }
-                  /* Ensure code blocks don't overflow */
                   pre { white-space: pre-wrap; word-wrap: break-word; }
+
+                  /* Visual cues for interactive elements */
+                  .hover-target:hover { outline: 2px dashed #3b82f6; cursor: grab; }
+                  .is-dragging { outline: 2px solid #3b82f6; cursor: grabbing; user-select: none; }
+                  [contenteditable="true"] { outline: 2px solid #22c55e; cursor: text; min-width: 10px; }
+
+                  /* Key Takeaway Card */
+                  .key-takeaway { display: flex; align-items: center; gap: 20px; padding: 24px 32px; border-left: 5px solid #10b981; background: rgba(16, 185, 129, 0.1); margin: 20px 0; }
+                  .takeaway-icon { font-size: 48px; }
+                  .takeaway-label { font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: #10b981; font-weight: 700; }
+                  .takeaway-text { font-size: 28px; margin-top: 8px; font-weight: 600; }
+
+                  /* Wrong vs Right Pattern */
+                  .wrong-right-container { display: flex; gap: 40px; width: 100%; }
+                  .wrong-box, .right-box { flex: 1; padding: 24px; border-radius: 12px; }
+                  .wrong-box { border: 3px solid #ef4444; background: rgba(239, 68, 68, 0.1); }
+                  .right-box { border: 3px solid #10b981; background: rgba(16, 185, 129, 0.1); }
+                  .wr-header { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+                  .wrong-box .wr-header { color: #ef4444; }
+                  .right-box .wr-header { color: #10b981; }
+                  .wr-icon { font-size: 24px; margin-right: 8px; }
+                  .wr-text { font-size: 24px; }
                 </style>
               </head>
               <body>
@@ -391,19 +422,217 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 <div id="ui-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999;"></div>
 
                 <script>
-                  // Initialize Mermaid
-                  if (window.mermaid) {
-                      mermaid.initialize({ startOnLoad: false, theme: 'dark' });
-                  }
-                  
-                  // Initialize GSAP for frame-by-frame rendering
-                  // we pause the timeline so we can manually seek it in perfect sync with video frames
-                  gsap.ticker.remove(gsap.ticker.tick);
-                  gsap.globalTimeline.pause();
+                  // ========== AI VIDEO HELPER FUNCTIONS ==========
+
+                  // Re-render Math using KaTeX
+                  window.renderMath = function(selector) {
+                      if (window.renderMathInElement && window.katex) {
+                           const el = selector ? (typeof selector === 'string' ? document.querySelector(selector) : selector) : document.body;
+                           if(el) {
+                               try {
+                                   renderMathInElement(el, {
+                                      delimiters: [
+                                          {left: '$$', right: '$$', display: true},
+                                          {left: '$', right: '$', display: false},
+                                          {left: '\\\\(', right: '\\\\)', display: false},
+                                          {left: '\\\\[', right: '\\\\]', display: true}
+                                      ],
+                                      throwOnError : false
+                                  });
+                               } catch (e) {
+                                   console.warn('KaTeX render error:', e);
+                               }
+                           }
+                      }
+                  };
+
+                  // Highlight Code using Prism
+                  window.highlightCode = function() {
+                      if (window.Prism) {
+                          Prism.highlightAll();
+                      }
+                  };
+
+                  // SVG drawing animation
+                  window.animateSVG = function(svgId, duration, callback) {
+                    if (window.Vivus) {
+                      var cb = typeof callback === 'function' ? callback : undefined;
+                      try {
+                          let target = svgId;
+                          if (typeof svgId === 'string' && !svgId.startsWith('#') && !document.getElementById(svgId)) {
+                               new Vivus(svgId, {
+                                duration: duration || 100,
+                                type: 'oneByOne',
+                                animTimingFunction: Vivus.EASE_OUT
+                              }, cb);
+                          } else {
+                               new Vivus(svgId, {
+                                duration: duration || 100,
+                                type: 'oneByOne',
+                                animTimingFunction: Vivus.EASE_OUT
+                              }, cb);
+                          }
+                      } catch(e) { console.warn('Vivus init error', e); }
+                    }
+                  };
+
+                  // Hand-drawn annotation
+                  window.annotate = function(selectorOrEl, options) {
+                    if (window.RoughNotation) {
+                      const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+                      if (el) {
+                        const annotation = RoughNotation.annotate(el, {
+                          type: options.type || 'underline',
+                          color: options.color || '#dc2626',
+                          strokeWidth: options.strokeWidth || 3,
+                          padding: options.padding || 5,
+                          animationDuration: options.duration || 800
+                        });
+                        annotation.show();
+                        return annotation;
+                      }
+                    }
+                    return null;
+                  };
+
+                  // Simple fade in
+                  window.fadeIn = function(selector, duration, delay) {
+                    try {
+                        gsap.fromTo(selector, 
+                          {opacity: 0}, 
+                          {opacity: 1, duration: duration || 0.5, delay: delay || 0, ease: 'power2.out'}
+                        );
+                    } catch (e) { console.warn('fadeIn error', e); }
+                  };
+
+                  // Typewriter effect
+                  window.typewriter = function(selectorOrEl, duration, delay) {
+                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+                    if (!el) return;
+                    const text = el.textContent;
+                    el.textContent = '';
+                    el.style.opacity = '1';
+                    let i = 0;
+                    const speed = (duration || 1) * 1000 / text.length;
+                    setTimeout(() => {
+                      const interval = setInterval(() => {
+                        if (i < text.length) {
+                          el.textContent += text.charAt(i);
+                          i++;
+                        } else {
+                          clearInterval(interval);
+                        }
+                      }, speed);
+                    }, (delay || 0) * 1000);
+                  };
+
+                  // Pop in with scale
+                  window.popIn = function(selector, duration, delay) {
+                    try {
+                        gsap.fromTo(selector,
+                          {opacity: 0, scale: 0.85},
+                          {opacity: 1, scale: 1, duration: duration || 0.4, delay: delay || 0, ease: 'back.out(1.7)'}
+                        );
+                    } catch (e) { console.warn('popIn error', e); }
+                  };
+
+                  // Slide up from below
+                  window.slideUp = function(selector, duration, delay) {
+                    try {
+                        gsap.fromTo(selector,
+                          {opacity: 0, y: 30},
+                          {opacity: 1, y: 0, duration: duration || 0.5, delay: delay || 0, ease: 'power2.out'}
+                        );
+                    } catch (e) { console.warn('slideUp error', e); }
+                  };
+
+                  // Reveal lines with stagger
+                  window.revealLines = function(selectorOrEl, staggerDelay) {
+                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+                    if (!el) return;
+                    const lines = el.querySelectorAll('.line');
+                    if (lines.length === 0) {
+                      window.fadeIn(el, 0.5);
+                      return;
+                    }
+                    gsap.fromTo(lines,
+                      {opacity: 0, y: 20},
+                      {opacity: 1, y: 0, duration: 0.4, stagger: staggerDelay || 0.3, ease: 'power2.out'}
+                    );
+                  };
+
+                  // Show text then annotate
+                  window.showThenAnnotate = function(textSelector, termSelector, annotationType, annotationColor, textDelay, annotationDelay) {
+                    window.fadeIn(textSelector, 0.5, textDelay || 0);
+                    setTimeout(() => {
+                      window.annotate(termSelector, {
+                        type: annotationType || 'underline',
+                        color: annotationColor || '#dc2626',
+                        duration: 600
+                      });
+                    }, ((textDelay || 0) + (annotationDelay || 0.8)) * 1000);
+                  };
+
+                  window.sounds = {
+                    pop: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
+                    click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
+                    whoosh: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
+                    success: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3'
+                  };
+
+                  window.playSound = function(soundName) {
+                    if (window.sounds && window.sounds[soundName]) {
+                      const audio = new Audio(window.sounds[soundName]);
+                      audio.volume = 0.5;
+                      audio.play().catch(e => console.log('Sound play failed:', e));
+                    }
+                  };
+
+                  // Render Mermaid
+                  window.renderMermaid = function(selector) {
+                      if (window.mermaid) {
+                          try {
+                              mermaid.init(undefined, selector ? document.querySelectorAll(selector) : document.querySelectorAll('.mermaid'));
+                          } catch (e) {
+                              console.error('Mermaid render error:', e);
+                          }
+                      }
+                  };
+
+                  // Initialize
+                  window.addEventListener('load', () => {
+                      if(window.gsap) {
+                         if(window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
+                         if(window.MorphSVGPlugin && typeof window.MorphSVGPlugin.version === 'string') {
+                             try { gsap.registerPlugin(MorphSVGPlugin); } catch(e) { console.warn('MorphSVG registration failed', e); }
+                         }
+                      }
+
+                      if (window.RoughNotation && !window.RoughNotation.annotateAll) {
+                          window.RoughNotation.annotateAll = function(annotations) {
+                              if (Array.isArray(annotations) && window.RoughNotation.annotationGroup) {
+                                   const group = window.RoughNotation.annotationGroup(annotations);
+                                   group.show();
+                              } else if (Array.isArray(annotations)) {
+                                   annotations.forEach(a => a.show && a.show());
+                              }
+                          };
+                      }
+
+                      if(window.mermaid) mermaid.initialize({startOnLoad:true});
+                      if(window.renderMathInElement && window.katex) window.renderMath();
+                      if(window.Prism) window.highlightCode();
+                      
+                      // Pause global timeline for frame rendering
+                      if (window.gsap) {
+                          gsap.ticker.remove(gsap.ticker.tick);
+                          gsap.globalTimeline.pause();
+                      }
+                  });
                 </script>
               </body>
             </html>
-            """.replace("REPLACE_BG", background_color).replace("REPLACE_LIBS", libs)
+            """.replace("REPLACE_BG", background_color)
     
     temp_html_path = Path.cwd() / ".render_page.html"
     temp_html_path.write_text(html_content, encoding="utf-8")
@@ -457,11 +686,11 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   // Inject CSS into Shadow DOM for KaTeX and Prism
                   const katexCss = document.createElement('link');
                   katexCss.rel = 'stylesheet';
-                  katexCss.href = 'REPLACE_LIBS/katex.min.css';
+                  katexCss.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
                   
                   const prismCss = document.createElement('link');
                   prismCss.rel = 'stylesheet';
-                  prismCss.href = 'REPLACE_LIBS/prism-okaidia.min.css';
+                  prismCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css';
 
                   root.appendChild(katexCss);
                   root.appendChild(prismCss);
@@ -1431,7 +1660,7 @@ def render_video_from_json(
         if not show_character:
             page.evaluate("() => window.__updateCharacter && window.__updateCharacter(null)")
 
-        for frame_index in tqdm(range(total_frames), total=total_frames, desc="Rendering frames", unit="frame"):
+        for frame_index in range(total_frames):
             t = frame_index / float(fps)
             active = _active_entries_at(timeline, t)
             # Add branding if enabled

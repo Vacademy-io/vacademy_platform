@@ -16,6 +16,9 @@ from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
 from .s3_service import S3Service
+from sqlalchemy.orm import Session
+from ..models.ai_token_usage import ApiProvider, RequestType
+
 
 
 class VideoGenerationService:
@@ -86,7 +89,14 @@ class VideoGenerationService:
         captions_enabled: bool = True,
         html_quality: str = "advanced",
         resume: bool = False,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        target_audience: str = "General/Adult",
+        target_duration: str = "2-3 minutes",
+        voice_gender: str = "female",
+        tts_provider: str = "edge",
+        db_session: Optional[Session] = None,
+        institute_id: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -97,6 +107,8 @@ class VideoGenerationService:
             target_stage: Target stage (SCRIPT, TTS, WORDS, HTML, RENDER)
             language: Language for video content
             resume: Whether to resume from existing progress
+            target_audience: Target audience for age-appropriate content
+            target_duration: Target video duration (e.g., '5 minutes')
             
         Yields:
             SSE events with progress updates
@@ -176,7 +188,14 @@ class VideoGenerationService:
                     work_dir=work_dir,
                     start_stage_idx=start_stage_idx,
                     target_stage_idx=target_stage_idx,
-                    model=model
+                    model=model,
+                    target_audience=target_audience,
+                    target_duration=target_duration,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider,
+                    db_session=db_session,
+                    institute_id=institute_id,
+                    user_id=user_id
                 ):
                     # If we get an error event, log it and check if we should stop
                     if event.get("type") == "error":
@@ -227,7 +246,14 @@ class VideoGenerationService:
         work_dir: Path,
         start_stage_idx: int,
         target_stage_idx: int,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        target_audience: str = "General/Adult",
+        target_duration: str = "2-3 minutes",
+        voice_gender: str = "female",
+        tts_provider: str = "edge",
+        db_session: Optional[Session] = None,
+        institute_id: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -262,13 +288,19 @@ class VideoGenerationService:
             logger.error(f"[VideoGenService] {error_msg}")
             raise ValueError(error_msg)
         
-        pipeline = VideoGenerationPipeline(
-            openrouter_key=openrouter_key,
-            gemini_image_key=gemini_key or "",  # Pass Gemini key for image generation
-            runs_dir=work_dir.parent,
-            script_model=model,  # Optional override
-            html_model=model     # Optional override
-        )
+        # Prepare pipeline arguments
+        pipeline_args = {
+            "openrouter_key": openrouter_key,
+            "gemini_image_key": gemini_key or "",  # Pass Gemini key for image generation
+            "runs_dir": work_dir.parent
+        }
+        
+        # Only pass model overrides if provided, otherwise use pipeline defaults
+        if model:
+            pipeline_args["script_model"] = model
+            pipeline_args["html_model"] = model
+            
+        pipeline = VideoGenerationPipeline(**pipeline_args)
         
         # Map stage indices to pipeline stage names and file keys
         stage_config = {
@@ -280,8 +312,19 @@ class VideoGenerationService:
         }
         
         # Determine start_from and stop_at parameters
+        # When resuming, start_from should be the stage we're resuming FROM (which we've already completed)
+        # The pipeline will skip that stage and continue to the next one
         start_from = stage_config[start_stage_idx]["name"]
         stop_at = stage_config[target_stage_idx]["name"]  # Stop at target stage (e.g., "html")
+        
+        # Special handling: if we're resuming from SCRIPT and want to generate TTS,
+        # we need to ensure script.txt exists in the run directory
+        # The pipeline's logic: if start_from="script", it skips script generation and requires script.txt
+        # Then it checks if do_tts is True (which it should be if stop_at is after tts)
+        # If do_tts is True, it generates TTS; if False, it requires narration_raw.json
+        # So the issue might be that do_tts is incorrectly False
+        # Let's ensure the pipeline understands we want to generate TTS by checking the logic
+        logger.info(f"[VideoGenService] Pipeline stage mapping: start_from={start_from} (stage_idx={start_stage_idx}), stop_at={stop_at} (stage_idx={target_stage_idx})")
         
         # Validate parameters before calling pipeline
         if html_quality not in ["classic", "advanced"]:
@@ -298,6 +341,75 @@ class VideoGenerationService:
         
         logger.info(f"[VideoGenService] Validated parameters: start_from={start_from}, stop_at={stop_at}, language={language}, captions={captions_enabled}, html_quality={html_quality}")
         
+        # If resuming, download required files from S3 to work directory
+        # The pipeline expects files from previous stages to exist in the run directory
+        # Pipeline creates run_dir at runs_dir / video_id, where runs_dir = work_dir.parent
+        # So run_dir = work_dir.parent / video_id
+        video_record = self.repository.get_by_video_id(video_id)
+        if video_record and start_stage_idx >= 1:  # Resuming from SCRIPT or later
+            logger.info(f"[VideoGenService] Resuming from stage {start_stage_idx}, downloading required files from S3...")
+            
+            # Pipeline creates run_dir at work_dir.parent / video_id
+            # Create it here to ensure files are in the right place
+            run_dir = work_dir.parent / video_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"[VideoGenService] Using run_dir: {run_dir}")
+            
+            # Always need script.txt if resuming from SCRIPT or later (pipeline skips script generation when resuming)
+            if start_stage_idx >= 1:  # SCRIPT, TTS, WORDS, HTML, or RENDER
+                script_url = video_record.s3_urls.get("script")
+                if script_url:
+                    script_path = run_dir / "script.txt"
+                    if not script_path.exists():
+                        logger.info(f"[VideoGenService] Downloading script.txt from S3...")
+                        if self.s3_service.download_file(script_url, script_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded script.txt")
+                        else:
+                            logger.warning(f"[VideoGenService] Failed to download script.txt from {script_url}")
+            
+            # Need narration_raw.json and narration.mp3 if resuming from WORDS or later
+            if start_stage_idx >= 3:  # WORDS, HTML, or RENDER
+                # Note: narration_raw.json might not be in S3 yet (it's an intermediate file)
+                # We'll try to download it, but if it doesn't exist, the pipeline should generate TTS
+                audio_url = video_record.s3_urls.get("audio")
+                if audio_url:
+                    audio_path = run_dir / "narration.mp3"
+                    if not audio_path.exists():
+                        logger.info(f"[VideoGenService] Downloading narration.mp3 from S3...")
+                        if self.s3_service.download_file(audio_url, audio_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded narration.mp3")
+                        else:
+                            logger.warning(f"[VideoGenService] Failed to download narration.mp3 from {audio_url}")
+                
+                # Try to download narration_raw.json if it exists in S3
+                # This file is saved during TTS generation but might not be in S3 yet
+                # We'll construct the S3 key and try to download it
+                try:
+                    from ..config import get_settings
+                    settings = get_settings()
+                    bucket = settings.aws_bucket_name or settings.aws_s3_public_bucket
+                    narration_raw_key = f"ai-videos/{video_id}/audio/narration_raw.json"
+                    narration_raw_url = f"https://{bucket}.s3.amazonaws.com/{narration_raw_key}"
+                    narration_raw_path = run_dir / "narration_raw.json"
+                    if not narration_raw_path.exists():
+                        logger.info(f"[VideoGenService] Attempting to download narration_raw.json from S3...")
+                        if self.s3_service.download_file(narration_raw_url, narration_raw_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded narration_raw.json")
+                        else:
+                            logger.info(f"[VideoGenService] narration_raw.json not found in S3 (this is OK if TTS needs to be regenerated)")
+                except Exception as e:
+                    logger.warning(f"[VideoGenService] Could not download narration_raw.json: {e}")
+            
+            # Need words files if resuming from HTML or later
+            if start_stage_idx >= 4:  # HTML or RENDER
+                words_url = video_record.s3_urls.get("words")
+                if words_url:
+                    words_path = run_dir / "narration.words.json"
+                    if not words_path.exists():
+                        logger.info(f"[VideoGenService] Downloading narration.words.json from S3...")
+                        if self.s3_service.download_file(words_url, words_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded narration.words.json")
+        
         # Calculate percentage per stage
         total_stages = target_stage_idx - start_stage_idx + 1
         percentage_per_stage = 80 / total_stages if total_stages > 0 else 80  # Save 20% for final processing
@@ -313,40 +425,25 @@ class VideoGenerationService:
             "video_id": video_id
         }
         
-        # Run pipeline and handle partial failures gracefully
+        # Setup for pipeline execution
+        import asyncio
+        import functools
+        from concurrent.futures import ThreadPoolExecutor
+        
         loop = asyncio.get_event_loop()
-        outputs = None
         pipeline_error = None
         
-        try:
-            # Run pipeline in thread pool with stop_at to prevent rendering
-            logger.info(f"[VideoGenService] Running pipeline: start_from={start_from}, stop_at={stop_at}, language={language}, captions={captions_enabled}, html_quality={html_quality}")
-            with ThreadPoolExecutor() as executor:
-                outputs = await loop.run_in_executor(
-                    executor,
-                    pipeline.run,
-                    prompt,  # base_prompt
-                    video_id,  # run_name
-                    None,  # resume_run
-                    start_from,  # start_from
-                    stop_at,  # stop_at - stops at target stage (e.g., "html" to skip render)
-                    language,  # language
-                    captions_enabled,  # show_captions
-                    html_quality  # html_quality
-                )
-            logger.info(f"[VideoGenService] Pipeline completed successfully")
-        except Exception as e:
-            import traceback
-            pipeline_error = str(e)
-            error_traceback = traceback.format_exc()
-            logger.error(f"[VideoGenService] Pipeline failed: {pipeline_error}")
-            logger.error(f"[VideoGenService] Full traceback:\n{error_traceback}")
-            # Don't raise yet - try to recover partial files
-        
         # Map of expected files for each stage
+        # Format: (output_key_from_pipeline, file_key_for_db_s3, file_name)
+        # file_key is used as the key in s3_urls and file_ids in the database
         file_map = {
             "script": [("script_path", "script", "script.txt")],
-            "tts": [("audio_path", "audio", "narration.mp3")],
+            "tts": [
+                ("audio_path", "audio", "narration.mp3"),
+                # narration_raw.json is uploaded to S3 for resume capability but stored separately
+                # We use "audio" stage but different handling to avoid overwriting narration.mp3
+                (None, None, "narration_raw.json")  # Upload but don't store in main s3_urls (internal file)
+            ],
             "words": [
                 ("words_json", "words", "narration.words.json"),
                 (None, "alignment", "alignment.json")  # alignment.json (not in outputs dict)
@@ -358,70 +455,102 @@ class VideoGenerationService:
             "render": [("video_path", "video", "output.mp4")]
         }
         
-        # Pipeline creates run_dir at runs_dir / video_id
-        # Since runs_dir = work_dir.parent and work_dir = temp_dir / video_id,
-        # the actual run_dir should be: work_dir.parent / video_id = temp_dir / video_id = work_dir
-        # But check both possibilities due to potential double nesting
-        possible_dirs = [
-            work_dir,  # Direct work_dir
-            work_dir.parent / video_id,  # runs_dir / video_id
-            work_dir / video_id,  # In case of double nesting
-        ]
-        
-        run_dir = None
-        for possible_dir in possible_dirs:
-            if possible_dir.exists():
-                # Verify it has expected files
-                if (possible_dir / "script.txt").exists() or (possible_dir / "narration.mp3").exists():
-                    run_dir = possible_dir
-                    logger.info(f"[VideoGenService] Found run_dir: {run_dir}")
-                    break
-        
-        if not run_dir:
-            # Default to work_dir if none found
-            run_dir = work_dir
-            logger.warning(f"[VideoGenService] Could not find run_dir, using default: {run_dir}")
-        
-        # Also check if outputs contain file paths to locate run_dir
-        if not run_dir.exists() and outputs:
-            for key, value in outputs.items():
-                if value and isinstance(value, (str, Path)):
-                    try:
-                        # Use raw string to avoid regex escape issues
-                        path_str = str(value).replace('\\', '/')  # Normalize path separators
-                        potential_dir = Path(value).parent
-                        if potential_dir.exists():
-                            # Check if video_id is in the path (normalized)
-                            path_str_normalized = str(potential_dir).replace('\\', '/')
-                            if video_id in path_str_normalized:
-                                run_dir = potential_dir
-                                logger.info(f"[VideoGenService] Found run_dir from output {key}: {run_dir}")
-                                break
-                    except Exception as e:
-                        logger.warning(f"[VideoGenService] Could not parse path from {key}: {e}")
-        
-        logger.info(f"[VideoGenService] Checking for generated files in {run_dir} (exists: {run_dir.exists()})")
-        
-        # List all files in run_dir if it exists (for debugging)
-        if run_dir.exists():
-            try:
-                all_files = list(run_dir.glob("*"))
-                logger.info(f"[VideoGenService] Found {len(all_files)} files in run_dir: {[f.name for f in all_files]}")
-            except Exception as e:
-                logger.warning(f"[VideoGenService] Could not list files in {run_dir}: {e}")
-        
-        # Process each stage and upload whatever files exist
-        # Store image path mapping for updating time_based_frame.json
+        # Store image path mapping across stages (needed for html stage)
         image_path_mapping = {}  # Maps local file paths to S3 URLs
         
+        # Iterate through stages individually
         for stage_idx in range(start_stage_idx, target_stage_idx + 1):
+            if pipeline_error:
+                logger.warning(f"[VideoGenService] Stopping stage loop due to error in previous stage")
+                break
+
             stage_name = self.STAGES[stage_idx]
             config = stage_config[stage_idx]
+            stage_pipeline_name = config["name"]
+            
+            # Yield progress at start of stage
+            # Calculate percentage for start of this stage
+            percentage = 5 + int((stage_idx - start_stage_idx) * percentage_per_stage)
+            
+            yield {
+                "type": "progress",
+                "stage": stage_name,
+                "message": f"Processing stage: {stage_pipeline_name.upper()}",
+                "percentage": percentage,
+                "video_id": video_id
+            }
+            
+            outputs = None
+            run_dir = work_dir # Default
+            
+            try:
+                logger.info(f"[VideoGenService] Running pipeline stage: {stage_pipeline_name} (idx {stage_idx})")
+                
+                pipeline_run = functools.partial(
+                    pipeline.run,
+                    base_prompt=prompt,
+                    run_name=video_id,
+                    resume_run=None,
+                    start_from=stage_pipeline_name,
+                    stop_at=stage_pipeline_name,
+                    language=language,
+                    show_captions=captions_enabled,
+                    html_quality=html_quality,
+                    target_audience=target_audience,
+                    target_duration=target_duration,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider
+                )
+                
+                with ThreadPoolExecutor() as executor:
+                    outputs = await loop.run_in_executor(executor, pipeline_run)
+                
+                # Record token usage per stage
+                if outputs and "token_usage" in outputs and db_session:
+                    try:
+                        from .token_usage_service import TokenUsageService
+                        usage = outputs["token_usage"]
+                        if usage.get("total_tokens", 0) > 0 or usage.get("image_count", 0) > 0:
+                            token_service = TokenUsageService(db_session)
+                            provider = ApiProvider.OPENAI
+                            if model and "gemini" in model.lower():
+                                provider = ApiProvider.GEMINI
+                            token_service.record_usage(
+                                api_provider=provider,
+                                prompt_tokens=usage.get("prompt_tokens", 0),
+                                completion_tokens=usage.get("completion_tokens", 0),
+                                total_tokens=usage.get("total_tokens", 0),
+                                request_type=RequestType.VIDEO,
+                                institute_id=institute_id,
+                                user_id=user_id,
+                                model=model or "video-gen-pipeline",
+                                metadata={
+                                    "video_id": video_id,
+                                    "image_count": usage.get("image_count", 0),
+                                    "stage": stage_pipeline_name
+                                }
+                            )
+                            logger.info(f"[VideoGenService] Recorded usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
+                    except Exception as e:
+                        logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
+                
+                if outputs and "run_dir" in outputs:
+                    run_dir = outputs["run_dir"]
+                    
+            except Exception as e:
+                import traceback
+                pipeline_error = str(e)
+                error_traceback = traceback.format_exc()
+                logger.error(f"[VideoGenService] Stage {stage_pipeline_name} failed: {pipeline_error}")
+                logger.error(f"[VideoGenService] Traceback: {error_traceback}")
+                # Loop continues to try to save partial files
+            
+            # Recalculate percentage for file processing (slightly higher)
             percentage = 5 + int((stage_idx - start_stage_idx + 1) * percentage_per_stage)
             
-            files_to_check = file_map.get(config["name"], [])
             uploaded_files = {}
             stage_has_files = False
+            files_to_check = file_map.get(config["name"], [])
             
             for output_key, file_key, file_name in files_to_check:
                 # Try to get from outputs first, then check directory
@@ -660,6 +789,19 @@ class VideoGenerationService:
                                         else:
                                             logger.info(f"[VideoGenService] No image mappings found, skipping URL update in {file_name}")
                                     
+                                    # Handle files that should be uploaded but not stored in main s3_urls (like narration_raw.json)
+                                    if file_key is None:
+                                        # Upload to S3 for resume capability but don't store in database
+                                        # Use "audio" as stage since it's related to TTS/audio generation
+                                        logger.info(f"[VideoGenService] Uploading internal file {file_name} to S3 (not storing in DB)...")
+                                        s3_url = self.s3_service.upload_video_file(
+                                            file_path=file_path_obj,
+                                            video_id=video_id,
+                                            stage="audio"  # Store in audio directory but don't add to s3_urls
+                                        )
+                                        logger.info(f"[VideoGenService] Uploaded internal file {file_name}: {s3_url} (not stored in DB)")
+                                        continue  # Skip DB update for internal files
+                                    
                                     logger.info(f"[VideoGenService] Uploading {file_key} from {file_path_obj}...")
                                     s3_url = self.s3_service.upload_video_file(
                                         file_path=file_path_obj,
@@ -671,6 +813,10 @@ class VideoGenerationService:
                                     logger.info(f"[VideoGenService] Uploaded {file_key}: {s3_url}")
                                 
                                 # Update DB with this file/directory IMMEDIATELY (with retry for connection errors)
+                                # Skip if file_key is None (internal files)
+                                if file_key is None:
+                                    continue
+                                    
                                 max_db_retries = 3
                                 db_updated = False
                                 for retry in range(max_db_retries):
@@ -712,7 +858,8 @@ class VideoGenerationService:
                                 else:
                                     logger.warning(f"[VideoGenService] DB update returned None for {file_key}")
                             except Exception as e:
-                                logger.error(f"[VideoGenService] Failed to upload {file_key}: {e}", exc_info=True)
+                                file_identifier = file_key if file_key else file_name
+                                logger.error(f"[VideoGenService] Failed to upload {file_identifier}: {e}", exc_info=True)
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Could not process file path {file_path}: {e}")
             
@@ -795,3 +942,251 @@ class VideoGenerationService:
         
         return video_record.to_dict()
 
+
+    async def regenerate_video_frame(
+        self,
+        video_id: str,
+        timestamp: float,
+        user_prompt: str,
+        db_session: Optional[Session] = None,
+        institute_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Regenerate HTML content for a specific frame based on user prompt.
+        
+        Args:
+            video_id: Video identifier
+            timestamp: Timestamp in seconds to identify the frame
+            user_prompt: User's instruction for modification
+            
+        Returns:
+            Dict containing original_html and new_html
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # 1. Get video status to find timeline URL
+        status = self.get_video_status(video_id)
+        if not status or "timeline" not in status.get("s3_urls", {}):
+            raise ValueError(f"Timeline not found for video {video_id}. Generate HTML stage first.")
+            
+        timeline_url = status["s3_urls"]["timeline"]
+        
+        # 2. Download and parse timeline
+        with tempfile.TemporaryDirectory() as temp_dir:
+            timeline_path = Path(temp_dir) / "time_based_frame.json"
+            if not self.s3_service.download_file(timeline_url, timeline_path):
+                raise RuntimeError("Failed to download timeline file")
+                
+            timeline_data = json.loads(timeline_path.read_text(encoding='utf-8'))
+            
+            # 3. Find the target frame
+            target_frame = None
+            frame_index = -1
+            
+            # Timeline is list of {start_time, end_time, html, ...}
+            # Find frame where start_time <= timestamp < end_time
+            # Or closest frame
+            for idx, frame in enumerate(timeline_data):
+                start = float(frame.get("start_time", 0))
+                end = float(frame.get("end_time", 99999))
+                
+                if start <= timestamp and timestamp < end:
+                    target_frame = frame
+                    frame_index = idx
+                    break
+            
+            if not target_frame:
+                # If no exact match (e.g. timestamp at very end), take last frame
+                if timeline_data:
+                    target_frame = timeline_data[-1]
+                    frame_index = len(timeline_data) - 1
+                else:
+                    raise ValueError("Empty timeline")
+            
+            original_html = target_frame.get("html", "")
+            
+            # 4. Call LLM to regenerate HTML
+            # We need an LLM client here. We can use OpenRouter client directly or via pipeline.
+            # For simplicity and speed, let's use the one from config/pipeline settings
+            from ..config import get_settings
+            from ..adapters.openrouter_llm_client import OpenRouterOutlineLLMClient
+            
+            # Construct prompt
+            system_prompt = """
+            You are an expert HTML/CSS developer for educational videos. 
+            Your task is to modify the provided HTML frame based on the user's request.
+            
+            RULES:
+            1. Keep the HTML structure valid and responsive.
+            2. PRESERVE all existing image tags <img src="..."> exactly as they are. DO NOT change image sources.
+            3. Apply requested text or CSS style changes.
+            4. Return ONLY the new HTML code. No markdown, no explanations.
+            """
+            
+            user_message = f"""
+            ORIGINAL HTML:
+            {original_html}
+            
+            USER INSTRUCTION:
+            {user_prompt}
+            
+            Generate the updated HTML:
+            """
+            
+            # Use LLM client
+            # We can reuse the outline client or a simpler one. 
+            # Ideally we should inject this dependency, but for now we instantiate as service method
+            llm_client = OpenRouterOutlineLLMClient() 
+            
+            # Note: OpenRouterOutlineLLMClient expects specific format, let's use a simpler direct call or 
+            # if the client supports chat. The existing client is for outlines.
+            # Let's import requests to call OpenRouter direct for this specific task
+            # OR better, stick to the pattern and use a proper adapter.
+            # Since we are in the service, let's use the pipeline's LLM logic if available, 
+            # or just call the API directly using settings keys.
+            
+            import requests
+            settings = get_settings()
+            
+            if not settings.openrouter_api_key:
+                raise ValueError("OpenRouter API key not configured")
+                
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://vacademy.io",
+                },
+                json={
+                    "model": settings.llm_default_model or "openai/gpt-4o",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message}
+                    ],
+                    "temperature": 0.7
+                },
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"LLM Error: {response.text}")
+                raise RuntimeError("Failed to regenerate HTML via AI")
+                
+            new_html = response.json()["choices"][0]["message"]["content"].strip()
+            
+            # Cleanup markdown block if present
+            if new_html.startswith("```html"):
+                new_html = new_html.replace("```html", "", 1)
+            if new_html.startswith("```"):
+                new_html = new_html.replace("```", "", 1)
+            if new_html.endswith("```"):
+                new_html = new_html[:-3]
+            
+            new_html = new_html.strip()
+            
+            return {
+                "video_id": video_id,
+                "frame_index": frame_index,
+                "timestamp": timestamp,
+                "original_html": original_html,
+                "new_html": new_html
+            }
+
+    async def update_video_frame(
+        self,
+        video_id: str,
+        frame_index: int,
+        new_html: str
+    ) -> Dict[str, Any]:
+        """
+        Update a specific frame's HTML in the timeline and save back to S3.
+        
+        Args:
+            video_id: Video identifier
+            frame_index: Index of the frame to update
+            new_html: The valid HTML content
+            
+        Returns:
+            Success status
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        status = self.get_video_status(video_id)
+        if not status or "timeline" not in status.get("s3_urls", {}):
+            raise ValueError(f"Timeline not found for video {video_id}")
+            
+        timeline_url = status["s3_urls"]["timeline"]
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = Path(temp_dir) / "time_based_frame.json"
+            
+            # Download
+            if not self.s3_service.download_file(timeline_url, file_path):
+                raise RuntimeError("Failed to download timeline file")
+            
+            # Read
+            data = json.loads(file_path.read_text(encoding='utf-8'))
+            
+            # Update
+            if frame_index < 0 or frame_index >= len(data):
+                raise IndexError(f"Frame index {frame_index} out of range (0-{len(data)-1})")
+                
+            data[frame_index]["html"] = new_html
+            
+            # Write
+            file_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
+            
+            # Upload back
+            # We use upload_file directly to S3
+            # We need to constructing the S3 key again or reuse internal logic
+            # S3Service.upload_file expects a key.
+            # TIMELINE URL: https://bucket.s3.amazonaws.com/ai-videos/{video_id}/timeline/time_based_frame.json
+            # KEY: ai-videos/{video_id}/timeline/time_based_frame.json
+            
+            from ..config import get_settings
+            settings = get_settings()
+            bucket = settings.aws_bucket_name
+            
+            # Extract key from URL
+            # simplistic extraction: find "ai-videos/..."
+            if f"/{bucket}/" in timeline_url:
+                # Path style
+                key = timeline_url.split(f"/{bucket}/")[-1]
+            elif f"{bucket}.s3" in timeline_url:
+                # Virtual host style
+                # URL: https://BUCKET.s3.region.amazonaws.com/KEY
+                # We need to strip the domain part
+                # Find first slash after domain
+                match = re.search(r'\.com/(.+)$', timeline_url)
+                if match:
+                    key = match.group(1)
+                else:
+                     # Fallback manual construction
+                     key = f"ai-videos/{video_id}/timeline/time_based_frame.json"
+            else:
+                 key = f"ai-videos/{video_id}/timeline/time_based_frame.json"
+            
+            # Upload
+            try:
+                self.s3_service.s3_client.upload_file(
+                    str(file_path),
+                    bucket,
+                    key,
+                    ExtraArgs={'ContentType': 'application/json', 'ACL': 'public-read'}
+                )
+                
+                # Invalidate CloudFront? (Not handled here, assuming direct S3 usage or short TTL)
+                
+            except Exception as e:
+                logger.error(f"Failed to upload updated timeline: {e}")
+                raise RuntimeError(f"Failed to save changes to S3: {e}")
+                
+            return {
+                "status": "success",
+                "video_id": video_id,
+                "updated_frame_index": frame_index,
+                "message": "Frame updated successfully. Player should reflect changes immediately."
+            }

@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
@@ -73,16 +74,12 @@ public class EnrollInviteService {
         EnrollInvite enrollInviteToSave = new EnrollInvite(enrollInviteDTO);
         final EnrollInvite savedEnrollInvite = repository.save(enrollInviteToSave);
 
-        if (!CollectionUtils.isEmpty(enrollInviteDTO.getInstituteCustomFields())) {
-            List<InstituteCustomFieldDTO> customFieldsToSave = enrollInviteDTO.getInstituteCustomFields().stream()
-                    .filter(Objects::nonNull)
-                    .peek(cf -> {
-                        cf.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
-                        cf.setTypeId(savedEnrollInvite.getId());
-                    })
-                    .collect(Collectors.toList());
-            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
-        }
+        saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteId(),
+                enrollInviteDTO.getInstituteCustomFields());
+
+        // Automatically copy default custom fields to the new enroll invite
+        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(enrollInviteDTO.getInstituteId(),
+                savedEnrollInvite.getId());
 
         List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
                 .filter(Objects::nonNull)
@@ -119,16 +116,11 @@ public class EnrollInviteService {
         updateEnrollInvite(enrollInviteDTO, enrollInviteToSave);
         final EnrollInvite savedEnrollInvite = repository.save(enrollInviteToSave);
 
-        if (!CollectionUtils.isEmpty(enrollInviteDTO.getInstituteCustomFields())) {
-            List<InstituteCustomFieldDTO> customFieldsToSave = enrollInviteDTO.getInstituteCustomFields().stream()
-                    .filter(Objects::nonNull)
-                    .peek(cf -> {
-                        cf.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
-                        cf.setTypeId(savedEnrollInvite.getId());
-                    })
-                    .collect(Collectors.toList());
-            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
-        }
+        saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteId(),
+                enrollInviteDTO.getInstituteCustomFields());
+
+        // Note: copyDefaultCustomFieldsToEnrollInvite is NOT called on update
+        // to allow users to control which custom fields are active via the payload
 
         List<PackageSessionLearnerInvitationToPaymentOption> mappingEntities = mappingDTOs.stream()
                 .filter(Objects::nonNull)
@@ -150,6 +142,28 @@ public class EnrollInviteService {
         if (mappingEntities.isEmpty()) {
             throw new VacademyException("No valid packageSession-paymentOption mappings were provided.");
         }
+
+        // Logic to soft-delete existing mappings that are not present in the incoming
+        // DTO list
+        List<PackageSessionLearnerInvitationToPaymentOption> existingMappings = packageSessionEnrollInviteToPaymentOptionService
+                .findByInvite(enrollInviteToSave);
+        Set<String> incomingIds = mappingDTOs.stream()
+                .map(PackageSessionToPaymentOptionDTO::getId)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toSet());
+
+        List<String> idsToDelete = existingMappings.stream()
+                .map(PackageSessionLearnerInvitationToPaymentOption::getId)
+                .filter(id -> !incomingIds.contains(id))
+                .collect(Collectors.toList());
+
+        if (!idsToDelete.isEmpty()) {
+            packageSessionEnrollInviteToPaymentOptionService.updateStatusByIds(idsToDelete, StatusEnum.DELETED.name());
+            packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService
+                    .updateStatusByPackageSessionLearnerInvitationToPaymentOptionIds(idsToDelete,
+                            StatusEnum.DELETED.name());
+        }
+
         packageSessionEnrollInviteToPaymentOptionService
                 .createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
         validateSaveOrUpdate(mappingEntities, mappingDTOs);
@@ -171,7 +185,7 @@ public class EnrollInviteService {
     }
 
     public Page<EnrollInviteWithSessionsProjection> getEnrollInvitesByInstituteIdAndFilters(String instituteId,
-                                                                                            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
+            EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
         if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())) {
@@ -199,10 +213,10 @@ public class EnrollInviteService {
 
     public EnrollInviteDTO findDefaultEnrollInviteByPackageSessionId(String packageSessionId, String instituteId) {
         EnrollInvite enrollInvite = repository.findLatestForPackageSessionWithFilters(
-                        packageSessionId,
-                        List.of(StatusEnum.ACTIVE.name()),
-                        List.of(EnrollInviteTag.DEFAULT.name()),
-                        List.of(StatusEnum.ACTIVE.name()))
+                packageSessionId,
+                List.of(StatusEnum.ACTIVE.name()),
+                List.of(EnrollInviteTag.DEFAULT.name()),
+                List.of(StatusEnum.ACTIVE.name()))
                 .orElseThrow(() -> new VacademyException(
                         "Default EnrollInvite not found for package session: " + packageSessionId));
         return buildFullEnrollInviteDTO(enrollInvite, instituteId);
@@ -210,10 +224,10 @@ public class EnrollInviteService {
 
     public boolean findDefaultEnrollInviteByPackageSessionId(String packageSessionId) {
         EnrollInvite enrollInvite = repository.findLatestForPackageSessionWithFilters(
-                        packageSessionId,
-                        List.of(StatusEnum.ACTIVE.name()),
-                        List.of(EnrollInviteTag.DEFAULT.name()),
-                        List.of(StatusEnum.ACTIVE.name()))
+                packageSessionId,
+                List.of(StatusEnum.ACTIVE.name()),
+                List.of(EnrollInviteTag.DEFAULT.name()),
+                List.of(StatusEnum.ACTIVE.name()))
                 .orElseThrow(() -> new VacademyException(
                         "Default EnrollInvite not found for package session: " + packageSessionId));
         return true;
@@ -225,10 +239,12 @@ public class EnrollInviteService {
      * This method only maps basic fields to avoid LazyInitializationException
      *
      * @param packageSessionId The package session ID
-     * @param instituteId The institute ID
-     * @return Optional containing EnrollInviteDTO with basic fields if found, empty otherwise
+     * @param instituteId      The institute ID
+     * @return Optional containing EnrollInviteDTO with basic fields if found, empty
+     *         otherwise
      */
-    public Optional<EnrollInviteDTO> findDefaultEnrollInviteByPackageSessionIdOptional(String packageSessionId, String instituteId) {
+    public Optional<EnrollInviteDTO> findDefaultEnrollInviteByPackageSessionIdOptional(String packageSessionId,
+            String instituteId) {
         Optional<EnrollInvite> enrollInviteOptional = repository.findLatestForPackageSessionWithFilters(
                 packageSessionId,
                 List.of(StatusEnum.ACTIVE.name()),
@@ -251,7 +267,7 @@ public class EnrollInviteService {
     }
 
     public List<EnrollInviteDTO> findEnrollInvitesByReferralOptionIds(List<String> referralOptionIds,
-                                                                      String instituteId) {
+            String instituteId) {
         List<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> referralMappings = packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService
                 .findByReferralOptionIds(referralOptionIds);
 
@@ -284,6 +300,75 @@ public class EnrollInviteService {
         return "Enroll invites deleted successfully";
     }
 
+    private void saveInstituteCustomFields(String inviteId, String instituteId, List<InstituteCustomFieldDTO> dtos) {
+        // Step 1: Mark existing custom fields as DELETED if they're not in the incoming
+        // array
+        if (StringUtils.hasText(instituteId) && StringUtils.hasText(inviteId)) {
+            markMissingCustomFieldsAsDeleted(instituteId, inviteId, dtos);
+        }
+
+        // Step 2: Save/update the custom fields from the incoming array
+        if (!CollectionUtils.isEmpty(dtos)) {
+            List<InstituteCustomFieldDTO> customFieldsToSave = dtos.stream()
+                    .filter(Objects::nonNull)
+                    .peek(cf -> {
+                        cf.setId(null);
+                        cf.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
+                        cf.setTypeId(inviteId);
+                        if (!StringUtils.hasText(cf.getInstituteId())) {
+                            cf.setInstituteId(instituteId);
+                        }
+                    })
+                    .collect(Collectors.toList());
+            instituteCustomFiledService.addOrUpdateCustomField(customFieldsToSave);
+        }
+    }
+
+    private void markMissingCustomFieldsAsDeleted(String instituteId, String enrollInviteId,
+            List<InstituteCustomFieldDTO> incomingDtos) {
+        // Fetch all existing ACTIVE custom fields for this enroll invite
+        List<InstituteCustomField> existingFields = instituteCustomFiledService.getCusFieldByInstituteAndTypeAndTypeId(
+                instituteId,
+                CustomFieldTypeEnum.ENROLL_INVITE.name(),
+                enrollInviteId,
+                List.of(StatusEnum.ACTIVE.name()));
+
+        if (CollectionUtils.isEmpty(existingFields)) {
+            return; // No existing fields to delete
+        }
+
+        // Extract customFieldIds from incoming DTOs
+        final Set<String> incomingCustomFieldIds;
+        if (!CollectionUtils.isEmpty(incomingDtos)) {
+            incomingCustomFieldIds = incomingDtos.stream()
+                    .filter(Objects::nonNull)
+                    .map(dto -> {
+                        if (dto.getCustomField() != null && StringUtils.hasText(dto.getCustomField().getId())) {
+                            return dto.getCustomField().getId();
+                        }
+                        if (StringUtils.hasText(dto.getFieldId())) {
+                            return dto.getFieldId();
+                        }
+                        return null;
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+        } else {
+            incomingCustomFieldIds = new HashSet<>();
+        }
+
+        // Find existing fields that are not in the incoming array
+        List<InstituteCustomField> fieldsToDelete = existingFields.stream()
+                .filter(existingField -> !incomingCustomFieldIds.contains(existingField.getCustomFieldId()))
+                .collect(Collectors.toList());
+
+        // Mark them as DELETED
+        if (!CollectionUtils.isEmpty(fieldsToDelete)) {
+            fieldsToDelete.forEach(field -> field.setStatus(StatusEnum.DELETED.name()));
+            instituteCustomFiledService.createOrUpdateMappings(fieldsToDelete);
+        }
+    }
+
     // ===================================================================================
     // PRIVATE HELPER AND DTO BUILDING METHODS
     // ===================================================================================
@@ -295,7 +380,7 @@ public class EnrollInviteService {
     }
 
     private EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId,
-                                                     List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
+            List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
         EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
 
         // 1. Fetch and set Custom Fields
@@ -575,9 +660,7 @@ public class EnrollInviteService {
                 instituteId,
                 activeStatuses, // SSIGM statuses
                 activeStatuses, // EnrollInvite statuses
-                activeStatuses
-        );
-
+                activeStatuses);
 
         // Convert to DTOs and populate additional data
         return enrollInvites.stream()
@@ -594,7 +677,8 @@ public class EnrollInviteService {
     }
 
     /**
-     * Builds a basic EnrollInviteDTO with only essential fields to avoid LazyInitializationException
+     * Builds a basic EnrollInviteDTO with only essential fields to avoid
+     * LazyInitializationException
      * This method is safe to use outside of transaction context
      *
      * @param enrollInvite The EnrollInvite entity
@@ -618,4 +702,5 @@ public class EnrollInviteService {
         dto.setIsBundled(enrollInvite.getIsBundled());
         return dto;
     }
+
 }

@@ -45,10 +45,15 @@ public class InstituteInfoDTO {
     private List<String> studentStatuses;
     private List<SubjectDTO> subjects;
     private List<Integer> sessionExpiryDays;
-    private List<PackageGroupDTO>packageGroups;
+    private List<PackageGroupDTO> packageGroups;
     private String letterHeadFileId;
     private List<String> tags;
     private String setting;
     private String coverImageFileId;
     private String coverTextJson;
+    private String board;
+    private String gstDetails;
+    private String affiliationNumber;
+    private Integer staffStrength;
+    private Integer schoolStrength;
 }

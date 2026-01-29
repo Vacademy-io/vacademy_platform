@@ -100,6 +100,14 @@ FREE_MODELS = [
         description="NVIDIA's free model",
         supports_streaming=True,
     ),
+    ModelInfo(
+        id="google/gemini-2.0-flash-exp:free",
+        name="Gemini 2.0 Flash Exp (Free)",
+        provider="OpenRouter",
+        category=ModelCategory.FREE,
+        description="Google's experimental flash model (Free)",
+        supports_streaming=True,
+    ),
 ]
 
 # Paid OpenAI/OpenRouter models
@@ -317,7 +325,9 @@ ALL_MODELS = FREE_MODELS + OPENAI_MODELS + GEMINI_MODELS + OPENROUTER_MODELS
 MODELS_BY_ID = {model.id: model for model in ALL_MODELS}
 
 # Default model
+# Default model
 DEFAULT_MODEL = "xiaomi/mimo-v2-flash:free"
+VIDEO_GENERATION_DEFAULT_MODEL = "google/gemini-2.0-flash-exp:free"
 
 
 def get_model_by_id(model_id: str) -> Optional[ModelInfo]:
@@ -373,5 +383,6 @@ __all__ = [
     "get_models_by_category",
     "get_models_by_provider",
     "get_model_pricing",
+    "VIDEO_GENERATION_DEFAULT_MODEL",
 ]
 

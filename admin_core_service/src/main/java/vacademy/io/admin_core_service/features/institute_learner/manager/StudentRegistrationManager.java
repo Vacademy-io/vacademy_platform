@@ -23,6 +23,7 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.*;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerCouponService;
@@ -91,8 +92,11 @@ public class StudentRegistrationManager {
         Student student = checkAndCreateStudent(instituteStudentDTO);
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
         learnerCouponService.generateCouponCodeForLearner(student.getUserId());
-        if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
-            triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId(),null);
+        if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus()
+                .equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())) {
+            triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),
+                    instituteStudentDTO.getUserDetails(),
+                    instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId(), null);
         }
         return instituteStudentDTO;
     }
@@ -122,8 +126,11 @@ public class StudentRegistrationManager {
         Student student = checkAndCreateStudent(instituteStudentDTO);
         if (instituteStudentDTO.getInstituteStudentDetails() != null) {
             linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
-            if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())){
-                triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),instituteStudentDTO.getUserDetails(),instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId(),null);
+            if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus()
+                    .equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())) {
+                triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),
+                        instituteStudentDTO.getUserDetails(),
+                        instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId(), null);
             }
         }
         return ResponseEntity.ok(new StudentDTO(student));
@@ -384,7 +391,9 @@ public class StudentRegistrationManager {
                         LearnerSessionStatusEnum.TERMINATED.name(),
                         LearnerSessionStatusEnum.INACTIVE.name(),
                         LearnerSessionStatusEnum.EXPIRED.name() // <-- ADDED
-                ));
+                ))
+                .filter(mapping -> !LearnerSessionTypeEnum.ABANDONED_CART.name().equals(mapping.getType()))
+                .filter(mapping -> !LearnerSessionTypeEnum.PAYMENT_FAILED.name().equals(mapping.getType()));
     }
 
     /**
@@ -801,16 +810,18 @@ public class StudentRegistrationManager {
         return createStudentFromRequest(userDTO, null).getId();
     }
 
-    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO, String packageSessionId, Institute subOrg) {
+    public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO, String packageSessionId,
+            Institute subOrg) {
         Map<String, Object> contextData = new HashMap<>();
         contextData.put("user", userDTO);
         contextData.put("packageSessionIds", packageSessionId);
-        contextData.put("subOrg",subOrg);
-        Optional<PackageSession>packageSession = packageSessionRepository.findById(packageSessionId);
-        if (packageSession.isEmpty()){
+        contextData.put("subOrg", subOrg);
+        Optional<PackageSession> packageSession = packageSessionRepository.findById(packageSessionId);
+        if (packageSession.isEmpty()) {
             throw new VacademyException("Package Session Not Found");
         }
-        contextData.put("packageId",packageSession.get().getPackageEntity().getId());
-        workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(),packageSessionId,instituteId,contextData);
+        contextData.put("packageId", packageSession.get().getPackageEntity().getId());
+        workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(),
+                packageSessionId, instituteId, contextData);
     }
 }

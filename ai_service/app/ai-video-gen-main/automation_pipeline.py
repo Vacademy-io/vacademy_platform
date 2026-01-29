@@ -50,6 +50,7 @@ try:
         HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE,
         HTML_GENERATION_SAFE_AREA,
         HTML_GENERATION_USER_PROMPT_TEMPLATE,
+        BACKGROUND_PRESETS,
     )
 except ImportError:
     # Fallback or error if not found. But since we just created it, it should be fine.
@@ -60,13 +61,75 @@ DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 DEFAULT_GEMINI_IMAGE_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 VOICE_MAPPING = {
-    "english": "en-US-AriaNeural",
-    "hindi": "hi-IN-SwaraNeural",
-    "spanish": "es-ES-ElviraNeural",
-    "french": "fr-FR-DeniseNeural",
-    "german": "de-DE-KatjaNeural",
-    "japanese": "ja-JP-NanamiNeural",
-    "chinese": "zh-CN-XiaoxiaoNeural",
+    # format: "lowercase language": {"edge": {"male": "...", "female": "..."}, "google": {"male": "...", "female": "..."}}
+    "english": {
+        "edge": {"female": "en-US-AriaNeural", "male": "en-US-ChristopherNeural"},
+        "google": {"female": "en-US-Journey-F", "male": "en-US-Journey-D"}
+    },
+    "english (us)": {
+        "edge": {"female": "en-US-AriaNeural", "male": "en-US-ChristopherNeural"},
+        "google": {"female": "en-US-Journey-F", "male": "en-US-Journey-D"}
+    },
+    "english (uk)": {
+        "edge": {"female": "en-GB-SoniaNeural", "male": "en-GB-RyanNeural"},
+        "google": {"female": "en-GB-Neural2-A", "male": "en-GB-Neural2-B"}
+    },
+    "english (india)": {
+        "edge": {"female": "en-IN-NeerjaNeural", "male": "en-IN-PrabhatNeural"},
+        "google": {"female": "en-IN-Neural2-A", "male": "en-IN-Neural2-B"}
+    },
+    "hindi": {
+        "edge": {"female": "hi-IN-SwaraNeural", "male": "hi-IN-MadhurNeural"},
+        "google": {"female": "hi-IN-Neural2-A", "male": "hi-IN-Neural2-B"}
+    },
+    "bengali": {
+        "edge": {"female": "bn-IN-TanishaaNeural", "male": "bn-IN-BashkarNeural"},
+        "google": {"female": "bn-IN-Wavenet-A", "male": "bn-IN-Wavenet-B"}
+    },
+    "tamil": {
+        "edge": {"female": "ta-IN-PallaviNeural", "male": "ta-IN-ValluvarNeural"},
+        "google": {"female": "ta-IN-Wavenet-A", "male": "ta-IN-Wavenet-B"}
+    },
+    "telugu": {
+        "edge": {"female": "te-IN-ShrutiNeural", "male": "te-IN-MohanNeural"},
+        "google": {"female": "te-IN-Standard-A", "male": "te-IN-Standard-B"}
+    },
+    "marathi": {
+        "edge": {"female": "mr-IN-AarohiNeural", "male": "mr-IN-ManoharNeural"},
+        "google": {"female": "mr-IN-Wavenet-A", "male": "mr-IN-Wavenet-B"}
+    },
+    "kannada": {
+        "edge": {"female": "kn-IN-SapnaNeural", "male": "kn-IN-GaganNeural"},
+        "google": {"female": "kn-IN-Wavenet-A", "male": "kn-IN-Wavenet-B"}
+    },
+    "gujarati": {
+        "edge": {"female": "gu-IN-DhwaniNeural", "male": "gu-IN-NiranjanNeural"},
+        "google": {"female": "gu-IN-Wavenet-A", "male": "gu-IN-Wavenet-B"}
+    },
+    "malayalam": {
+        "edge": {"female": "ml-IN-SobhanaNeural", "male": "ml-IN-MidhunNeural"},
+        "google": {"female": "ml-IN-Wavenet-A", "male": "ml-IN-Wavenet-B"}
+    },
+    "spanish": {
+        "edge": {"female": "es-ES-ElviraNeural", "male": "es-ES-AlvaroNeural"},
+        "google": {"female": "es-ES-Neural2-A", "male": "es-ES-Neural2-B"}
+    },
+    "french": {
+        "edge": {"female": "fr-FR-DeniseNeural", "male": "fr-FR-HenriNeural"},
+        "google": {"female": "fr-FR-Neural2-A", "male": "fr-FR-Neural2-B"}
+    },
+    "german": {
+        "edge": {"female": "de-DE-KatjaNeural", "male": "de-DE-ConradNeural"},
+        "google": {"female": "de-DE-Neural2-A", "male": "de-DE-Neural2-B"}
+    },
+    "japanese": {
+        "edge": {"female": "ja-JP-NanamiNeural", "male": "ja-JP-KeitaNeural"},
+        "google": {"female": "ja-JP-Neural2-B", "male": "ja-JP-Neural2-C"}
+    },
+    "chinese": {
+        "edge": {"female": "zh-CN-XiaoxiaoNeural", "male": "zh-CN-YunxiNeural"},
+        "google": {"female": "zh-CN-Neural2-C", "male": "zh-CN-Neural2-D"}
+    }
 }
 
 
@@ -210,7 +273,7 @@ class OpenRouterClient:
         model: Optional[str] = None,
         temperature: float = 0.6,
         max_tokens: int = 2000,
-    ) -> str:
+    ) -> Tuple[str, Dict[str, Any]]:
         # If using free models, try them in order with fallback
         models_to_try = self.model_chain if model is None and self.default_model in self.FREE_MODELS else [model or self.default_model]
         
@@ -233,7 +296,9 @@ class OpenRouterClient:
                     raw = response.read().decode("utf-8")
                     # Parse JSON response and return content
                     data = json.loads(raw)
-                    return data["choices"][0]["message"]["content"]
+                    content = data["choices"][0]["message"]["content"]
+                    usage = data.get("usage", {})
+                    return content, usage
             except urllib.error.HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="ignore")
                 last_error = RuntimeError(f"OpenRouter request failed with {model_to_use}: {exc.code} {exc.reason}\n{detail}")
@@ -260,25 +325,79 @@ class OpenRouterClient:
 
 
 class GoogleCloudTTSClient:
-    def __init__(self, credentials_path: str):
+    def __init__(self, credentials_path: Optional[str] = None, credentials_json: Optional[str] = None):
         self.credentials_path = credentials_path
+        self.credentials_json = credentials_json
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0)
-    def synthesize(self, text: str, output_path: Path, raw_json_path: Path) -> None:
+    def synthesize(
+        self, 
+        text: str, 
+        output_path: Path, 
+        raw_json_path: Path,
+        voice_name: str = "en-US-Journey-F",
+        language_code: str = "en-US"
+    ) -> None:
         try:
             from google.cloud import texttospeech
             from google.oauth2 import service_account
         except ImportError:
             raise RuntimeError("google-cloud-texttospeech not installed. Run `pip install google-cloud-texttospeech`.")
 
-        print(f"🔑 Using Service Account: {self.credentials_path}")
-        credentials = service_account.Credentials.from_service_account_file(self.credentials_path)
+        if self.credentials_json:
+            print(f"🔑 Using Service Account from Environment Variable")
+            try:
+                # Sanitize: Remove wrapping quotes if they were injected by shell/k8s
+                clean_json = self.credentials_json.strip()
+                if clean_json.startswith("'") and clean_json.endswith("'"):
+                    clean_json = clean_json[1:-1]
+                elif clean_json.startswith('"') and clean_json.endswith('"'):
+                    clean_json = clean_json[1:-1]
+                
+                info = json.loads(clean_json)
+                
+                # Fix private_key formatting issues (missing newlines)
+                if "private_key" in info:
+                    pk = info["private_key"]
+                    updated = False
+                    
+                    if "\\n" in pk:
+                        pk = pk.replace("\\n", "\n")
+                        updated = True
+                    
+                    # Ensure header is followed by a newline
+                    header = "-----BEGIN PRIVATE KEY-----"
+                    if header in pk and not pk.startswith(header + "\n"):
+                        pk = pk.replace(header, header + "\n")
+                        updated = True
+                        
+                    # Ensure footer is preceded by a newline
+                    footer = "-----END PRIVATE KEY-----"
+                    if footer in pk and not pk.endswith("\n" + footer) and not pk.endswith("\n" + footer + "\n"):
+                        pk = pk.replace(footer, "\n" + footer)
+                        updated = True
+                    
+                    if updated:
+                        print("    🔧 Fixing private_key formatting/newlines...")
+                        # Remove any double newlines we might have introduced
+                        info["private_key"] = pk.replace("\n\n", "\n")
+                
+                credentials = service_account.Credentials.from_service_account_info(info)
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON Decode Error. Content preview: {self.credentials_json[:50]}...")
+                raise e
+        elif self.credentials_path:
+            print(f"🔑 Using Service Account: {self.credentials_path}")
+            credentials = service_account.Credentials.from_service_account_file(self.credentials_path)
+        else:
+            raise RuntimeError("No Google Cloud credentials provided (path or json content).")
+
         client = texttospeech.TextToSpeechClient(credentials=credentials)
 
         input_text = texttospeech.SynthesisInput(text=text)
         voice = texttospeech.VoiceSelectionParams(
-            language_code="en-US",
-            name="en-US-Journey-F"
+            language_code=language_code,
+            name=voice_name
         )
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3
@@ -350,6 +469,11 @@ class VideoGenerationPipeline:
         language: str = "English",
         show_captions: bool = True,
         html_quality: str = "advanced",
+        background_type: str = "white",
+        target_audience: str = "General/Adult",
+        target_duration: str = "2-3 minutes",
+        voice_gender: str = "female",
+        tts_provider: str = "edge",
     ) -> Dict[str, Any]:
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
@@ -359,6 +483,9 @@ class VideoGenerationPipeline:
         
         if html_quality not in ["classic", "advanced"]:
             raise ValueError(f"Invalid html_quality value: {html_quality}. Must be 'classic' or 'advanced'")
+        
+        if background_type not in ["black", "white"]:
+            raise ValueError(f"Invalid background_type value: {background_type}. Must be 'black' or 'white'")
 
         run_dir = self._resolve_run_dir(run_name, resume_run)
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -374,11 +501,13 @@ class VideoGenerationPipeline:
         print(f"🌍 Language set to: {language}")
         print(f"📝 Captions enabled: {show_captions}")
         print(f"🎨 HTML Quality: {html_quality}")
+        print(f"🖼️  Background Type: {background_type}")
         
         # Store parameters for use in pipeline stages
         self._current_language = language
         self._current_show_captions = show_captions
         self._current_html_quality = html_quality
+        self._current_background_type = background_type
         
         stage_idx = self.STAGE_INDEX[start_from]
         # stop_at means "stop after this stage", so stop_idx is the next stage after stop_at
@@ -394,6 +523,21 @@ class VideoGenerationPipeline:
         do_html = stage_idx <= self.STAGE_INDEX["html"] and self.STAGE_INDEX["html"] < stop_idx
         do_render = stage_idx <= self.STAGE_INDEX["render"] and self.STAGE_INDEX["render"] < stop_idx
 
+        # Token usage aggregation
+        total_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "image_count": 0
+        }
+        
+        def accumulate_usage(u: Dict[str, Any]):
+            if not u: return
+            total_usage["prompt_tokens"] += u.get("prompt_tokens", 0)
+            total_usage["completion_tokens"] += u.get("completion_tokens", 0)
+            total_usage["total_tokens"] += u.get("total_tokens", 0)
+            total_usage["image_count"] += u.get("image_count", 0)
+
         script_path = run_dir / "script.txt"
         response_json = run_dir / "narration_raw.json"
         audio_path = run_dir / "narration.mp3"
@@ -402,11 +546,17 @@ class VideoGenerationPipeline:
         alignment_json = run_dir / "alignment.json"
         timeline_path = run_dir / "time_based_frame.json"
 
+        # Initialize outputs to safe defaults in case stages are skipped
+        tts_outputs = {"response_json": None, "audio_path": None}
+        word_outputs = {"words_json": None, "words_csv": None, "alignment_json": None}
+
         if do_script:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
-            print(f"📝 Drafting refined script ({run_dir.name}) ...")
-            script_plan = self._draft_script(base_prompt, run_dir, language=language)
+            print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
+            script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration)
+            script_plan = script_out["result"]
+            accumulate_usage(script_out.get("usage", {}))
         else:
             self._require_file(script_path, "script.txt (narration text)")
             # Try to load the plan if it exists, otherwise provide a dummy one
@@ -422,48 +572,85 @@ class VideoGenerationPipeline:
                 "script_text": script_path.read_text(),
             }
 
-        if do_tts:
-            # print("🗣️  Synthesizing narration ...") # Already printed in method
-            tts_outputs = self._synthesize_voice(script_plan["script_path"], run_dir, language=language)
-        else:
-            self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
-            self._require_file(audio_path, "narration.mp3 (decoded audio)")
-            tts_outputs = {"response_json": response_json, "audio_path": audio_path}
+        # Only proceed to TTS if we are not stopping before it
+        if self.STAGE_INDEX["tts"] < stop_idx:
+            if do_tts:
+                # print("🗣️  Synthesize narration ...") # Already printed in method
+                tts_outputs = self._synthesize_voice(
+                    script_plan["script_path"], 
+                    run_dir, 
+                    language=language,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider
+                )
+            else:
+                self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
+                self._require_file(audio_path, "narration.mp3 (decoded audio)")
+                tts_outputs = {"response_json": response_json, "audio_path": audio_path}
 
-        if do_words:
-            print("🔤 Deriving word timings ...")
-            word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
-        else:
-            self._require_file(words_json, "narration.words.json")
-            self._require_file(words_csv, "narration.words.csv")
-            # Note: alignment.json not required since phonemes disabled
-            word_outputs = {
-                "words_json": words_json,
-                "words_csv": words_csv,
-            }
+        # Only proceed to WORDS if we are not stopping before it
+        if self.STAGE_INDEX["words"] < stop_idx:
+            if do_words:
+                print("🔤 Deriving word timings ...")
+                # Ensure we have the necessary inputs from TTS stage (or loaded files)
+                if not tts_outputs["response_json"]:
+                     # This should not happen due to the check above and do_tts logic, 
+                     # but essentially if we are here, we must have tts outputs
+                     # If we skipped TTS generation (do_tts=False), we loaded them in the else block above.
+                     pass
+                word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
+            else:
+                self._require_file(words_json, "narration.words.json")
+                self._require_file(words_csv, "narration.words.csv")
+                # Note: alignment.json not required since phonemes disabled
+                word_outputs = {
+                    "words_json": words_json,
+                    "words_csv": words_csv,
+                }
 
-        words = self._load_words(word_outputs["words_json"])
-        if not words:
-            raise RuntimeError("No words parsed from timestamps; cannot continue.")
+            words = self._load_words(word_outputs["words_json"])
+            if not words:
+                raise RuntimeError("No words parsed from timestamps; cannot continue.")
+        else:
+            words = []
 
         if do_html:
             print("🎨 Designing Visual Style Guide ...")
-            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir)
+            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type)
             
             print("🧠 Building minute-level segments ...")
+            # We need words for segmentation. If words is empty, we can't segment.
+            # But do_html implies we are past words stage, so words should be populated.
+            if not words and self.STAGE_INDEX["words"] < stop_idx:
+                 pass # Warning?
+                 
             segments = self._segment_words(words)
             if not segments:
                 raise RuntimeError("Failed to derive segments from narration.")
             print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
-            html_segments = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
+            html_results, html_usage = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
+            html_segments = html_results
+            accumulate_usage(html_usage)
             
             print("🖼️  Generating AI images for visual assets ...")
-            html_segments = self._process_generated_images(html_segments, run_dir)
+            html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
+            accumulate_usage(image_usage)
             
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(html_segments, run_dir)
+        
         if do_render:
             print("🎥 Rendering final video with Playwright...")
+            
+            # Get background color from style guide
+            style_guide_path = run_dir / "style_guide.json"
+            if style_guide_path.exists():
+                saved_style = json.loads(style_guide_path.read_text())
+                render_bg_color = saved_style.get("palette", {}).get("background", "#000000")
+            else:
+                # Use preset based on background_type
+                preset = BACKGROUND_PRESETS.get(background_type, BACKGROUND_PRESETS["black"])
+                render_bg_color = preset["background"]
             
             # Check for avatar generation
             avatar_video = None
@@ -481,7 +668,8 @@ class VideoGenerationPipeline:
                 words_json_path=word_outputs["words_json"],
                 run_dir=run_dir,
                 avatar_video_path=avatar_video,
-                show_captions=show_captions
+                show_captions=show_captions,
+                background_color=render_bg_color,
             )
         else:
             video_path = None
@@ -489,21 +677,27 @@ class VideoGenerationPipeline:
         return {
             "run_dir": run_dir,
             "script_path": script_plan["script_path"],
-            "voice_json": tts_outputs["response_json"],
-            "audio_path": tts_outputs["audio_path"],
-            "words_json": word_outputs["words_json"],
+            "voice_json": tts_outputs.get("response_json"),
+            "audio_path": tts_outputs.get("audio_path"),
+            "words_json": word_outputs.get("words_json"),
             "words_csv": word_outputs.get("words_csv", words_csv),
             "alignment_json": word_outputs.get("alignment_json", alignment_json),
             "timeline_json": timeline_path,
             "video_path": video_path,
+            "token_usage": total_usage,
         }
 
     # --- Script generation -------------------------------------------------
-    def _draft_script(self, base_prompt: str, run_dir: Path, language: str = "English") -> Dict[str, Any]:
+    def _draft_script(self, base_prompt: str, run_dir: Path, language: str = "English", target_audience: str = "General/Adult", target_duration: str = "2-3 minutes") -> Dict[str, Any]:
         system_prompt = SCRIPT_SYSTEM_PROMPT
-        user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(base_prompt=base_prompt.strip(), language=language).strip()
+        user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
+            base_prompt=base_prompt.strip(), 
+            language=language,
+            target_audience=target_audience,
+            target_duration=target_duration
+        ).strip()
 
-        raw = self.script_client.chat(
+        raw, usage = self.script_client.chat(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             temperature=0.5,
             max_tokens=12000,
@@ -526,13 +720,20 @@ class VideoGenerationPipeline:
         plan_path.write_text(json.dumps(data, indent=2))
         script_path = run_dir / "script.txt"
         script_path.write_text(script_text + "\n")
-        return {"plan": data, "script_path": script_path, "script_text": script_text}
+        return {"result": {"plan": data, "script_path": script_path, "script_text": script_text}, "usage": usage}
 
     # --- Google TTS bridge -------------------------------------------------
     # --- Edge TTS bridge (Free, Timed) -------------------------------------------------
     @retry_with_backoff(max_retries=3, initial_delay=2.0)
-    def _synthesize_voice(self, script_path: Path, run_dir: Path, language: str = "English") -> Dict[str, Any]:
-        print("🗣️  Synthesizing narration (EdgeTTS) ...")
+    def _synthesize_voice(
+        self, 
+        script_path: Path, 
+        run_dir: Path, 
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "edge"
+    ) -> Dict[str, Any]:
+        print(f"🗣️  Synthesizing narration ({tts_provider}) - {language} [{voice_gender}]...")
         
         # Ensure local deps are available
         if str(LOCAL_DEPS_DIR) not in sys.path:
@@ -545,11 +746,69 @@ class VideoGenerationPipeline:
         response_json = run_dir / "narration_raw.json"
         audio_path = run_dir / "narration.mp3"
         script_text = script_path.read_text().strip()
-        voice = VOICE_MAPPING.get(language.lower(), "en-US-AriaNeural") 
-        print(f"    🗣️  Voice: {voice} (Language: {language})")
+        
+        # --- Voice Selection Logic ---
+        lang_key = language.lower().strip()
+        gender_key = voice_gender.lower().strip()
+        provider_key = tts_provider.lower().strip()
+        
+        if gender_key not in ["male", "female"]: gender_key = "female"
+        if provider_key not in ["edge", "google"]: provider_key = "edge"
+        
+        # Fallback to English if language not found
+        if lang_key not in VOICE_MAPPING:
+             print(f"    ⚠️  Language '{language}' not found in mapping, falling back to 'english'")
+             lang_key = "english"
+             
+        # Select voice
+        try:
+            selected_voice = VOICE_MAPPING[lang_key][provider_key][gender_key]
+        except KeyError:
+            # Deep fallback
+            selected_voice = VOICE_MAPPING["english"][provider_key][gender_key]
+            
+        print(f"    🗣️  Voice: {selected_voice} (Provider: {provider_key}, Lang: {language})")
+
+        # --- Google TTS Path ---
+        if provider_key == "google":
+            credentials_path = REPO_ROOT / "google_credentials.json"
+            credentials_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+            
+            gc_client = None
+            if credentials_path.exists():
+                gc_client = GoogleCloudTTSClient(credentials_path=str(credentials_path))
+            elif credentials_json:
+                gc_client = GoogleCloudTTSClient(credentials_json=credentials_json)
+            else:
+                 raise RuntimeError(
+                     "Google TTS requested but no credentials found.\n"
+                     "1. Place 'google_credentials.json' in ai-video-gen-main/ directory OR\n"
+                     "2. Set 'GOOGLE_APPLICATION_CREDENTIALS_JSON' env var with content."
+                 )
+            
+            try:
+                # Pass explicit voice name and verify language code from voice name (e.g. en-US-Journey-F -> en-US)
+                lang_code_parts = selected_voice.split("-")
+                lang_code = f"{lang_code_parts[0]}-{lang_code_parts[1]}"
+                
+                gc_client.synthesize(
+                    text=script_text, 
+                    output_path=audio_path, 
+                    raw_json_path=response_json,
+                    voice_name=selected_voice,
+                    language_code=lang_code 
+                )
+                print(f"    ✅ Google TTS generation successful.")
+                return {"response_json": response_json, "audio_path": audio_path}
+            except Exception as e:
+                print(f"    ❌ Google TTS failed: {e}")
+                raise e
+
+        # --- Edge TTS Path ---
+        # Default behavior: Use EdgeTTS with selected voice
         
         async def _run_tts():
-            communicate = edge_tts.Communicate(script_text, voice)
+            communicate = edge_tts.Communicate(script_text, selected_voice)
             
             # We will perform a TWO-PASS or single-pass-with-subs approach? 
             # stream() is easiest for single pass, but if it fails, we need subs.
@@ -557,7 +816,7 @@ class VideoGenerationPipeline:
             # Actually, `communicate.stream()` produces `type="WordBoundary"`.
             # If that fails, `submaker` is needed?
             
-            # Simple approach: AriaNeural generally works. 
+            # Simple approach: AriaNeural (and other neural voices) generally works. 
             # Let's stick to stream() but with Aria.
             
             audio_data = bytearray()
@@ -793,17 +1052,38 @@ class VideoGenerationPipeline:
         except Exception as e:
             print(f"⚠️  EdgeTTS failed: {e}")
             credentials_path = REPO_ROOT / "google_credentials.json"
-            if credentials_path.exists():
+            credentials_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+            
+            if credentials_path.exists() or credentials_json:
                 print("    🔄 Falling back to Google Cloud TTS...")
                 try:
-                    gc_client = GoogleCloudTTSClient(str(credentials_path))
-                    # Note: GoogleCloudTTSClient currently hardcodes en-US-Journey-F
-                    gc_client.synthesize(script_text, audio_path, response_json)
+                    gc_client = None
+                    if credentials_path.exists():
+                         gc_client = GoogleCloudTTSClient(credentials_path=str(credentials_path))
+                    else:
+                         gc_client = GoogleCloudTTSClient(credentials_json=credentials_json)
+
+                    # Determine fallback google voice
+                    try:
+                        fallback_voice = VOICE_MAPPING[lang_key]["google"][gender_key]
+                    except KeyError:
+                         fallback_voice = VOICE_MAPPING["english"]["google"][gender_key]
+                         
+                    lang_code_parts = fallback_voice.split("-")
+                    lang_code = f"{lang_code_parts[0]}-{lang_code_parts[1]}"
+                    
+                    gc_client.synthesize(
+                        text=script_text, 
+                        output_path=audio_path, 
+                        raw_json_path=response_json,
+                        voice_name=fallback_voice,
+                        language_code=lang_code
+                    )
                 except Exception as e2:
                     print(f"    ❌ Google TTS Fallback also failed: {e2}")
                     raise e  # Raise original EdgeTTS error if fallback fails
             else:
-                print("    ❌ No google_credentials.json found for fallback.")
+                print("    ❌ No google_credentials.json found or env var set for fallback.")
                 raise e
         
         return {"response_json": response_json, "audio_path": audio_path}
@@ -839,45 +1119,49 @@ class VideoGenerationPipeline:
         return {"words_json": words_json, "words_csv": words_csv}
 
     # --- Style Generation --------------------------------------------------
-    def _generate_style_guide(self, script_text: str, run_dir: Path) -> Dict[str, Any]:
+    def _generate_style_guide(self, script_text: str, run_dir: Path, background_type: str = "black") -> Dict[str, Any]:
         """
-        Ask the LLM to define a cohesive visual style (colors, fonts, shapes) 
-        based on the script content.
+        Generate a style guide based on background_type (white or black).
+        Uses predefined presets to ensure proper color contrast.
         """
-        system_prompt = STYLE_GUIDE_SYSTEM_PROMPT
-        user_prompt = STYLE_GUIDE_USER_PROMPT_TEMPLATE.format(script_excerpt=script_text[:1000]).strip()
-
-        raw = None
-        try:
-            raw = self.html_client.chat(
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                temperature=0.7,
-                max_tokens=1000,
-            )
-            data = _extract_json_blob(raw)
-            # Save for inspection
-            (run_dir / "style_guide.json").write_text(json.dumps(data, indent=2))
-            return data
-        except Exception as e:
-            print(f"⚠️ Failed to generate style guide, using defaults: {e}")
-            if raw:
-                print(f"    Raw output was: {raw[:200]}...")
-            return {
-                "palette": {
-                    "background": "#0f172a",
-                    "text": "#f8fafc",
-                    "primary": "#3b82f6",
-                    "secondary": "#1e293b",
-                    "accent": "#38bdf8"
-                },
-                "fonts": {
-                    "primary": "Montserrat",
-                    "secondary": "Inter",
-                    "code": "Fira Code"
-                },
-                "borderRadius": "24px",
-                "glassmorphism": True
-            }
+        # Use predefined presets based on background_type
+        preset = BACKGROUND_PRESETS.get(background_type, BACKGROUND_PRESETS["black"])
+        
+        style_guide = {
+            "background_type": background_type,
+            "palette": {
+                "background": preset["background"],
+                "text": preset["text"],
+                "text_secondary": preset["text_secondary"],
+                "primary": preset["primary"],
+                "secondary": preset["secondary"],
+                "accent": preset["accent"],
+                "svg_stroke": preset["svg_stroke"],
+                "svg_fill": preset["svg_fill"],
+                "card_bg": preset["card_bg"],
+                "card_border": preset["card_border"],
+                "mermaid_node_fill": preset["mermaid_node_fill"],
+                "mermaid_node_stroke": preset["mermaid_node_stroke"],
+                "mermaid_text": preset["mermaid_text"],
+                "annotation_color": preset["annotation_color"],
+            },
+            "fonts": {
+                "primary": "Montserrat",
+                "secondary": "Inter",
+                "code": "Fira Code"
+            },
+            "borderRadius": "8px",  # Reduced - less app-like
+            "glassmorphism": False,  # Never use glassmorphism for educational videos
+            "mermaid_theme": preset["mermaid_theme"],
+            "code_theme": preset["code_theme"],
+            "notes": f"Clean {'dark' if background_type == 'black' else 'light'} educational style. No shadows. Use Rough Notation for annotations."
+        }
+        
+        # Save for inspection
+        (run_dir / "style_guide.json").write_text(json.dumps(style_guide, indent=2))
+        print(f"🎨 Using {background_type.upper()} background theme")
+        print(f"   Text color: {preset['text']} | SVG stroke: {preset['svg_stroke']} | Annotation: {preset['annotation_color']}")
+        return style_guide
 
     # --- Segmentation + HTML ----------------------------------------------
     @staticmethod
@@ -914,17 +1198,63 @@ class VideoGenerationPipeline:
             start_time += window
         return segments
 
-    def _generate_html_segments(self, segments: List[Dict[str, Any]], style_guide: Dict[str, Any], script_plan: Optional[Dict[str, Any]], run_dir: Path, language: str = "English") -> List[Dict[str, Any]]:
-        def task(seg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _generate_html_segments(self, segments: List[Dict[str, Any]], style_guide: Dict[str, Any], script_plan: Optional[Dict[str, Any]], run_dir: Path, language: str = "English") -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        def task(seg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
             # Flatten style guide for prompt
             palette = style_guide.get("palette", {})
+            background_type = style_guide.get("background_type", "black")
+            
+            # Get mermaid classDef based on background type
+            mermaid_classdef = f"classDef default fill:{palette.get('mermaid_node_fill', '#1e293b')},stroke:{palette.get('mermaid_node_stroke', '#3b82f6')},stroke-width:2px,color:{palette.get('mermaid_text', '#fff')},rx:8px,ry:8px;"
+            
+            # Build explicit color instructions based on background
+            if background_type == "white":
+                color_warning = (
+                    "⚠️ **WHITE BACKGROUND DETECTED** - USE DARK COLORS ONLY!\n"
+                    "- ALL text MUST be DARK (black/navy): {text}\n"
+                    "- ALL SVG strokes MUST be DARK: {svg_stroke}\n"
+                    "- NEVER use white, light gray, or light colors for text/strokes!\n"
+                    "- Annotations should be RED for visibility: {annotation}\n"
+                ).format(
+                    text=palette.get('text'),
+                    svg_stroke=palette.get('svg_stroke'),
+                    annotation=palette.get('annotation_color')
+                )
+            else:
+                color_warning = (
+                    "⚠️ **BLACK BACKGROUND DETECTED** - USE LIGHT COLORS ONLY!\n"
+                    "- ALL text MUST be WHITE/LIGHT: {text}\n"
+                    "- ALL SVG strokes MUST be LIGHT: {svg_stroke}\n"
+                    "- NEVER use black or dark colors for text/strokes!\n"
+                ).format(
+                    text=palette.get('text'),
+                    svg_stroke=palette.get('svg_stroke')
+                )
+            
             style_context = (
-                f"STYLE GUIDE TO FOLLOW STRICTLY:\n"
-                f"- Colors: Bg={palette.get('background')}, Text={palette.get('text')}, "
-                f"Primary={palette.get('primary')}, Accent={palette.get('accent')}\n"
-                f"- Border Radius: {style_guide.get('borderRadius', '12px')}\n"
-                f"- Mood: {style_guide.get('notes', 'Clean')}\n"
-                f"- Glassmorphism: {style_guide.get('glassmorphism', False)}\n"
+                f"🎨 **COLOR RULES (CRITICAL - FOLLOW EXACTLY)**:\n"
+                f"{color_warning}\n"
+                f"**EXACT COLORS TO USE**:\n"
+                f"- Text color: {palette.get('text')}\n"
+                f"- Secondary text: {palette.get('text_secondary')}\n"
+                f"- SVG stroke color: {palette.get('svg_stroke')}\n"
+                f"- SVG fill color: {palette.get('svg_fill')}\n"
+                f"- Accent/highlight: {palette.get('accent')}\n"
+                f"- Annotation color: {palette.get('annotation_color')}\n"
+                f"\n**FOR SVG ELEMENTS**:\n"
+                f"```html\n"
+                f"<text fill=\"{palette.get('text')}\">Your text</text>\n"
+                f"<path stroke=\"{palette.get('svg_stroke')}\" fill=\"none\"/>\n"
+                f"<rect fill=\"{palette.get('svg_fill')}\"/>\n"
+                f"```\n"
+                f"\n**MERMAID DIAGRAMS**:\n"
+                f"```\n"
+                f"{mermaid_classdef}\n"
+                f"```\n"
+                f"\n**ROUGH NOTATION** (for annotations):\n"
+                f"```javascript\n"
+                f"RoughNotation.annotate(element, {{type: 'underline', color: '{palette.get('annotation_color')}'}}).show();\n"
+                f"```\n"
             )
 
             # Extract relevant visual ideas from beat outline if available
@@ -956,7 +1286,15 @@ class VideoGenerationPipeline:
                 style_context=style_context,
                 beat_context=beat_context,
                 safe_area=HTML_GENERATION_SAFE_AREA,
-                language=language
+                language=language,
+                # Color enforcement variables
+                background_type=background_type,
+                background_type_upper=background_type.upper(),
+                text_color=palette.get('text', '#0f172a'),
+                svg_stroke=palette.get('svg_stroke', '#0f172a'),
+                svg_fill=palette.get('svg_fill', '#2563eb'),
+                annotation_color=palette.get('annotation_color', '#dc2626'),
+                primary_color=palette.get('primary', '#2563eb'),
             ).strip()
 
             # Retry logic for robustness against JSON parsing failures
@@ -964,7 +1302,7 @@ class VideoGenerationPipeline:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    raw = self.html_client.chat(
+                    raw, usage = self.html_client.chat(
                         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                         temperature=0.7,  # Lower temperature for more consistent JSON output
                         max_tokens=12000,
@@ -977,7 +1315,7 @@ class VideoGenerationPipeline:
                     base_end = float(seg["end"])
                     self._ensure_segment_coverage(shot_entries, seg, base_start, base_end)
                     self._apply_layout_to_entries(shot_entries, seg)
-                    return shot_entries
+                    return shot_entries, usage
                 except Exception as e:
                     if attempt < max_retries - 1:
                         wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
@@ -989,14 +1327,21 @@ class VideoGenerationPipeline:
                         raise
 
         results: List[Dict[str, Any]] = []
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(segments) or 1)) as executor:
             future_map = {executor.submit(task, seg): seg for seg in segments}
             for future in concurrent.futures.as_completed(future_map):
                 seg = future_map[future]
-                result_entries = future.result()
+                result_entries, usage = future.result()
                 results.extend(result_entries)
+                if usage:
+                    total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                    total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                    total_usage["total_tokens"] += usage.get("total_tokens", 0)
+
         results.sort(key=lambda item: item["start"])
-        return results
+        return results, total_usage
 
     def _parse_html_response(self, raw: str, seg: Dict[str, Any], run_dir: Path) -> Dict[str, Any]:
         try:
@@ -1054,6 +1399,7 @@ class VideoGenerationPipeline:
         Fix common LLM artifacts in HTML:
         1. Replace Unicode arrows in Mermaid syntax (→ to -->).
         2. Remove repetitive 'In In In' garbage lines.
+        3. Fix missing animations for opacity:0 elements.
         """
         if not html:
             return ""
@@ -1091,6 +1437,37 @@ class VideoGenerationPipeline:
         # Ideally we allow UTF-8 but LLM outputting corrupted ligatures is the issue.
         # Let's strip non-ascii.
         html = re.sub(r'[^\x00-\x7F]+', ' ', html)
+        
+        # 5. FIX CRITICAL: Ensure elements with opacity:0 have animations
+        # Find all elements with opacity:0 and extract their IDs
+        opacity_zero_ids = re.findall(r'id=["\']([^"\']+)["\'][^>]*style=["\'][^"\']*opacity\s*:\s*0', html)
+        opacity_zero_ids += re.findall(r'style=["\'][^"\']*opacity\s*:\s*0[^"\']*["\'][^>]*id=["\']([^"\']+)["\']', html)
+        
+        # Check if there's a script tag
+        has_script = '<script>' in html.lower() or '<script ' in html.lower()
+        
+        if opacity_zero_ids and not has_script:
+            # No script tag but we have hidden elements - add auto-animation script
+            selectors = ', '.join([f'#{id}' for id in set(opacity_zero_ids)])
+            auto_script = f"""<script>
+// Auto-generated: Animate hidden elements
+gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 0.2, ease: 'power2.out'}});
+</script>"""
+            html = html + auto_script
+        elif opacity_zero_ids and has_script:
+            # Has script but check if IDs are referenced in the script
+            script_match = re.search(r'<script[^>]*>(.*?)</script>', html, re.DOTALL | re.IGNORECASE)
+            if script_match:
+                script_content = script_match.group(1)
+                missing_ids = [id for id in set(opacity_zero_ids) if id not in script_content]
+                if missing_ids:
+                    # Some IDs are not animated - add them
+                    selectors = ', '.join([f'#{id}' for id in missing_ids])
+                    additional_script = f"""<script>
+// Auto-generated: Animate missing hidden elements
+gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 0.2, ease: 'power2.out'}});
+</script>"""
+                    html = html + additional_script
 
         return html 
         if "graph TD" in html or "graph LR" in html:
@@ -1227,6 +1604,9 @@ class VideoGenerationPipeline:
         # Sort by start time to be sure
         entries.sort(key=lambda x: x["start"])
         
+        # Minimum shot duration to allow animations to complete
+        MIN_SHOT_DURATION = 3.0  # At least 3 seconds per shot
+        
         # Iterate and clamp duration of current shot if it overlaps with next
         for i in range(len(entries) - 1):
             curr = entries[i]
@@ -1236,11 +1616,21 @@ class VideoGenerationPipeline:
             if curr["end"] > nxt["start"]:
                 curr["end"] = nxt["start"]
             
-            # If clamping made it zero or negative duration, give it a tiny sliver or remove?
-            # Better to just nudge next start? User wants "one at a time". 
-            # Clamping end is safer.
+            # If clamping made it too short, enforce minimum duration
+            if curr["end"] - curr["start"] < MIN_SHOT_DURATION:
+                # Try to extend, but don't overlap with next
+                desired_end = curr["start"] + MIN_SHOT_DURATION
+                curr["end"] = min(desired_end, nxt["start"])
+            
+            # Absolute minimum to prevent zero-duration shots
             if curr["end"] <= curr["start"]:
-                curr["end"] = curr["start"] + 0.1 # Minimal duration
+                curr["end"] = curr["start"] + 0.5
+        
+        # Also enforce minimum duration for the last entry
+        if entries:
+            last = entries[-1]
+            if last["end"] - last["start"] < MIN_SHOT_DURATION:
+                last["end"] = min(last["start"] + MIN_SHOT_DURATION, base_end)
                 
         # Also ensure last shot doesn't exceed base_end (already handled by min(base_end) in loop)
         # -------------------------------------------------
@@ -1393,75 +1783,218 @@ class VideoGenerationPipeline:
         h = max(150, h)
         return x, y, w, h, auto_box
 
-    @staticmethod
-    def _ensure_fonts(html: str) -> str:
+    def _ensure_fonts(self, html: str) -> str:
+        # Get colors based on background_type
+        bg_type = getattr(self, '_current_background_type', 'white')
+        preset = BACKGROUND_PRESETS.get(bg_type, BACKGROUND_PRESETS["white"])
+        
+        text_color = preset["text"]
+        text_secondary = preset["text_secondary"]
+        primary_color = preset["primary"]
+        accent_color = preset["accent"]
+        
         # Common educational styles (Highlighting, Markers)
-        global_css = """<style>
+        global_css = f"""<style>
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');
-            .highlight { 
+            
+            /* --- FULL SCREEN CENTER CONTAINER (CRITICAL) --- */
+            .full-screen-center {{
+              width: 100%;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              text-align: center;
+              box-sizing: border-box;
+              padding: 60px 80px;
+            }}
+            
+            .highlight {{ 
               background: linear-gradient(120deg, rgba(255, 226, 89, 0.6) 0%, rgba(255, 233, 148, 0.4) 100%); 
               padding: 0 4px; border-radius: 4px; display: inline-block; 
               box-decoration-break: clone; -webkit-box-decoration-break: clone;
-            }
-            .emphasis { color: #3b82f6; font-weight: bold; }
-            .mermaid { display: flex; justify-content: center; width: 100%; margin: 20px auto; }
+            }}
+            .emphasis {{ color: var(--primary-color, {primary_color}); font-weight: bold; }}
+            .mermaid {{ display: flex; justify-content: center; width: 100%; margin: 20px auto; }}
 
             /* --- LAYOUT UTILITIES --- */
             /* 1. Split Layout (Symetric/Asymetric) */
-            .layout-split { 
+            .layout-split {{ 
               display: grid; grid-template-columns: 1fr 1fr; gap: 60px; 
-              width: 90%; max-width: 1700px; height: 100%; align-items: center; justify-content: center; 
+              width: 90%; max-width: 1700px; align-items: center; justify-items: center; 
               text-align: left; 
-            }
-            .layout-split.reverse { direction: rtl; }
-            .layout-split.reverse > * { direction: ltr; }
-            .layout-split.golden-left { grid-template-columns: 1.2fr 0.8fr; }
-            .layout-split.golden-right { grid-template-columns: 0.8fr 1.2fr; }
+            }}
+            .layout-split.reverse {{ direction: rtl; }}
+            .layout-split.reverse > * {{ direction: ltr; }}
+            .layout-split.golden-left {{ grid-template-columns: 1.2fr 0.8fr; }}
+            .layout-split.golden-right {{ grid-template-columns: 0.8fr 1.2fr; }}
             
-            /* 2. Bento Grid */
-            .layout-bento { 
-              display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); 
-              gap: 24px; width: 90%; max-width: 1700px; height: 80%; align-content: center; 
-            }
-            .bento-card { 
-              background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); 
-              backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); 
-              border-radius: 24px; padding: 32px; 
-              display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; 
-              text-align: left; overflow: hidden; position: relative; 
-              box-shadow: 0 4px 20px rgba(0,0,0,0.2); 
-            }
-            .bento-card.dark { background: rgba(0,0,0,0.8); }
-            .bento-card.accent { background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); }
-            .bento-card.center { align-items: center; text-align: center; justify-content: center; }
-            .bento-card.span-2 { grid-column: span 2; }
-            .bento-card.span-row-2 { grid-row: span 2; }
+            /* 2. Simple content sections (NO card-heavy design) */
+            .layout-bento {{ 
+              display: grid; grid-template-columns: repeat(2, 1fr); 
+              gap: 40px; width: 90%; max-width: 1600px; align-content: center; 
+            }}
+            .content-section {{ 
+              padding: 24px; 
+              color: {text_color};
+              /* NO shadows, NO blur, NO card-like appearance */
+            }}
+            /* Legacy .bento-card for compatibility - simplified */
+            .bento-card {{ 
+              padding: 24px; 
+              border-left: 3px solid {primary_color};
+              color: {text_color};
+              /* NO shadows, NO rounded corners, NO blur */
+            }}
+            .bento-card.center {{ text-align: center; }}
             
             /* 3. Hero / Center Focus */
-            .layout-hero { 
+            .layout-hero {{ 
               display: flex; flex-direction: column; align-items: center; justify-content: center; 
               text-align: center; width: 80%; max-width: 1200px; gap: 32px; 
-            }
+            }}
             
             /* 4. Code Split */
-            .layout-code-split { 
+            .layout-code-split {{ 
               display: grid; grid-template-columns: 40% 60%; gap: 40px; 
               width: 95%; max-width: 1800px; align-items: center; 
               text-align: left; 
-            }
+            }}
             
-            /* Typography Helpers */
-            .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; }
-            .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
-            .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; color: #cbd5e1; line-height: 1.5; }
-            .text-label { font-family: 'Fira Code', monospace; font-size: 18px; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: block; }
+            /* Typography Helpers - use dynamic colors */
+            .text-display {{ font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; color: {text_color}; }}
+            .text-h2 {{ font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; color: {text_color}; }}
+            .text-body {{ font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; color: {text_secondary}; line-height: 1.5; }}
+            .text-label {{ font-family: 'Fira Code', monospace; font-size: 18px; color: {accent_color}; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: block; }}
             
-            .glass-panel { 
-              background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); 
-              border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 40px; 
-            }
+            /* --- CLEAN EDUCATIONAL COMPONENTS (NO shadows, NO app-like design) --- */
+            
+            /* Key Term Highlighting - simple underline */
+            .key-term {{
+              color: {accent_color};
+              font-weight: 700;
+              border-bottom: 3px solid {accent_color};
+            }}
+            
+            /* Step Numbers - simple inline numbering */
+            .step-number {{
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              width: 48px;
+              height: 48px;
+              background: {primary_color};
+              color: #fff;
+              font-weight: 800;
+              font-size: 24px;
+              border-radius: 50%;
+              margin-right: 16px;
+            }}
+            
+            .step-item {{
+              display: flex;
+              align-items: flex-start;
+              margin: 20px 0;
+              color: {text_color};
+            }}
+            
+            .step-content {{
+              flex: 1;
+            }}
+            
+            /* Simple divider line */
+            .divider {{
+              width: 100%;
+              height: 2px;
+              background: {primary_color};
+              margin: 24px 0;
+              opacity: 0.5;
+            }}
+            
+            /* Arrow indicator for flow */
+            .arrow-right {{
+              display: inline-block;
+              width: 0;
+              height: 0;
+              border-top: 12px solid transparent;
+              border-bottom: 12px solid transparent;
+              border-left: 20px solid {primary_color};
+              margin: 0 16px;
+            }}
+            
+            /* Simple label tag */
+            .label-tag {{
+              display: inline-block;
+              padding: 4px 12px;
+              background: {primary_color};
+              color: #fff;
+              font-size: 14px;
+              font-weight: 600;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+            }}
+            
+            /* Comparison - simple side by side */
+            .comparison {{
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 60px;
+              width: 100%;
+            }}
+            .comparison .side {{
+              color: {text_color};
+            }}
+            .comparison .side-title {{
+              font-size: 18px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.1em;
+              margin-bottom: 16px;
+              padding-bottom: 8px;
+              border-bottom: 3px solid currentColor;
+            }}
+            .comparison .side.before .side-title {{ color: #ef4444; }}
+            .comparison .side.after .side-title {{ color: #10b981; }}
+            
+            /* SVG container for diagrams */
+            .svg-diagram {{
+              width: 100%;
+              max-width: 800px;
+              margin: 0 auto;
+            }}
+            .svg-diagram svg {{
+              width: 100%;
+              height: auto;
+            }}
+            
+            /* Simple bullet list */
+            .simple-list {{
+              list-style: none;
+              padding: 0;
+              margin: 0;
+            }}
+            .simple-list li {{
+              padding: 12px 0;
+              padding-left: 32px;
+              position: relative;
+              font-size: 24px;
+              color: {text_color};
+            }}
+            .simple-list li::before {{
+              content: '→';
+              position: absolute;
+              left: 0;
+              color: {primary_color};
+              font-weight: bold;
+            }}
 
-            :host { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; }
+            :host {{ 
+              width: 100%; height: 100%; 
+              display: flex; flex-direction: column; align-items: center; justify-content: center; 
+              font-family: 'Inter', sans-serif; 
+              color: {text_color};
+            }}
             </style>"""
         
         # If the model already imports fonts, trust it.
@@ -1510,17 +2043,40 @@ class VideoGenerationPipeline:
     def _build_fallback_entry(
         self, seg: Dict[str, Any], start: float, end: float, filler_index: int
     ) -> Dict[str, Any]:
-        text = str(seg.get("text", "")).strip()
-        words = text.split()
-        snippet = " ".join(words[:22]) + ("..." if len(words) > 22 else "")
+        # Extract words relevant to the filler's time range from word-level data
+        seg_words = seg.get("words", [])
+        relevant_words = []
+        for w in seg_words:
+            w_start = float(w.get("start", 0))
+            w_end = float(w.get("end", 0))
+            # Include words that overlap with the filler time range
+            if w_end >= start and w_start <= end:
+                relevant_words.append(str(w.get("word", "")))
+        
+        # If we have word-level data, use it; otherwise fall back to segment text
+        if relevant_words:
+            snippet = " ".join(relevant_words[:22]) + ("..." if len(relevant_words) > 22 else "")
+        else:
+            text = str(seg.get("text", "")).strip()
+            words = text.split()
+            snippet = " ".join(words[:22]) + ("..." if len(words) > 22 else "")
+        
+        # Get colors based on background_type
+        bg_type = getattr(self, '_current_background_type', 'white')
+        preset = BACKGROUND_PRESETS.get(bg_type, BACKGROUND_PRESETS["white"])
+        
+        bg_color = preset["background"]
+        text_color = preset["text"]
+        label_color = preset["primary"]
+        
         html = (
             "<style>"
             "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Inter:wght@400;600&display=swap');"
             ".fs-container {"
             "  width: 100vw; height: 100vh;"
             "  display: flex; flex-direction: column; align-items: center; justify-content: center;"
-            "  background: #0f172a;"  # Slate 900 solid
-            "  color: #f8fafc;"
+            f"  background: {bg_color};"
+            f"  color: {text_color};"
             "  font-family: 'Inter', sans-serif;"
             "  text-align: center;"
             "  padding: 60px;"
@@ -1531,7 +2087,7 @@ class VideoGenerationPipeline:
             "  font-size: 24px;"
             "  text-transform: uppercase;"
             "  letter-spacing: 0.15em;"
-            "  color: #38bdf8;"  # Sky 400
+            f"  color: {label_color};"
             "  margin-bottom: 32px;"
             "}"
             ".fs-content {"
@@ -1540,6 +2096,7 @@ class VideoGenerationPipeline:
             "  font-weight: 700;"
             "  line-height: 1.1;"
             "  max-width: 1600px;"
+            f"  color: {text_color};"
             "}"
             "</style>"
             "<div class='fs-container'>"
@@ -1595,7 +2152,7 @@ class VideoGenerationPipeline:
                 return True
         return False
 
-    def _process_generated_images(self, html_segments: List[Dict[str, Any]], run_dir: Path) -> List[Dict[str, Any]]:
+    def _process_generated_images(self, html_segments: List[Dict[str, Any]], run_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Scan generated HTML for <img data-img-prompt="..."> tags, generate images via Gemini,
         save them to disk, and update the src attribute.
@@ -1606,7 +2163,7 @@ class VideoGenerationPipeline:
         # Check if Gemini API key is available
         if not self.gemini_image_api_key:
             print("    ⚠️  No Gemini API key configured. Skipping image generation.")
-            return html_segments
+            return html_segments, {}
         
         # We'll use a ThreadPoolExecutor to generate images in parallel
         # First, gather all image requests
@@ -1637,7 +2194,7 @@ class VideoGenerationPipeline:
         if not tasks:
             print(f"    ℹ️  No image tags found in HTML segments (checked {total_html_segments} segments, {segments_with_images} had 'data-img-prompt' attribute).")
             print(f"    ℹ️  The LLM may not have generated image tags. Check HTML generation prompt includes image instructions.")
-            return html_segments
+            return html_segments, {}
 
         print(f"    Found {len(tasks)} images to generate from {segments_with_images} segments.")
         
@@ -1647,7 +2204,8 @@ class VideoGenerationPipeline:
             
             # Generate
             print(f"    🎨 Generating image {idx}: {prompt[:50]}...")
-            image_bytes = self._call_image_generation_llm(prompt)
+            # We don't get exact token usage from this simplified call, but we can count images
+            image_bytes, usage_meta = self._call_image_generation_llm(prompt)
             if not image_bytes:
                 print(f"    ❌ Failed to generate image for: {prompt[:50]}...")
                 return None
@@ -1667,7 +2225,8 @@ class VideoGenerationPipeline:
                     "entry_id": id(task["entry"]),
                     "full_tag": task["full_tag"],
                     "new_src": str(path.absolute()),
-                    "filename": filename
+                    "filename": filename,
+                    "usage": usage_meta
                 }
             except Exception as e:
                 print(f"    ❌ Failed to save image {filename}: {e}")
@@ -1676,6 +2235,7 @@ class VideoGenerationPipeline:
         replacements = {}
         successful_generations = 0
         failed_generations = 0
+        total_image_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "image_count": 0}
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(process_image_task, t) for t in tasks]
@@ -1683,6 +2243,13 @@ class VideoGenerationPipeline:
                 res = f.result()
                 if res:
                     successful_generations += 1
+                    total_image_usage["image_count"] += 1
+                    u = res.get("usage")
+                    if u:
+                        total_image_usage["prompt_tokens"] += u.get("promptTokenCount", 0)
+                        total_image_usage["completion_tokens"] += u.get("candidatesTokenCount", 0)
+                        total_image_usage["total_tokens"] += u.get("totalTokenCount", 0)
+                    
                     entry_id = res["entry_id"]
                     if entry_id not in replacements:
                         replacements[entry_id] = []
@@ -1694,7 +2261,7 @@ class VideoGenerationPipeline:
         
         if successful_generations == 0:
             print("    ⚠️  No images were successfully generated. HTML will retain placeholder images.")
-            return html_segments
+            return html_segments, total_image_usage
         
         # Apply replacements - use a more robust matching strategy
         replacements_applied = 0
@@ -1736,17 +2303,17 @@ class VideoGenerationPipeline:
                 entry["html"] = html
         
         print(f"    📝 Applied {replacements_applied} image replacements to HTML segments")
-        return html_segments
+        return html_segments, total_image_usage
 
     @retry_with_backoff(max_retries=3, initial_delay=1.0)
-    def _call_image_generation_llm(self, prompt: str, width: int = 1920, height: int = 1080) -> Optional[bytes]:
+    def _call_image_generation_llm(self, prompt: str, width: int = 1920, height: int = 1080) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
         """
-        Generate image using Google Generative AI (Gemini).
+        Generate image using Google Generative AI (Gemini). Returns (image_bytes, usage_metadata).
         """
         try:
             if not self.gemini_image_api_key:
                 print(f"    ⚠️ No Gemini API key for images. Cannot generate: {prompt[:50]}...")
-                return None
+                return None, None
                 
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key={self.gemini_image_api_key}"
             headers = {"Content-Type": "application/json"}
@@ -1768,16 +2335,18 @@ class VideoGenerationPipeline:
             with urllib.request.urlopen(req, timeout=60) as response:
                 if response.status != 200:
                     print(f"Gemini API error: {response.status}")
-                    return None
+                    return None, None
                 raw = response.read().decode("utf-8")
                 data = json.loads(raw)
+            
+            usage_metadata = data.get("usageMetadata", {})
 
             # Check for inlineData
             # 1. Direct inlineData (rare for this endpoint structure but checked in snippet)
             if "inlineData" in data:
                 b64 = data["inlineData"].get("data")
                 if b64:
-                    return base64.b64decode(b64)
+                    return base64.b64decode(b64), usage_metadata
             
             # 2. Candidates
             if "candidates" in data and data["candidates"]:
@@ -1787,15 +2356,15 @@ class VideoGenerationPipeline:
                         if "inlineData" in part:
                             b64 = part["inlineData"].get("data")
                             if b64:
-                                return base64.b64decode(b64)
+                                return base64.b64decode(b64), usage_metadata
             
-            return None
+            return None, None
 
         except Exception as e:
             print(f"    ❌ Gemini image generation exception for prompt '{prompt[:50]}...': {str(e)}")
             import traceback
             print(f"    📋 Error details: {traceback.format_exc()[:500]}")  # Limit traceback length
-            return None
+            return None, None
 
     def _generate_avatar(self, audio_path: Path, run_dir: Path, opts: Dict[str, Any]) -> Optional[Path]:
         avatar_opts = opts.get("avatar", {})
@@ -1932,6 +2501,7 @@ class VideoGenerationPipeline:
         run_dir: Path,
         avatar_video_path: Optional[Path] = None,
         show_captions: bool = True,
+        background_color: str = "#000000",
     ) -> Path:
         output_video = run_dir / "output.mp4"
         frames_dir = run_dir / ".render_frames"
@@ -1952,13 +2522,25 @@ class VideoGenerationPipeline:
             str(DEFAULT_BRANDING),
             "--frames-dir",
             str(frames_dir),
+            "--background",
+            background_color,
         ]
         if show_captions:
             cmd.append("--show-captions")
         if avatar_video_path:
             cmd.extend(["--avatar-video", str(avatar_video_path)])
             
-        subprocess.run(cmd, check=True, cwd=REPO_ROOT)
+            
+        try:
+            # Capture output to ensure we see errors in the logs
+            result = subprocess.run(cmd, check=True, cwd=REPO_ROOT, capture_output=True, text=True)
+            print(f"Render output: {result.stdout}")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Video generation command failed!")
+            print(f"STDOUT: {e.stdout}")
+            print(f"STDERR: {e.stderr}")
+            raise RuntimeError(f"Video generation failed with exit code {e.returncode}. Error: {e.stderr}")
+            
         if not output_video.exists():
             raise RuntimeError(f"Video not found at {output_video}")
         return output_video
@@ -2000,6 +2582,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--html-model", default="xiaomi/mimo-v2-flash:free", help="Model for HTML generation.")
     parser.add_argument("--voice-id", default="Qggl4b0xRMiqOwhPtVWT", help="ElevenLabs voice ID.")
     parser.add_argument("--voice-model", default="eleven_multilingual_v2", help="ElevenLabs model ID.")
+    parser.add_argument(
+        "--background-type",
+        choices=["black", "white"],
+        default="black",
+        help="Background color type: 'black' for dark theme, 'white' for light theme (default: black)."
+    )
+    parser.add_argument(
+        "--target-audience",
+        default="General/Adult",
+        help="Target audience for age-appropriate content. Examples: 'Class 3 (Ages 7-8)', 'Class 9-10 (Ages 14-15)', 'College/Adult'."
+    )
+    parser.add_argument(
+        "--target-duration",
+        default="2-3 minutes",
+        help="Target video duration. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'."
+    )
     args = parser.parse_args()
 
     if args.resume_run and args.run_name:
@@ -2033,6 +2631,9 @@ def main() -> None:
         run_name=args.run_name,
         resume_run=args.resume_run,
         start_from=args.start_from,
+        background_type=args.background_type,
+        target_audience=args.target_audience,
+        target_duration=args.target_duration,
     )
     print("\n✅ Pipeline completed successfully!")
     print(f"• Run directory: {outputs['run_dir']}")

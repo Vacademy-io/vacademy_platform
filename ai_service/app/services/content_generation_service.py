@@ -367,7 +367,12 @@ class ContentGenerationService:
                 captions_enabled=True,  # Default for course outline
                 html_quality=todo.metadata.get("html_quality", "advanced"),
                 resume=False,
-                model=todo.metadata.get("model") or todo.model  # Use model from metadata or todo
+                model=todo.metadata.get("model") or todo.model,  # Use model from metadata or todo
+                target_audience=todo.metadata.get("target_audience", "General/Adult"),
+                target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                db_session=self._db_session,
+                institute_id=self._institute_id,
+                user_id=self._user_id
             ):
                 event_count += 1
                 logger.info(f"[AI_VIDEO] Received event #{event_count} for {video_id}: {event.get('type', 'unknown')}, stage={event.get('stage', 'N/A')}")
@@ -446,6 +451,17 @@ class ContentGenerationService:
                 try:
                     logger.info(f"[AI_VIDEO] Starting background HTML generation for {video_id}")
                     
+                    # Small delay to ensure S3 uploads and DB updates are complete
+                    import asyncio
+                    await asyncio.sleep(1)
+                    
+                    # Verify script file is available in S3 before resuming
+                    video_status_check = self._video_gen_service.get_video_status(video_id)
+                    if video_status_check and video_status_check.get("s3_urls", {}).get("script"):
+                        logger.info(f"[AI_VIDEO] Script file confirmed in S3: {video_status_check['s3_urls']['script']}")
+                    else:
+                        logger.warning(f"[AI_VIDEO] Script file not found in S3, but proceeding anyway (may fail)")
+                    
                     # Resume from SCRIPT stage and continue till HTML
                     async for event in self._video_gen_service.generate_till_stage(
                         video_id=video_id,
@@ -455,7 +471,13 @@ class ContentGenerationService:
                         captions_enabled=True,
                         html_quality=todo.metadata.get("html_quality", "advanced"),
                         resume=True,  # Resume from current stage (SCRIPT)
-                        model=todo.metadata.get("model") or todo.model
+                        model=todo.metadata.get("model") or todo.model,
+                        target_audience=todo.metadata.get("target_audience", "General/Adult"),
+
+                        target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                        db_session=self._db_session,
+                        institute_id=self._institute_id,
+                        user_id=self._user_id
                     ):
                         # Log background progress but don't send events to frontend
                         if event.get("type") == "completed":
@@ -605,7 +627,11 @@ class ContentGenerationService:
             # Step 1: Generate AI video (stream events)
             video_id = None
             video_status = None
+            completed_found = False
             
+            # CRITICAL: Consume ALL events from generate_ai_video_content to ensure the background task starts.
+            # The background task is created AFTER the async generator completes in generate_ai_video_content.
+            # If we break early, the generator never completes and the background task never starts.
             async for event_str in self.generate_ai_video_content(todo):
                 event = json.loads(event_str)
                 
@@ -615,26 +641,30 @@ class ContentGenerationService:
                     if content_data.get("videoId") and not video_id:
                         video_id = content_data.get("videoId")
                     
-                    # If video generation is complete, get final status
-                    if content_data.get("status") == "COMPLETED":
+                    # If video generation is complete, capture status but DON'T break
+                    # We must continue consuming to ensure the background task gets created
+                    if content_data.get("status") == "COMPLETED" and not completed_found:
                         video_status = content_data
-                        break
+                        completed_found = True
+                        logger.info(f"[AI_VIDEO_CODE] Video generation marked as COMPLETED, but continuing to consume events to start background task")
                     
-                    # Forward progress events with updated slide type
-                    progress_event = {
-                        "type": "SLIDE_CONTENT_UPDATE",
-                        "path": todo.path,
-                        "status": True,
-                        "actionType": todo.action_type,
-                        "slideType": "AI_VIDEO_CODE",
-                        "contentData": {
-                            "video": content_data,
-                            "status": "GENERATING_VIDEO",
-                            "message": f"Generating video: {content_data.get('currentStage', 'Processing')}...",
-                            "progress": content_data.get("progress", 0)
+                    # Forward progress events with updated slide type (only before completion)
+                    # After completion, we still consume events but don't forward them
+                    if not completed_found:
+                        progress_event = {
+                            "type": "SLIDE_CONTENT_UPDATE",
+                            "path": todo.path,
+                            "status": True,
+                            "actionType": todo.action_type,
+                            "slideType": "AI_VIDEO_CODE",
+                            "contentData": {
+                                "video": content_data,
+                                "status": "GENERATING_VIDEO",
+                                "message": f"Generating video: {content_data.get('currentStage', 'Processing')}...",
+                                "progress": content_data.get("progress", 0)
+                            }
                         }
-                    }
-                    yield json.dumps(progress_event)
+                        yield json.dumps(progress_event)
             
             if not video_status or not video_id:
                 raise ValueError(f"AI video generation failed for {todo.path}")

@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -47,6 +48,9 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
+
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
             LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
@@ -55,6 +59,21 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             PaymentOption paymentOption,
             UserPlan userPlan,
             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+        log.info("Processing SUBSCRIPTION payment enrollment for user: {}", userDTO.getEmail());
+
+        // Step 1: Update existing ABANDONED_CART entries with userPlanId
+        // (ABANDONED_CART entries are created during form-submit step via new API)
+        List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
+        
+        int updatedCount = learnerEnrollmentEntryService.updateAbandonedCartEntriesWithUserPlanId(
+                userDTO.getId(),
+                packageSessionIds,
+                instituteId,
+                userPlan.getId());
+        
+        log.info("Updated {} ABANDONED_CART entries with userPlanId {} for SUBSCRIPTION user {}",
+                updatedCount, userPlan.getId(), userDTO.getId());
+
         // Use startDate from DTO if provided, otherwise default to current date
         Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
                 ? learnerPackageSessionsEnrollDTO.getStartDate()
@@ -144,11 +163,33 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                         userPlan);
             }
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+
+            // For synchronous payment gateways (e.g., Eway) that return PAID immediately,
+            // shift the user from INVITED to ACTIVE in the destination package session
+            if (isPaymentSuccessful(paymentResponseDTO)) {
+                log.info("Subscription payment successful for user: {}. Shifting to ACTIVE status.", user.getId());
+                learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(
+                        learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
+                        user.getId(),
+                        enrollInvite.getId());
+            }
         } else {
             throw new VacademyException("PaymentInitiationRequest is null");
         }
 
         return learnerEnrollResponseDTO;
+    }
+
+    /**
+     * Checks if payment was successful based on the payment response.
+     * Handles synchronous payment gateways like Eway that return PAID immediately.
+     */
+    private boolean isPaymentSuccessful(PaymentResponseDTO paymentResponseDTO) {
+        if (paymentResponseDTO == null || paymentResponseDTO.getResponseData() == null) {
+            return false;
+        }
+        Object paymentStatus = paymentResponseDTO.getResponseData().get("paymentStatus");
+        return "PAID".equals(paymentStatus);
     }
 
     private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,

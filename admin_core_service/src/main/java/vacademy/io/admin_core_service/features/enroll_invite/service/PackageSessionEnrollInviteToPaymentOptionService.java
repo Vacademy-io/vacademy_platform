@@ -43,9 +43,25 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
         if (enrollInvite == null)
             return Collections.emptyList();
 
-        return Optional
+        List<PackageSessionLearnerInvitationToPaymentOption> allMappings = Optional
                 .ofNullable(repository.findByEnrollInviteAndStatusIn(enrollInvite, List.of(StatusEnum.ACTIVE.name())))
                 .orElse(Collections.emptyList());
+
+        // Deduplicate: Group by packageSessionId and keep only the latest by createdAt
+        java.util.Map<String, PackageSessionLearnerInvitationToPaymentOption> latestMappingsMap = allMappings.stream()
+                .filter(m -> m.getPackageSession() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        m -> m.getPackageSession().getId(),
+                        m -> m,
+                        (existing, replacement) -> {
+                            if (existing.getCreatedAt() == null)
+                                return replacement;
+                            if (replacement.getCreatedAt() == null)
+                                return existing;
+                            return existing.getCreatedAt().isAfter(replacement.getCreatedAt()) ? existing : replacement;
+                        }));
+
+        return new java.util.ArrayList<>(latestMappingsMap.values());
     }
 
     public List<PackageSessionLearnerInvitationToPaymentOption> findByPaymentOptionIds(List<String> paymentOptionIds) {

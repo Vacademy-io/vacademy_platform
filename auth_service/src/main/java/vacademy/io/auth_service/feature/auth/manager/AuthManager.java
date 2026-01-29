@@ -89,11 +89,28 @@ public class AuthManager {
     @Autowired
     private OAuth2VendorToUserDetailService oAuth2VendorToUserDetailService;
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthManager.class);
+
     public JwtResponseDto registerRootUser(RegisterRequest registerRequest) {
         if (Objects.isNull(registerRequest))
             throw new VacademyException("Invalid Request");
 
         InstituteInfoDTO instituteInfoDTO = registerRequest.getInstitute();
+
+        // Debug logging for institute fields - to trace production issues
+        log.info("[AUTH-SERVICE] registerRootUser - Institute fields before sending to admin service:");
+        log.info("[AUTH-SERVICE] board: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getBoard() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] gstDetails: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getGstDetails() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] affiliationNumber: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getAffiliationNumber() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] staffStrength: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getStaffStrength() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] schoolStrength: {}",
+                instituteInfoDTO != null ? instituteInfoDTO.getSchoolStrength() : "null (DTO is null)");
+        log.info("[AUTH-SERVICE] Full InstituteInfoDTO: {}", instituteInfoDTO);
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(applicationName, HttpMethod.POST.name(),
                 adminCoreServiceBaseUrl, AuthConstants.CREATE_INSTITUTES_PATH, instituteInfoDTO);
 
@@ -304,7 +321,8 @@ public class AuthManager {
 
         // Fetch template config from admin service
         NotificationTemplateConfigDTO templateConfig = notificationService
-                .getTemplateConfig("OTP_REQUEST", authRequestDTO.getInstituteId(), "WHATSAPP");
+                .getTemplateConfig("OTP_REQUEST", authRequestDTO.getInstituteId(), "WHATSAPP"); // here hardcoded you
+                                                                                                // can use it anything
 
         // Send WhatsApp OTP via notification service
         WhatsAppOTPRequest whatsAppOTPRequest = WhatsAppOTPRequest.builder()
@@ -363,6 +381,52 @@ public class AuthManager {
         if (!isValidOtp) {
             throw new UsernameNotFoundException("Invalid or expired OTP");
         }
+    }
+
+    /**
+     * Request WhatsApp OTP without user validation.
+     * Use this for generic verification scenarios (guest checkout, lead
+     * verification, etc.)
+     * Reuses existing notification service flow.
+     */
+    public String requestGenericWhatsAppOtp(AuthRequestDto authRequestDTO) {
+        if (authRequestDTO.getPhoneNumber() == null || authRequestDTO.getInstituteId() == null) {
+            throw new VacademyException("Phone number and Institute ID are required");
+        }
+
+        // Fetch template config (same as login flow)
+        NotificationTemplateConfigDTO templateConfig = notificationService
+                .getTemplateConfig("OTP_REQUEST", authRequestDTO.getInstituteId(), "WHATSAPP");
+
+        // Send WhatsApp OTP via notification service (same as login flow)
+        WhatsAppOTPRequest whatsAppOTPRequest = WhatsAppOTPRequest.builder()
+                .phoneNumber(authRequestDTO.getPhoneNumber())
+                .instituteId(authRequestDTO.getInstituteId())
+                .templateName(templateConfig.getTemplateName())
+                .languageCode(templateConfig.getLanguageCode())
+                .settingJson(templateConfig.getSettingJson())
+                .build();
+
+        notificationService.sendWhatsAppOtp(whatsAppOTPRequest);
+        return "WhatsApp OTP sent to " + authRequestDTO.getPhoneNumber();
+    }
+
+    /**
+     * Verify WhatsApp OTP without user validation or JWT generation.
+     * Returns true if OTP is valid, false otherwise.
+     * Reuses existing notification service verification.
+     */
+    public boolean verifyGenericWhatsAppOtp(AuthRequestDto authRequestDTO) {
+        if (authRequestDTO.getOtp() == null || authRequestDTO.getPhoneNumber() == null) {
+            throw new VacademyException("OTP and phone number are required");
+        }
+
+        WhatsAppOTPVerifyRequest verifyRequest = WhatsAppOTPVerifyRequest.builder()
+                .phoneNumber(authRequestDTO.getPhoneNumber())
+                .otp(authRequestDTO.getOtp())
+                .build();
+
+        return notificationService.verifyWhatsAppOTP(verifyRequest);
     }
 
 }

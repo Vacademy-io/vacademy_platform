@@ -8,8 +8,11 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -27,92 +30,131 @@ import java.util.*;
 
 @Service
 public class FreePaymentOptionOperation implements PaymentOptionOperationStrategy {
-    private static final Logger log = LoggerFactory.getLogger(FreePaymentOptionOperation.class);
+        private static final Logger log = LoggerFactory.getLogger(FreePaymentOptionOperation.class);
 
-    @Autowired
-    private LearnerBatchEnrollService learnerBatchEnrollService;
+        @Autowired
+        private LearnerBatchEnrollService learnerBatchEnrollService;
 
-    @Autowired
-    private PackageSessionRepository packageSessionRepository;
+        @Autowired
+        private PackageSessionRepository packageSessionRepository;
 
-    @Autowired
-    private ReferralBenefitOrchestrator referralBenefitOrchestrator;
+        @Autowired
+        private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
-    @Autowired
-    private AuthService authService;
+        @Autowired
+        private AuthService authService;
 
-    @Override
-    public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-            String instituteId,
-            EnrollInvite enrollInvite,
-            PaymentOption paymentOption,
-            UserPlan userPlan,
-            Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
-        log.info("Processing FREE enrollment for user: {}", userDTO.getEmail());
-        // Use startDate from DTO if provided, otherwise default to current date
-        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
-                ? learnerPackageSessionsEnrollDTO.getStartDate()
-                : new Date();
+        @Autowired
+        private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
 
-        List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
-        if (paymentOption.isRequireApproval()) {
-            String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
-            for (String packageSessionId : learnerPackageSessionsEnrollDTO.getPackageSessionIds()) {
-                Optional<PackageSession> invitedPackageSession = packageSessionRepository
-                        .findInvitedPackageSessionForPackage(
-                                packageSessionId,
-                                "INVITED", // levelId (placeholder — ensure correct value)
-                                "INVITED", // sessionId (placeholder — ensure correct value)
-                                List.of(PackageSessionStatusEnum.INVITED.name()),
-                                List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                                List.of(PackageStatusEnum.ACTIVE.name()));
+        @Override
+        public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
+                        LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+                        String instituteId,
+                        EnrollInvite enrollInvite,
+                        PaymentOption paymentOption,
+                        UserPlan userPlan,
+                        Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+                log.info("Processing FREE enrollment for user: {}", userDTO.getEmail());
 
-                if (invitedPackageSession.isEmpty()) {
-                    throw new VacademyException("Learner cannot be enrolled as there is no invited package session");
+                // Use startDate from DTO if provided, otherwise default to current date
+                Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
+                                ? learnerPackageSessionsEnrollDTO.getStartDate()
+                                : new Date();
+
+                List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
+                List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
+
+                // Note: For FREE payment option, frontend skips ABANDONED_CART step
+                // So we directly proceed to enrollment
+
+                // Step 1: Check if workflow is configured for the destination package session
+                boolean hasWorkflow = false;
+                for (String packageSessionId : packageSessionIds) {
+                        PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
+                                        .orElse(null);
+                        if (packageSession != null
+                                        && learnerEnrollmentEntryService.hasWorkflowConfiguration(packageSession)) {
+                                hasWorkflow = true;
+                                log.info("Workflow configuration found for package session: {}",
+                                                packageSessionId);
+                                break;
+                        }
                 }
 
-                InstituteStudentDetails detail = new InstituteStudentDetails(
-                        instituteId,
-                        invitedPackageSession.get().getId(),
-                        null,
-                        status,
-                        enrollmentDate,
-                        null,
-                        enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString()
-                                : null,
-                        packageSessionId,
-                        userPlan.getId(), null, null);
-                instituteStudentDetails.add(detail);
-            }
-        } else {
-            String status = LearnerStatusEnum.ACTIVE.name();
-            Integer accessDays = enrollInvite.getLearnerAccessDays();
-            List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
-            for (String packageSessionId : packageSessionIds) {
-                InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId,
-                        packageSessionId, null, status, enrollmentDate, null,
-                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(), null, null);
-                instituteStudentDetails.add(instituteStudentDetail);
-            }
-        }
-        UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId,
-                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(), extraData,
-                learnerExtraDetails, enrollInvite, userPlan);
+                // Step 2: Build enrollment details
+                // For FREE enrollment, we enroll directly to the ACTUAL package session (not INVITED)
+                String status;
+                if (hasWorkflow) {
+                        // Workflow exists - enroll to INVITED PS and let workflow handle activation
+                        status = LearnerStatusEnum.INVITED.name();
+                } else if (paymentOption.isRequireApproval()) {
+                        status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
+                } else {
+                        status = LearnerStatusEnum.ACTIVE.name();
+                }
 
-        // Process referral request if present - for free payments, benefits are
-        // activated immediately
-        if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
-            referralBenefitOrchestrator.processAllBenefits(
-                    learnerPackageSessionsEnrollDTO,
-                    paymentOption,
-                    userPlan,
-                    user,
-                    instituteId);
-        }
+                Integer accessDays = enrollInvite.getLearnerAccessDays();
 
-        LearnerEnrollResponseDTO learnerEnrollResponseDTO = new LearnerEnrollResponseDTO();
-        learnerEnrollResponseDTO.setUser(user);
-        return learnerEnrollResponseDTO;
-    }
+                for (String packageSessionId : packageSessionIds) {
+                        if (hasWorkflow || paymentOption.isRequireApproval()) {
+                                // Use INVITED package session with destination
+                                Optional<PackageSession> invitedPackageSession = packageSessionRepository
+                                                .findInvitedPackageSessionForPackage(
+                                                                packageSessionId,
+                                                                "INVITED",
+                                                                "INVITED",
+                                                                List.of(PackageSessionStatusEnum.INVITED.name()),
+                                                                List.of(PackageSessionStatusEnum.ACTIVE.name(),
+                                                                                PackageSessionStatusEnum.HIDDEN.name()),
+                                                                List.of(PackageStatusEnum.ACTIVE.name()));
+
+                                if (invitedPackageSession.isEmpty()) {
+                                        throw new VacademyException(
+                                                        "Learner cannot be enrolled as there is no invited package session");
+                                }
+
+                                InstituteStudentDetails detail = new InstituteStudentDetails(
+                                                instituteId,
+                                                invitedPackageSession.get().getId(),
+                                                null,
+                                                status,
+                                                enrollmentDate,
+                                                null,
+                                                accessDays != null ? accessDays.toString() : null,
+                                                packageSessionId, // destination package session
+                                                userPlan.getId(), null, null);
+                                instituteStudentDetails.add(detail);
+                        } else {
+                                // Direct enrollment to actual package session
+                                InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(
+                                                instituteId,
+                                                packageSessionId, null, status, enrollmentDate, null,
+                                                accessDays != null ? accessDays.toString() : null, 
+                                                null, // no destination needed for direct enrollment
+                                                userPlan.getId(), null, null);
+                                instituteStudentDetails.add(instituteStudentDetail);
+                        }
+                }
+
+                UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId,
+                                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
+                                extraData,
+                                learnerExtraDetails, enrollInvite, userPlan);
+
+                // Process referral request if present - for free payments, benefits are
+                // activated immediately
+                if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
+                        referralBenefitOrchestrator.processAllBenefits(
+                                        learnerPackageSessionsEnrollDTO,
+                                        paymentOption,
+                                        userPlan,
+                                        user,
+                                        instituteId);
+                }
+
+                LearnerEnrollResponseDTO learnerEnrollResponseDTO = new LearnerEnrollResponseDTO();
+                learnerEnrollResponseDTO.setUser(user);
+                return learnerEnrollResponseDTO;
+        }
 }

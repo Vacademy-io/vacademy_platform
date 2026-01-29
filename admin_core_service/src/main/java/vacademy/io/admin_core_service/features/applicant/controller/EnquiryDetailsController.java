@@ -19,25 +19,29 @@ public class EnquiryDetailsController {
 
     /**
      * Get enquiry details for form pre-fill
-     * Can search by enquiryId OR phone (not both)
+     * Can search by enquiryId OR enquiryTrackingId OR phone (not multiple)
      * 
-     * @param enquiryId Enquiry UUID (optional)
-     * @param phone     Parent phone number (optional)
+     * @param enquiryId         Enquiry UUID (optional)
+     * @param enquiryTrackingId Enquiry Tracking ID (optional)
+     * @param phone             Parent phone number (optional)
      * @return EnquiryDetailsResponseDTO with parent and child info
      */
     @GetMapping("/details")
     public ResponseEntity<EnquiryDetailsResponseDTO> getEnquiryDetails(
             @RequestParam(required = false) String enquiryId,
+            @RequestParam(required = false) String enquiryTrackingId,
             @RequestParam(required = false) String phone) {
 
-        if (enquiryId == null && phone == null) {
-            throw new VacademyException("Please provide either enquiryId or phone");
+        if (enquiryId == null && enquiryTrackingId == null && phone == null) {
+            throw new VacademyException("Please provide either enquiryId, enquiryTrackingId, or phone");
         }
 
         EnquiryDetailsResponseDTO response;
 
         if (enquiryId != null) {
             response = applicantService.getEnquiryDetailsByEnquiryId(enquiryId);
+        } else if (enquiryTrackingId != null) {
+            response = applicantService.getEnquiryDetailsByTrackingId(enquiryTrackingId);
         } else {
             response = applicantService.getEnquiryDetailsByPhone(phone);
         }

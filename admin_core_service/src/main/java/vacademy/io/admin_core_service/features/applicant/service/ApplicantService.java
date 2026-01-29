@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.applicant.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -18,6 +20,10 @@ import vacademy.io.admin_core_service.features.applicant.repository.ApplicantSta
 import vacademy.io.admin_core_service.features.applicant.repository.ApplicationStageRepository;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
 import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -28,10 +34,7 @@ import vacademy.io.admin_core_service.features.institute_learner.repository.Inst
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.Random;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class ApplicantService {
@@ -60,7 +63,30 @@ public class ApplicantService {
         @Autowired
         private AudienceRepository audienceRepository;
 
+        @Autowired
+        private CustomFieldValuesRepository customFieldValuesRepository;
+
+        @Autowired
+        private CustomFieldRepository customFieldRepository;
+
+        private static final Logger logger = LoggerFactory.getLogger(ApplicantService.class);
+
         private final ObjectMapper objectMapper = new ObjectMapper();
+
+        // Standard fields mapped to Student table columns - any other keys are custom
+        // fields
+        private static final Set<String> STANDARD_FIELD_KEYS = Set.of(
+                        "parent_name", "parent_phone", "parent_email",
+                        "child_name", "child_dob", "child_gender",
+                        "address_line", "city", "pin_code", "father_name", "mother_name",
+                        "id_number", "id_type",
+                        "previous_school_name", "previous_school_board", "last_class_attended",
+                        "last_exam_result", "subjects_studied",
+                        "applying_for_class", "academic_year", "board_preference",
+                        "tc_number", "tc_issue_date", "tc_pending",
+                        "has_special_education_needs", "is_physically_challenged",
+                        "medical_conditions", "dietary_restrictions",
+                        "blood_group", "mother_tongue", "languages_known", "category", "nationality");
 
         /**
          * Create a new Application Stage configuration
@@ -184,6 +210,21 @@ public class ApplicantService {
                                 .orElseThrow(() -> new VacademyException("No enquiry found for phone: " + phone));
 
                 return buildEnquiryDetailsResponse(audienceResponse);
+        }
+
+        /**
+         * Get enquiry details by tracking ID for form pre-fill
+         * Lookup flow: tracking_id -> enquiry -> enquiry_id -> existing logic
+         */
+        public EnquiryDetailsResponseDTO getEnquiryDetailsByTrackingId(String trackingId) {
+                // Step 1: Find Enquiry by tracking ID
+                vacademy.io.admin_core_service.features.enquiry.entity.Enquiry enquiry = enquiryRepository
+                                .findByEnquiryTrackingId(trackingId)
+                                .orElseThrow(() -> new VacademyException(
+                                                "No enquiry found for tracking ID: " + trackingId));
+
+                // Step 2: Reuse existing logic with enquiry ID
+                return getEnquiryDetailsByEnquiryId(enquiry.getId().toString());
         }
 
         /**
@@ -440,11 +481,72 @@ public class ApplicantService {
                         student.setCategory(getFormDataString(formData, "category"));
                         student.setNationality(getFormDataString(formData, "nationality"));
 
-                        instituteStudentRepository.save(student);
+                        Student savedStudent = instituteStudentRepository.save(student);
+
+                        // Save custom fields (non-standard keys)
+                        saveCustomFieldValues(formData, savedStudent.getId(), instituteId);
+
                 } catch (VacademyException ve) {
                         throw ve;
                 } catch (Exception e) {
                         throw new RuntimeException("Failed to create student record: " + e.getMessage());
+                }
+        }
+
+        /**
+         * Save custom field values for non-standard form fields.
+         * Loops through form_data, skips standard fields, and saves the rest to
+         * custom_field_values.
+         */
+        private void saveCustomFieldValues(Map<String, Object> formData, String studentId, String instituteId) {
+                if (formData == null || formData.isEmpty()) {
+                        return;
+                }
+
+                List<CustomFieldValues> customFieldValuesList = new ArrayList<>();
+
+                for (Map.Entry<String, Object> entry : formData.entrySet()) {
+                        String fieldKey = entry.getKey();
+                        Object valueObj = entry.getValue();
+
+                        // Skip standard fields - they are already saved to Student table
+                        if (STANDARD_FIELD_KEYS.contains(fieldKey)) {
+                                continue;
+                        }
+
+                        // Skip empty values
+                        String value = valueObj != null ? valueObj.toString() : null;
+                        if (value == null || value.trim().isEmpty()) {
+                                continue;
+                        }
+
+                        // Look up custom field definition by field_key AND institute_id to ensure
+                        // uniqueness and validity
+                        Optional<CustomFields> customFieldOpt = customFieldRepository
+                                        .findByFieldKeyAndInstituteId(fieldKey, instituteId);
+                        if (customFieldOpt.isEmpty()) {
+                                logger.warn("Custom field not found or not active for key: {} and institute: {}. Skipping.",
+                                                fieldKey, instituteId);
+                                continue;
+                        }
+
+                        CustomFields customField = customFieldOpt.get();
+
+                        // Build CustomFieldValues entity
+                        CustomFieldValues cfValue = CustomFieldValues.builder()
+                                        .customFieldId(customField.getId())
+                                        .sourceType("STUDENT")
+                                        .sourceId(studentId)
+                                        .value(value)
+                                        .build();
+
+                        customFieldValuesList.add(cfValue);
+                }
+
+                if (!customFieldValuesList.isEmpty()) {
+                        customFieldValuesRepository.saveAll(customFieldValuesList);
+                        logger.info("Saved {} custom field values for student {}", customFieldValuesList.size(),
+                                        studentId);
                 }
         }
 

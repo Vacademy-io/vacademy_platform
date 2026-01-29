@@ -34,4 +34,10 @@ public class BulkCourseBatchDTO {
      * If null, uses the course-level or global inventory config.
      */
     private BulkCourseInventoryConfigDTO inventoryConfig;
+
+    /**
+     * Optional: Override payment config for this specific batch.
+     * If null, uses the course-level or global payment config.
+     */
+    private BulkCoursePaymentConfigDTO paymentConfig;
 }

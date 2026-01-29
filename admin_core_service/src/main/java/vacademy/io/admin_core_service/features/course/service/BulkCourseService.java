@@ -173,12 +173,10 @@ public class BulkCourseService {
             // 2.5. Create INVITED PackageSession for the package
             createInvitedPackageSession(packageEntity);
 
-            // 3. Create or get Payment Option
-            PaymentOption paymentOption = resolveOrCreatePaymentOption(effectivePaymentConfig, instituteId, courseName);
-
             // 4. Create PackageSessions (Batches) and EnrollInvites
             List<String> packageSessionIds = new ArrayList<>();
             List<String> enrollInviteIds = new ArrayList<>();
+            String lastPaymentOptionId = null;
 
             for (BulkCourseBatchDTO batch : effectiveBatches) {
                 // Resolve inventory for this specific batch
@@ -186,12 +184,23 @@ public class BulkCourseService {
                         ? batch.getInventoryConfig()
                         : effectiveInventoryConfig;
 
+                // Resolve payment config for this specific batch
+                BulkCoursePaymentConfigDTO batchPaymentConfig = resolvePaymentConfig(batch.getPaymentConfig(),
+                        effectivePaymentConfig);
+
+                // Resolve or Create Payment Option for this batch
+                PaymentOption batchPaymentOption = resolveOrCreatePaymentOption(batchPaymentConfig, instituteId,
+                        courseName);
+                if (batchPaymentOption != null) {
+                    lastPaymentOptionId = batchPaymentOption.getId();
+                }
+
                 PackageSession packageSession = createPackageSession(packageEntity, batch,
                         batchInventory, instituteId);
                 packageSessionIds.add(packageSession.getId());
 
                 // Create EnrollInvite for this batch
-                EnrollInvite enrollInvite = createEnrollInviteForBatch(packageSession, paymentOption, instituteId);
+                EnrollInvite enrollInvite = createEnrollInviteForBatch(packageSession, batchPaymentOption, instituteId);
                 enrollInviteIds.add(enrollInvite.getId());
 
                 // Create learner invitation form
@@ -200,7 +209,7 @@ public class BulkCourseService {
 
             return BulkCourseResultDTO.success(index, courseName, packageEntity.getId(),
                     packageSessionIds, enrollInviteIds,
-                    paymentOption != null ? paymentOption.getId() : null);
+                    lastPaymentOptionId);
 
         } catch (Exception e) {
             log.error("Failed to create course at index {}: {}", index, courseName, e);

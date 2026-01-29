@@ -92,7 +92,7 @@ export const parseDropdownOptions = (
     }
 
     const trimmedConfig = config.trim();
-    
+
     // Check if config is a simple comma-separated string (not JSON)
     // If it doesn't start with '[' or '{', treat it as comma-separated
     if (!trimmedConfig.startsWith('[') && !trimmedConfig.startsWith('{')) {
@@ -106,6 +106,21 @@ export const parseDropdownOptions = (
 
     // Parse JSON string
     const parsed = JSON.parse(config);
+
+    // Handle object case wrapping comma separated options (e.g. {coommaSepartedOptions: "A,B,C"})
+    if (!Array.isArray(parsed) && typeof parsed === "object" && parsed !== null) {
+      // Check for known keys including the typo version seen in logs
+      const optionsString = parsed.coommaSepartedOptions || parsed.commaSeparatedOptions || parsed.options;
+
+      if (typeof optionsString === "string") {
+        return optionsString.split(",").map((option: string, index: number) => ({
+          _id: index + 1,
+          value: option.trim(),
+          label: option.trim(),
+        }));
+      }
+    }
+
     // Ensure it's an array
     if (!Array.isArray(parsed)) {
       console.warn("parseDropdownOptions: Config is not an array", parsed);

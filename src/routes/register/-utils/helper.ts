@@ -59,10 +59,8 @@ export const getDynamicSchema = (
           id: z.string().optional(),
           name: z.string(),
           value:
-            field.is_mandatory && options.length > 0
-              ? z.string().refine((val) => options.includes(val), {
-                  message: `${field.field_name} must be one of the available options`,
-                })
+            field.is_mandatory
+              ? z.string().min(1, `${field.field_name} is required`)
               : z.string(),
           is_mandatory: z.boolean(),
           type: z.string(),

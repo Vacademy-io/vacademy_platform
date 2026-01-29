@@ -1403,7 +1403,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 )}
                 {courseData.tags && courseData.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {courseData.tags.slice(0, 3).map((tag, i) => (
+                    {courseData.tags.map((tag, i) => (
                       <span key={i} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
                         {tag}
                       </span>

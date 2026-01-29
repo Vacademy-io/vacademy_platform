@@ -139,10 +139,19 @@ export const transformApiDataToCourseDataForInvite = async (
     fileId: string | null | undefined
   ): Promise<string> {
     if (!fileId) return "";
-    if (fileUrlCache[fileId] !== undefined) return fileUrlCache[fileId] ?? "";
-    const url = (await getPublicUrlWithoutLogin(fileId)) ?? "";
-    fileUrlCache[fileId] = url;
-    return url;
+    // Check if ID looks like a JSON object (garbage data check)
+    if (fileId.trim().startsWith("{") || fileId.trim().startsWith("["))
+      return "";
+
+    try {
+      if (fileUrlCache[fileId] !== undefined) return fileUrlCache[fileId] ?? "";
+      const url = (await getPublicUrlWithoutLogin(fileId)) ?? "";
+      fileUrlCache[fileId] = url;
+      return url;
+    } catch (e) {
+      console.warn(`[Helper] Failed to fetch URL for fileId: ${fileId}`, e);
+      return "";
+    }
   }
 
   try {
@@ -162,8 +171,8 @@ export const transformApiDataToCourseDataForInvite = async (
       course: apiData.course,
       courseBanner: courseBannerMediaPreview,
       courseMediaId: {
-        type: apiData.courseMedia.type,
-        id: apiData.courseMedia.id,
+        type: apiData.courseMedia?.type || "",
+        id: apiData.courseMedia?.id || "",
       },
       courseMediaPreview: courseMediaPreview ?? "",
       coursePreview: coursePreviewImageMediaPreview,
@@ -195,7 +204,19 @@ export function convertInviteCustomFields(
       field_key: field.fieldKey,
       field_order: field.formOrder,
       comma_separated_options:
-        field.fieldType === "dropdown" ? field.config : "",
+        field.fieldType === "dropdown"
+          ? (() => {
+            try {
+              const parsed = JSON.parse(field.config);
+              if (Array.isArray(parsed)) {
+                return parsed.map((opt: any) => opt.value).join(",");
+              }
+              return field.config;
+            } catch {
+              return field.config;
+            }
+          })()
+          : "",
       config: field.config || "{}",
       status: "ACTIVE",
       is_mandatory: field.isMandatory,

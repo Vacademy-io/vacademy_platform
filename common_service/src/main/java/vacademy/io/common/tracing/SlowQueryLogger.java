@@ -73,18 +73,29 @@ public class SlowQueryLogger {
         return logMethodExecution(joinPoint, "manager");
     }
 
+    private final ThreadLocal<Boolean> reentrancyCheck = new ThreadLocal<>();
+
     /**
      * Common method execution logging logic
      */
     private Object logMethodExecution(ProceedingJoinPoint joinPoint, String type) throws Throwable {
-        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
-        String className = signature.getDeclaringType().getSimpleName();
-        String methodName = signature.getName();
-        String fullMethodName = className + "." + methodName;
+        // Prevent recursion/re-entrancy loops
+        if (reentrancyCheck.get() != null) {
+            return joinPoint.proceed();
+        }
 
+        reentrancyCheck.set(true);
         long startTime = System.nanoTime();
+        String fullMethodName = "unknown";
+        Object[] args = null;
 
         try {
+            MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+            String className = signature.getDeclaringType().getSimpleName();
+            String methodName = signature.getName();
+            fullMethodName = className + "." + methodName;
+            args = joinPoint.getArgs();
+
             // Execute the actual method
             Object result = joinPoint.proceed();
 
@@ -93,7 +104,11 @@ public class SlowQueryLogger {
             long durationMs = TimeUnit.NANOSECONDS.toMillis(durationNanos);
 
             // Log if slow
-            logIfSlow(fullMethodName, type, durationMs, joinPoint.getArgs(), null);
+            try {
+                logIfSlow(fullMethodName, type, durationMs, args, null);
+            } catch (Exception e) {
+                log.error("Failed to log slow query for {}", fullMethodName, e);
+            }
 
             return result;
 
@@ -103,9 +118,15 @@ public class SlowQueryLogger {
             long durationMs = TimeUnit.NANOSECONDS.toMillis(durationNanos);
 
             // Log the error with timing
-            logIfSlow(fullMethodName, type, durationMs, joinPoint.getArgs(), throwable);
+            try {
+                logIfSlow(fullMethodName, type, durationMs, args, throwable);
+            } catch (Exception e) {
+                log.error("Failed to log error details for {}", fullMethodName, e);
+            }
 
             throw throwable;
+        } finally {
+            reentrancyCheck.remove();
         }
     }
 
@@ -118,7 +139,12 @@ public class SlowQueryLogger {
             return;
         }
 
-        String argsString = formatArgs(args);
+        String argsString = "args_error";
+        try {
+            argsString = formatArgs(args);
+        } catch (Exception e) {
+            log.warn("Failed to format args for {}", methodName);
+        }
 
         if (error != null) {
             log.error("❌ {} [{}] FAILED after {}ms | Args: {} | Error: {}",

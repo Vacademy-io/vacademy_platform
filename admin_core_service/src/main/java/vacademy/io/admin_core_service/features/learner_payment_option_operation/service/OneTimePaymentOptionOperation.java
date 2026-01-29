@@ -133,7 +133,8 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                         learnerPackageSessionsEnrollDTO,
                         instituteId,
                         enrollInvite,
-                        userPlan);
+                        userPlan,
+                        extraData);
                 learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
             } else {
                 log.info("Initiating payment through PaymentService for user: {}", user.getId());

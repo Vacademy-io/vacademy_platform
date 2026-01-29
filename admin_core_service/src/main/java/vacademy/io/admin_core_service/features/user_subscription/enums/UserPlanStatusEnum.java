@@ -7,5 +7,6 @@ public enum UserPlanStatusEnum {
     CANCELED,
     EXPIRED,
     PENDING,
-    TERMINATED
+    TERMINATED,
+    DELETED
 }

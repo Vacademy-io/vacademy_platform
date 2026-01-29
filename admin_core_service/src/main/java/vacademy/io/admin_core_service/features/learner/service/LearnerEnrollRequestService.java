@@ -5,12 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
@@ -51,6 +53,10 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private PaymentOptionService paymentOptionService;
+
+    @Autowired
+    @Lazy
+    private LearnerBatchEnrollService learnerBatchEnrollService;
 
     @Autowired
     private PaymentOptionOperationFactory paymentOptionOperationFactory;
@@ -107,6 +113,24 @@ public class LearnerEnrollRequestService {
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
+
+        if (paymentPlan == null) {
+            // Fallback: Try to find a single ACTIVE plan associated with this payment
+            // option
+            List<PaymentPlan> relatedPlans = paymentPlanService.findByPaymentOption(paymentOption);
+            List<PaymentPlan> activePlans = relatedPlans.stream()
+                    .filter(p -> "ACTIVE".equalsIgnoreCase(p.getStatus()))
+                    .toList();
+
+            if (activePlans.size() == 1) {
+                paymentPlan = activePlans.get(0);
+                log.info("Auto-selected single ACTIVE plan {} for payment option {}", paymentPlan.getId(),
+                        paymentOption.getId());
+            } else {
+                log.warn("Could not auto-select plan. Found {} active plans for payment option {}", activePlans.size(),
+                        paymentOption.getId());
+            }
+        }
 
         // Determine if this is a SubOrg enrollment and create SubOrg if needed
         String userPlanSource = UserPlanSourceEnum.USER.name();
@@ -198,7 +222,8 @@ public class LearnerEnrollRequestService {
                 paymentOption,
                 paymentPlan,
                 userPlanSource,
-                subOrgId);
+                subOrgId,
+                extraData);
 
         LearnerEnrollResponseDTO response;
         response = enrollLearnerToBatch(
@@ -212,8 +237,20 @@ public class LearnerEnrollRequestService {
         // For PAID enrollments, notifications will be sent after webhook confirms
         // payment
         if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
-            log.info("FREE enrollment completed. Sending enrollment notifications for user: {}",
+            log.info(
+                    "FREE/MANUAL enrollment completed. Activating package sessions and sending notifications for user: {}",
                     learnerEnrollRequestDTO.getUser().getId());
+
+            // Trigger activation shift to move from INVITED placeholder to ACTUAL sessions
+            try {
+                learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(
+                        enrollDTO.getPackageSessionIds(),
+                        userPlan.getUserId(),
+                        enrollInvite.getId());
+            } catch (Exception e) {
+                log.error("Error shifting learner to active sessions: {}", e.getMessage());
+            }
+
             sendDynamicNotificationForEnrollment(
                     learnerEnrollRequestDTO.getInstituteId(),
                     learnerEnrollRequestDTO.getUser(),
@@ -300,9 +337,14 @@ public class LearnerEnrollRequestService {
             PaymentOption paymentOption,
             PaymentPlan paymentPlan,
             String source,
-            String subOrgId) {
+            String subOrgId,
+            Map<String, Object> extraData) {
         String userPlanStatus = null;
-        if (paymentOption.getType().equals(PaymentOptionType.SUBSCRIPTION.name())
+
+        if (Boolean.TRUE.equals(extraData.get("IS_MANUAL_ENROLLMENT"))) {
+            log.info("Manual enrollment detected, setting UserPlan status to ACTIVE");
+            userPlanStatus = UserPlanStatusEnum.ACTIVE.name();
+        } else if (paymentOption.getType().equals(PaymentOptionType.SUBSCRIPTION.name())
                 || paymentOption.getType().equals(PaymentOptionType.ONE_TIME.name())) {
             userPlanStatus = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name();
         } else {

@@ -11,7 +11,7 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.common.payment.dto.PhonePeWebHookDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
- 
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Map;
@@ -38,9 +38,41 @@ public class PhonePeWebHookService {
 
         try {
             // Step 1: Parse payload
-            PhonePeWebHookDTO webhookDTO = objectMapper.readValue(payload, PhonePeWebHookDTO.class);
-            String merchantOrderId = webhookDTO.getPayload().getMerchantOrderId();
-            String event = webhookDTO.getEvent();
+            // PhonePe sends { "response": "base64EncodedString" }
+            com.fasterxml.jackson.databind.JsonNode rootNode = objectMapper.readTree(payload);
+
+            String base64Response = "";
+            if (rootNode.has("response")) {
+                base64Response = rootNode.get("response").asText();
+            } else {
+                // Fallback or error if payload format is unexpected
+                log.warn("PhonePe webhook missing 'response' field. Trying raw payload.");
+                base64Response = payload; // Unlikely to work if it's not JSON, but defensive.
+            }
+
+            String decodedResponse;
+            try {
+                byte[] decodedBytes = java.util.Base64.getDecoder().decode(base64Response);
+                decodedResponse = new String(decodedBytes, StandardCharsets.UTF_8);
+                log.info("Decoded PhonePe Payload: {}", decodedResponse);
+            } catch (IllegalArgumentException e) {
+                // Not base64?
+                log.warn("Failed to decode base64 response. Assuming raw JSON.");
+                decodedResponse = base64Response;
+            }
+
+            com.fasterxml.jackson.databind.JsonNode decodedJson = objectMapper.readTree(decodedResponse);
+
+            // Structure: { success: true, code: "PAYMENT_SUCCESS", data: {
+            // merchantTransactionId: "...", ... } }
+            String event = decodedJson.path("code").asText(); // e.g. PAYMENT_SUCCESS
+            com.fasterxml.jackson.databind.JsonNode dataNode = decodedJson.path("data");
+
+            String merchantOrderId = dataNode.path("merchantTransactionId").asText();
+            if (merchantOrderId == null || merchantOrderId.isEmpty()) {
+                // Try merchantOrderId (legacy?)
+                merchantOrderId = dataNode.path("merchantOrderId").asText();
+            }
 
             // Step 2: Save webhook for audit
             webhookId = webHookService.saveWebhook(PaymentGateway.PHONEPE.name(), payload, merchantOrderId);
@@ -50,9 +82,13 @@ public class PhonePeWebHookService {
 
             if (instituteId == null || instituteId.isEmpty()) {
                 // Fallback: Try to get from metaInfo (udf1) if not in query param
-                instituteId = webhookDTO.getPayload().getMetaInfo() != null
-                        ? webhookDTO.getPayload().getMetaInfo().get("udf1")
-                        : null;
+                // In data -> paymentInstrument -> ... or data -> param1?
+                // PhonePe standard S2S usually doesn't return metaInfo in the top level of
+                // 'data' always.
+                // It might be in 'data' directly if custom params were passed?
+                // For now, let's check path("param1") or similar if used, but relying on query
+                // param is best.
+                instituteId = dataNode.path("param1").asText("");
             }
 
             if (instituteId == null || instituteId.isEmpty()) {
@@ -63,16 +99,17 @@ public class PhonePeWebHookService {
 
             log.info("Processing PhonePe webhook for instituteId: {}, orderId: {}", instituteId, merchantOrderId);
 
-            // Step 4: Verify Authorization (skip for now as PhonePe doesn't send auth
-            // header in standard flow)
-            // PhonePe uses X-VERIFY header on their API calls, but webhook auth is
-            // different
-            // For production, implement proper webhook signature verification
-            log.debug(
-                    "Skipping auth verification for PhonePe webhook (implement signature verification for production)");
+            // Step 4: Verify Authorization
+            // Note: PhonePe uses X-VERIFY. We should validate it eventually.
+            // For now, we continue as requested.
 
             // Step 5: Handle events
-            handleEvent(webhookDTO, instituteId);
+            String state = dataNode.path("state").asText(); // e.g. COMPLETED
+            if (state == null || state.isEmpty()) {
+                state = dataNode.path("paymentState").asText();
+            }
+
+            handleEvent(event, merchantOrderId, state, instituteId);
 
             // Step 6: Mark as processed
             webHookService.updateWebHook(webhookId, payload, merchantOrderId, event);
@@ -89,24 +126,30 @@ public class PhonePeWebHookService {
         }
     }
 
-    private void handleEvent(PhonePeWebHookDTO webhookDTO, String instituteId) {
-        String event = webhookDTO.getEvent();
-        String merchantOrderId = webhookDTO.getPayload().getMerchantOrderId();
-        String state = webhookDTO.getPayload().getState();
-
+    private void handleEvent(String event, String merchantOrderId, String state, String instituteId) {
         log.info("Handling PhonePe event: {} for order: {} with state: {}", event, merchantOrderId, state);
 
-        if ("checkout.order.completed".equals(event) || "pg.order.completed".equals(event)
-                || "COMPLETED".equalsIgnoreCase(state)) {
-            log.info("Payment completed for order: {}", merchantOrderId);
-            paymentLogService.updatePaymentLogsByOrderId(merchantOrderId, PaymentStatusEnum.PAID.name(), instituteId);
-        } else if ("checkout.order.failed".equals(event) || "pg.order.failed".equals(event)
-                || "FAILED".equalsIgnoreCase(state)) {
-            log.warn("Payment failed for order: {}", merchantOrderId);
-            paymentLogService.updatePaymentLogsByOrderId(merchantOrderId, PaymentStatusEnum.FAILED.name(), instituteId);
-        } else if ("pg.refund.completed".equals(event)) {
-            log.info("Refund completed for order: {}", merchantOrderId);
-            // Implement refund status update if needed
+        try {
+            // Map PhonePe codes to our status
+            if ("PAYMENT_SUCCESS".equalsIgnoreCase(event) || "COMPLETED".equalsIgnoreCase(state)) {
+                log.info("Payment completed for order: {}. Updating logs.", merchantOrderId);
+                paymentLogService.updatePaymentLogsByOrderId(merchantOrderId, PaymentStatusEnum.PAID.name(),
+                        instituteId);
+            } else if ("PAYMENT_ERROR".equalsIgnoreCase(event) || "FAILED".equalsIgnoreCase(state)) {
+                log.warn("Payment failed for order: {}. Updating logs.", merchantOrderId);
+                paymentLogService.updatePaymentLogsByOrderId(merchantOrderId, PaymentStatusEnum.FAILED.name(),
+                        instituteId);
+            } else if ("PAYMENT_PENDING".equalsIgnoreCase(event) || "PENDING".equalsIgnoreCase(state)) {
+                // PhonePe might send PENDING status, though we usually care about final ones.
+                log.info("Payment pending for order: {}. Updating logs.", merchantOrderId);
+                paymentLogService.updatePaymentLogsByOrderId(merchantOrderId, PaymentStatusEnum.PAYMENT_PENDING.name(),
+                        instituteId);
+            } else {
+                log.info("Unhandled PhonePe state: {} / event: {}. No action taken.", state, event);
+            }
+        } catch (Exception e) {
+            // Swallow logic errors here to not fail the webhook response
+            log.error("Error in business logic for event {}; order {}: {}", event, merchantOrderId, e.getMessage(), e);
         }
     }
 

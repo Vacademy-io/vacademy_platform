@@ -310,6 +310,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
           )
         )
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -359,6 +360,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
           )
         )
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       """)
   Page<StudentListV2Projection> getAllStudentV2WithFilterRaw(
       @Param("statuses") List<String> statuses,
@@ -477,6 +479,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
           )
         )
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -519,6 +522,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND ssigm.enrolled_date <= CAST(:endDate AS DATE)
           )
         )
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       """)
   Page<StudentListV2Projection> getAllStudentV2WithSearchRaw(
       @Param("name") String name,
@@ -569,6 +573,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
         ON s.user_id = ssigm.user_id
+      LEFT JOIN user_plan up
+        ON up.id = ssigm.user_plan_id
       LEFT JOIN custom_field_values cfv
         ON (cfv.source_id = s.user_id
        AND (:customFieldIds IS NULL OR cfv.custom_field_id IN (:customFieldIds)))
@@ -577,6 +583,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
         AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       GROUP BY s.id, s.username, s.user_id, s.email, s.full_name,
                s.address_line, s.region, s.city, s.pin_code, s.mobile_number,
                s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
@@ -590,11 +597,14 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
         ON s.user_id = ssigm.user_id
+      LEFT JOIN user_plan up
+        ON up.id = ssigm.user_plan_id
       WHERE (:statuses IS NULL OR ssigm.status IN (:statuses))
         AND (:gender IS NULL OR s.gender IN (:gender))
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
         AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       """, nativeQuery = true)
   Page<Object[]> findAllStudentsWithFiltersAndCustomFields(
       @Param("statuses") List<String> statuses,
@@ -619,6 +629,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
         ON s.user_id = ssigm.user_id
+      LEFT JOIN user_plan up
+        ON up.id = ssigm.user_plan_id
       LEFT JOIN custom_field_values cfv
         ON (cfv.source_id = s.user_id
        AND (:customFieldIds IS NULL OR cfv.custom_field_id IN (:customFieldIds)))
@@ -633,6 +645,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
         AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       GROUP BY s.id, s.username, s.user_id, s.email, s.full_name,
                s.address_line, s.region, s.city, s.pin_code, s.mobile_number,
                s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
@@ -646,6 +659,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
         ON s.user_id = ssigm.user_id
+      LEFT JOIN user_plan up
+        ON up.id = ssigm.user_plan_id
       WHERE (:statuses IS NULL OR ssigm.status IN (:statuses))
         AND (:gender IS NULL OR s.gender IN (:gender))
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
@@ -657,6 +672,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
              OR (ssigm.institute_enrollment_number ILIKE :name || '%')
              OR (s.user_id ILIKE :name || '%')
              OR (s.mobile_number ILIKE :name || '%'))
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       """, nativeQuery = true)
   Page<Object[]> findAllStudentsWithFilterAndSearchAndCustomFields(
       @Param("name") String name,
@@ -773,6 +789,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
           )
         )
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -827,6 +844,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
           )
         )
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       """)
   Page<StudentListV2Projection> getAllStudentV2WithFilterRaw(
       @Param("statuses") List<String> statuses,
@@ -966,6 +984,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
           )
         )
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
                ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
                last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
@@ -1035,6 +1054,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
           )
         )
+        AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED'))
       """)
   Page<StudentListV2Projection> getAllStudentV2WithSearchRaw(
       @Param("name") String name,

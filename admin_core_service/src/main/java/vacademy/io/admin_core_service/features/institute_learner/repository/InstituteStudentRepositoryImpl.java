@@ -124,7 +124,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
                      s.parents_to_mother_email, ssigm.institute_enrollment_number,
-                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, 
+                     ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json,
                      ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ssigm.desired_level_id,
                      ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles
             """;
@@ -148,7 +148,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             Pageable pageable) {
 
         StringBuilder whereClause = new StringBuilder(" WHERE (");
-        
+
         // Search conditions
         whereClause.append("(s.full_name IS NOT NULL AND s.full_name != '' AND s.full_name ILIKE '%' || :name || '%') ");
         whereClause.append("OR (s.username IS NOT NULL AND s.username != '' AND s.username ILIKE '%' || :name || '%') ");
@@ -174,7 +174,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         whereClause.append("AND (:sources IS NULL OR ssigm.source IN (:sources)) ");
         whereClause.append("AND (:types IS NULL OR ssigm.type IN (:types)) ");
         whereClause.append("AND (:typeIds IS NULL OR ssigm.type_id IN (:typeIds)) ");
-        whereClause.append("AND (:destinationPackageSessionIds IS NULL OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds)) ");
+        whereClause.append("AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED')) ");
+        whereClause.append(
+                "AND (:destinationPackageSessionIds IS NULL OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds)) ");
         whereClause.append("AND (:levelIds IS NULL OR ssigm.desired_level_id IN (:levelIds)) ");
 
         // Date range filter for enrolled_date and expiry_date
@@ -221,10 +223,10 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             for (Map.Entry<String, List<String>> entry : customFieldFilters.entrySet()) {
                 String fieldId = entry.getKey();
                 List<String> values = entry.getValue();
-                
+
                 String paramFieldId = "customFieldId" + filterIndex;
                 String paramValues = "customFieldValues" + filterIndex;
-                
+
                 whereClause.append("AND EXISTS ( ");
                 whereClause.append("  SELECT 1 FROM custom_field_values cfv_filter").append(filterIndex).append(" ");
                 whereClause.append("  WHERE cfv_filter").append(filterIndex).append(".source_type = 'USER' ");
@@ -232,7 +234,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                 whereClause.append("    AND cfv_filter").append(filterIndex).append(".custom_field_id = :").append(paramFieldId).append(" ");
                 whereClause.append("    AND cfv_filter").append(filterIndex).append(".value IN (:").append(paramValues).append(") ");
                 whereClause.append(") ");
-                
+
                 parameters.put(paramFieldId, fieldId);
                 parameters.put(paramValues, values);
                 filterIndex++;
@@ -304,6 +306,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         whereClause.append("    AND (ssigm.expiry_date >= :startDate OR ssigm.expiry_date IS NULL) ");
         whereClause.append("  ) ");
         whereClause.append(") ");
+        whereClause.append("AND (up.id IS NULL OR up.status NOT IN ('TERMINATED', 'CANCELED')) ");
 
         // Sub org user types filter
         whereClause.append("AND ( ");
@@ -341,10 +344,10 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             for (Map.Entry<String, List<String>> entry : customFieldFilters.entrySet()) {
                 String fieldId = entry.getKey();
                 List<String> values = entry.getValue();
-                
+
                 String paramFieldId = "customFieldId" + filterIndex;
                 String paramValues = "customFieldValues" + filterIndex;
-                
+
                 whereClause.append("AND EXISTS ( ");
                 whereClause.append("  SELECT 1 FROM custom_field_values cfv_filter").append(filterIndex).append(" ");
                 whereClause.append("  WHERE cfv_filter").append(filterIndex).append(".source_type = 'USER' ");
@@ -352,7 +355,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                 whereClause.append("    AND cfv_filter").append(filterIndex).append(".custom_field_id = :").append(paramFieldId).append(" ");
                 whereClause.append("    AND cfv_filter").append(filterIndex).append(".value IN (:").append(paramValues).append(") ");
                 whereClause.append(") ");
-                
+
                 parameters.put(paramFieldId, fieldId);
                 parameters.put(paramValues, values);
                 filterIndex++;

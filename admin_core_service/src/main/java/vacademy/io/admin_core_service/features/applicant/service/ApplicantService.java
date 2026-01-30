@@ -24,6 +24,7 @@ import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
 import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -70,7 +71,7 @@ public class ApplicantService {
         private CustomFieldRepository customFieldRepository;
 
         @Autowired
-        private vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository instituteCustomFieldRepository;
+        private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
         private static final Logger logger = LoggerFactory.getLogger(ApplicantService.class);
 

@@ -69,6 +69,9 @@ public class ApplicantService {
         @Autowired
         private CustomFieldRepository customFieldRepository;
 
+        @Autowired
+        private vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository instituteCustomFieldRepository;
+
         private static final Logger logger = LoggerFactory.getLogger(ApplicantService.class);
 
         private final ObjectMapper objectMapper = new ObjectMapper();
@@ -346,6 +349,7 @@ public class ApplicantService {
                                 if (!users.isEmpty() && users.get(0).getChild() != null) {
                                         UserDTO childUser = users.get(0).getChild();
                                         createStudentProfile(childUser, request.getFormData(),
+                                                        request.getCustomFieldValues(),
                                                         request.getInstituteId());
                                 }
                         }
@@ -369,7 +373,8 @@ public class ApplicantService {
 
                         // 3. Create Student
                         if (childUser != null) {
-                                createStudentProfile(childUser, request.getFormData(), request.getInstituteId());
+                                createStudentProfile(childUser, request.getFormData(), request.getCustomFieldValues(),
+                                                request.getInstituteId());
                         }
 
                         // 4. Create Audience Response (New record)
@@ -431,6 +436,7 @@ public class ApplicantService {
          * THROWS exception if student already exists for this user.
          */
         private void createStudentProfile(UserDTO childUser, java.util.Map<String, Object> formData,
+                        Map<String, String> customFieldValues,
                         String instituteId) {
                 try {
                         Optional<Student> existingStudent = instituteStudentRepository
@@ -483,8 +489,8 @@ public class ApplicantService {
 
                         Student savedStudent = instituteStudentRepository.save(student);
 
-                        // Save custom fields (non-standard keys)
-                        saveCustomFieldValues(formData, savedStudent.getId(), instituteId);
+                        // Save custom fields (from explicit custom_field_values map)
+                        saveCustomFieldValues(customFieldValues, savedStudent.getId(), instituteId);
 
                 } catch (VacademyException ve) {
                         throw ve;
@@ -498,43 +504,41 @@ public class ApplicantService {
          * Loops through form_data, skips standard fields, and saves the rest to
          * custom_field_values.
          */
-        private void saveCustomFieldValues(Map<String, Object> formData, String studentId, String instituteId) {
-                if (formData == null || formData.isEmpty()) {
+        /**
+         * Save custom field values from explicit ID-based map.
+         * Validates that field ID is linked to the institute before saving.
+         */
+        private void saveCustomFieldValues(Map<String, String> customFieldValues, String studentId,
+                        String instituteId) {
+                if (customFieldValues == null || customFieldValues.isEmpty()) {
                         return;
                 }
 
                 List<CustomFieldValues> customFieldValuesList = new ArrayList<>();
 
-                for (Map.Entry<String, Object> entry : formData.entrySet()) {
-                        String fieldKey = entry.getKey();
-                        Object valueObj = entry.getValue();
-
-                        // Skip standard fields - they are already saved to Student table
-                        if (STANDARD_FIELD_KEYS.contains(fieldKey)) {
-                                continue;
-                        }
+                for (Map.Entry<String, String> entry : customFieldValues.entrySet()) {
+                        String customFieldId = entry.getKey();
+                        String value = entry.getValue();
 
                         // Skip empty values
-                        String value = valueObj != null ? valueObj.toString() : null;
                         if (value == null || value.trim().isEmpty()) {
                                 continue;
                         }
 
-                        // Look up custom field definition by field_key AND institute_id to ensure
-                        // uniqueness and validity
-                        Optional<CustomFields> customFieldOpt = customFieldRepository
-                                        .findByFieldKeyAndInstituteId(fieldKey, instituteId);
-                        if (customFieldOpt.isEmpty()) {
-                                logger.warn("Custom field not found or not active for key: {} and institute: {}. Skipping.",
-                                                fieldKey, instituteId);
+                        // Validate: Is this custom field linked to this institute?
+                        boolean isLinked = instituteCustomFieldRepository
+                                        .existsByInstituteIdAndCustomFieldIdAndStatus(instituteId, customFieldId,
+                                                        "ACTIVE");
+
+                        if (!isLinked) {
+                                logger.warn("Security/Data Check: Custom field {} is not linked to institute {}. Skipping.",
+                                                customFieldId, instituteId);
                                 continue;
                         }
 
-                        CustomFields customField = customFieldOpt.get();
-
-                        // Build CustomFieldValues entity
+                        // Build CustomFieldValues entity (Directly using ID)
                         CustomFieldValues cfValue = CustomFieldValues.builder()
-                                        .customFieldId(customField.getId())
+                                        .customFieldId(customFieldId)
                                         .sourceType("STUDENT")
                                         .sourceId(studentId)
                                         .value(value)

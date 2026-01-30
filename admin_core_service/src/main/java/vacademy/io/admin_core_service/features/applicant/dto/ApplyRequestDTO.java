@@ -55,4 +55,10 @@ public class ApplyRequestDTO {
      * Flexible structure to accommodate various form configurations
      */
     private Map<String, Object> formData;
+
+    /**
+     * Custom field values map
+     * Key: custom_field_id (UUID), Value: submitted value
+     */
+    private Map<String, String> customFieldValues;
 }

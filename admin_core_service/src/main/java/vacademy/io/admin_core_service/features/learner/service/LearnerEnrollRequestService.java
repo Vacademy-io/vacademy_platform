@@ -106,7 +106,7 @@ public class LearnerEnrollRequestService {
             boolean sendCredentials = getSendCredentialsFlag(
                     learnerEnrollRequestDTO.getInstituteId(),
                     enrollDTO.getPackageSessionIds());
-            UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(),
+            UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
             learnerEnrollRequestDTO.setUser(user);
             // Generate coupon code for new learner enrollment

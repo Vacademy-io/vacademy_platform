@@ -112,6 +112,30 @@ public class AuthService {
         }
     }
 
+    public UserDTO createUserFromAuthServiceForLearnerEnrollment(UserDTO userDTO, String instituteId,
+            boolean sendCred) {
+        try {
+            String url = StudentConstants.addLearnerRoute
+                    + "?instituteId=" + instituteId
+                    + "&isNotify=" + sendCred;
+
+            userDTO.setRootUser(true);
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    url,
+                    userDTO);
+
+            return objectMapper.readValue(response.getBody(), UserDTO.class);
+
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
     public UserDTO getUsersFromAuthServiceWithPasswordByUserId(String userId) {
         if (userId == null) {
             return null;

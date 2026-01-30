@@ -55,6 +55,21 @@ public class UserController {
         }
     }
 
+    @PostMapping("/internal/create-or-get-existing-learner")
+    @Transactional
+    public ResponseEntity<UserDTO> createOrGetExistingLearner(@RequestBody UserDTO userDTO,
+            @RequestParam(name = "instituteId", required = false) String instituteId,
+            @RequestParam(name = "isNotify", required = false, defaultValue = "true") boolean isNotify) {
+        try {
+            User user = authService.createUserForLearnerEnrollment(userDTO, instituteId, isNotify);
+            UserDTO res = new UserDTO(user, userDTO);
+            res.setPassword(user.getPassword());
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
     @PutMapping("/internal/update-user")
     public ResponseEntity<UserDTO> updateUser(@RequestBody UserDTO userDTO, @RequestParam("userId") String userId) {
         try {

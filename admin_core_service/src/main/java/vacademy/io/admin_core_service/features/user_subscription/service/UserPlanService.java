@@ -410,9 +410,7 @@ public class UserPlanService {
                 userPlanFilterDTO.getInstituteId());
         Sort thisSort = ListService.createSortObject(userPlanFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-        List<String> status = List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name(),
-                UserPlanStatusEnum.PENDING_FOR_PAYMENT.name(), UserPlanStatusEnum.CANCELED.name(),
-                UserPlanStatusEnum.EXPIRED.name(), UserPlanStatusEnum.PAYMENT_FAILED.name());
+        List<String> status = List.of(UserPlanStatusEnum.ACTIVE.name(),UserPlanStatusEnum.PENDING.name(),UserPlanStatusEnum.PENDING_FOR_PAYMENT.name(),UserPlanStatusEnum.CANCELED.name(),UserPlanStatusEnum.EXPIRED.name(),UserPlanStatusEnum.PAYMENT_FAILED.name(),UserPlanStatusEnum.TERMINATED.name());
         Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
                 userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
 
@@ -698,18 +696,6 @@ public class UserPlanService {
 
         if (!force) {
             logger.info("UserPlan ID: {} marked as CANCELED", userPlanId);
-
-            // Inactivate all associated mappings to "deroll" the user
-            List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
-                    .findAllByUserPlanIdAndStatusIn(
-                            userPlanId,
-                            List.of(LearnerSessionStatusEnum.ACTIVE.name()));
-
-            for (StudentSessionInstituteGroupMapping mapping : mappings) {
-                mapping.setStatus(LearnerSessionStatusEnum.INACTIVE.name());
-            }
-            studentSessionRepository.saveAll(mappings);
-            logger.info("Inactivated {} mappings for CANCELED UserPlan ID: {}", mappings.size(), userPlanId);
             return;
         }
 

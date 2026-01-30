@@ -230,7 +230,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ON ssigm.package_session_id = ps.id
                 AND ssigm.user_id = :userId
                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-            LEFT JOIN user_plan up_filter ON up_filter.id = ssigm.user_plan_id
 
             LEFT JOIN learner_operation lo
                 ON lo.source = 'PACKAGE_SESSION'
@@ -304,7 +303,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         )
                     )
                 )
-                AND (up_filter.id IS NULL OR up_filter.status NOT IN ('TERMINATED', 'CANCELED'))
                 AND (
                     :#{#tags == null || #tags.isEmpty()} = true OR
                     EXISTS (
@@ -335,7 +333,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 ON ssigm.package_session_id = ps.id
                                 AND ssigm.user_id = :userId
                                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                            LEFT JOIN user_plan up_count_filter ON up_count_filter.id = ssigm.user_plan_id
                             LEFT JOIN learner_operation lo
                                 ON lo.source = 'PACKAGE_SESSION'
                                 AND lo.source_id = ps.id
@@ -364,7 +361,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                         )
                                     )
                                 )
-                                AND (up_count_filter.id IS NULL OR up_count_filter.status NOT IN ('TERMINATED', 'CANCELED'))
                                 AND (
                                     :#{#tags == null || #tags.isEmpty()} = true OR
                                     EXISTS (
@@ -455,7 +451,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ON ssigm.package_session_id = ps.id
                 AND ssigm.user_id = :userId
                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-            LEFT JOIN user_plan up_search_filter ON up_search_filter.id = ssigm.user_plan_id
 
             LEFT JOIN learner_operation lo
                 ON lo.source = 'PACKAGE_SESSION'
@@ -515,7 +510,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                AND (up_search_filter.id IS NULL OR up_search_filter.status NOT IN ('TERMINATED', 'CANCELED'))
                 AND (
                     :name IS NULL OR
                     LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
@@ -546,7 +540,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 ON ssigm.package_session_id = ps.id
                                 AND ssigm.user_id = :userId
                                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                            LEFT JOIN user_plan up_search_count_filter ON up_search_count_filter.id = ssigm.user_plan_id
                             LEFT JOIN learner_operation lo ON lo.source = 'PACKAGE_SESSION' AND lo.source_id = ps.id
                                 AND (:userId IS NULL OR lo.user_id = :userId)
                                 AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
@@ -559,7 +552,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                         AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                                AND (up_search_count_filter.id IS NULL OR up_search_count_filter.status NOT IN ('TERMINATED', 'CANCELED'))
                                 AND (
                                     :name IS NULL OR
                                     LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
@@ -1486,7 +1478,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ON ssigm.package_session_id = ps.id
                 AND ssigm.user_id = :userId
                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-            LEFT JOIN user_plan up_filter ON up_filter.id = ssigm.user_plan_id
 
             LEFT JOIN learner_operation lo
                 ON lo.source = 'PACKAGE_SESSION'
@@ -1561,7 +1552,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         )
                     )
                 )
-                AND (up_filter.id IS NULL OR up_filter.status NOT IN ('TERMINATED', 'CANCELED'))
                 AND (
                     :#{#tags == null || #tags.isEmpty()} = true
                     OR EXISTS (
@@ -1591,7 +1581,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             ON ssigm.package_session_id = ps.id
                             AND ssigm.user_id = :userId
                             AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                        LEFT JOIN user_plan up_count_filter ON up_count_filter.id = ssigm.user_plan_id
                         LEFT JOIN learner_operation lo
                             ON lo.source = 'PACKAGE_SESSION'
                             AND lo.source_id = ps.id
@@ -1609,7 +1598,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                             AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                            AND (up_count_filter.id IS NULL OR up_count_filter.status NOT IN ('TERMINATED', 'CANCELED'))
                             AND (
                                 :#{#facultyIds == null || #facultyIds.isEmpty()} = true
                                 OR EXISTS (
@@ -1718,8 +1706,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
               AND ssigm.user_id = :userId
               AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
 
-            LEFT JOIN user_plan up_filter ON up_filter.id = ssigm.user_plan_id
-
             LEFT JOIN learner_operation lo
               ON lo.source = 'PACKAGE_SESSION'
               AND lo.source_id = ps.id
@@ -1777,7 +1763,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
               AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
               AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-              AND (up_filter.id IS NULL OR up_filter.status NOT IN ('TERMINATED', 'CANCELED'))
               AND (
                   :name IS NULL OR
                   LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
@@ -1808,7 +1793,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                       ON ssigm.package_session_id = ps.id
                       AND ssigm.user_id = :userId
                       AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                    LEFT JOIN user_plan up_count_filter ON up_count_filter.id = ssigm.user_plan_id
                     LEFT JOIN faculty_subject_package_session_mapping fspm
                       ON fspm.package_session_id = ps.id
                       AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
@@ -1817,7 +1801,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                       AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                             AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                       AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                      AND (up_count_filter.id IS NULL OR up_count_filter.status NOT IN ('TERMINATED', 'CANCELED'))
                       AND (
                           :name IS NULL OR
                           LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR

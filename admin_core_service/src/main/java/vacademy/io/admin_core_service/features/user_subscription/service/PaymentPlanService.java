@@ -25,15 +25,10 @@ public class PaymentPlanService {
         return paymentPlanRepository.findById(id);
     }
 
-    public List<PaymentPlan> findByPaymentOption(PaymentOption paymentOption) {
-        return paymentPlanRepository.findByPaymentOption(paymentOption);
-    }
-
-    public List<PaymentPlan> editPaymentPlans(List<PaymentPlan> existingPaymentPlans,
-            List<PaymentPlanDTO> paymentPlanDTOS, PaymentOption paymentOption) {
-        Map<String, PaymentPlan> existingPaymentPlanMap = existingPaymentPlans.stream()
-                .collect(Collectors.toMap(PaymentPlan::getId, Function.identity()));
-        List<PaymentPlan> toSave = new ArrayList<>();
+    public List<PaymentPlan>editPaymentPlans(List<PaymentPlan>existingPaymentPlans, List<PaymentPlanDTO>paymentPlanDTOS, PaymentOption paymentOption){
+        Map<String,PaymentPlan>existingPaymentPlanMap = existingPaymentPlans.stream().
+                collect(Collectors.toMap(PaymentPlan::getId, Function.identity()));
+        List<PaymentPlan>toSave = new ArrayList<>();
         for (PaymentPlanDTO paymentPlanDTO : paymentPlanDTOS) {
             if (StringUtils.hasText(paymentPlanDTO.getId())){
                 PaymentPlan paymentPlan = existingPaymentPlanMap.get(paymentPlanDTO.getId());
@@ -47,7 +42,7 @@ public class PaymentPlanService {
                 toSave.add(new PaymentPlan(paymentPlanDTO,paymentOption));
             }
         }
-        return toSave;
+       return toSave;
     }
     private void updatePaymentPlan(PaymentPlan paymentPlan, PaymentPlanDTO paymentPlanDTO) {
         paymentPlan.setName(paymentPlanDTO.getName());

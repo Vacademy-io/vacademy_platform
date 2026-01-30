@@ -59,7 +59,7 @@ public class WebSecurityConfig {
             "/notification-service/v1/sse/**",
             "/notification-service/public/**",
             "/notification-service/health/**",
-            "notification-service/webhook/v1/wati/**"
+            "/notification-service/webhook/v1/wati/**"
     };
 
     @Autowired

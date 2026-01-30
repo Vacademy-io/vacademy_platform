@@ -2,25 +2,24 @@ package vacademy.io.admin_core_service.features.user_subscription.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.Date;
+import jakarta.validation.constraints.NotBlank;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @Data
-public class PaymentLogDTO {
-    private String id;
-    private String status;
-    private String paymentStatus;
-    private String userId;
-    private String vendor;
-    private String vendorId;
-    private Date date;
-    private String currency;
-    private String paymentSpecificData;
-    private Double paymentAmount;
-    private String transactionId;
+@NoArgsConstructor
+@AllArgsConstructor
+public class UpdatePaymentLogTrackingDTO {
+
+    @NotBlank(message = "Payment log ID is required")
+    private String paymentLogId;
+
     private String trackingId;
+
     private String trackingSource;
+
     private String orderStatus;
 }

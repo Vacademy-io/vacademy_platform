@@ -38,33 +38,55 @@ const stripUrlQueryString = (htmlString: string) => {
   );
 };
 
+// Helper function to check if HTML content has actual visible text
+// Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
+const hasContent = (htmlString: string | undefined | null): boolean => {
+  if (!htmlString) return false;
+  // Strip HTML tags and decode HTML entities
+  const textContent = htmlString
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/&nbsp;/gi, ' ') // Replace &nbsp; with space
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+  return textContent.length > 0;
+};
+
 const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
+  // Check if level should be shown
+  const normalizedLevel = (levelName || "").trim().toLowerCase();
+  const hasLevel = normalizedLevel && normalizedLevel !== "default" && normalizedLevel !== "-";
+
+  // Check if there's any content to show
+  const hasLearningOutcome = hasContent(courseData?.learningOutcome);
+  const hasAboutCourse = hasContent(courseData?.aboutCourse);
+
+  // If there's no content at all, don't render the card
+  if (!hasLevel && !hasLearningOutcome && !hasAboutCourse) {
+    return null;
+  }
+
   return (
     <Card className="overflow-hidden shadow-lg border bg-white w-full">
       <CardContent className="p-5 sm:p-6">
         {/* Course Name, Tags, and Description Removed as they duplicate the header info */}
 
         {/* Level Wedge - hidden when level is 'default' (case-insensitive) or empty */}
-        {(() => {
-          const normalizedLevel = (levelName || "").trim().toLowerCase();
-          if (!normalizedLevel || normalizedLevel === "default" || normalizedLevel === "-") return null;
-          return (
-            <div className="flex items-start gap-2 mb-8">
-              <Award className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <Badge
-                variant="outline"
-                className="h-7 rounded-full px-3 text-xs font-medium uppercase tracking-wide border-amber-200 text-amber-700 bg-amber-50"
-              >
-                {levelName}
-              </Badge>
-            </div>
-          );
-        })()}
+        {hasLevel && (
+          <div className="flex items-start gap-2 mb-8">
+            <Award className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <Badge
+              variant="outline"
+              className="h-7 rounded-full px-3 text-xs font-medium uppercase tracking-wide border-amber-200 text-amber-700 bg-amber-50"
+            >
+              {levelName}
+            </Badge>
+          </div>
+        )}
 
 
 
         {/* What Learners Will Gain Section */}
-        {courseData?.learningOutcome && (
+        {hasLearningOutcome && (
           <div className="mb-8">
             <div className="flex items-start gap-2 sm:gap-3 mb-4">
               <Target className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5" />
@@ -83,10 +105,13 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
           </div>
         )}
 
-        <Separator className="my-8" />
+        {/* Separator - only show if both sections have content */}
+        {hasLearningOutcome && hasAboutCourse && (
+          <Separator className="my-8" />
+        )}
 
         {/* About the Course Section */}
-        {courseData?.aboutCourse && (
+        {hasAboutCourse && (
           <div className="mb-8">
             <div className="flex items-start gap-2 sm:gap-3 mb-4">
               <Info className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0 mt-0.5" />

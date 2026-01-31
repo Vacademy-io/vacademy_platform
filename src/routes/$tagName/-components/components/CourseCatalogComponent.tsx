@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { getCurrencySymbol } from "@/utils/currency";
 import { useNavigate } from "@tanstack/react-router";
 import { CourseCatalogProps } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -147,6 +148,7 @@ interface Course {
   duration: string;
   rating: number;
   // Allow any additional fields from API response
+  currency?: string;
   [key: string]: any;
 }
 
@@ -1057,7 +1059,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       {/* Price */}
                       {displayPrice && globalSettings?.payment?.enabled !== false && (
                         <span className="text-lg font-bold text-primary-600">
-                          {course.price === 0 ? "Free" : `₹${course.price.toFixed(2)}`}
+                          {course.price === 0 ? "Free" : `${getCurrencySymbol(course.currency || 'INR')}${course.price.toFixed(2)}`}
                         </span>
                       )}
 

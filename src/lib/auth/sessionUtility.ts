@@ -190,8 +190,22 @@ const getTokenDecodedData = (
       exp: 0,
     };
   }
-  const tokenData: IAccessToken = jwtDecode(token);
-  return tokenData;
+  try {
+    const tokenData: IAccessToken = jwtDecode(token);
+    return tokenData;
+  } catch (error) {
+    console.warn("Failed to decode token:", error);
+    return {
+      user: "",
+      email: "",
+      is_root_user: false,
+      authorities: {},
+      username: "",
+      sub: "",
+      iat: 0,
+      exp: 0,
+    };
+  }
 };
 
 // Refresh tokens

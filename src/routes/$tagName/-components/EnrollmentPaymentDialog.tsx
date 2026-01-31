@@ -1,4 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  RazorpayCheckoutForm,
+  RazorpayCheckoutFormRef,
+} from "@/components/common/enroll-by-invite/-components/razorpay-checkout-form";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
@@ -15,6 +19,8 @@ import {
   ENROLLMENT_INVITE_URL,
   LIVE_SESSION_REQUEST_OTP,
   LIVE_SESSION_VERIFY_OTP,
+  ENROLL_USER_INVITE_PAYMENT_URL,
+  LOGIN_URL,
 } from "@/constants/urls";
 import { cachedGet } from "@/lib/http/clientCache";
 import { getCurrencySymbol } from "@/utils/currency";
@@ -54,6 +60,7 @@ interface EnrollmentData {
   id: string;
   name: string;
   enroll_invite_id: string;
+  vendor?: string;
   package_session_to_payment_options: Array<{
     package_session_id: string;
     payment_option: PaymentOption;
@@ -66,6 +73,7 @@ export const EnrollmentPaymentDialog: React.FC<
   EnrollmentPaymentDialogProps
 > = ({ open, onOpenChange, instituteId, courseData, onSuccess }) => {
   const [step, setStep] = useState<"email" | "payment" | "success">("email");
+  const [vendor, setVendor] = useState("STRIPE");
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -271,23 +279,9 @@ export const EnrollmentPaymentDialog: React.FC<
   useEffect(() => {
     if (open) {
       if (!courseData.enrollInviteId) {
-        const fallbackPaymentPlan = {
-          id: "fallback-plan",
-          name: "Standard Plan",
-          actual_price: courseData.price || 100, // Fallback to $100 if price is 0
-          elevated_price: (courseData.price || 100) * 1.2, // 20% higher than actual price
-          currency: "USD",
-          description: "Standard course access",
-          validity_in_days: 365,
-        };
-        setSelectedPaymentPlan(fallbackPaymentPlan);
-        setAvailablePaymentPlans([fallbackPaymentPlan]);
-        setCurrency("USD");
-        setLoading(false);
         setIsInitializing(false);
-
-        // Still fetch Stripe key for payment processing
-        fetchStripeKey();
+        setLoading(false);
+        toast.error("Invalid course data: Missing enrollment invite ID");
         return;
       }
 
@@ -312,6 +306,11 @@ export const EnrollmentPaymentDialog: React.FC<
         })
         .then((data: EnrollmentData) => {
           setEnrollmentData(data);
+
+          // Extract vendor and fetch payment gateway details
+          const vendor = data.vendor || "STRIPE";
+          setVendor(vendor);
+          fetchStripeKey(vendor);
 
           // Set the first available payment plan
           if (
@@ -347,42 +346,20 @@ export const EnrollmentPaymentDialog: React.FC<
             } else {
             }
           } else {
-            // Create a fallback payment plan for testing
-            const fallbackPaymentPlan = {
-              id: "fallback-plan",
-              name: "Standard Plan",
-              actual_price: courseData.price,
-              elevated_price: courseData.price * 1.2, // 20% higher than actual price
-              currency: "USD",
-              description: "Standard course access",
-              validity_in_days: 365,
-            };
-            setSelectedPaymentPlan(fallbackPaymentPlan);
-            setAvailablePaymentPlans([fallbackPaymentPlan]);
+            console.log("No payment options found in enrollment data");
+            setAvailablePaymentPlans([]);
+            setSelectedPaymentPlan(null);
             setCurrency("USD");
           }
 
           setLoading(false);
         })
         .catch((error) => {
-          // Create a fallback payment plan when API fails
-          const fallbackPaymentPlan = {
-            id: "fallback-plan",
-            name: "Standard Plan",
-            actual_price: courseData.price,
-            elevated_price: courseData.price * 1.2, // 20% higher than actual price
-            currency: "USD",
-            description: "Standard course access",
-            validity_in_days: 365,
-          };
-          setSelectedPaymentPlan(fallbackPaymentPlan);
-          setAvailablePaymentPlans([fallbackPaymentPlan]);
-          setCurrency("USD");
+          console.error("Enrollment data fetch error:", error);
+          setAvailablePaymentPlans([]);
+          setSelectedPaymentPlan(null);
           setLoading(false);
         });
-
-      // Fetch Stripe key
-      fetchStripeKey();
 
       setTimeout(() => {
         setStep("email");
@@ -403,10 +380,10 @@ export const EnrollmentPaymentDialog: React.FC<
     }
   }, [open, courseData.enrollInviteId, instituteId]);
 
-  const fetchStripeKey = async () => {
+  const fetchStripeKey = async (vendor: string = "STRIPE") => {
     try {
       const data = await cachedGet<Record<string, any>>(
-        `${GET_PAYMENT_GATEWAY_DETAILS_URL}?instituteId=${instituteId}&vendor=STRIPE`,
+        `${GET_PAYMENT_GATEWAY_DETAILS_URL}?instituteId=${instituteId}&vendor=${vendor}`,
         {
           method: "GET",
           headers: {
@@ -445,7 +422,7 @@ export const EnrollmentPaymentDialog: React.FC<
           publishableKey = configKeys.find(
             (key) => key && typeof key === "string" && key.startsWith("pk_")
           );
-        } catch (error) {}
+        } catch (error) { }
       }
 
       if (publishableKey) {
@@ -528,7 +505,9 @@ export const EnrollmentPaymentDialog: React.FC<
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">
                   Enroll in Course
                 </h2>
-                <p className="text-sm text-gray-600">{courseData.title}</p>
+                <p className="text-sm text-gray-600">
+                  {enrollmentData?.name || courseData.title}
+                </p>
               </div>
 
               {step === "email" && (
@@ -541,11 +520,10 @@ export const EnrollmentPaymentDialog: React.FC<
                       type="text"
                       value={fullName}
                       onChange={(e) => handleFullNameChange(e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
-                        validationError
-                          ? "border-red-500 focus:ring-red-500"
-                          : "border-gray-300 focus:ring-blue-500"
-                      }`}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${validationError
+                        ? "border-red-500 focus:ring-red-500"
+                        : "border-gray-300 focus:ring-blue-500"
+                        }`}
                       placeholder="Enter your full name"
                     />
                     {validationError && (
@@ -563,11 +541,10 @@ export const EnrollmentPaymentDialog: React.FC<
                       type="email"
                       value={email}
                       onChange={(e) => handleEmailChange(e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
-                        emailError
-                          ? "border-red-500 focus:ring-red-500"
-                          : "border-gray-300 focus:ring-blue-500"
-                      }`}
+                      className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${emailError
+                        ? "border-red-500 focus:ring-red-500"
+                        : "border-gray-300 focus:ring-blue-500"
+                        }`}
                       placeholder="Enter your email address"
                     />
                     {emailError && (
@@ -584,11 +561,10 @@ export const EnrollmentPaymentDialog: React.FC<
                       enableSearch={true}
                       value={phone}
                       onChange={(value) => handlePhoneChange(value)}
-                      inputClass={`w-full px-3 py-2 border rounded-r-md focus:outline-none focus:ring-2 ${
-                        phoneError
-                          ? "border-red-500 focus:ring-red-500"
-                          : "border-gray-300 focus:ring-blue-500"
-                      }`}
+                      inputClass={`w-full px-3 py-2 border rounded-r-md focus:outline-none focus:ring-2 ${phoneError
+                        ? "border-red-500 focus:ring-red-500"
+                        : "border-gray-300 focus:ring-blue-500"
+                        }`}
                       buttonClass="!rounded-l-md !border-r-0 !border-gray-300"
                       containerClass="!w-full"
                       placeholder="Enter your phone number"
@@ -759,7 +735,7 @@ export const EnrollmentPaymentDialog: React.FC<
                         <div className="flex items-center justify-between text-sm mb-1">
                           <span className="text-gray-600">Course:</span>
                           <span className="font-semibold text-gray-900">
-                            {courseData.title}
+                            {enrollmentData?.name || courseData.title}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-sm mb-1">
@@ -786,11 +762,10 @@ export const EnrollmentPaymentDialog: React.FC<
                             {availablePaymentPlans.map((plan) => (
                               <div
                                 key={plan.id}
-                                className={`border rounded-lg p-3 cursor-pointer transition-colors ${
-                                  selectedPaymentPlan.id === plan.id
-                                    ? "border-blue-500 bg-blue-50"
-                                    : "border-gray-200 hover:border-gray-300"
-                                }`}
+                                className={`border rounded-lg p-3 cursor-pointer transition-colors ${selectedPaymentPlan.id === plan.id
+                                  ? "border-blue-500 bg-blue-50"
+                                  : "border-gray-200 hover:border-gray-300"
+                                  }`}
                                 onClick={() => handlePaymentPlanChange(plan.id)}
                               >
                                 <div className="flex items-center justify-between">
@@ -820,7 +795,7 @@ export const EnrollmentPaymentDialog: React.FC<
                                     <div className="flex items-center gap-2">
                                       {plan.elevated_price &&
                                         plan.elevated_price >
-                                          plan.actual_price && (
+                                        plan.actual_price && (
                                           <span className="text-sm text-gray-500 line-through">
                                             {getCurrencySymbol(plan.currency)}
                                             {plan.elevated_price}
@@ -860,7 +835,7 @@ export const EnrollmentPaymentDialog: React.FC<
                               <div className="flex items-center gap-2">
                                 {selectedPaymentPlan.elevated_price &&
                                   selectedPaymentPlan.elevated_price >
-                                    selectedPaymentPlan.actual_price && (
+                                  selectedPaymentPlan.actual_price && (
                                     <span className="text-sm text-gray-500 line-through">
                                       {getCurrencySymbol(
                                         selectedPaymentPlan.currency
@@ -884,9 +859,25 @@ export const EnrollmentPaymentDialog: React.FC<
                         </div>
                       )}
 
-                      {stripePromise ? (
+                      {vendor === "RAZORPAY" ? (
+                        <PaymentForm
+                          amount={selectedPaymentPlan.actual_price}
+                          currency={currency}
+                          email={email}
+                          fullName={fullName}
+                          phone={phone}
+                          instituteId={instituteId}
+                          courseData={courseData}
+                          enrollmentData={enrollmentData}
+                          selectedPaymentPlan={selectedPaymentPlan}
+                          onSuccess={handlePaymentSuccess}
+                          onError={handlePaymentError}
+                          onBack={handleBack}
+                          vendor={vendor}
+                        />
+                      ) : stripePromise ? (
                         <Elements stripe={stripePromise}>
-                          <PaymentForm
+                          <StripeConnectedPaymentForm
                             amount={selectedPaymentPlan.actual_price}
                             currency={currency}
                             email={email}
@@ -940,7 +931,7 @@ export const EnrollmentPaymentDialog: React.FC<
                         <Loader2 size={18} className="animate-spin mr-2" />
                         Loading...
                       </>
-                    ) : courseData.price === 0 ? (
+                    ) : (selectedPaymentPlan?.actual_price === 0 || (availablePaymentPlans.length > 0 && availablePaymentPlans.every(p => p.actual_price === 0))) ? (
                       "Continue"
                     ) : (
                       "Continue to Payment"
@@ -982,7 +973,16 @@ interface PaymentFormProps {
   onSuccess: (tokens: { accessToken: string; refreshToken: string }) => void;
   onError: (error: string) => void;
   onBack: () => void;
+  stripe?: any;
+  elements?: any;
+  vendor?: string;
 }
+
+const StripeConnectedPaymentForm: React.FC<PaymentFormProps> = (props) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  return <PaymentForm {...props} stripe={stripe} elements={elements} />;
+};
 
 const PaymentForm: React.FC<PaymentFormProps> = ({
   amount,
@@ -997,27 +997,252 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
   onSuccess,
   onError,
   onBack,
+  stripe,
+  elements,
+  vendor: vendorProp,
 }) => {
-  const stripe = useStripe();
-  const elements = useElements();
+  // const stripe = useStripe(); // Removed
+  // const elements = useElements(); // Removed
   const [isProcessing, setIsProcessing] = useState(false);
   const [cardError, setCardError] = useState("");
   const [cardComplete, setCardComplete] = useState(false);
+  const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
+
+  // Store credentials from Enroll API for auto-login after Razorpay payment
+  // Using useRef instead of useState to avoid closure issues with callbacks
+  const razorpayCredentialsRef = useRef<{
+    username: string;
+    password: string;
+  } | null>(null);
+
+  // Use vendor prop, fallback to enrollmentData vendor, then STRIPE
+  const vendor = vendorProp || enrollmentData?.vendor || "STRIPE";
+
+  console.log("PaymentForm vendor:", vendor, "vendorProp:", vendorProp);
+
+  // Directly handle Razorpay completion - called after payment modal closes
+  const completeRazorpayEnrollment = async (paymentData: any) => {
+    console.log("=== completeRazorpayEnrollment CALLED ===");
+    console.log("razorpayCredentialsRef.current:", razorpayCredentialsRef.current);
+
+    // Use a local variable to prevent multiple executions
+    if (isProcessing) {
+      console.log("⚠️ Already processing, but continuing anyway for Razorpay completion");
+    }
+
+    setIsProcessing(true);
+    console.log("=== Razorpay payment completed, processing auto-login ===");
+    console.log("Payment Data:", paymentData);
+
+    const credentials = razorpayCredentialsRef.current;
+    console.log("Stored credentials available:", credentials ? "YES" : "NO");
+    if (credentials) {
+      console.log("Stored username:", credentials.username);
+    }
+
+    try {
+      // PRIORITY 1: If we have stored credentials from the Enroll API, 
+      // call Login API directly - no need for another API call
+      if (credentials?.username && credentials?.password) {
+        console.log("=== Calling Login API with stored credentials ===");
+        console.log("Username:", credentials.username);
+
+        const loginResponse = await fetch(LOGIN_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_name: credentials.username,
+            password: credentials.password,
+            client_name: "ADMIN_PORTAL",
+          }),
+        });
+
+        const loginResult = await loginResponse.json();
+        console.log("Login API response:", loginResult);
+
+        if (loginResponse.ok && loginResult.accessToken && loginResult.refreshToken) {
+          console.log("Auto-login successful!");
+          // Clear stored credentials after successful login
+          razorpayCredentialsRef.current = null;
+          setIsProcessing(false);
+          onSuccess({
+            accessToken: loginResult.accessToken,
+            refreshToken: loginResult.refreshToken,
+          });
+          return;
+        } else {
+          console.warn("Login API failed:", loginResult);
+          // Continue to fallback methods
+        }
+      }
+
+      // FALLBACK: If no stored credentials or login failed, 
+      // call Register API to complete enrollment and get tokens
+      console.log("=== Fallback: Calling Register API for enrollment completion ===");
+
+      const finalEnrollInviteId =
+        enrollmentData?.package_session_to_payment_options?.[0]
+          ?.enroll_invite_id ||
+        enrollmentData?.enroll_invite_id ||
+        enrollmentData?.id ||
+        courseData.enrollInviteId;
+
+      const baseUrl =
+        import.meta.env.VITE_BACKEND_URL ||
+        import.meta.env.VITE_API_BASE_URL ||
+        "https://backend-stage.vacademy.io";
+
+      // Call Register API with payment verification data
+      const registerPayload = {
+        user: {
+          email: email,
+          full_name: fullName,
+          address_line: "",
+          city: "",
+          region: "",
+          pin_code: "",
+          mobile_number: phone,
+          date_of_birth: "",
+          gender: "",
+          password: "",
+          profile_pic_file_id: "",
+          roles: ["STUDENT"],
+          root_user: true,
+        },
+        institute_id: instituteId,
+        subject_id: "",
+        vendor_id: "RAZORPAY",
+        learner_package_session_enroll: {
+          package_session_ids: [enrollmentData?.package_session_to_payment_options?.[0]?.package_session_id || courseData.packageSessionId],
+          plan_id: selectedPaymentPlan.id,
+          payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
+          enroll_invite_id: finalEnrollInviteId,
+          refer_request: null,
+          payment_initiation_request: {
+            vendor: "RAZORPAY",
+            amount: amount,
+            currency: currency,
+            description: `Enrollment in ${enrollmentData?.name || courseData.title}`,
+            charge_automatically: true,
+            institute_id: instituteId,
+            stripe_request: {},
+            razorpay_request: {
+              customer_id: null,
+              contact: phone,
+              email: email,
+              razorpay_payment_id: paymentData.razorpay_payment_id,
+              razorpay_order_id: paymentData.razorpay_order_id,
+              razorpay_signature: paymentData.razorpay_signature,
+            },
+            pay_pal_request: {},
+            eway_request: {},
+            include_pending_items: true,
+          },
+          custom_field_values: [],
+        },
+      };
+
+      console.log("Register API Completion Payload:", JSON.stringify(registerPayload, null, 2));
+
+      const response = await fetch(
+        `${baseUrl}/auth-service/learner/v1/register`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(registerPayload),
+        }
+      );
+
+      const paymentResponse = await response.json();
+      console.log("Register API response:", paymentResponse);
+
+      if (!response.ok) {
+        throw new Error(paymentResponse.message || paymentResponse.ex || "Failed to complete enrollment");
+      }
+
+      // Try to get credentials from register response and login
+      const username = paymentResponse?.user?.username || paymentResponse?.user_details?.username || paymentResponse?.username;
+      const password = paymentResponse?.user?.password || paymentResponse?.user_details?.password || paymentResponse?.password;
+
+      if (username && password) {
+        console.log("=== Calling Login API with register response credentials ===");
+        const loginResponse = await fetch(LOGIN_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_name: username,
+            password: password,
+            client_name: "ADMIN_PORTAL",
+          }),
+        });
+
+        const loginResult = await loginResponse.json();
+        console.log("Login API response:", loginResult);
+
+        if (loginResponse.ok && loginResult.accessToken && loginResult.refreshToken) {
+          console.log("Auto-login successful from register response!");
+          onSuccess({
+            accessToken: loginResult.accessToken,
+            refreshToken: loginResult.refreshToken,
+          });
+          return;
+        }
+      }
+
+      // Final fallback: Extract tokens directly from register response
+      if (paymentResponse.accessToken && paymentResponse.refreshToken) {
+        onSuccess({
+          accessToken: paymentResponse.accessToken,
+          refreshToken: paymentResponse.refreshToken,
+        });
+      } else if (paymentResponse.access_token && paymentResponse.refresh_token) {
+        onSuccess({
+          accessToken: paymentResponse.access_token,
+          refreshToken: paymentResponse.refresh_token,
+        });
+      } else if (paymentResponse?.user_details?.access_token && paymentResponse?.user_details?.refresh_token) {
+        onSuccess({
+          accessToken: paymentResponse.user_details.access_token,
+          refreshToken: paymentResponse.user_details.refresh_token,
+        });
+      } else {
+        onError("Enrollment completed but auto-login failed. Please login manually with your credentials.");
+      }
+    } catch (error) {
+      console.error("Razorpay completion error:", error);
+      onError(error instanceof Error ? error.message : "Failed to complete enrollment");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleSubmit = async () => {
-    // Check if this is a free course
-    if (courseData.price === 0) {
+    console.log("=== handleSubmit called ===");
+    console.log("vendor:", vendor);
+    console.log("amount:", amount);
+    console.log("enrollmentData:", enrollmentData);
+    console.log("courseData:", courseData);
+
+    // Check if this is a free course based on the selected plan price
+    const isFree = amount === 0;
+    console.log("isFree:", isFree);
+
+    if (isFree) {
       setIsProcessing(true);
 
       try {
-        // For free courses, call registration API directly without payment
-        // Prioritize enroll_invite_id from courseData (passed from course catalog)
         const finalEnrollInviteId =
-          courseData.enrollInviteId ||
           enrollmentData?.package_session_to_payment_options?.[0]
             ?.enroll_invite_id ||
           enrollmentData?.enroll_invite_id ||
-          enrollmentData?.id;
+          enrollmentData?.id ||
+          courseData.enrollInviteId;
 
         // Validate that we have a valid enroll_invite_id
         if (!finalEnrollInviteId) {
@@ -1033,7 +1258,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             email: email,
             full_name: fullName,
             mobile_number: phone,
-            date_of_birth: new Date().toISOString(),
+            date_of_birth: "",
             gender: "",
             address_line: "",
             city: "",
@@ -1056,7 +1281,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             payment_initiation_request: {
               amount: 0,
               currency: "USD",
-              description: `Free enrollment in ${courseData.title}`,
+              description: `Free enrollment in ${enrollmentData?.name || courseData.title}`,
               charge_automatically: false,
               order_id: `free_enrollment_${Date.now()}_${Math.random()
                 .toString(36)
@@ -1074,7 +1299,6 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           },
         });
 
-        // Check for successful enrollment
         if (result.accessToken && result.refreshToken) {
           onSuccess({
             accessToken: result.accessToken,
@@ -1100,6 +1324,135 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             : "Free course enrollment failed. Please try again."
         );
       } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+
+    // Razorpay Flow - using same service as enroll-form.tsx
+    if (vendor === "RAZORPAY") {
+      setIsProcessing(true);
+      try {
+        const finalEnrollInviteId =
+          enrollmentData?.package_session_to_payment_options?.[0]
+            ?.enroll_invite_id ||
+          enrollmentData?.enroll_invite_id ||
+          enrollmentData?.id ||
+          courseData.enrollInviteId;
+
+        console.log("Calling Enroll API for Razorpay order creation...");
+
+        // Step 1: Call ENROLL API to create order (this returns Razorpay order details)
+        const enrollPayload = {
+          user: {
+            email: email,
+            full_name: fullName,
+            address_line: "",
+            city: "",
+            region: "",
+            pin_code: "",
+            mobile_number: phone,
+            date_of_birth: "",
+            gender: "",
+            password: "",
+            profile_pic_file_id: "",
+            roles: ["STUDENT"],
+            root_user: true,
+          },
+          institute_id: instituteId,
+          subject_id: "",
+          vendor_id: "RAZORPAY",
+          learner_package_session_enroll: {
+            package_session_ids: [enrollmentData?.package_session_to_payment_options?.[0]?.package_session_id || courseData.packageSessionId],
+            plan_id: selectedPaymentPlan.id,
+            payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
+            enroll_invite_id: finalEnrollInviteId,
+            refer_request: null,
+            payment_initiation_request: {
+              vendor: "RAZORPAY",
+              amount: amount,
+              currency: currency,
+              description: `Enrollment in ${enrollmentData?.name || courseData.title}`,
+              charge_automatically: true,
+              institute_id: instituteId,
+              stripe_request: {},
+              razorpay_request: {
+                customer_id: null,
+                contact: phone,
+                email: email,
+              },
+              pay_pal_request: {},
+              eway_request: {},
+              include_pending_items: true,
+            },
+            custom_field_values: [],
+          },
+        };
+
+        console.log("Enroll API Payload:", JSON.stringify(enrollPayload, null, 2));
+
+        const response = await axios({
+          method: "POST",
+          url: ENROLL_USER_INVITE_PAYMENT_URL,
+          data: enrollPayload,
+        });
+
+        const paymentResponse = response.data;
+        console.log("Enroll API Response:", JSON.stringify(paymentResponse, null, 2));
+
+        // Extract and store username/password for auto-login after payment
+        // Try multiple possible paths in the response
+        const enrollUsername =
+          paymentResponse?.user?.username ||  // Actual path from API response
+          paymentResponse?.user_details?.username ||
+          paymentResponse?.username;
+        const enrollPassword =
+          paymentResponse?.user?.password ||  // Actual path from API response
+          paymentResponse?.user_details?.password ||
+          paymentResponse?.password;
+
+        console.log("Extracted credentials - username:", enrollUsername, "password:", enrollPassword ? "***" : undefined);
+
+        if (enrollUsername && enrollPassword) {
+          console.log("✓ Storing credentials from Enroll API for auto-login after payment");
+          razorpayCredentialsRef.current = {
+            username: enrollUsername,
+            password: enrollPassword,
+          };
+        } else {
+          console.log("✗ No credentials found in Enroll API response");
+          console.log("Response structure:", JSON.stringify(Object.keys(paymentResponse), null, 2));
+          razorpayCredentialsRef.current = null;
+        }
+
+        // Step 2: Extract order details from response
+        const orderDetails = paymentResponse?.payment_response?.response_data;
+        console.log("Order Details:", orderDetails);
+
+        if (!orderDetails || !orderDetails.razorpayKeyId || !orderDetails.razorpayOrderId) {
+          console.error("Missing Razorpay keys. Full result:", paymentResponse);
+          throw new Error("Failed to create Razorpay order. Backend did not return order details.");
+        }
+
+        // Step 3: Open Razorpay payment modal
+        if (razorpayRef.current) {
+          razorpayRef.current.openPayment({
+            razorpayKeyId: orderDetails.razorpayKeyId,
+            razorpayOrderId: orderDetails.razorpayOrderId,
+            amount: orderDetails.amount,
+            currency: orderDetails.currency || currency,
+            contact: orderDetails.contact || phone,
+            email: orderDetails.email || email,
+          });
+        } else {
+          throw new Error("Razorpay component not ready");
+        }
+
+        setIsProcessing(false);
+      } catch (error: any) {
+        console.error("Razorpay init error:", error);
+        const errorMessage = error?.response?.data?.ex || error?.response?.data?.message || (error instanceof Error ? error.message : "Failed to initialize payment");
+        onError(errorMessage);
         setIsProcessing(false);
       }
       return;
@@ -1142,26 +1495,25 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
       // Prioritize enroll_invite_id from courseData (passed from course catalog)
       const finalEnrollInviteId =
-        courseData.enrollInviteId ||
         enrollmentData?.package_session_to_payment_options?.[0]
           ?.enroll_invite_id ||
         enrollmentData?.enroll_invite_id ||
-        enrollmentData?.id;
+        enrollmentData?.id ||
+        courseData.enrollInviteId;
 
       // Process enrollment payment
       const result = await processEnrollmentPayment({
         user: {
-          id: null,
-          username: email.split("@")[0],
           email: email,
           full_name: fullName,
-          mobile_number: phone,
-          date_of_birth: new Date().toISOString(),
-          gender: null,
           address_line: "",
           city: "",
           region: "",
           pin_code: "",
+          mobile_number: phone,
+          date_of_birth: "",
+          gender: "",
+          password: "",
           profile_pic_file_id: "",
           roles: ["STUDENT"],
           root_user: true,
@@ -1170,34 +1522,25 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         subject_id: "",
         vendor_id: "STRIPE",
         learner_package_session_enroll: {
-          package_session_ids: [courseData.packageSessionId],
+          package_session_ids: [enrollmentData?.package_session_to_payment_options?.[0]?.package_session_id || courseData.packageSessionId],
           plan_id: selectedPaymentPlan.id,
           payment_option_id:
             enrollmentData?.package_session_to_payment_options?.[0]
-              ?.payment_option?.id || "fallback-option",
+              ?.payment_option?.id || "",
           enroll_invite_id: finalEnrollInviteId,
+          refer_request: null,
           payment_initiation_request: {
+            vendor: "STRIPE",
             amount: amount,
             currency: currency,
-            description: `Enrollment in ${courseData.title}`,
+            description: `Enrollment in ${enrollmentData?.name || courseData.title}`,
             charge_automatically: true,
-            order_id: `enrollment_${Date.now()}_${Math.random()
-              .toString(36)
-              .substr(2, 9)}`,
             institute_id: instituteId,
-            email: email,
-            vendor: "STRIPE",
-            vendor_id: paymentMethod.id,
             stripe_request: {
               payment_method_id: paymentMethod.id,
               card_last4: paymentMethod.card?.last4 || "0000",
-              customer_id: paymentMethod.customer || "temp_customer_id",
+              customer_id: paymentMethod.customer || "",
               return_url: window.location.origin + "/study-library/courses",
-            },
-            razorpay_request: {
-              customer_id: "",
-              contact: phone,
-              email: email,
             },
             pay_pal_request: {},
             include_pending_items: true,
@@ -1248,7 +1591,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
   return (
     <div className="space-y-4">
       {/* Card Element Container - Only show for paid courses */}
-      {courseData.price > 0 && (
+      {amount > 0 && vendor === "STRIPE" && (
         <div className="min-h-[48px] border border-gray-300 rounded-md p-3 bg-white">
           <CardElement
             options={{
@@ -1278,8 +1621,28 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         </div>
       )}
 
+      {/* Razorpay Component */}
+      {amount > 0 && vendor === "RAZORPAY" && (
+        <RazorpayCheckoutForm
+          ref={razorpayRef}
+          error={cardError}
+          amount={amount}
+          currency={currency}
+          userName={fullName}
+          userEmail={email}
+          userContact={phone}
+          courseName={enrollmentData?.name || courseData.title}
+          onPaymentReady={(paymentData) => {
+            console.log("=== onPaymentReady called ===");
+            console.log("Payment Data from Razorpay:", paymentData);
+            completeRazorpayEnrollment(paymentData);
+          }}
+          onError={setCardError}
+        />
+      )}
+
       {/* Free course message */}
-      {courseData.price === 0 && (
+      {amount === 0 && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-md">
           <div className="flex items-center">
             <div className="flex-shrink-0">
@@ -1316,17 +1679,17 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           className="w-full h-11 text-base flex items-center justify-center gap-2"
           onClick={handleSubmit}
           disabled={
-            isProcessing || (courseData.price > 0 && (!stripe || !cardComplete))
+            isProcessing || (amount > 0 && vendor === "STRIPE" && (!stripe || !cardComplete))
           }
         >
           {isProcessing ? (
             <>
               <Loader2 size={18} className="animate-spin" />
-              {courseData.price === 0 ? "Enrolling..." : "Processing..."}
+              {amount === 0 ? "Enrolling..." : "Processing..."}
             </>
           ) : (
             <>
-              {courseData.price === 0 ? (
+              {amount === 0 ? (
                 <>
                   <svg
                     className="w-5 h-5"
@@ -1346,7 +1709,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
               ) : (
                 <>
                   <Lock size={18} />
-                  Enroll Now
+                  {vendor === "RAZORPAY" ? "Proceed to Pay" : "Enroll Now"}
                 </>
               )}
             </>
@@ -1355,13 +1718,19 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       </div>
 
       {/* Security Message - Only show for paid courses */}
-      {courseData.price > 0 && (
+      {amount > 0 && (
         <div className="text-xs text-gray-500 text-center flex items-center justify-center gap-1">
           <Lock size={14} className="inline-block mr-1" />
           Secure payment powered by
           <span className="font-semibold flex items-center gap-1 ml-1">
-            <SiStripe size={16} className="text-indigo-600" />
-            Stripe
+            {vendor === "RAZORPAY" ? (
+              <span>Razorpay</span>
+            ) : (
+              <>
+                <SiStripe size={16} className="text-indigo-600" />
+                Stripe
+              </>
+            )}
           </span>
         </div>
       )}
@@ -1376,6 +1745,9 @@ const processEnrollmentPayment = async (paymentData: any) => {
       import.meta.env.VITE_BACKEND_URL ||
       import.meta.env.VITE_API_BASE_URL ||
       "https://backend-stage.vacademy.io";
+
+    console.log("Register API Payload (Stripe/Free):", JSON.stringify(paymentData, null, 2));
+
     const response = await fetch(
       `${baseUrl}/auth-service/learner/v1/register`,
       {
@@ -1388,9 +1760,10 @@ const processEnrollmentPayment = async (paymentData: any) => {
     );
 
     const result = await response.json();
+    console.log("Register API Response (Stripe/Free):", JSON.stringify(result, null, 2));
 
     if (!response.ok) {
-      throw new Error(result.message || "Payment failed");
+      throw new Error(result.message || result.ex || "Payment failed");
     }
 
     return result;

@@ -10,6 +10,20 @@ import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
 import { getBackendCourseDuration } from "@/utils/courseTime";
+import { getCurrencySymbol } from "@/utils/currency";
+
+// Helper function to check if HTML content has actual visible text
+// Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
+const hasContent = (htmlString: string | undefined | null): boolean => {
+  if (!htmlString) return false;
+  // Strip HTML tags and decode HTML entities
+  const textContent = htmlString
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/&nbsp;/gi, ' ') // Replace &nbsp; with space
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+  return textContent.length > 0;
+};
 
 interface CourseDetailsPageProps {
   courseId: string;
@@ -61,6 +75,7 @@ interface CourseData {
   comma_separeted_tags?: string;
   course_html_description_html?: string;
   about_the_course_html?: string;
+  currency?: string;
 }
 
 export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
@@ -270,10 +285,57 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           thumbnailUrl = thumbnailField || "/api/placeholder/800/400";
         }
 
-        // Map price from API response, fallback to prop price from URL
+        // Default price from course-init API
         let finalPrice =
           price ? parseFloat(price) :
-            course.min_plan_actual_price ||       0;
+            course.min_plan_actual_price || 0;
+        let finalCurrency = course.currency || "USD";
+
+        // Fetch enroll-invite API to get the correct price and currency from payment plans
+        // This API contains the actual payment_plans with actual_price and currency
+        if (enrollInviteId && instituteId) {
+          try {
+            console.log("[CourseDetailsPage] Fetching enroll-invite data for price...");
+            const enrollInviteResponse = await axios.get(
+              `${import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_BASE_URL || "https://backend-stage.vacademy.io"}/admin-core-service/open/learner/enroll-invite/${instituteId}/${enrollInviteId}`,
+              {
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+
+            console.log("[CourseDetailsPage] Enroll Invite API response:", enrollInviteResponse.data);
+
+            const enrollInviteData = enrollInviteResponse.data;
+
+            // Extract price and currency from payment_plans
+            const paymentPlan = enrollInviteData?.package_session_to_payment_options?.[0]?.payment_option?.payment_plans?.[0];
+
+            if (paymentPlan) {
+              const planPrice = paymentPlan.actual_price;
+              const planCurrency = paymentPlan.currency;
+
+              console.log("[CourseDetailsPage] Payment plan found:", {
+                actualPrice: planPrice,
+                currency: planCurrency,
+                planName: paymentPlan.name
+              });
+
+              if (planPrice !== undefined && planPrice !== null) {
+                finalPrice = planPrice;
+              }
+              if (planCurrency) {
+                finalCurrency = planCurrency;
+              }
+            } else {
+              console.log("[CourseDetailsPage] No payment plan found in enroll-invite response");
+            }
+          } catch (enrollInviteError) {
+            console.error("[CourseDetailsPage] Failed to fetch enroll-invite data:", enrollInviteError);
+            // Continue with default price from course-init API
+          }
+        }
 
         // Parse HTML content safely
         const parseHtmlContent = (htmlString: string) => {
@@ -389,20 +451,21 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     ?.instructors?.[0]?.email || "No email provided",
               },
             ],
-          rating: course.rating || 0,
+          rating: course.rating || 5,
           tags: parseTags(course.tags || ""),
           curriculum: [], // No curriculum data available from API yet
           courseDepth: course.course_depth || 5, // Default to 5 to show full structure
           packageSessionId:
             packageSessionId || course.package_session_id || courseId, // Use passed packageSessionId or fallback to API response
           enrollInviteId: enrollInviteId || course.enroll_invite_id, // Use passed enrollInviteId or fallback to API response
-          levelId: course.level_id, // Add levelId from API response
+          levelId: course.level_id,  // Add levelId from API response
           courseId: course.course_id || courseId, // Add courseId from API response or use the route param
           course_banner_media_id: course.course_banner_media_id || "", // Explicitly pass the banner ID for BookDetailsComponent
           // Preserve raw HTML fields for BookDetailsComponent
           course_html_description_html: course.course_html_description || course.course_html_description_html || "",
           about_the_course_html: course.about_the_course || course.about_the_course_html || "",
-          comma_separeted_tags: course.tags || course.comma_separeted_tags || ""
+          comma_separeted_tags: course.tags || course.comma_separeted_tags || "",
+          currency: finalCurrency,
         } as any;
 
         setCourseData(courseData);
@@ -413,7 +476,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           courseId: courseData.courseId,
           packageSessionId: courseData.packageSessionId,
           levelIdFromAPI: course.level_id,
-          courseIdFromAPI: course.course_id
+          courseIdFromAPI: course.course_id,
+          price: courseData.price,
+          currency: courseData.currency,
         });
 
         // Check if lead collection should be shown based on JSON configuration
@@ -599,7 +664,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             <span className="text-lg font-bold text-primary-800">
                               {courseData.price === 0
                                 ? "Free"
-                                : `$${courseData.price}`}
+                                : `${getCurrencySymbol(courseData.currency || 'INR')}${courseData.price}`}
                             </span>
                           </div>
                         )}
@@ -737,7 +802,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
               {/* Content Sections in Card Layout */}
               <div className="space-y-4">
                 {/* What You'll Learn Section */}
-                {courseData.whyLearn && (
+                {hasContent(courseData.whyLearn) && (
                   <div
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                     style={{ animationDelay: "0.3s" }}
@@ -769,44 +834,43 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 )}
 
                 {/* About Course Section */}
-                {courseData.aboutCourse &&
-                  courseData.aboutCourse.trim() !== "" && (
-                    <div
-                      className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                      style={{ animationDelay: "0.4s" }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                      <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
-                          <div className="p-1.5 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg shadow-sm">
-                            <svg
-                              className="w-4 h-4 text-blue-600"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          </div>
-                          <h2 className="text-base font-bold text-gray-900">
-                            About this course
-                          </h2>
+                {hasContent(courseData.aboutCourse) && (
+                  <div
+                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                    style={{ animationDelay: "0.4s" }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                    <div className="relative">
+                      <div className="flex items-center space-x-2 mb-3">
+                        <div className="p-1.5 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg shadow-sm">
+                          <svg
+                            className="w-4 h-4 text-blue-600"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
                         </div>
-                        <div
-                          className="text-sm text-gray-600 leading-relaxed"
-                          dangerouslySetInnerHTML={{
-                            __html: courseData.aboutCourse || "",
-                          }}
-                        />
+                        <h2 className="text-base font-bold text-gray-900">
+                          About this course
+                        </h2>
                       </div>
+                      <div
+                        className="text-sm text-gray-600 leading-relaxed"
+                        dangerouslySetInnerHTML={{
+                          __html: courseData.aboutCourse || "",
+                        }}
+                      />
                     </div>
-                  )}
+                  </div>
+                )}
 
                 {/* Who Should Learn Section */}
-                {courseData.whoShouldLearn && (
+                {hasContent(courseData.whoShouldLearn) && (
                   <div
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                     style={{ animationDelay: "0.5s" }}
@@ -970,7 +1034,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
                           <span className="text-xs font-medium text-primary-700">Price</span>
                           <span className="text-lg font-bold text-primary-800">
-                            {courseData.price === 0 ? "Free" : `$${courseData.price}`}
+                            {courseData.price === 0 ? "Free" : `${getCurrencySymbol(courseData.currency || 'INR')}${courseData.price}`}
                           </span>
                         </div>
                       )}
@@ -1258,7 +1322,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             <button
               onClick={() => {
                 console.log("[CourseDetailsPage] Mobile Get Started button clicked");
-                const globalSettings = catalogueData?.globalSettings as any;
                 // Always show lead collection when Get Started is clicked, overriding the enabled setting
                 setShowLeadCollection(true);
               }}

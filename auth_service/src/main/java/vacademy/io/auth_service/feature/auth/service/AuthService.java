@@ -107,6 +107,10 @@ public class AuthService {
         User user;
         if (isAlreadyPresent) {
             user = optionalUser.get();
+            // Update email if the existing user doesn't have one but the request provides
+            // one
+            if (StringUtils.hasText(normalizedEmail) && !StringUtils.hasText(user.getEmail()))
+                user.setEmail(normalizedEmail);
             if (StringUtils.hasText(registerRequest.getFullName()))
                 user.setFullName(registerRequest.getFullName());
             if (StringUtils.hasText(registerRequest.getAddressLine()))
@@ -332,6 +336,10 @@ public class AuthService {
         User user;
         if (isAlreadyPresent) {
             user = optionalUser.get();
+            // Update email if the existing user doesn't have one but the request provides
+            // one
+            if (StringUtils.hasText(normalizedEmail) && !StringUtils.hasText(user.getEmail()))
+                user.setEmail(normalizedEmail);
             if (StringUtils.hasText(registerRequest.getFullName()))
                 user.setFullName(registerRequest.getFullName());
             if (StringUtils.hasText(registerRequest.getAddressLine()))

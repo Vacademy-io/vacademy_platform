@@ -57,6 +57,19 @@ import { CourseStructureDetails as CatalogCourseStructureDetails } from "@/route
 
 // SUBSCRIPTION, FREE, UPFRONT, DONATION
 
+// Helper function to check if HTML content has actual visible text
+// Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
+const hasContent = (htmlString: string | undefined | null): boolean => {
+  if (!htmlString) return false;
+  // Strip HTML tags and decode HTML entities
+  const textContent = htmlString
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/&nbsp;/gi, ' ') // Replace &nbsp; with space
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim();
+  return textContent.length > 0;
+};
+
 interface EnrollByInviteProps {
   vendor?: PaymentVendor;
 }
@@ -270,6 +283,18 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     []
   );
 
+  // Helper to safely get allowLearnersToCreateCourses from instituteData settings
+  const getAllowLearnersToCreateCourses = useCallback(() => {
+    try {
+      if (!instituteData?.setting) return false;
+      const parsed = JSON.parse(instituteData.setting);
+      return parsed?.setting?.COURSE_SETTING?.data?.permissions?.allowLearnersToCreateCourses || false;
+    } catch {
+      console.warn("Failed to parse institute settings, defaulting to false");
+      return false;
+    }
+  }, [instituteData?.setting]);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(zodSchema),
     defaultValues: generateDefaultValues(finalCustomFields || []),
@@ -335,9 +360,8 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   // Check if right section (CourseInfoCard) has meaningful data beyond just the course name
   const hasRightSectionContent = useMemo(() => {
     return (
-      (courseData.aboutCourse && courseData.aboutCourse.trim() !== "") ||
-      (courseData.learningOutcome &&
-        courseData.learningOutcome.trim() !== "") ||
+      hasContent(courseData.aboutCourse) ||
+      hasContent(courseData.learningOutcome) ||
       hasLevelName
     );
   }, [courseData.aboutCourse, courseData.learningOutcome, hasLevelName]);
@@ -591,13 +615,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             inviteData?.package_session_to_payment_options.map(
               (ps: { package_session_id: string }) => ps?.package_session_id
             ) || [""],
-          allowLearnersToCreateCourses:
-            JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
-              ?.permissions?.allowLearnersToCreateCourses || false,
+          allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
           paymentVendor: "STRIPE", // Default for FREE payments
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
-          userId: submittedUserId || undefined,
+          // userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
         setCurrentStep(5); // Go directly to success for FREE payments
@@ -640,14 +662,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             inviteData?.package_session_to_payment_options.map(
               (ps: { package_session_id: string }) => ps?.package_session_id
             ) || [""],
-          allowLearnersToCreateCourses:
-            JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
-              ?.permissions?.allowLearnersToCreateCourses || false,
+          allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
           ewayPaymentData: ewayEncryptedData,
           paymentVendor: "EWAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
-          userId: submittedUserId || undefined,
+          // userId: submittedUserId || undefined,
         });
         setOrderId(paymentResponse?.payment_response?.order_id);
         setPaymentCompletionResponse(paymentResponse);
@@ -693,14 +713,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             inviteData?.package_session_to_payment_options.map(
               (ps: { package_session_id: string }) => ps?.package_session_id
             ) || [""],
-          allowLearnersToCreateCourses:
-            JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
-              ?.permissions?.allowLearnersToCreateCourses || false,
+          allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
           razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
           paymentVendor: "RAZORPAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
-          userId: submittedUserId || undefined,
+          // userId: submittedUserId || undefined,
         });
 
         // Step 2: Extract order details from response
@@ -783,13 +801,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         package_session_ids: inviteData?.package_session_to_payment_options.map(
           (ps: { package_session_id: string }) => ps?.package_session_id
         ) || [""],
-        allowLearnersToCreateCourses:
-          JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
-            ?.permissions?.allowLearnersToCreateCourses || false,
+        allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
         referRequest: referRequest,
         paymentVendor: "STRIPE",
         isUsingInstituteCustomFields: isUsingInstituteCustomFields,
-        userId: submittedUserId || undefined,
+        // userId: submittedUserId || undefined,
       });
       setOrderId(paymentResponse?.payment_response?.order_id);
       setPaymentCompletionResponse(paymentResponse);
@@ -844,14 +860,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               inviteData?.package_session_to_payment_options.map(
                 (ps: { package_session_id: string }) => ps?.package_session_id
               ) || [""],
-            allowLearnersToCreateCourses:
-              JSON.parse(instituteData?.setting)?.setting?.COURSE_SETTING?.data
-                ?.permissions?.allowLearnersToCreateCourses || false,
+            allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
             referRequest: referRequest,
             razorpayPaymentData: razorpayPaymentData, // Now includes payment details
             paymentVendor: "RAZORPAY",
             isUsingInstituteCustomFields: isUsingInstituteCustomFields,
-            userId: submittedUserId || undefined,
+            // userId: submittedUserId || undefined,
           });
 
           setPaymentCompletionResponse(paymentResponse);

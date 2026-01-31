@@ -83,14 +83,18 @@ const NavigationButtons = ({
         className="w-full sm:w-auto flex items-center gap-2 bg-gradient-to-r from-primary-500 to-primary-500 text-white font-medium py-3 px-6 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
       >
         {loading
-          ? "Processing"
+          ? "Processing..."
           : currentStep === 3 || (currentStep === 2 && paymentType === "FREE")
-          ? currentStep === 3 && !isPaymentDataReady
-            ? paymentVendor === "EWAY"
-              ? "Verify Card First"
-              : "Waiting for Payment..."
-            : "Complete Enrollment"
-          : "Next"}
+            ? currentStep === 3 && !isPaymentDataReady
+              ? paymentVendor === "EWAY"
+                ? "Enter Card Details"
+                : paymentVendor === "RAZORPAY"
+                  ? "Pay Now"
+                  : "Complete Payment"
+              : paymentType === "FREE"
+                ? "Complete Enrollment"
+                : "Confirm & Pay"
+            : "Next"}
         {loading ? (
           <Loader2 className="w-4 h-4 animate-spin" />
         ) : (

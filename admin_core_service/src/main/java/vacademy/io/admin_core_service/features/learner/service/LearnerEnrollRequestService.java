@@ -199,6 +199,16 @@ public class LearnerEnrollRequestService {
             }
         }
 
+        // Ensure PaymentInitiationRequest has user's email if not already set
+        // This is critical for payment receipt emails to be sent correctly
+        if (enrollDTO.getPaymentInitiationRequest() != null
+                && !StringUtils.hasText(enrollDTO.getPaymentInitiationRequest().getEmail())
+                && StringUtils.hasText(learnerEnrollRequestDTO.getUser().getEmail())) {
+            log.info("Setting user email {} in PaymentInitiationRequest for payment receipt emails",
+                    learnerEnrollRequestDTO.getUser().getEmail());
+            enrollDTO.getPaymentInitiationRequest().setEmail(learnerEnrollRequestDTO.getUser().getEmail());
+        }
+
         UserPlan userPlan = createUserPlan(
                 learnerEnrollRequestDTO.getUser().getId(),
                 enrollDTO,

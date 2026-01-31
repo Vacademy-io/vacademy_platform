@@ -52,14 +52,18 @@ public interface PackageDetailV2Projection {
     // Faculty IDs
     List<String> getFacultyUserIds();
 
-    // Enroll Invite + Payment details
+    // Enroll Invite + Payment details (default invite -> psli -> last updated payment_option -> its plan)
     String getEnrollInviteId();
+
+    String getPsliId();
 
     String getPaymentOptionId();
 
     String getPaymentOptionType();
 
     String getPaymentOptionStatus();
+
+    String getPaymentPlanId();
 
     Double getMinPlanActualPrice();
 

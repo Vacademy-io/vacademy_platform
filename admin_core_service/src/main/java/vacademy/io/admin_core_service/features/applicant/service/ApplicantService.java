@@ -419,8 +419,12 @@ public class ApplicantService {
                                 .build();
                 applicantStageRepository.save(applicantStage);
 
-                // Update audience_response with applicant_id
+                // Update audience_response with applicant_id and destination_package_session_id
+                // if provided
                 audienceResponse.setApplicantId(savedApplicant.getId().toString());
+                if (request.getDestinationPackageSessionId() != null) {
+                        audienceResponse.setDestinationPackageSessionId(request.getDestinationPackageSessionId());
+                }
                 audienceResponseRepository.save(audienceResponse);
 
                 return ApplyResponseDTO.builder()

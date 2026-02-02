@@ -394,7 +394,10 @@ class GoogleCloudTTSClient:
 
         client = texttospeech.TextToSpeechClient(credentials=credentials)
 
-        input_text = texttospeech.SynthesisInput(text=text)
+        # Create SSML with marks for each word to get precise timestamps
+        ssml_input, word_list = self._create_ssml_with_marks(text)
+        
+        input_text = texttospeech.SynthesisInput(ssml=ssml_input)
         voice = texttospeech.VoiceSelectionParams(
             language_code=language_code,
             name=voice_name
@@ -403,36 +406,107 @@ class GoogleCloudTTSClient:
             audio_encoding=texttospeech.AudioEncoding.MP3
         )
 
+        # Request timepoints for SSML marks
         response = client.synthesize_speech(
-            input=input_text, voice=voice, audio_config=audio_config
+            input=input_text, 
+            voice=voice, 
+            audio_config=audio_config,
+            enable_time_pointing=[texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK]
         )
 
         # Save audio
         output_path.write_bytes(response.audio_content)
         
-        # Generate mock timestamps (linear interpolation)
-        self._generate_mock_timestamps(text, raw_json_path)
+        # Process timepoints to create word timestamps
+        word_entries = self._process_timepoints(response, word_list)
+        
+        if word_entries:
+            print(f"    ✅ Got {len(word_entries)} word timestamps from Google TTS Timepoints")
+            raw_json_path.write_text(json.dumps(word_entries, indent=2))
+        else:
+            # Fallback to linear interpolation if no timepoints returned
+            print(f"    ⚠️ No timepoints returned, using linear interpolation fallback")
+            self._generate_mock_timestamps(text, raw_json_path)
+
+    def _create_ssml_with_marks(self, text: str) -> tuple:
+        """Create SSML with <mark> tags for each word to track timing."""
+        import re
+        
+        # Split text into words while preserving punctuation
+        words = re.findall(r'\S+', text)
+        word_list = []
+        
+        ssml_parts = ['<speak>']
+        for i, word in enumerate(words):
+            mark_name = f"w{i}"
+            word_list.append({"index": i, "word": word, "mark": mark_name})
+            ssml_parts.append(f'<mark name="{mark_name}"/>{word} ')
+        ssml_parts.append('</speak>')
+        
+        ssml = ''.join(ssml_parts)
+        return ssml, word_list
+
+    def _process_timepoints(self, response, word_list: list) -> list:
+        """Process Google TTS timepoints to create word timestamp entries."""
+        word_entries = []
+        
+        # Create a mapping from mark name to time
+        mark_times = {}
+        for tp in response.timepoints:
+            mark_times[tp.mark_name] = tp.time_seconds
+        
+        if not mark_times:
+            return []
+        
+        # Build word entries with start/end times
+        for i, word_info in enumerate(word_list):
+            mark = word_info["mark"]
+            word = word_info["word"]
+            
+            if mark not in mark_times:
+                continue
+                
+            start_time = mark_times[mark]
+            
+            # End time is the start of the next word, or estimated duration
+            if i + 1 < len(word_list):
+                next_mark = word_list[i + 1]["mark"]
+                if next_mark in mark_times:
+                    end_time = mark_times[next_mark]
+                else:
+                    # Estimate: 0.06s per character
+                    end_time = start_time + len(word) * 0.06
+            else:
+                # Last word: estimate duration
+                end_time = start_time + len(word) * 0.06 + 0.3  # Add 0.3s pause at end
+            
+            word_entries.append({
+                "word": word,
+                "start": round(start_time, 3),
+                "end": round(end_time, 3)
+            })
+        
+        return word_entries
 
     def _generate_mock_timestamps(self, text: str, raw_json_path: Path) -> None:
-        # Linear interpolation for timestamps (approx 16 chars/sec)
-        chars = list(text)
-        starts = []
-        ends = []
+        """Fallback: Linear interpolation for timestamps (approx 16 chars/sec)."""
+        import re
+        
+        words = re.findall(r'\S+', text)
+        word_entries = []
         t = 0.0
-        step = 0.06 
-        for c in chars:
-            starts.append(round(t, 3))
-            t += step
-            ends.append(round(t, 3))
-            
-        mock_response = {
-            "alignment": {
-                "characters": chars,
-                "character_start_times_seconds": starts,
-                "character_end_times_seconds": ends
-            }
-        }
-        raw_json_path.write_text(json.dumps(mock_response, indent=2))
+        
+        for word in words:
+            # Estimate ~0.06s per character + small gap between words
+            duration = len(word) * 0.06 + 0.1
+            word_entries.append({
+                "word": word,
+                "start": round(t, 3),
+                "end": round(t + duration, 3)
+            })
+            t += duration
+        
+        raw_json_path.write_text(json.dumps(word_entries, indent=2))
 
 
 class VideoGenerationPipeline:
@@ -1266,6 +1340,35 @@ class VideoGenerationPipeline:
                         beat_context += f"- {beat.get('label')}: {beat.get('visual_idea')}\n"
                 beat_context += "(Use these ideas if they match the current narration text)\n"
 
+            # Format word timings for the LLM to use for animation sync
+            word_timings = ""
+            seg_words = seg.get("words", [])
+            if seg_words:
+                # Create a condensed timing table - group every 5 words to avoid overwhelming the LLM
+                word_timings = "**📊 WORD TIMINGS (use for animation sync)**:\n"
+                word_timings += "```\n"
+                word_timings += "Time(s)  | Word\n"
+                word_timings += "---------|--------\n"
+                
+                # Show key words with their exact timestamps
+                # Prioritize: first word, every 5th word, and any words >5 chars (likely key terms)
+                shown_count = 0
+                for i, w in enumerate(seg_words):
+                    word = str(w.get("word", ""))
+                    start = float(w.get("start", 0))
+                    
+                    # Show first 3 words, then every 5th word, or long words (likely key terms)
+                    is_key_word = len(word) > 5 and word.isalpha()
+                    should_show = (i < 3) or (i % 5 == 0) or is_key_word
+                    
+                    if should_show and shown_count < 40:  # Limit to 40 entries max
+                        word_timings += f"{start:>7.2f}  | {word}\n"
+                        shown_count += 1
+                
+                word_timings += "```\n"
+                word_timings += f"Shot starts at: {seg['start']:.2f}s | Shot ends at: {seg['end']:.2f}s\n"
+                word_timings += "**Formula**: `delay_ms = (word_time - shot_start) * 1000`\n"
+
             # Select system prompt based on HTML quality
             try:
                 if hasattr(self, '_current_html_quality') and self._current_html_quality == "classic":
@@ -1283,6 +1386,7 @@ class VideoGenerationPipeline:
                 start=seg["start"],
                 end=seg["end"],
                 text=seg["text"],
+                word_timings=word_timings,
                 style_context=style_context,
                 beat_context=beat_context,
                 safe_area=HTML_GENERATION_SAFE_AREA,

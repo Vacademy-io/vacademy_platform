@@ -415,6 +415,8 @@ HTML_GENERATION_USER_PROMPT_TEMPLATE = """
 Minute #{index}: {start:.2f}s to {end:.2f}s.
 Narration: "{text}"
 
+{word_timings}
+
 {style_context}
 {beat_context}
 
@@ -502,14 +504,44 @@ showThenAnnotate('#text', '#key', 'underline', '{annotation_color}', 0, 0.8);  /
 - Example: `<script>fadeIn('#text1', 0.5, 0); fadeIn('#text2', 0.5, 0.3);</script>`
 - WITHOUT a script, the content will be INVISIBLE (white screen)
 
-**ANIMATION TIMING RULES**:
-- All animations must START within the first 0.5 seconds of the shot
-- All animations must COMPLETE within 5 seconds
-- If using setTimeout, keep delays under 2 seconds
-- Main text should be visible immediately (use fadeIn with delay:0)
-- ALWAYS include `<script>` tags - never omit them
+**🎯 ANIMATION TIMING RULES - USE WORD TIMINGS!**:
+You have been given EXACT word timings above. Use them to sync animations with the narration!
+
+**HOW TO USE WORD TIMINGS**:
+1. Find the key word/phrase you want to animate with (e.g., "mitochondria" at 34.86s)
+2. Calculate the delay from the SHOT START time (given as {start:.2f}s)
+3. Use that delay in your setTimeout or animation delay
+
+**EXAMPLE**: If shot starts at 30.0s and you want to show an icon when narrator says "mitochondria" (at 34.86s):
+```javascript
+// Delay = word_time - shot_start = 34.86 - 30.0 = 4.86 seconds
+setTimeout(() => fadeIn('#mitochondria-icon', 0.5, 0), 4860);  // 4.86s in milliseconds
+```
+
+**PATTERN FOR SYNCED ANIMATIONS**:
+```javascript
+<script>
+// Show title immediately (shot starts)
+fadeIn('#title', 0.5, 0);
+
+// Show diagram when narrator mentions it (use word timing!)
+// If "diagram" is spoken at 35.2s and shot starts at 30.0s: delay = 5.2s
+setTimeout(() => animateSVG('diagram', 100), 5200);
+
+// Annotate key term when it's spoken
+// If "energy" is at 37.5s and shot starts at 30.0s: delay = 7.5s
+setTimeout(() => annotate('#energy-term', {{type: 'underline', color: '{annotation_color}'}}), 7500);
+</script>
+```
+
+**TIMING RULES**:
+- Main title/text: Show at delay 0 (immediately when shot starts)
+- Supporting elements: Sync to word timings using the formula: `delay_ms = (word_time - shot_start) * 1000`
+- Annotations: Trigger slightly BEFORE the word is spoken (subtract 0.3s) so they're visible when heard
+- NEVER use delays longer than (shot_end - shot_start) seconds
 
 **Language**: {language}
 
 {safe_area}
 """
+

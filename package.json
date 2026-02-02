@@ -139,6 +139,7 @@
     "papaparse": "^5.4.1",
     "phosphor-react": "^1.4.1",
     "pyodide": "0.28.0",
+    "quill": "^2.0.3",
     "react-date-range": "^2.0.1",
     "react-day-picker": "^9.8.0",
     "react-device-detect": "^2.2.3",

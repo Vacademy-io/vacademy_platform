@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import ReactQuill from "react-quill-new";
-import "react-quill-new/dist/quill.snow.css";
+import "quill/dist/quill.snow.css";
 import katex from "katex";
 import "katex/dist/katex.css";
 import { cn } from "@/lib/utils";

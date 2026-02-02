@@ -55,4 +55,16 @@ public class ApplyRequestDTO {
      * Flexible structure to accommodate various form configurations
      */
     private Map<String, Object> formData;
+
+    /**
+     * Custom field values map
+     * Key: custom_field_id (UUID), Value: submitted value
+     */
+    private Map<String, String> customFieldValues;
+
+    /**
+     * Destination Package Session ID
+     * Represents the specific class or package session the applicant is targeting
+     */
+    private String destinationPackageSessionId;
 }

@@ -50,6 +50,9 @@ public class ApplicantController {
             @RequestParam(required = false) String instituteId,
             @RequestParam(required = false) String source,
             @RequestParam(required = false) String sourceId,
+            @RequestParam(required = false) String overallStatus,
+            @RequestParam(name = "applicationStageId", required = false) String applicationStageId,
+            @RequestParam(name = "packageSessionId", required = false) String packageSessionId,
             @RequestParam(name = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
             @RequestParam(name = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize) {
 
@@ -59,6 +62,9 @@ public class ApplicantController {
                 .instituteId(instituteId)
                 .source(source)
                 .sourceId(sourceId)
+                .overallStatus(overallStatus)
+                .applicationStageId(applicationStageId)
+                .packageSessionId(packageSessionId)
                 .page(pageNo)
                 .size(pageSize)
                 .build();

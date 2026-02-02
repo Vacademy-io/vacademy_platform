@@ -5,13 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
-import vacademy.io.admin_core_service.features.audience.service.AudienceService;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
-import vacademy.io.admin_core_service.features.audience.dto.UserWithCustomFieldsDTO;
+
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
@@ -47,7 +47,7 @@ public class ActivateEnrollmentProcessorStrategy implements DataProcessorStrateg
 
     @Autowired
     @Lazy
-    private AudienceService audienceService;
+    private AuthService authService;
 
     @Autowired
     private StudentSessionRepository studentSessionRepository;
@@ -104,8 +104,11 @@ public class ActivateEnrollmentProcessorStrategy implements DataProcessorStrateg
             }
 
             // Step 1: Find user by phone number
-            UserWithCustomFieldsDTO userDTO = audienceService.getUserByPhoneNumber(phoneNumber);
-            String userId = userDTO.getUser().getId();
+            UserDTO userDTO = authService.getUserByMobileNumber(phoneNumber);
+            if (userDTO == null) {
+                throw new IllegalArgumentException("User not found for phone number: " + phoneNumber);
+            }
+            String userId = userDTO.getId();
             log.info("ACTIVATE_ENROLLMENT: Found user ID: {} for phone: {}", userId, phoneNumber);
 
             // Step 2: Find ABANDONED_CART entry
@@ -191,8 +194,8 @@ public class ActivateEnrollmentProcessorStrategy implements DataProcessorStrateg
                         ? originalEntry.getInstitute().getId()
                         : (String) context.get("instituteIdForWhatsapp");
 
-                // Use the userDTO already retrieved from AudienceService
-                UserDTO userForNotification = userDTO.getUser();
+                // Use the userDTO already retrieved from AuthService
+                UserDTO userForNotification = userDTO;
 
                 // Try to get EnrollInvite if available
                 EnrollInvite enrollInvite = null;

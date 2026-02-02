@@ -32,6 +32,9 @@ public class ApplicantDTO {
     @JsonProperty("source_id")
     private String sourceId;
 
+    @JsonProperty("data")
+    private java.util.Map<String, Object> data;
+
     private Timestamp createdAt;
     private Timestamp updatedAt;
 

@@ -152,7 +152,8 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                         learnerPackageSessionsEnrollDTO,
                         instituteId,
                         enrollInvite,
-                        userPlan);
+                        userPlan,
+                        extraData);
             } else {
                 paymentResponseDTO = paymentService.handlePayment(
                         user,

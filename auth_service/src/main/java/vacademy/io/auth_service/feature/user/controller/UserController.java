@@ -14,6 +14,7 @@ import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @RestController
@@ -47,6 +48,21 @@ public class UserController {
             @RequestParam(name = "isNotify", required = false, defaultValue = "true") boolean isNotify) {
         try {
             User user = authService.createUser(userDTO, instituteId, isNotify);
+            UserDTO res = new UserDTO(user, userDTO);
+            res.setPassword(user.getPassword());
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+    @PostMapping("/internal/create-or-get-existing-learner")
+    @Transactional
+    public ResponseEntity<UserDTO> createOrGetExistingLearner(@RequestBody UserDTO userDTO,
+            @RequestParam(name = "instituteId", required = false) String instituteId,
+            @RequestParam(name = "isNotify", required = false, defaultValue = "true") boolean isNotify) {
+        try {
+            User user = authService.createUserForLearnerEnrollment(userDTO, instituteId, isNotify);
             UserDTO res = new UserDTO(user, userDTO);
             res.setPassword(user.getPassword());
             return ResponseEntity.ok(res);
@@ -161,6 +177,13 @@ public class UserController {
     public ResponseEntity<List<ParentWithChildDTO>> getUsersWithChildren(
             @RequestBody List<String> userIds) {
         return ResponseEntity.ok(userService.getUsersWithChildren(userIds));
+    }
+
+    @GetMapping("/internal/user-by-mobile")
+    public ResponseEntity<UserDTO> getUserByMobileNumber(@RequestParam String mobileNumber) {
+        Optional<UserDTO> userOpt = authService.getUserByMobileNumber(mobileNumber);
+        return userOpt.map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
 }

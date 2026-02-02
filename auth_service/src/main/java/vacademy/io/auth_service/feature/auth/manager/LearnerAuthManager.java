@@ -147,13 +147,15 @@ public class LearnerAuthManager {
                         log.debug("Resolved deliverPassword={} (policy), isOauth2Signup={}", deliverPassword,
                                         isOauth2Signup);
 
-                        user = authService.createUser(userDTO, instituteId, deliverPassword);
+                        //user = authService.createUser(userDTO, instituteId, deliverPassword);
+                        user=authService.createUserForLearnerEnrollment(userDTO,instituteId,deliverPassword);
                         log.debug("User createUser completed: userId={}, username={} (may be null if creation failed)",
                                         user != null ? user.getId() : null,
                                         user != null ? user.getUsername() : null);
                 } else {
                         log.debug("No instituteId provided. Creating user with notifications enabled by default");
-                        user = authService.createUser(userDTO, null, true);
+                        //user = authService.createUser(userDTO, null, true);
+                        user=authService.createUserForLearnerEnrollment(userDTO,instituteId,true);
                         log.debug("User createUser (no institute) completed: userId={}, username={}",
                                         user != null ? user.getId() : null,
                                         user != null ? user.getUsername() : null);

@@ -17,4 +17,5 @@ public class AuthServiceRoutes {
     public static final String GET_STUDENT_LOGIN_STATS = "/auth-service/analytics/student-login-stats";
     public static final String CREATE_MULTIPLE_USERS = "/auth-service/v1/user/internal/create-multiple-users";
     public static final String GET_USERS_WITH_CHILDREN = "/auth-service/v1/user/internal/users-with-children";
+    public static final String GET_USER_BY_MOBILE = "/auth-service/v1/user/internal/user-by-mobile";
 }

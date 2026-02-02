@@ -10,8 +10,7 @@ import java.util.List;
 
 /**
  * Represents a notification policy for a specific trigger.
- * Can have multiple channel notifications (EMAIL, WHATSAPP, PUSH) each with
- * their own template.
+ * Supports both old and new JSON formats for backward compatibility.
  */
 @Value
 @Jacksonized
@@ -19,15 +18,32 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class NotificationPolicyDTO {
     NotificationTriggerType trigger;
+
+    /** Old field name - kept for backward compatibility with processors */
     Integer daysBefore;
+
+    /** New field name - for JSON format with daysBeforeExpiry */
+    Integer daysBeforeExpiry;
+
+    /** For DURING_WAITING_PERIOD - send every N days */
     Integer sendEveryNDays;
+
+    /** For DURING_WAITING_PERIOD - max number of notifications */
     Integer maxSends;
 
-    /**
-     * List of channel-specific notifications.
-     * Each channel can have its own template name and configuration.
-     * Example: EMAIL with template "expiry_email", WHATSAPP with template
-     * "expiry_whatsapp"
-     */
+    /** Old field name - kept for backward compatibility with processors */
     List<ChannelNotificationDTO> notifications;
+
+    /**
+     * New field name - single notification config (from JSON notificationConfig)
+     */
+    NotificationConfigDTO notificationConfig;
+
+    /**
+     * Helper method to get days before expiry (supports both old and new field
+     * names)
+     */
+    public Integer getEffectiveDaysBefore() {
+        return daysBeforeExpiry != null ? daysBeforeExpiry : daysBefore;
+    }
 }

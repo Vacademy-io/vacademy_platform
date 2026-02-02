@@ -24,6 +24,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       "WHERE ssigm.institute_id = :instituteId", nativeQuery = true)
   List<String> findDistinctUserIdsByInstituteId(@Param("instituteId") String instituteId);
 
+  List<Student> findByUserIdIn(List<String> userIds);
+
   @Query(value = "SELECT DISTINCT s.* FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
       +
       "WHERE (:statuses IS NULL OR ssigm.status IN (:statuses)) " +

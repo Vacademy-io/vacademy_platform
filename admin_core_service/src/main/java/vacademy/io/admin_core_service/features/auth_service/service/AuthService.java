@@ -112,6 +112,30 @@ public class AuthService {
         }
     }
 
+    public UserDTO createUserFromAuthServiceForLearnerEnrollment(UserDTO userDTO, String instituteId,
+            boolean sendCred) {
+        try {
+            String url = StudentConstants.addLearnerRoute
+                    + "?instituteId=" + instituteId
+                    + "&isNotify=" + sendCred;
+
+            userDTO.setRootUser(true);
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    url,
+                    userDTO);
+
+            return objectMapper.readValue(response.getBody(), UserDTO.class);
+
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
     public UserDTO getUsersFromAuthServiceWithPasswordByUserId(String userId) {
         if (userId == null) {
             return null;
@@ -261,6 +285,37 @@ public class AuthService {
                     });
         } catch (Exception e) {
             throw new VacademyException("Failed to get users with children: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Fetch user by mobile number from auth_service.
+     * Handles various phone formats: +917999742868, 7999742868, 917999742868
+     * 
+     * @param mobileNumber User's phone number in any format
+     * @return UserDTO if found, null if not found
+     */
+    public UserDTO getUserByMobileNumber(String mobileNumber) {
+        if (mobileNumber == null || mobileNumber.isBlank()) {
+            return null;
+        }
+        try {
+            String endpoint = AuthServiceRoutes.GET_USER_BY_MOBILE + "?mobileNumber=" + mobileNumber;
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    null);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return objectMapper.readValue(response.getBody(), UserDTO.class);
+            }
+            return null;
+        } catch (Exception e) {
+            throw new VacademyException("Failed to get user by mobile number: " + e.getMessage());
         }
     }
 

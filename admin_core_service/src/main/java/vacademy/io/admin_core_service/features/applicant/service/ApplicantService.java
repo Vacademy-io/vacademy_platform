@@ -24,6 +24,7 @@ import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
 import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -32,6 +33,7 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRepos
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.ParentWithChildDTO;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -68,6 +70,9 @@ public class ApplicantService {
 
         @Autowired
         private CustomFieldRepository customFieldRepository;
+
+        @Autowired
+        private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
         private static final Logger logger = LoggerFactory.getLogger(ApplicantService.class);
 
@@ -157,25 +162,140 @@ public class ApplicantService {
                                 filterDTO.getInstituteId(),
                                 filterDTO.getSource(),
                                 filterDTO.getSourceId(),
+                                filterDTO.getOverallStatus(),
+                                filterDTO.getApplicationStageId(),
+                                filterDTO.getPackageSessionId(),
                                 pageable);
 
                 // Batch fetch Application Stages to avoid N+1
-                java.util.Set<UUID> stageIds = applicants.stream()
-                                .map(a -> UUID.fromString(a.getApplicationStageId()))
+                java.util.Set<String> stageConfigIds = applicants.stream()
+                                .map(Applicant::getApplicationStageId)
                                 .collect(java.util.stream.Collectors.toSet());
 
-                java.util.Map<String, ApplicationStage> stageMap = applicationStageRepository.findAllById(stageIds)
+                java.util.Map<String, ApplicationStage> stageConfigMap = applicationStageRepository
+                                .findAllById(stageConfigIds.stream().map(UUID::fromString).toList())
                                 .stream()
                                 .collect(java.util.stream.Collectors.toMap(
                                                 s -> s.getId().toString(),
                                                 s -> s));
 
+                // Batch fetch Audience Responses (snapshot of source & user link)
+                List<String> applicantIds = applicants.stream().map(a -> a.getId().toString()).toList();
+                Map<String, AudienceResponse> applicantToAudienceResponseMap = audienceResponseRepository
+                                .findByApplicantIdIn(applicantIds)
+                                .stream()
+                                .collect(java.util.stream.Collectors.toMap(
+                                                AudienceResponse::getApplicantId,
+                                                ar -> ar,
+                                                (existing, replacement) -> existing)); // Handle potential duplicates
+                                                                                       // safely
+
+                // Extract Parent/User IDs from Audience Response
+                Set<String> parentUserIds = applicantToAudienceResponseMap.values().stream()
+                                .map(AudienceResponse::getUserId)
+                                .filter(Objects::nonNull)
+                                .collect(java.util.stream.Collectors.toSet());
+
+                Map<String, Student> childUserToStudentMap = new HashMap<>();
+                Map<String, UserDTO> parentUserMap = new HashMap<>(); // ID -> UserDTO
+                Map<String, String> parentToChildIdMap = new HashMap<>(); // ParentID -> ChildID
+
+                if (!parentUserIds.isEmpty()) {
+
+                        try {
+                                // 1. Fetch Parent & Child Links from Auth Service
+                                List<ParentWithChildDTO> parentWithChildList = authService
+                                                .getUsersWithChildren(new ArrayList<>(parentUserIds));
+
+                                // 2. Separate Parents and Children
+                                Set<String> childUserIds = new HashSet<>();
+
+                                for (ParentWithChildDTO pc : parentWithChildList) {
+                                        if (pc.getParent() != null) {
+                                                parentUserMap.put(pc.getParent().getId(), pc.getParent());
+                                                if (pc.getChild() != null) {
+                                                        parentToChildIdMap.put(pc.getParent().getId(),
+                                                                        pc.getChild().getId());
+                                                        childUserIds.add(pc.getChild().getId());
+                                                }
+                                        }
+                                }
+
+                                // 3. Fetch Students using Child IDs
+                                if (!childUserIds.isEmpty()) {
+                                        childUserToStudentMap = instituteStudentRepository
+                                                        .findByUserIdIn(new ArrayList<>(childUserIds))
+                                                        .stream()
+                                                        .collect(java.util.stream.Collectors.toMap(
+                                                                        Student::getUserId,
+                                                                        s -> s));
+                                }
+
+                        } catch (Exception e) {
+                                logger.error("Failed to fetch users/children from auth service", e);
+                        }
+                }
+
+                // Final Assembly
+                Map<String, Student> finalChildUserToStudentMap = childUserToStudentMap;
+                Map<String, UserDTO> finalParentUserMap = parentUserMap;
+                Map<String, String> finalParentToChildIdMap = parentToChildIdMap;
+
                 return applicants.map(applicant -> {
                         ApplicantDTO dto = new ApplicantDTO(applicant);
-                        ApplicationStage stage = stageMap.get(applicant.getApplicationStageId());
+
+                        // Set Stage details
+                        ApplicationStage stage = stageConfigMap.get(applicant.getApplicationStageId());
                         if (stage != null) {
                                 dto.setSourceDetails(stage.getSource(), stage.getSourceId());
                         }
+
+                        // Assemble Data Map
+                        Map<String, Object> data = new HashMap<>();
+                        AudienceResponse ar = applicantToAudienceResponseMap.get(applicant.getId().toString());
+
+                        if (ar != null) {
+                                // 1. Add Source Info
+                                data.put("source_inputs", Map.of(
+                                                "source_type", ar.getSourceType(),
+                                                "source_id", ar.getSourceId() == null ? "" : ar.getSourceId()));
+
+                                if (ar.getUserId() != null) {
+                                        String parentUserId = ar.getUserId();
+
+                                        // 2. Add Student Personal/Academic Details (via Child ID)
+                                        String childUserId = finalParentToChildIdMap.get(parentUserId);
+                                        if (childUserId != null) {
+                                                Student student = finalChildUserToStudentMap.get(childUserId);
+                                                if (student != null) {
+                                                        // Add fields relevant for the application view
+                                                        data.put("student_name", student.getFullName());
+                                                        data.put("gender", student.getGender());
+                                                        data.put("dob", student.getDateOfBirth());
+                                                        data.put("father_name", student.getFatherName());
+                                                        data.put("mother_name", student.getMotherName());
+                                                        data.put("current_school", student.getPreviousSchoolName());
+                                                        data.put("city", student.getCity());
+                                                        data.put("address", student.getAddressLine());
+                                                }
+                                        }
+
+                                        // 3. Add Parent User Contact Details (Phone/Email)
+                                        UserDTO user = finalParentUserMap.get(parentUserId);
+                                        if (user != null) {
+                                                data.put("parent_name", user.getFullName()); // Parent Name
+                                                data.put("mobile_number", user.getMobileNumber());
+                                                data.put("email", user.getEmail());
+                                        }
+                                } else {
+                                        // If no user linked yet, fall back to AudienceResponse snapshot data
+                                        data.put("parent_name", ar.getParentName());
+                                        data.put("mobile_number", ar.getParentMobile());
+                                        data.put("email", ar.getParentEmail());
+                                }
+                        }
+
+                        dto.setData(data);
                         return dto;
                 });
         }
@@ -243,10 +363,10 @@ public class ApplicantService {
                 // If user_id exists, fetch user details from auth-service
                 if (audienceResponse.getUserId() != null) {
                         try {
-                                List<vacademy.io.common.auth.dto.ParentWithChildDTO> usersWithChildren = authService
+                                List<ParentWithChildDTO> usersWithChildren = authService
                                                 .getUsersWithChildren(List.of(audienceResponse.getUserId()));
                                 if (!usersWithChildren.isEmpty()) {
-                                        vacademy.io.common.auth.dto.ParentWithChildDTO parentWithChild = usersWithChildren
+                                        ParentWithChildDTO parentWithChild = usersWithChildren
                                                         .get(0);
                                         UserDTO parentUser = parentWithChild.getParent();
                                         UserDTO childUser = parentWithChild.getChild();
@@ -341,11 +461,12 @@ public class ApplicantService {
                         // Sync/Create Student record using existing User ID
                         if (audienceResponse.getUserId() != null) {
                                 // Fetch child user details to populate student
-                                List<vacademy.io.common.auth.dto.ParentWithChildDTO> users = authService
+                                List<ParentWithChildDTO> users = authService
                                                 .getUsersWithChildren(List.of(audienceResponse.getUserId()));
                                 if (!users.isEmpty() && users.get(0).getChild() != null) {
                                         UserDTO childUser = users.get(0).getChild();
                                         createStudentProfile(childUser, request.getFormData(),
+                                                        request.getCustomFieldValues(),
                                                         request.getInstituteId());
                                 }
                         }
@@ -369,7 +490,8 @@ public class ApplicantService {
 
                         // 3. Create Student
                         if (childUser != null) {
-                                createStudentProfile(childUser, request.getFormData(), request.getInstituteId());
+                                createStudentProfile(childUser, request.getFormData(), request.getCustomFieldValues(),
+                                                request.getInstituteId());
                         }
 
                         // 4. Create Audience Response (New record)
@@ -413,8 +535,12 @@ public class ApplicantService {
                                 .build();
                 applicantStageRepository.save(applicantStage);
 
-                // Update audience_response with applicant_id
+                // Update audience_response with applicant_id and destination_package_session_id
+                // if provided
                 audienceResponse.setApplicantId(savedApplicant.getId().toString());
+                if (request.getDestinationPackageSessionId() != null) {
+                        audienceResponse.setDestinationPackageSessionId(request.getDestinationPackageSessionId());
+                }
                 audienceResponseRepository.save(audienceResponse);
 
                 return ApplyResponseDTO.builder()
@@ -431,6 +557,7 @@ public class ApplicantService {
          * THROWS exception if student already exists for this user.
          */
         private void createStudentProfile(UserDTO childUser, java.util.Map<String, Object> formData,
+                        Map<String, String> customFieldValues,
                         String instituteId) {
                 try {
                         Optional<Student> existingStudent = instituteStudentRepository
@@ -483,8 +610,8 @@ public class ApplicantService {
 
                         Student savedStudent = instituteStudentRepository.save(student);
 
-                        // Save custom fields (non-standard keys)
-                        saveCustomFieldValues(formData, savedStudent.getId(), instituteId);
+                        // Save custom fields (from explicit custom_field_values map)
+                        saveCustomFieldValues(customFieldValues, savedStudent.getId(), instituteId);
 
                 } catch (VacademyException ve) {
                         throw ve;
@@ -498,43 +625,41 @@ public class ApplicantService {
          * Loops through form_data, skips standard fields, and saves the rest to
          * custom_field_values.
          */
-        private void saveCustomFieldValues(Map<String, Object> formData, String studentId, String instituteId) {
-                if (formData == null || formData.isEmpty()) {
+        /**
+         * Save custom field values from explicit ID-based map.
+         * Validates that field ID is linked to the institute before saving.
+         */
+        private void saveCustomFieldValues(Map<String, String> customFieldValues, String studentId,
+                        String instituteId) {
+                if (customFieldValues == null || customFieldValues.isEmpty()) {
                         return;
                 }
 
                 List<CustomFieldValues> customFieldValuesList = new ArrayList<>();
 
-                for (Map.Entry<String, Object> entry : formData.entrySet()) {
-                        String fieldKey = entry.getKey();
-                        Object valueObj = entry.getValue();
-
-                        // Skip standard fields - they are already saved to Student table
-                        if (STANDARD_FIELD_KEYS.contains(fieldKey)) {
-                                continue;
-                        }
+                for (Map.Entry<String, String> entry : customFieldValues.entrySet()) {
+                        String customFieldId = entry.getKey();
+                        String value = entry.getValue();
 
                         // Skip empty values
-                        String value = valueObj != null ? valueObj.toString() : null;
                         if (value == null || value.trim().isEmpty()) {
                                 continue;
                         }
 
-                        // Look up custom field definition by field_key AND institute_id to ensure
-                        // uniqueness and validity
-                        Optional<CustomFields> customFieldOpt = customFieldRepository
-                                        .findByFieldKeyAndInstituteId(fieldKey, instituteId);
-                        if (customFieldOpt.isEmpty()) {
-                                logger.warn("Custom field not found or not active for key: {} and institute: {}. Skipping.",
-                                                fieldKey, instituteId);
+                        // Validate: Is this custom field linked to this institute?
+                        boolean isLinked = instituteCustomFieldRepository
+                                        .existsByInstituteIdAndCustomFieldIdAndStatus(instituteId, customFieldId,
+                                                        "ACTIVE");
+
+                        if (!isLinked) {
+                                logger.warn("Security/Data Check: Custom field {} is not linked to institute {}. Skipping.",
+                                                customFieldId, instituteId);
                                 continue;
                         }
 
-                        CustomFields customField = customFieldOpt.get();
-
-                        // Build CustomFieldValues entity
+                        // Build CustomFieldValues entity (Directly using ID)
                         CustomFieldValues cfValue = CustomFieldValues.builder()
-                                        .customFieldId(customField.getId())
+                                        .customFieldId(customFieldId)
                                         .sourceType("STUDENT")
                                         .sourceId(studentId)
                                         .value(value)

@@ -106,7 +106,7 @@ public class LearnerEnrollRequestService {
             boolean sendCredentials = getSendCredentialsFlag(
                     learnerEnrollRequestDTO.getInstituteId(),
                     enrollDTO.getPackageSessionIds());
-            UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(),
+            UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
             learnerEnrollRequestDTO.setUser(user);
             // Generate coupon code for new learner enrollment
@@ -199,6 +199,16 @@ public class LearnerEnrollRequestService {
             }
         }
 
+        // Ensure PaymentInitiationRequest has user's email if not already set
+        // This is critical for payment receipt emails to be sent correctly
+        if (enrollDTO.getPaymentInitiationRequest() != null
+                && !StringUtils.hasText(enrollDTO.getPaymentInitiationRequest().getEmail())
+                && StringUtils.hasText(learnerEnrollRequestDTO.getUser().getEmail())) {
+            log.info("Setting user email {} in PaymentInitiationRequest for payment receipt emails",
+                    learnerEnrollRequestDTO.getUser().getEmail());
+            enrollDTO.getPaymentInitiationRequest().setEmail(learnerEnrollRequestDTO.getUser().getEmail());
+        }
+
         UserPlan userPlan = createUserPlan(
                 learnerEnrollRequestDTO.getUser().getId(),
                 enrollDTO,
@@ -268,11 +278,12 @@ public class LearnerEnrollRequestService {
                                 workflowContext.put("instituteIdForWhatsapp", learnerEnrollRequestDTO.getInstituteId());
                                 workflowContext.put("package_session_id", packageSessionId);
                                 workflowContext.put("destination_package_session_id", packageSessionId);
+                                workflowContext.put("name", learnerEnrollRequestDTO.getUser().getFullName());
 
                                 // Build users list with essential data only
                                 Map<String, Object> userMap = new java.util.HashMap<>();
                                 userMap.put("phone_number", learnerEnrollRequestDTO.getUser().getMobileNumber());
-                                userMap.put("full_name", learnerEnrollRequestDTO.getUser().getFullName());
+                                userMap.put("name", learnerEnrollRequestDTO.getUser().getFullName());
                                 userMap.put("username", learnerEnrollRequestDTO.getUser().getEmail() != null
                                         ? learnerEnrollRequestDTO.getUser().getEmail().split("@")[0]
                                         : learnerEnrollRequestDTO.getUser().getId());

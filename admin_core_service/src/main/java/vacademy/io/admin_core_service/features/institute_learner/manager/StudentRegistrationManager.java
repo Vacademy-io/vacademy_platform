@@ -274,11 +274,19 @@ public class StudentRegistrationManager {
             // 2. Validate re-enrollment eligibility BEFORE creating/updating mapping
             validateReenrollmentEligibility(student, details, policy);
 
-            // 3. Check for an active mapping in a *different* session (for stacking)
+            // 3. Block enrollment if user is already active in configured sessions (e.g.,
+            // block demo if paid)
+            blockEnrollmentIfActiveInConfiguredSessions(student, details.getInstituteId(), policy);
+
+            // 4. Terminate active sessions if configured in policy (e.g., demo to paid
+            // upgrade)
+            terminateActiveSessionsIfConfigured(student, details.getInstituteId(), policy);
+
+            // 5. Check for an active mapping in a *different* session (for stacking)
             Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping = getActiveDestinationMapping(
                     student, details);
 
-            // 4. Check for an *existing* mapping in *this* session (for
+            // 6. Check for an *existing* mapping in *this* session (for
             // re-enrollment/repurchase)
             Optional<StudentSessionInstituteGroupMapping> existingMapping = getExistingMapping(student, details);
             if (existingMapping.isPresent()) {
@@ -295,6 +303,114 @@ public class StudentRegistrationManager {
             log.error("Failed to link student {} to institute {}: {}", student.getUserId(), details.getInstituteId(),
                     e.getMessage(), e);
             throw new VacademyException("Failed to link student to institute: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Terminates (marks as DELETED) the student's active enrollments in package
+     * sessions
+     * specified in the policy's terminateActiveSessions list.
+     * 
+     * Use case: When a user upgrades from a demo package to a paid package,
+     * the demo enrollment should be automatically terminated.
+     *
+     * @param student     The student whose sessions should be terminated
+     * @param instituteId The institute ID
+     * @param policy      The enrollment policy containing terminateActiveSessions
+     *                    list
+     */
+    private void terminateActiveSessionsIfConfigured(Student student, String instituteId,
+            EnrollmentPolicySettingsDTO policy) {
+        if (policy == null || policy.getOnEnrollment() == null) {
+            return;
+        }
+
+        List<String> sessionsToTerminate = policy.getOnEnrollment().getTerminateActiveSessions();
+        if (sessionsToTerminate == null || sessionsToTerminate.isEmpty()) {
+            return;
+        }
+
+        log.info("Terminating active sessions for user {} in package sessions: {}",
+                student.getUserId(), sessionsToTerminate);
+
+        // Find and terminate all matching active enrollments
+        for (String packageSessionId : sessionsToTerminate) {
+            try {
+                Optional<StudentSessionInstituteGroupMapping> activeMapping = studentSessionRepository
+                        .findTopByPackageSessionIdAndUserIdAndStatusIn(
+                                packageSessionId,
+                                instituteId,
+                                student.getUserId(),
+                                List.of(LearnerSessionStatusEnum.ACTIVE.name(),
+                                        LearnerSessionStatusEnum.INVITED.name()));
+
+                if (activeMapping.isPresent()) {
+                    StudentSessionInstituteGroupMapping mapping = activeMapping.get();
+                    mapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
+                    studentSessionRepository.save(mapping);
+                    log.info("Terminated enrollment for user {} in package session {}",
+                            student.getUserId(), packageSessionId);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to terminate session {} for user {}: {}",
+                        packageSessionId, student.getUserId(), e.getMessage());
+                // Continue with other sessions even if one fails
+            }
+        }
+    }
+
+    /**
+     * Blocks enrollment if user is already active in any of the package sessions
+     * specified in the policy's blockIfActiveIn list.
+     * 
+     * Use case: Prevent demo enrollment if user already has an active paid
+     * subscription.
+     *
+     * @param student     The student trying to enroll
+     * @param instituteId The institute ID
+     * @param policy      The enrollment policy containing blockIfActiveIn list
+     * @throws VacademyException if user is active in any blocking session
+     */
+    private void blockEnrollmentIfActiveInConfiguredSessions(Student student, String instituteId,
+            EnrollmentPolicySettingsDTO policy) {
+        if (policy == null || policy.getOnEnrollment() == null) {
+            return;
+        }
+
+        List<String> blockingSessions = policy.getOnEnrollment().getBlockIfActiveIn();
+        if (blockingSessions == null || blockingSessions.isEmpty()) {
+            return;
+        }
+
+        // Check if user is active in any of the blocking sessions
+        for (String packageSessionId : blockingSessions) {
+            try {
+                Optional<StudentSessionInstituteGroupMapping> activeMapping = studentSessionRepository
+                        .findTopByPackageSessionIdAndUserIdAndStatusIn(
+                                packageSessionId,
+                                instituteId,
+                                student.getUserId(),
+                                List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+
+                if (activeMapping.isPresent()) {
+                    // User has an active enrollment in a blocking session
+                    String customMessage = policy.getOnEnrollment().getBlockMessage();
+                    String message = (customMessage != null && !customMessage.isBlank())
+                            ? customMessage
+                            : "You already have an active membership plan. Demo access is not available for existing paid subscribers.";
+
+                    log.info("Blocking enrollment for user {} - already active in package session {}",
+                            student.getUserId(), packageSessionId);
+
+                    throw new VacademyException(message);
+                }
+            } catch (VacademyException e) {
+                throw e; // Re-throw blocking exception
+            } catch (Exception e) {
+                log.warn("Failed to check blocking session {} for user {}: {}",
+                        packageSessionId, student.getUserId(), e.getMessage());
+                // Continue checking other sessions
+            }
         }
     }
 
@@ -345,16 +461,25 @@ public class StudentRegistrationManager {
                     if (daysSince < gapDays) {
                         // Calculate allowed date
                         Date allowedDate = addDaysToDate(checkDate, gapDays);
-                        java.time.LocalDate allowedLocalDate = allowedDate.toInstant()
+                        String allowedDateStr = allowedDate.toInstant()
                                 .atZone(java.time.ZoneId.systemDefault())
-                                .toLocalDate();
+                                .toLocalDate()
+                                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
 
-                        throw new VacademyException(
-                                String.format("Re-enrollment is not allowed. Please try again after %s. " +
-                                        "Minimum gap required: %d days.",
-                                        allowedLocalDate
-                                                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")),
-                                        gapDays));
+                        // Use custom message from policy if available
+                        String customMessage = reenrollPolicy.getReenrollmentBlockedMessage();
+                        String message;
+                        if (customMessage != null && !customMessage.isBlank()) {
+                            // Replace {{allowed_date}} placeholder
+                            message = customMessage.replace("{{allowed_date}}", allowedDateStr);
+                        } else {
+                            // Default message
+                            message = String.format(
+                                    "Re-enrollment is not allowed. Please try again after %s. Minimum gap required: %d days.",
+                                    allowedDateStr, gapDays);
+                        }
+
+                        throw new VacademyException(message);
                     }
                 }
             }

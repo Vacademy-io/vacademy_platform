@@ -86,4 +86,90 @@ async def update_institute_ai_settings(
         raise HTTPException(status_code=500, detail=f"Failed to update AI settings: {str(e)}")
 
 
+# ============== VIDEO BRANDING ENDPOINTS ==============
+
+from ..schemas.institute_settings import (
+    VideoBrandingConfig,
+    VideoBrandingResponse,
+    VideoBrandingUpdateRequest,
+)
+
+
+@router.get(
+    "/video-branding/v1/get",
+    response_model=VideoBrandingResponse,
+    summary="Get institute video branding settings"
+)
+async def get_video_branding(
+    institute_id: str,
+    db: Session = Depends(db_dependency),
+) -> VideoBrandingResponse:
+    """
+    Get video branding configuration for an institute.
+    Returns default Vacademy branding if not configured.
+    
+    Branding includes:
+    - **intro**: Pre-video branding screen (shown before audio starts)
+    - **outro**: Post-video branding screen (shown after audio ends)
+    - **watermark**: Corner watermark shown throughout the video
+
+    Args:
+        institute_id: Institute identifier
+
+    Returns:
+        Video branding configuration
+    """
+    try:
+        service = InstituteSettingsService(db)
+        result = service.get_video_branding(institute_id)
+        
+        return VideoBrandingResponse(
+            institute_id=institute_id,
+            branding=VideoBrandingConfig(**result["branding"]),
+            has_custom_branding=result["has_custom_branding"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get video branding: {str(e)}")
+
+
+@router.post(
+    "/video-branding/v1/update",
+    response_model=VideoBrandingResponse,
+    summary="Update institute video branding settings"
+)
+async def update_video_branding(
+    institute_id: str,
+    request: VideoBrandingUpdateRequest,
+    db: Session = Depends(db_dependency),
+) -> VideoBrandingResponse:
+    """
+    Update video branding configuration for an institute.
+    
+    Set custom intro, outro, and watermark HTML for branded video generation.
+    
+    **Note**: Audio will be silent during intro and outro screens.
+
+    Args:
+        institute_id: Institute identifier
+        request: Video branding configuration to set
+
+    Returns:
+        Updated video branding configuration
+    """
+    try:
+        service = InstituteSettingsService(db)
+        result = service.update_video_branding(
+            institute_id=institute_id,
+            branding=request.branding.model_dump()
+        )
+        
+        return VideoBrandingResponse(
+            institute_id=institute_id,
+            branding=VideoBrandingConfig(**result["branding"]),
+            has_custom_branding=result["has_custom_branding"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update video branding: {str(e)}")
+
+
 __all__ = ["router"]

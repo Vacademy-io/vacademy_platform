@@ -605,6 +605,31 @@ class VideoGenerationPipeline:
         self.runs_dir = runs_dir
         self.runs_dir.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def _get_default_branding() -> Dict[str, Any]:
+        """Return default Vacademy branding configuration."""
+        return {
+            "intro": {
+                "enabled": True,
+                "duration_seconds": 3.0,
+                "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);'><h1 style='color:#fff; font-size:72px; font-family:Inter,sans-serif; margin:0;'>Vacademy</h1><p style='color:rgba(255,255,255,0.8); font-size:24px; margin-top:16px;'>Learn Smarter</p></div>"
+            },
+            "outro": {
+                "enabled": True,
+                "duration_seconds": 4.0,
+                "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:#111;'><h2 style='color:#fff; font-size:56px; font-family:Inter,sans-serif; margin:0;'>Thank You for Watching</h2><p style='color:#888; font-size:28px; margin-top:24px;'>Powered by Vacademy</p></div>"
+            },
+            "watermark": {
+                "enabled": True,
+                "position": "top-right",
+                "max_width": 200,
+                "max_height": 80,
+                "margin": 40,
+                "opacity": 0.7,
+                "html": "<div style='font-family:Inter,sans-serif; font-weight:bold; color:rgba(170,170,170,0.7); font-size:18px; text-align:right;'>Vacademy</div>"
+            }
+        }
+
     def run(
         self,
         base_prompt: Optional[str],
@@ -620,6 +645,7 @@ class VideoGenerationPipeline:
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
         tts_provider: str = "edge",
+        branding_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
@@ -654,6 +680,9 @@ class VideoGenerationPipeline:
         self._current_show_captions = show_captions
         self._current_html_quality = html_quality
         self._current_background_type = background_type
+        
+        # Store branding config (use defaults if not provided)
+        self._current_branding = branding_config or self._get_default_branding()
         
         stage_idx = self.STAGE_INDEX[start_from]
         # stop_at means "stop after this stage", so stop_idx is the next stage after stop_at
@@ -783,7 +812,7 @@ class VideoGenerationPipeline:
             accumulate_usage(image_usage)
             
             print("🧾 Writing timeline JSON ...")
-            timeline_path = self._write_timeline(html_segments, run_dir)
+            timeline_path = self._write_timeline(html_segments, run_dir, self._current_branding)
         
         if do_render:
             print("🎥 Rendering final video with Playwright...")
@@ -2645,13 +2674,74 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
     # --- Timeline + video -------------------------------------------------
     @staticmethod
-    def _write_timeline(html_segments: List[Dict[str, Any]], run_dir: Path) -> Path:
+    def _write_timeline(
+        html_segments: List[Dict[str, Any]], 
+        run_dir: Path,
+        branding_config: Optional[Dict[str, Any]] = None
+    ) -> Path:
+        """
+        Write timeline JSON with branding support.
+        
+        Branding is injected as timeline entries:
+        - Intro: Full-screen centered, shown before audio starts
+        - Outro: Full-screen centered, shown after audio ends
+        - Watermark: Corner overlay, shown throughout the video content
+        """
+        # Video dimensions for positioning
+        VIDEO_WIDTH = 1920
+        VIDEO_HEIGHT = 1080
+        
+        # Get branding settings with defaults
+        branding = branding_config or {}
+        intro_config = branding.get("intro", {})
+        outro_config = branding.get("outro", {})
+        watermark_config = branding.get("watermark", {})
+        
+        intro_enabled = intro_config.get("enabled", False)
+        intro_duration = float(intro_config.get("duration_seconds", 3.0)) if intro_enabled else 0.0
+        
+        outro_enabled = outro_config.get("enabled", False)
+        outro_duration = float(outro_config.get("duration_seconds", 4.0)) if outro_enabled else 0.0
+        
+        watermark_enabled = watermark_config.get("enabled", False)
+        
         timeline_entries: List[Dict[str, Any]] = []
+        
+        # Track the end time of all content for outro positioning
+        content_starts_at = intro_duration
+        content_max_end = 0.0
+        
+        # 1. Add INTRO entry if enabled (full-screen, before audio starts)
+        if intro_enabled and intro_config.get("html"):
+            intro_entry = {
+                "id": "branding-intro",
+                "inTime": 0.0,
+                "exitTime": intro_duration,
+                "htmlStartX": 0,
+                "htmlStartY": 0,
+                "htmlEndX": VIDEO_WIDTH,
+                "htmlEndY": VIDEO_HEIGHT,
+                "html": intro_config["html"],
+                "z": 9999,  # Very high z-index to be on top
+            }
+            timeline_entries.append(intro_entry)
+            print(f"   ➕ Added intro branding (0s - {intro_duration}s)")
+        
+        # 2. Process content entries - offset by intro duration
         for entry in html_segments:
             start = int(entry.get("index", len(timeline_entries) + 1))
+            
+            # Original times from the content
+            original_in_time = float(entry["start"])
+            original_exit_time = float(entry["end"])
+            
+            # Offset times by intro duration (audio starts after intro)
+            adjusted_in_time = original_in_time + content_starts_at
+            adjusted_exit_time = original_exit_time + content_starts_at
+            
             timeline_entry = {
-                "inTime": float(entry["start"]),
-                "exitTime": float(entry["end"]),
+                "inTime": adjusted_in_time,
+                "exitTime": adjusted_exit_time,
                 "htmlStartX": int(entry["htmlStartX"]),
                 "htmlStartY": int(entry["htmlStartY"]),
                 "htmlEndX": int(entry["htmlEndX"]),
@@ -2665,8 +2755,85 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 except (TypeError, ValueError):
                     pass
             timeline_entries.append(timeline_entry)
+            
+            # Track the maximum end time for content
+            content_max_end = max(content_max_end, adjusted_exit_time)
+        
+        # If no content entries, use a minimal duration
+        if content_max_end <= content_starts_at:
+            content_max_end = content_starts_at + 1.0
+        
+        # 3. Add WATERMARK entry if enabled (spans entire content duration, positioned in corner)
+        if watermark_enabled and watermark_config.get("html"):
+            position = watermark_config.get("position", "top-right")
+            max_width = int(watermark_config.get("max_width", 200))
+            max_height = int(watermark_config.get("max_height", 80))
+            margin = int(watermark_config.get("margin", 40))
+            
+            # Calculate position based on setting
+            if position == "top-left":
+                wm_x = margin
+                wm_y = margin
+            elif position == "top-right":
+                wm_x = VIDEO_WIDTH - max_width - margin
+                wm_y = margin
+            elif position == "bottom-left":
+                wm_x = margin
+                wm_y = VIDEO_HEIGHT - max_height - margin
+            elif position == "bottom-right":
+                wm_x = VIDEO_WIDTH - max_width - margin
+                wm_y = VIDEO_HEIGHT - max_height - margin
+            else:  # default to top-right
+                wm_x = VIDEO_WIDTH - max_width - margin
+                wm_y = margin
+            
+            watermark_entry = {
+                "id": "branding-watermark",
+                "inTime": content_starts_at,  # Start when content starts (after intro)
+                "exitTime": content_max_end,  # End when content ends (before outro)
+                "htmlStartX": wm_x,
+                "htmlStartY": wm_y,
+                "htmlEndX": wm_x + max_width,
+                "htmlEndY": wm_y + max_height,
+                "html": watermark_config["html"],
+                "z": 1000,  # High z-index but below intro/outro
+            }
+            timeline_entries.append(watermark_entry)
+            print(f"   ➕ Added watermark branding ({content_starts_at}s - {content_max_end}s) at {position}")
+        
+        # 4. Add OUTRO entry if enabled (full-screen, after audio ends)
+        if outro_enabled and outro_config.get("html"):
+            outro_start = content_max_end
+            outro_end = outro_start + outro_duration
+            
+            outro_entry = {
+                "id": "branding-outro",
+                "inTime": outro_start,
+                "exitTime": outro_end,
+                "htmlStartX": 0,
+                "htmlStartY": 0,
+                "htmlEndX": VIDEO_WIDTH,
+                "htmlEndY": VIDEO_HEIGHT,
+                "html": outro_config["html"],
+                "z": 9999,  # Very high z-index to be on top
+            }
+            timeline_entries.append(outro_entry)
+            print(f"   ➕ Added outro branding ({outro_start}s - {outro_end}s)")
+        
         timeline_path = run_dir / "time_based_frame.json"
         timeline_path.write_text(json.dumps(timeline_entries, indent=2))
+        
+        # Also save branding metadata for audio offset info
+        branding_meta = {
+            "intro_duration_seconds": intro_duration,
+            "outro_duration_seconds": outro_duration if outro_enabled else 0.0,
+            "content_starts_at": content_starts_at,
+            "content_ends_at": content_max_end,
+            "total_duration": (content_max_end + outro_duration) if outro_enabled else content_max_end,
+        }
+        branding_meta_path = run_dir / "branding_meta.json"
+        branding_meta_path.write_text(json.dumps(branding_meta, indent=2))
+        
         return timeline_path
 
     def _render_video(
@@ -2681,6 +2848,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
     ) -> Path:
         output_video = run_dir / "output.mp4"
         frames_dir = run_dir / ".render_frames"
+        
+        # Check for branding metadata to get audio delay
+        branding_meta_path = run_dir / "branding_meta.json"
+        audio_delay = 0.0
+        if branding_meta_path.exists():
+            try:
+                branding_meta = json.loads(branding_meta_path.read_text())
+                audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
+                print(f"   🎵 Audio will start at {audio_delay}s (after intro)")
+            except Exception as e:
+                print(f"   ⚠️ Could not load branding metadata: {e}")
+        
         cmd = [
             sys.executable,
             str(GENERATE_VIDEO_SCRIPT),
@@ -2693,14 +2872,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             str(words_json_path),
             "--captions-settings",
             str(DEFAULT_CAPTIONS_SETTINGS),
-            "--show-branding",
-            "--branding-json",
-            str(DEFAULT_BRANDING),
             "--frames-dir",
             str(frames_dir),
             "--background",
             background_color,
         ]
+        
+        # Add audio delay for intro silence
+        if audio_delay > 0:
+            cmd.extend(["--audio-delay", str(audio_delay)])
         if show_captions:
             cmd.append("--show-captions")
         if avatar_video_path:

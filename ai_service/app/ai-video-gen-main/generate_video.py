@@ -1408,6 +1408,7 @@ def render_video_from_json(
     alignment_json_path: str = "",
     character_pose: str = "",
     avatar_video_path: str = "",
+    audio_delay: float = 0.0,
 ) -> Path:
     """
     Render a portrait video by placing timed HTML overlays (from JSON) on a 1080x1920 canvas
@@ -1504,8 +1505,22 @@ def render_video_from_json(
         entry["html"] = _convert_file_urls_to_data_uris(h)
 
     audio_clip = AudioFileClip(str(audio_p))
-    duration: float = float(audio_clip.duration)
+    audio_duration: float = float(audio_clip.duration)
+    
+    # Calculate total video duration from timeline (which includes intro/outro if present)
+    # The timeline now has branding entries that extend beyond the audio
+    timeline_max_end = max((float(e.get("exitTime", 0)) for e in timeline), default=audio_duration)
+    
+    # If audio_delay is specified, the audio starts after intro, so total duration is:
+    # intro_duration + audio_duration + outro_duration
+    # The timeline already accounts for this, so we use the timeline's max end time
+    duration: float = max(audio_duration + audio_delay, timeline_max_end)
     total_frames = int(math.ceil(duration * fps))
+    
+    # Apply audio delay - audio will start after the intro
+    if audio_delay > 0:
+        print(f"DEBUG: Applying audio delay of {audio_delay}s for intro silence")
+        audio_clip = audio_clip.with_start(audio_delay)
 
     caption_segments: List[Dict[str, Any]] = []
     caption_words: List[Dict[str, Any]] = []
@@ -1521,6 +1536,13 @@ def render_video_from_json(
         if not settings_p.exists():
             raise FileNotFoundError(f"Caption settings JSON not found: {settings_p}")
         words = _load_words(words_p)
+        
+        # Offset caption word timings by audio_delay (for intro silence)
+        if audio_delay > 0:
+            for word in words:
+                word["start"] = float(word.get("start", 0)) + audio_delay
+                word["end"] = float(word.get("end", 0)) + audio_delay
+        
         caption_words = words
         caption_settings = _load_caption_settings(settings_p)
         caption_segments = _build_caption_segments(words, caption_settings["gap_threshold_seconds"])
@@ -1985,6 +2007,7 @@ def _parse_args(argv: List[str]):
     parser.add_argument("--alignment-json", default="", help="Path to Gentle alignment JSON with phonemes")
     parser.add_argument("--character-pose", default="", help="Pose name override for the animated character")
     parser.add_argument("--avatar-video", default="", help="Path to generated avatar video loop/clip")
+    parser.add_argument("--audio-delay", type=float, default=0.0, help="Delay audio start by this many seconds (for intro silence)")
     return parser.parse_args(argv[1:])
 
 
@@ -2011,6 +2034,7 @@ if __name__ == "__main__":
         alignment_json_path=args.alignment_json,
         character_pose=args.character_pose,
         avatar_video_path=args.avatar_video,
+        audio_delay=args.audio_delay,
     )
     print(f"Video written to: {result_path}")
 

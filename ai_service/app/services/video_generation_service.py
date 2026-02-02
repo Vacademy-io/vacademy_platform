@@ -302,6 +302,21 @@ class VideoGenerationService:
             
         pipeline = VideoGenerationPipeline(**pipeline_args)
         
+        # Fetch branding configuration from institute settings
+        branding_config = None
+        if institute_id and db_session:
+            try:
+                from .institute_settings_service import InstituteSettingsService
+                settings_service = InstituteSettingsService(db_session)
+                branding_result = settings_service.get_video_branding(institute_id)
+                branding_config = branding_result.get("branding")
+                if branding_result.get("has_custom_branding"):
+                    logger.info(f"[VideoGenService] Using custom branding for institute {institute_id}")
+                else:
+                    logger.info(f"[VideoGenService] Using default Vacademy branding for institute {institute_id}")
+            except Exception as e:
+                logger.warning(f"[VideoGenService] Could not fetch branding config: {e}. Using defaults.")
+        
         # Map stage indices to pipeline stage names and file keys
         stage_config = {
             1: {"name": "script", "file_key": "script", "file_name": "script.txt"},
@@ -499,7 +514,8 @@ class VideoGenerationService:
                     target_audience=target_audience,
                     target_duration=target_duration,
                     voice_gender=voice_gender,
-                    tts_provider=tts_provider
+                    tts_provider=tts_provider,
+                    branding_config=branding_config
                 )
                 
                 with ThreadPoolExecutor() as executor:

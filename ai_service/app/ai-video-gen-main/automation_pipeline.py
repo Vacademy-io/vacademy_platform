@@ -407,18 +407,33 @@ class GoogleCloudTTSClient:
         )
 
         # Request timepoints for SSML marks
-        response = client.synthesize_speech(
-            input=input_text, 
-            voice=voice, 
-            audio_config=audio_config,
-            enable_time_pointing=[texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK]
-        )
+        # Note: Time pointing may not be available in all API versions/voices
+        try:
+            # Try using TimepointType enum (newer API versions)
+            response = client.synthesize_speech(
+                request={
+                    "input": input_text,
+                    "voice": voice,
+                    "audio_config": audio_config,
+                    "enable_time_pointing": ["SSML_MARK"]
+                }
+            )
+        except Exception as tp_error:
+            # Fallback: synthesize without timepoints if API doesn't support it
+            print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis")
+            response = client.synthesize_speech(
+                input=input_text, 
+                voice=voice, 
+                audio_config=audio_config
+            )
 
         # Save audio
         output_path.write_bytes(response.audio_content)
         
-        # Process timepoints to create word timestamps
-        word_entries = self._process_timepoints(response, word_list)
+        # Process timepoints to create word timestamps (if available)
+        word_entries = []
+        if hasattr(response, 'timepoints') and response.timepoints:
+            word_entries = self._process_timepoints(response, word_list)
         
         if word_entries:
             print(f"    ✅ Got {len(word_entries)} word timestamps from Google TTS Timepoints")
@@ -923,7 +938,7 @@ class VideoGenerationPipeline:
                 # However, re-running is cheap for us here to ensure correctness.
                 
                 print("    🔄 Re-running generation to capture Subtitles...")
-                communicate_retry = edge_tts.Communicate(script_text, voice)
+                communicate_retry = edge_tts.Communicate(script_text, selected_voice)
                 submaker = edge_tts.SubMaker()
                 audio_data_retry = bytearray() # Re-capture to be safe
                 chunk_count = 0

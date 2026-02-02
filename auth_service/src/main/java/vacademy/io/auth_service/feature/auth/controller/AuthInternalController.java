@@ -9,12 +9,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.manager.LearnerAuthManager;
+import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.auth_service.feature.auth.service.UserDetailsCacheService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.service.UserActivityTrackingService;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("auth-service/v1/internal")
@@ -28,6 +31,9 @@ public class AuthInternalController {
 
     @Autowired
     private LearnerAuthManager learnerAuthManager;
+
+    @Autowired
+    private AuthService authService;
 
     @GetMapping("/user")
     public ResponseEntity<CustomUserDetails> getUserDetails(@RequestParam String userName,

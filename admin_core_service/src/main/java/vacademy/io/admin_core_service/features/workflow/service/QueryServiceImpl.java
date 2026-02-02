@@ -177,17 +177,79 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 long remainingDays = calculateRemainingDays(String.valueOf(row[0]), expiryDate);
                 mapping.put("remainingDays", remainingDays);
 
+                // --- DAYS PAST EXPIRY (for expiration email filtering) ---
+                long daysPastExpiry = calculateDaysPastExpiry(expiryDate);
+                mapping.put("daysPastExpiry", daysPastExpiry);
+
                 ssigmList.add(mapping);
             }
 
+            // TODO: Move this limit to workflow configuration level (e.g., TRIGGER node's
+            // expirationEmailMaxDaysAfterExpiry)
+            // For now, hardcoded to 2 days - only include users who are within 2 days past
+            // expiry for expiration emails
+            final int MAX_DAYS_PAST_EXPIRY_FOR_EMAIL = 2;
+
+            // Filter out users who are more than MAX_DAYS_PAST_EXPIRY_FOR_EMAIL days past
+            // their expiry
+            // This prevents sending expiration emails indefinitely to expired enrollments
+            List<Map<String, Object>> filteredList = ssigmList.stream()
+                    .filter(mapping -> {
+                        Object dpe = mapping.get("daysPastExpiry");
+                        if (dpe instanceof Number) {
+                            long daysPast = ((Number) dpe).longValue();
+                            // Include: not expired yet (daysPast <= 0) OR expired within limit
+                            return daysPast <= MAX_DAYS_PAST_EXPIRY_FOR_EMAIL;
+                        }
+                        return true; // Include if we can't determine
+                    })
+                    .toList();
+
+            log.info("Filtered SSIGM list: {} total, {} after filtering (max {} days past expiry)",
+                    ssigmList.size(), filteredList.size(), MAX_DAYS_PAST_EXPIRY_FOR_EMAIL);
+
             return Map.of(
-                    "ssigmList", ssigmList,
-                    "ssigmListCount", ssigmList.size());
+                    "ssigmList", filteredList,
+                    "ssigmListCount", filteredList.size(),
+                    "unfilteredCount", ssigmList.size());
 
         } catch (Exception e) {
             log.error("Error executing getSSIGMByStatusAndSessions query", e);
             return Map.of("error", e.getMessage());
         }
+    }
+
+    /**
+     * Calculate days past expiry.
+     * Returns: 0 if not expired, positive number if expired (e.g., 1 = expired
+     * yesterday, 2 = expired 2 days ago)
+     * 
+     * TODO: Move expiration email limit to workflow configuration level
+     */
+    private long calculateDaysPastExpiry(Date expiryDate) {
+        if (expiryDate == null) {
+            return 0; // No expiry = not expired
+        }
+
+        // Truncate both to midnight for accurate day calculation
+        Calendar todayCal = Calendar.getInstance();
+        todayCal.set(Calendar.HOUR_OF_DAY, 0);
+        todayCal.set(Calendar.MINUTE, 0);
+        todayCal.set(Calendar.SECOND, 0);
+        todayCal.set(Calendar.MILLISECOND, 0);
+
+        Calendar expiryCal = Calendar.getInstance();
+        expiryCal.setTime(expiryDate);
+        expiryCal.set(Calendar.HOUR_OF_DAY, 0);
+        expiryCal.set(Calendar.MINUTE, 0);
+        expiryCal.set(Calendar.SECOND, 0);
+        expiryCal.set(Calendar.MILLISECOND, 0);
+
+        long diffMillis = todayCal.getTimeInMillis() - expiryCal.getTimeInMillis();
+        long daysPast = diffMillis / (1000 * 60 * 60 * 24);
+
+        // Return 0 if not expired yet, otherwise return days past expiry
+        return Math.max(daysPast, 0);
     }
 
     /**
@@ -697,7 +759,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         }
 
         // --- START CUSTOM FIELD FETCHING LOGIC (Unchanged & Efficient) ---
-        // Since 'responses' now contains leads from ALL audiences, this bulk fetch works perfectly.
+        // Since 'responses' now contains leads from ALL audiences, this bulk fetch
+        // works perfectly.
 
         // 3. Extract Response IDs to bulk fetch values
         List<String> responseIds = responses.stream().map(AudienceResponse::getId).toList();
@@ -745,6 +808,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
         return Map.of("leads", leads);
     }
+
     private Map<String, Object> fetchInstituteSetting(Map<String, Object> params) {
         try {
             String instituteId = (String) params.get("instituteId");
@@ -817,7 +881,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      * Generic upsert of a single user custom field value.
      * Params: userId, customFieldId, value. sourceType is "USER".
      * Use for Moodle creds, or any other user custom field (dynamic use case).
-     * Coerces params to String so SpEL-evaluated UUIDs or other types from context work.
+     * Coerces params to String so SpEL-evaluated UUIDs or other types from context
+     * work.
      */
     private Map<String, Object> upsertUserCustomField(Map<String, Object> params) {
         try {
@@ -846,8 +911,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             return Map.of(
                     "userId", userId,
                     "customFieldId", customFieldId,
-                    "customFieldValueUpserted", true
-            );
+                    "customFieldValueUpserted", true);
         } catch (Exception e) {
             log.error("Error executing upsertUserCustomField", e);
             return Map.of("error", e.getMessage());

@@ -82,6 +82,7 @@ public class ApplicationSecurityConfig {
             // Applicant public APIs for application form
             "/admin-core-service/applicant/v1/enquiry/**",
             "/admin-core-service/v1/applicant/apply",
+            "/admin-core-service/enrollment-policy/**",
             "/admin-core-service/v1/applicant/list"
 
     };

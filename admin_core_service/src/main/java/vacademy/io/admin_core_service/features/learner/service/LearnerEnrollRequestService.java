@@ -278,11 +278,12 @@ public class LearnerEnrollRequestService {
                                 workflowContext.put("instituteIdForWhatsapp", learnerEnrollRequestDTO.getInstituteId());
                                 workflowContext.put("package_session_id", packageSessionId);
                                 workflowContext.put("destination_package_session_id", packageSessionId);
+                                workflowContext.put("name", learnerEnrollRequestDTO.getUser().getFullName());
 
                                 // Build users list with essential data only
                                 Map<String, Object> userMap = new java.util.HashMap<>();
                                 userMap.put("phone_number", learnerEnrollRequestDTO.getUser().getMobileNumber());
-                                userMap.put("full_name", learnerEnrollRequestDTO.getUser().getFullName());
+                                userMap.put("name", learnerEnrollRequestDTO.getUser().getFullName());
                                 userMap.put("username", learnerEnrollRequestDTO.getUser().getEmail() != null
                                         ? learnerEnrollRequestDTO.getUser().getEmail().split("@")[0]
                                         : learnerEnrollRequestDTO.getUser().getId());

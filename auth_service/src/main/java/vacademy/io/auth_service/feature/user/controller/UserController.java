@@ -14,6 +14,7 @@ import vacademy.io.common.auth.service.UserService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @RestController
@@ -176,6 +177,13 @@ public class UserController {
     public ResponseEntity<List<ParentWithChildDTO>> getUsersWithChildren(
             @RequestBody List<String> userIds) {
         return ResponseEntity.ok(userService.getUsersWithChildren(userIds));
+    }
+
+    @GetMapping("/internal/user-by-mobile")
+    public ResponseEntity<UserDTO> getUserByMobileNumber(@RequestParam String mobileNumber) {
+        Optional<UserDTO> userOpt = authService.getUserByMobileNumber(mobileNumber);
+        return userOpt.map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
 }

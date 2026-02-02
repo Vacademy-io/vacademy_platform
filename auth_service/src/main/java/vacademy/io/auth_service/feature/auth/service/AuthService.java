@@ -320,6 +320,29 @@ public class AuthService {
     }
 
     /**
+     * Finds the latest user by mobile number, handling various formats.
+     * Supports: +917999742868, 7999742868, 917999742868, or any country code.
+     * 
+     * @param mobileNumber the phone number in any format
+     * @return Optional containing UserDTO if found, empty otherwise
+     */
+    public Optional<UserDTO> getUserByMobileNumber(String mobileNumber) {
+        if (mobileNumber == null || mobileNumber.trim().isEmpty()) {
+            return Optional.empty();
+        }
+
+        // Remove all non-digit characters
+        String digitsOnly = mobileNumber.replaceAll("[^0-9]", "");
+
+        if (digitsOnly.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<User> userOpt = userRepository.findLatestUserByMobileNumber(digitsOnly);
+        return userOpt.map(this::convertToUserDto);
+    }
+
+    /**
      * Creates a user for learner enrollment with specialized email templates.
      * Uses different templates than the regular createUser method.
      */

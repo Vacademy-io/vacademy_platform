@@ -424,6 +424,16 @@ class VideoGenerationService:
                         logger.info(f"[VideoGenService] Downloading narration.words.json from S3...")
                         if self.s3_service.download_file(words_url, words_path):
                             logger.info(f"[VideoGenService] Successfully downloaded narration.words.json")
+            
+            # Need branding_meta.json for render stage (audio delay)
+            if start_stage_idx >= 5:  # RENDER
+                branding_meta_url = video_record.s3_urls.get("branding_meta")
+                if branding_meta_url:
+                    branding_meta_path = run_dir / "branding_meta.json"
+                    if not branding_meta_path.exists():
+                        logger.info(f"[VideoGenService] Downloading branding_meta.json from S3...")
+                        if self.s3_service.download_file(branding_meta_url, branding_meta_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded branding_meta.json")
         
         # Calculate percentage per stage
         total_stages = target_stage_idx - start_stage_idx + 1
@@ -465,6 +475,7 @@ class VideoGenerationService:
             ],
             "html": [
                 (None, "generated_images", "generated_images"),  # Directory - process FIRST to build image mapping
+                (None, "branding_meta", "branding_meta.json"),  # Branding metadata for audio delay
                 ("timeline_json", "timeline", "time_based_frame.json")  # Process AFTER images to update URLs
             ],
             "render": [("video_path", "video", "output.mp4")]

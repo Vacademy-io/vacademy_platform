@@ -1517,6 +1517,12 @@ def render_video_from_json(
     duration: float = max(audio_duration + audio_delay, timeline_max_end)
     total_frames = int(math.ceil(duration * fps))
     
+    print(f"DEBUG: Audio duration: {audio_duration}s")
+    print(f"DEBUG: Audio delay (intro): {audio_delay}s")
+    print(f"DEBUG: Timeline max end: {timeline_max_end}s")
+    print(f"DEBUG: Total video duration: {duration}s")
+    print(f"DEBUG: Total frames to render: {total_frames}")
+    
     # Apply audio delay - audio will start after the intro
     if audio_delay > 0:
         print(f"DEBUG: Applying audio delay of {audio_delay}s for intro silence")

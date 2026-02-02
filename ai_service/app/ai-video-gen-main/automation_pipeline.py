@@ -2820,16 +2820,34 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             timeline_entries.append(outro_entry)
             print(f"   ➕ Added outro branding ({outro_start}s - {outro_end}s)")
         
-        timeline_path = run_dir / "time_based_frame.json"
-        timeline_path.write_text(json.dumps(timeline_entries, indent=2))
+        # Calculate final duration
+        final_duration = (content_max_end + outro_duration) if outro_enabled else content_max_end
         
-        # Also save branding metadata for audio offset info
+        # Create timeline object with metadata for the frontend player
+        # The player needs to know when to start the audio (after intro)
+        timeline_output = {
+            "meta": {
+                "audio_start_at": content_starts_at,  # Audio should start playing at this time
+                "total_duration": final_duration,
+                "intro_duration": intro_duration,
+                "outro_duration": outro_duration if outro_enabled else 0.0,
+                "content_starts_at": content_starts_at,
+                "content_ends_at": content_max_end,
+            },
+            "entries": timeline_entries
+        }
+        
+        timeline_path = run_dir / "time_based_frame.json"
+        timeline_path.write_text(json.dumps(timeline_output, indent=2))
+        print(f"   📊 Timeline meta: audio starts at {content_starts_at}s, total duration {final_duration}s")
+        
+        # Also save branding metadata separately for backward compatibility
         branding_meta = {
             "intro_duration_seconds": intro_duration,
             "outro_duration_seconds": outro_duration if outro_enabled else 0.0,
             "content_starts_at": content_starts_at,
             "content_ends_at": content_max_end,
-            "total_duration": (content_max_end + outro_duration) if outro_enabled else content_max_end,
+            "total_duration": final_duration,
         }
         branding_meta_path = run_dir / "branding_meta.json"
         branding_meta_path.write_text(json.dumps(branding_meta, indent=2))
@@ -2849,16 +2867,26 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         output_video = run_dir / "output.mp4"
         frames_dir = run_dir / ".render_frames"
         
-        # Check for branding metadata to get audio delay
-        branding_meta_path = run_dir / "branding_meta.json"
+        # Get audio delay from branding config (intro duration)
         audio_delay = 0.0
-        if branding_meta_path.exists():
-            try:
-                branding_meta = json.loads(branding_meta_path.read_text())
-                audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
-                print(f"   🎵 Audio will start at {audio_delay}s (after intro)")
-            except Exception as e:
-                print(f"   ⚠️ Could not load branding metadata: {e}")
+        
+        # First try to get from stored branding config (works within same pipeline run)
+        if hasattr(self, '_current_branding') and self._current_branding:
+            intro_config = self._current_branding.get("intro", {})
+            if intro_config.get("enabled", False):
+                audio_delay = float(intro_config.get("duration_seconds", 0.0))
+                print(f"   🎵 Audio will start at {audio_delay}s (from branding config)")
+        
+        # Fallback: check branding_meta.json file (for resumed runs)
+        if audio_delay == 0.0:
+            branding_meta_path = run_dir / "branding_meta.json"
+            if branding_meta_path.exists():
+                try:
+                    branding_meta = json.loads(branding_meta_path.read_text())
+                    audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
+                    print(f"   🎵 Audio will start at {audio_delay}s (from branding_meta.json)")
+                except Exception as e:
+                    print(f"   ⚠️ Could not load branding metadata: {e}")
         
         cmd = [
             sys.executable,

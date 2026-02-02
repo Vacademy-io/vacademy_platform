@@ -9,10 +9,24 @@ export interface Frame {
   html: string;
   id: string;
   z: number;
-  htmlStartX: number;
-  htmlStartY: number;
-  htmlEndX: number;
-  htmlEndY: number;
+  htmlStartX?: number;
+  htmlStartY?: number;
+  htmlEndX?: number;
+  htmlEndY?: number;
+}
+
+export interface TimelineMeta {
+  audio_start_at: number;
+  total_duration: number;
+  intro_duration?: number;
+  outro_duration?: number;
+  content_starts_at?: number;
+  content_ends_at?: number;
+}
+
+interface TimelineData {
+  meta?: TimelineMeta;
+  entries?: Frame[];
 }
 
 export interface AIVideoPlayerProps {
@@ -223,8 +237,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   height = 1080,
 }) => {
   const [frames, setFrames] = useState<Frame[]>([]);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0); // This is TIMELINE time (includes intro)
+  const [duration, setDuration] = useState(0); // Total video duration including intro/outro
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -233,6 +247,13 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [showPlaybackSpeedMenu, setShowPlaybackSpeedMenu] = useState(false);
+  
+  // Branding/Timeline meta state
+  const [meta, setMeta] = useState<TimelineMeta>({
+    audio_start_at: 0,
+    total_duration: 0,
+  });
+  const [audioStarted, setAudioStarted] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -253,28 +274,49 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           throw new Error(`Failed to load timeline: ${response.statusText}`);
         }
 
-        const timelineData = await response.json();
+        const timelineData: TimelineData | Frame[] = await response.json();
         console.log("[AIVideoPlayer] Timeline data received:", {
           isArray: Array.isArray(timelineData),
-          hasFrames: !!timelineData.frames,
-          dataKeys: Object.keys(timelineData),
+          hasMeta: !Array.isArray(timelineData) && !!timelineData.meta,
+          hasEntries: !Array.isArray(timelineData) && !!timelineData.entries,
+          dataKeys: Array.isArray(timelineData) ? [] : Object.keys(timelineData),
         });
 
-        const framesArray = Array.isArray(timelineData) ? timelineData : timelineData.frames || [];
-        console.log("[AIVideoPlayer] Frames array:", {
-          count: framesArray.length,
+        // Parse new structure with backward compatibility
+        let framesArray: Frame[];
+        let timelineMeta: TimelineMeta;
+        
+        if (Array.isArray(timelineData)) {
+          // Old format: just an array of frames
+          framesArray = timelineData;
+          timelineMeta = { 
+            audio_start_at: 0, 
+            total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0 
+          };
+        } else {
+          // New format: { meta, entries }
+          framesArray = timelineData.entries || [];
+          timelineMeta = timelineData.meta || { 
+            audio_start_at: 0, 
+            total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0 
+          };
+        }
+        
+        console.log("[AIVideoPlayer] Parsed timeline:", {
+          framesCount: framesArray.length,
+          meta: timelineMeta,
           firstFrame: framesArray[0],
           lastFrame: framesArray[framesArray.length - 1],
         });
 
         setFrames(framesArray);
+        setMeta(timelineMeta);
 
-        // Calculate duration from last frame
-        if (framesArray.length > 0) {
-          const lastFrame = framesArray[framesArray.length - 1];
-          setDuration(lastFrame.exitTime || 0);
-          console.log("[AIVideoPlayer] Duration set to:", lastFrame.exitTime);
-        }
+        // Use meta.total_duration if available, otherwise calculate from last frame
+        const videoDuration = timelineMeta.total_duration || 
+          (framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0);
+        setDuration(videoDuration);
+        console.log("[AIVideoPlayer] Duration set to:", videoDuration);
       } catch (err) {
         console.error("[AIVideoPlayer] Error loading timeline:", err);
         setError(err instanceof Error ? err.message : "Failed to load timeline");
@@ -306,9 +348,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         duration: audio.duration,
         readyState: audio.readyState,
       });
-      if (audio.duration && audio.duration > 0) {
-        setDuration(audio.duration);
-      }
+      // Don't override duration here - we use meta.total_duration from timeline
+      // Audio duration is shorter than video duration (doesn't include intro/outro silence)
     });
 
     audio.addEventListener("canplay", () => {
@@ -320,8 +361,11 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       console.log("[AIVideoPlayer] Audio can play through");
     });
 
+    // Note: timeupdate is still used but timeline time is calculated in animation loop
+    // This serves as a fallback and for other audio state tracking
     audio.addEventListener("timeupdate", () => {
-      setCurrentTime(audio.currentTime);
+      // Audio currentTime + audio_start_at = timeline time
+      // But we update this more smoothly in the animation loop
     });
 
     // Set initial playback rate and volume
@@ -329,14 +373,11 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     audio.volume = volume;
     audio.muted = isMuted;
 
-    // Set initial playback rate and volume
-    audio.playbackRate = playbackRate;
-    audio.volume = volume;
-    audio.muted = isMuted;
-
     audio.addEventListener("ended", () => {
-      setIsPlaying(false);
-      setCurrentTime(0);
+      // Audio ended - but we don't stop the video yet
+      // The outro may still need to play after audio ends
+      // The animation loop will handle advancing to total_duration and then stopping
+      console.log("[AIVideoPlayer] Audio ended, continuing to outro if present");
     });
 
     audio.addEventListener("error", (e) => {
@@ -391,6 +432,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       audio.pause();
       audio.src = "";
       audioRef.current = null;
+      setAudioStarted(false);
     };
   }, [audioUrl]);
 
@@ -579,16 +621,64 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     iframeDoc.close();
   }, [activeFrames, width, height]);
 
-  // Animation loop for smooth updates
+  // Animation loop for smooth updates with branding sync
   useEffect(() => {
-    const updateTime = () => {
-      if (audioRef.current && isPlaying) {
-        setCurrentTime(audioRef.current.currentTime);
-        animationFrameRef.current = requestAnimationFrame(updateTime);
-      }
+    let lastTimestamp: number | null = null;
+    
+    const updateTime = (timestamp: number) => {
+      if (!isPlaying) return;
+      
+      // Calculate delta time for intro/outro progression
+      const deltaTime = lastTimestamp ? (timestamp - lastTimestamp) / 1000 * playbackRate : 0;
+      lastTimestamp = timestamp;
+      
+      setCurrentTime(prevTime => {
+        let newTime = prevTime;
+        const audioStartAt = meta.audio_start_at || 0;
+        const totalDuration = meta.total_duration || duration;
+        
+        // INTRO PHASE: Timeline is before audio_start_at
+        if (prevTime < audioStartAt) {
+          // During intro, advance timeline manually (no audio playing)
+          newTime = prevTime + deltaTime;
+          
+          // Check if we've reached the point where audio should start
+          if (newTime >= audioStartAt && audioRef.current && !audioStarted) {
+            console.log("[AIVideoPlayer] Intro complete, starting audio");
+            audioRef.current.currentTime = 0;
+            audioRef.current.play().catch(err => {
+              console.error("[AIVideoPlayer] Error starting audio after intro:", err);
+            });
+            setAudioStarted(true);
+            newTime = audioStartAt; // Ensure exact sync
+          }
+        }
+        // CONTENT PHASE: Audio is playing
+        else if (audioRef.current && !audioRef.current.ended) {
+          // Timeline time = audio currentTime + audio_start_at
+          newTime = audioRef.current.currentTime + audioStartAt;
+        }
+        // OUTRO PHASE: Audio has ended, continue timeline to total_duration
+        else if (audioRef.current && audioRef.current.ended) {
+          newTime = prevTime + deltaTime;
+          
+          // Check if we've reached the end of the video (including outro)
+          if (newTime >= totalDuration) {
+            console.log("[AIVideoPlayer] Video complete (including outro)");
+            setIsPlaying(false);
+            setAudioStarted(false);
+            return totalDuration;
+          }
+        }
+        
+        return Math.min(newTime, totalDuration);
+      });
+      
+      animationFrameRef.current = requestAnimationFrame(updateTime);
     };
 
     if (isPlaying) {
+      lastTimestamp = null;
       animationFrameRef.current = requestAnimationFrame(updateTime);
     }
 
@@ -597,7 +687,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isPlaying]);
+  }, [isPlaying, meta, duration, audioStarted, playbackRate]);
 
   const handlePlayPause = useCallback(() => {
     if (!audioRef.current) return;
@@ -606,46 +696,79 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().catch((err) => {
-        console.error("Error playing audio:", err);
-        setError("Failed to play audio");
-      });
+      const audioStartAt = meta.audio_start_at || 0;
+      
+      // If we're past the intro, start audio immediately
+      if (currentTime >= audioStartAt) {
+        // Calculate audio time from timeline time
+        const audioTime = currentTime - audioStartAt;
+        audioRef.current.currentTime = Math.max(0, audioTime);
+        audioRef.current.play().catch((err) => {
+          console.error("Error playing audio:", err);
+          setError("Failed to play audio");
+        });
+        if (!audioStarted) {
+          setAudioStarted(true);
+        }
+      }
+      // If we're in intro, just start the timeline - audio will start when intro completes
+      // (handled in animation loop)
+      
       setIsPlaying(true);
     }
-  }, [isPlaying]);
+  }, [isPlaying, meta, currentTime, audioStarted]);
 
   const handleReset = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
-      setCurrentTime(0);
-      setIsPlaying(false);
       audioRef.current.pause();
     }
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setAudioStarted(false);
   }, []);
 
   const handleSeek = useCallback((value: number[]) => {
-    const newTime = value[0];
+    const newTimelineTime = value[0];
+    const audioStartAt = meta.audio_start_at || 0;
+    
+    // Update timeline position
+    setCurrentTime(newTimelineTime);
+    
     if (audioRef.current) {
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
+      if (newTimelineTime < audioStartAt) {
+        // Seeking into intro - pause audio and reset audioStarted
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        setAudioStarted(false);
+      } else {
+        // Seeking into content or outro - sync audio position
+        const audioTime = newTimelineTime - audioStartAt;
+        audioRef.current.currentTime = Math.max(0, audioTime);
+        
+        // If we were playing and past intro, keep audio playing
+        if (isPlaying && newTimelineTime < (meta.content_ends_at || duration)) {
+          if (!audioStarted) {
+            setAudioStarted(true);
+          }
+          audioRef.current.play().catch(err => {
+            console.error("[AIVideoPlayer] Error playing audio after seek:", err);
+          });
+        }
+      }
     }
-  }, []);
+  }, [meta, isPlaying, audioStarted, duration]);
 
   const handleBackward = useCallback(() => {
-    if (audioRef.current) {
-      const newTime = Math.max(0, audioRef.current.currentTime - 10);
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  }, []);
+    const newTimelineTime = Math.max(0, currentTime - 10);
+    handleSeek([newTimelineTime]);
+  }, [currentTime, handleSeek]);
 
   const handleForward = useCallback(() => {
-    if (audioRef.current) {
-      const newTime = Math.min(duration, audioRef.current.currentTime + 10);
-      audioRef.current.currentTime = newTime;
-      setCurrentTime(newTime);
-    }
-  }, [duration]);
+    const totalDuration = meta.total_duration || duration;
+    const newTimelineTime = Math.min(totalDuration, currentTime + 10);
+    handleSeek([newTimelineTime]);
+  }, [currentTime, meta, duration, handleSeek]);
 
   const handlePlaybackRateChange = useCallback((rate: number) => {
     setPlaybackRate(rate);

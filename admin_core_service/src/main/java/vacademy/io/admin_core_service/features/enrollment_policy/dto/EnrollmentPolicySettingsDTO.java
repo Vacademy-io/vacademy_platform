@@ -14,6 +14,19 @@ import java.util.List;
 public class EnrollmentPolicySettingsDTO {
     OnExpiryPolicyDTO onExpiry;
     List<NotificationPolicyDTO> notifications;
+
+    /**
+     * Reenrollment policy with upgrade options.
+     * upgradeOptions inside contains enrollment invite links for frontend display.
+     */
     ReenrollmentPolicyDTO reenrollmentPolicy;
+
     OnEnrollmentPolicyDTO onEnrollment;
+
+    /**
+     * Workflow configuration with frontend actions.
+     * frontendActions inside contains WhatsApp buttons and other interactive
+     * elements.
+     */
+    WorkflowConfigDTO workflow;
 }

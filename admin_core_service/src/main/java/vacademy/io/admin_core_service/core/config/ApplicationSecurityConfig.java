@@ -81,7 +81,8 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/v1/invoices/test/**",
             // Applicant public APIs for application form
             "/admin-core-service/applicant/v1/enquiry/**",
-            "/admin-core-service/v1/applicant/apply"
+            "/admin-core-service/v1/applicant/apply",
+            "/admin-core-service/enrollment-policy/**"
 
     };
     @Autowired

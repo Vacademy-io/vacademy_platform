@@ -27,6 +27,9 @@ public class ApplicantFilterDTO {
     @JsonProperty("application_stage_id")
     private String applicationStageId;
 
+    @JsonProperty("package_session_id")
+    private String packageSessionId;
+
     private Integer page;
     private Integer size;
 }

@@ -164,6 +164,7 @@ public class ApplicantService {
                                 filterDTO.getSourceId(),
                                 filterDTO.getOverallStatus(),
                                 filterDTO.getApplicationStageId(),
+                                filterDTO.getPackageSessionId(),
                                 pageable);
 
                 // Batch fetch Application Stages to avoid N+1

@@ -73,6 +73,7 @@ async def generate_till_script(
             resume=False,
             target_audience=payload.target_audience,
             target_duration=payload.target_duration,
+            content_type=payload.content_type,
             db_session=db,
             institute_id=payload.institute_id,
             user_id=payload.user_id
@@ -121,6 +122,7 @@ async def generate_till_mp3(
             resume=False,
             target_audience=payload.target_audience,
             target_duration=payload.target_duration,
+            content_type=payload.content_type,
             db_session=db,
             institute_id=payload.institute_id,
             user_id=payload.user_id
@@ -177,6 +179,7 @@ async def generate_till_html(
             resume=False,
             target_audience=payload.target_audience,
             target_duration=payload.target_duration,
+            content_type=payload.content_type,
             db_session=db,
             institute_id=payload.institute_id,
             user_id=payload.user_id
@@ -228,6 +231,7 @@ async def generate_till_render(
             resume=False,
             target_audience=payload.target_audience,
             target_duration=payload.target_duration,
+            content_type=payload.content_type,
             db_session=db,
             institute_id=payload.institute_id,
             user_id=payload.user_id

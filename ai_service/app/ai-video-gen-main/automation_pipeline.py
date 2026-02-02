@@ -57,6 +57,21 @@ except ImportError:
     # We will raise to ensure the user knows something is wrong.
     raise RuntimeError("Could not import prompts.py. Ensure it exists in the same directory.")
 
+# Import content-type-specific prompts for QUIZ, STORYBOOK, etc.
+try:
+    from content_type_prompts import (
+        CONTENT_TYPE_PROMPTS,
+        get_content_type_prompts,
+        format_user_prompt,
+    )
+except ImportError:
+    # Not all deployments may have content_type_prompts yet
+    CONTENT_TYPE_PROMPTS = {}
+    def get_content_type_prompts(content_type):
+        return {}
+    def format_user_prompt(content_type, **kwargs):
+        return None
+
 DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 DEFAULT_GEMINI_IMAGE_KEY = os.environ.get("GEMINI_API_KEY", "")
 
@@ -646,6 +661,7 @@ class VideoGenerationPipeline:
         voice_gender: str = "female",
         tts_provider: str = "edge",
         branding_config: Optional[Dict[str, Any]] = None,
+        content_type: str = "VIDEO",
     ) -> Dict[str, Any]:
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
@@ -674,12 +690,14 @@ class VideoGenerationPipeline:
         print(f"📝 Captions enabled: {show_captions}")
         print(f"🎨 HTML Quality: {html_quality}")
         print(f"🖼️  Background Type: {background_type}")
+        print(f"📦 Content Type: {content_type}")
         
         # Store parameters for use in pipeline stages
         self._current_language = language
         self._current_show_captions = show_captions
         self._current_html_quality = html_quality
         self._current_background_type = background_type
+        self._current_content_type = content_type
         
         # Store branding config (use defaults if not provided)
         self._current_branding = branding_config or self._get_default_branding()
@@ -729,7 +747,7 @@ class VideoGenerationPipeline:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
             print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
-            script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration)
+            script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
             script_plan = script_out["result"]
             accumulate_usage(script_out.get("usage", {}))
         else:
@@ -812,7 +830,7 @@ class VideoGenerationPipeline:
             accumulate_usage(image_usage)
             
             print("🧾 Writing timeline JSON ...")
-            timeline_path = self._write_timeline(html_segments, run_dir, self._current_branding)
+            timeline_path = self._write_timeline(html_segments, run_dir, self._current_branding, self._current_content_type)
         
         if do_render:
             print("🎥 Rendering final video with Playwright...")
@@ -863,34 +881,193 @@ class VideoGenerationPipeline:
         }
 
     # --- Script generation -------------------------------------------------
-    def _draft_script(self, base_prompt: str, run_dir: Path, language: str = "English", target_audience: str = "General/Adult", target_duration: str = "2-3 minutes") -> Dict[str, Any]:
-        system_prompt = SCRIPT_SYSTEM_PROMPT
-        user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
-            base_prompt=base_prompt.strip(), 
-            language=language,
-            target_audience=target_audience,
-            target_duration=target_duration
-        ).strip()
+    def _draft_script(
+        self, 
+        base_prompt: str, 
+        run_dir: Path, 
+        language: str = "English", 
+        target_audience: str = "General/Adult", 
+        target_duration: str = "2-3 minutes",
+        content_type: str = "VIDEO"
+    ) -> Dict[str, Any]:
+        """
+        Generate a script or content plan based on the content type.
+        
+        For VIDEO: Generates a narration script for TTS
+        For QUIZ: Generates quiz questions and answers
+        For STORYBOOK: Generates page-by-page story with illustrations
+        For INTERACTIVE_GAME: Generates game data and logic
+        etc.
+        """
+        # Get content-type-specific prompts if available
+        ct_prompts = get_content_type_prompts(content_type)
+        
+        if content_type == "VIDEO" or not ct_prompts.get("system"):
+            # Use existing VIDEO prompts
+            system_prompt = SCRIPT_SYSTEM_PROMPT
+            user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
+                base_prompt=base_prompt.strip(), 
+                language=language,
+                target_audience=target_audience,
+                target_duration=target_duration
+            ).strip()
+        else:
+            # Use content-type-specific prompts
+            system_prompt = ct_prompts["system"]
+            
+            # Format user prompt with all available parameters
+            defaults = ct_prompts.get("defaults", {})
+            user_prompt = ct_prompts["user_template"].format(
+                base_prompt=base_prompt.strip(),
+                language=language,
+                target_audience=target_audience,
+                target_duration=target_duration,
+                # Content-type-specific defaults
+                question_count=defaults.get("question_count", 10),
+                page_count=defaults.get("page_count", 12),
+                card_count=defaults.get("card_count", 20),
+                puzzle_count=defaults.get("puzzle_count", 5),
+                game_type=defaults.get("game_type", "memory_match"),
+                illustration_style=defaults.get("illustration_style", "watercolor"),
+                puzzle_types=defaults.get("puzzle_types", "crossword"),
+                simulation_type=defaults.get("simulation_type", "physics"),
+                map_type=defaults.get("map_type", "geographic"),
+                # New content type parameters
+                worksheet_type=defaults.get("worksheet_type", "practice_problems"),
+                programming_language=defaults.get("programming_language", "javascript"),
+                difficulty_level=defaults.get("difficulty_level", "beginner"),
+                exercise_count=defaults.get("exercise_count", 5),
+                event_count=defaults.get("event_count", 10),
+                timeline_type=defaults.get("timeline_type", "historical"),
+                time_period=defaults.get("time_period", "auto"),
+                scenario_type=defaults.get("scenario_type", "role_play"),
+                exchange_count=defaults.get("exchange_count", 8),
+            ).strip()
+            
+        print(f"📝 Generating {content_type} content...")
 
         raw, usage = self.script_client.chat(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             temperature=0.5,
-            max_tokens=12000,
+            max_tokens=16000,  # Increased for complex content types
         )
         data = _extract_json_blob(raw)
-        script_text = str(data.get("script") or data.get("script_text") or "").strip()
-        if not script_text:
-            # fallback for older responses with segments
-            segments = data.get("segments") or []
-            script_parts: List[str] = []
-            for seg in segments:
-                part = seg.get("script", "").strip()
-                if part:
-                    script_parts.append(part)
+        
+        # Handle different content type outputs
+        if content_type == "VIDEO":
+            # Standard video script extraction
+            script_text = str(data.get("script") or data.get("script_text") or "").strip()
+            if not script_text:
+                # fallback for older responses with segments
+                segments = data.get("segments") or []
+                script_parts: List[str] = []
+                for seg in segments:
+                    part = seg.get("script", "").strip()
+                    if part:
+                        script_parts.append(part)
+                script_text = "\n\n".join(script_parts).strip()
+            if not script_text:
+                raise RuntimeError("Script model did not return usable narration text.")
+        elif content_type == "QUIZ":
+            # Extract quiz questions for TTS narration (read questions aloud)
+            questions = data.get("questions", [])
+            script_parts = []
+            for i, q in enumerate(questions, 1):
+                # Extract question text from HTML or text field
+                q_text = q.get("question_text", "")
+                if not q_text and "question_html" in q:
+                    # Try to extract text from HTML (simplified)
+                    import re
+                    q_text = re.sub(r'<[^>]+>', '', q.get("question_html", ""))
+                if q_text:
+                    script_parts.append(f"Question {i}. {q_text}")
+                    # Read options for audio
+                    for opt in q.get("options", []):
+                        script_parts.append(f"Option {opt.get('id', '').upper()}. {opt.get('text', '')}")
+            script_text = "\n\n".join(script_parts) if script_parts else data.get("title", "Quiz")
+        elif content_type == "STORYBOOK":
+            # Extract page text for TTS narration
+            pages = data.get("pages", [])
+            script_parts = [data.get("title", "")]
+            for page in pages:
+                audio_text = page.get("audio_text") or page.get("text", "")
+                if audio_text:
+                    script_parts.append(audio_text)
             script_text = "\n\n".join(script_parts).strip()
-        if not script_text:
-            raise RuntimeError("Script model did not return usable narration text.")
+        elif content_type in ["INTERACTIVE_GAME", "SIMULATION"]:
+            # Games/simulations may have minimal or no narration
+            script_text = data.get("title", content_type) + ". " + data.get("instructions", data.get("description", ""))
+        elif content_type == "FLASHCARDS":
+            # Read cards: front, then back
+            cards = data.get("cards", [])
+            script_parts = [data.get("deck_title", "Flashcard Deck")]
+            for card in cards[:5]:  # Limit audio to first 5 cards for demo
+                # Simplified extraction
+                script_parts.append(f"Card. {card.get('front_text', 'Question')}. Answer. {card.get('back_text', 'Answer')}")
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "WORKSHEET":
+            # Extract worksheet title and section instructions for audio
+            script_parts = [data.get("title", "Worksheet")]
+            instructions = data.get("instructions", "")
+            if instructions:
+                script_parts.append(instructions)
+            # Read first few questions as examples
+            sections = data.get("sections", [])
+            for section in sections[:2]:  # Limit to first 2 sections
+                section_title = section.get("section_title", "")
+                if section_title:
+                    script_parts.append(section_title)
+                section_instructions = section.get("section_instructions", "")
+                if section_instructions:
+                    script_parts.append(section_instructions)
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "CODE_PLAYGROUND":
+            # Code playgrounds are self-contained - minimal audio needed
+            script_parts = [data.get("title", "Code Playground")]
+            description = data.get("description", "")
+            if description:
+                script_parts.append(description)
+            # Read first exercise instructions
+            exercises = data.get("exercises", [])
+            if exercises and len(exercises) > 0:
+                first_ex = exercises[0]
+                script_parts.append(f"Exercise 1. {first_ex.get('title', '')}")
+                script_parts.append(first_ex.get("instructions", ""))
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "TIMELINE":
+            # Read timeline events for narration
+            script_parts = [data.get("title", "Timeline")]
+            description = data.get("description", "")
+            if description:
+                script_parts.append(description)
+            events = data.get("events", [])
+            for event in events[:5]:  # Limit to first 5 events
+                date_display = event.get("date_display", event.get("date", ""))
+                title = event.get("title", "")
+                desc = event.get("description", "")
+                if title:
+                    script_parts.append(f"{date_display}. {title}. {desc}")
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "CONVERSATION":
+            # Read dialogue exchanges for TTS
+            script_parts = [data.get("title", "Conversation Practice")]
+            scenario = data.get("scenario", "")
+            if scenario:
+                script_parts.append(f"Scenario: {scenario}")
+            exchanges = data.get("exchanges", [])
+            for ex in exchanges[:5]:  # Limit to first 5 exchanges
+                speaker_name = ex.get("speaker_name", "Speaker")
+                speech = ex.get("audio_text", ex.get("speech_text", ""))
+                if speech:
+                    script_parts.append(f"{speaker_name} says: {speech}")
+            script_text = "\n\n".join(script_parts)
+        else:
+            # Default fallback
+            script_text = data.get("script", data.get("title", content_type))
 
+        # Store the content type in the plan for later stages
+        data["_content_type"] = content_type
+        
         plan_path = run_dir / "script_plan.json"
         plan_path.write_text(json.dumps(data, indent=2))
         script_path = run_dir / "script.txt"
@@ -2677,7 +2854,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
     def _write_timeline(
         html_segments: List[Dict[str, Any]], 
         run_dir: Path,
-        branding_config: Optional[Dict[str, Any]] = None
+        branding_config: Optional[Dict[str, Any]] = None,
+        content_type: str = "VIDEO"
     ) -> Path:
         """
         Write timeline JSON with branding support.
@@ -2686,10 +2864,52 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         - Intro: Full-screen centered, shown before audio starts
         - Outro: Full-screen centered, shown after audio ends
         - Watermark: Corner overlay, shown throughout the video content
+        
+        Args:
+            html_segments: List of HTML segment entries
+            run_dir: Directory to write timeline file
+            branding_config: Branding configuration (intro, outro, watermark)
+            content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
         """
         # Video dimensions for positioning
         VIDEO_WIDTH = 1920
         VIDEO_HEIGHT = 1080
+        
+        # Determine navigation mode based on content type
+        NAVIGATION_MAP = {
+            "VIDEO": "time_driven",
+            "QUIZ": "user_driven",
+            "STORYBOOK": "user_driven", 
+            "INTERACTIVE_GAME": "self_contained",
+            "PUZZLE_BOOK": "user_driven",
+            "SIMULATION": "self_contained",
+            "FLASHCARDS": "user_driven",
+            "MAP_EXPLORATION": "user_driven",
+            # New content types
+            "WORKSHEET": "user_driven",
+            "CODE_PLAYGROUND": "self_contained",
+            "TIMELINE": "user_driven",
+            "CONVERSATION": "user_driven"
+        }
+        navigation = NAVIGATION_MAP.get(content_type, "time_driven")
+        
+        # Determine entry label based on content type
+        ENTRY_LABEL_MAP = {
+            "VIDEO": "segment",
+            "QUIZ": "question",
+            "STORYBOOK": "page",
+            "INTERACTIVE_GAME": "game",
+            "PUZZLE_BOOK": "puzzle",
+            "SIMULATION": "simulation",
+            "FLASHCARDS": "card",
+            "MAP_EXPLORATION": "region",
+            # New content types
+            "WORKSHEET": "exercise",
+            "CODE_PLAYGROUND": "exercise",
+            "TIMELINE": "event",
+            "CONVERSATION": "exchange"
+        }
+        entry_label = ENTRY_LABEL_MAP.get(content_type, "segment")
         
         # Get branding settings with defaults
         branding = branding_config or {}
@@ -2754,6 +2974,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     timeline_entry["z"] = int(entry["z"])
                 except (TypeError, ValueError):
                     pass
+            # Add entry_meta if present (for QUIZ answers, etc.)
+            if "entry_meta" in entry:
+                timeline_entry["entry_meta"] = entry["entry_meta"]
             timeline_entries.append(timeline_entry)
             
             # Track the maximum end time for content
@@ -2827,7 +3050,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # The player needs to know when to start the audio (after intro)
         timeline_output = {
             "meta": {
-                "audio_start_at": content_starts_at,  # Audio should start playing at this time
+                "content_type": content_type,              # NEW: Tells frontend what type of content
+                "navigation": navigation,                  # NEW: "time_driven", "user_driven", or "self_contained"
+                "entry_label": entry_label,                # NEW: Label for entries (question, page, segment)
+                "audio_start_at": content_starts_at,       # Audio should start playing at this time
                 "total_duration": final_duration,
                 "intro_duration": intro_duration,
                 "outro_duration": outro_duration if outro_enabled else 0.0,
@@ -2839,7 +3065,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         
         timeline_path = run_dir / "time_based_frame.json"
         timeline_path.write_text(json.dumps(timeline_output, indent=2))
-        print(f"   📊 Timeline meta: audio starts at {content_starts_at}s, total duration {final_duration}s")
+        print(f"   📊 Timeline meta: content_type={content_type}, navigation={navigation}, audio starts at {content_starts_at}s, total duration {final_duration}s")
         
         # Also save branding metadata separately for backward compatibility
         branding_meta = {

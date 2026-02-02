@@ -94,6 +94,7 @@ class VideoGenerationService:
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
         tts_provider: str = "edge",
+        content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None
@@ -109,6 +110,7 @@ class VideoGenerationService:
             resume: Whether to resume from existing progress
             target_audience: Target audience for age-appropriate content
             target_duration: Target video duration (e.g., '5 minutes')
+            content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
             
         Yields:
             SSE events with progress updates
@@ -116,7 +118,7 @@ class VideoGenerationService:
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info(f"[VideoGenService] generate_till_stage called with video_id={video_id}, target={target_stage}, resume={resume}")
+        logger.info(f"[VideoGenService] generate_till_stage called with video_id={video_id}, target={target_stage}, content_type={content_type}, resume={resume}")
         logger.info(f"[VideoGenService] Prompt: {prompt[:100]}...")
         
         # Validate target stage
@@ -144,13 +146,15 @@ class VideoGenerationService:
             video_record = self.repository.create(
                 video_id=video_id,
                 prompt=prompt,
-                language=language
+                language=language,
+                content_type=content_type
             )
             yield {
                 "type": "progress",
                 "stage": "PENDING",
-                "message": "Video generation initialized",
+                "message": f"{content_type} generation initialized",
                 "video_id": video_id,
+                "content_type": content_type,
                 "percentage": 0
             }
         
@@ -193,6 +197,7 @@ class VideoGenerationService:
                     target_duration=target_duration,
                     voice_gender=voice_gender,
                     tts_provider=tts_provider,
+                    content_type=content_type,
                     db_session=db_session,
                     institute_id=institute_id,
                     user_id=user_id
@@ -251,6 +256,7 @@ class VideoGenerationService:
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
         tts_provider: str = "edge",
+        content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None
@@ -526,7 +532,8 @@ class VideoGenerationService:
                     target_duration=target_duration,
                     voice_gender=voice_gender,
                     tts_provider=tts_provider,
-                    branding_config=branding_config
+                    branding_config=branding_config,
+                    content_type=content_type
                 )
                 
                 with ThreadPoolExecutor() as executor:

@@ -127,6 +127,20 @@ public class PaymentService {
                         String instituteId,
                         EnrollInvite enrollInvite,
                         UserPlan userPlan) {
+                return handlePaymentWithoutGateway(user, enrollDTO, instituteId, enrollInvite, userPlan, Map.of());
+        }
+
+        /**
+         * Overloaded method to handle payment log creation without initiating gateway
+         * call.
+         * Allows passing extraData for status overrides.
+         */
+        public PaymentResponseDTO handlePaymentWithoutGateway(UserDTO user,
+                        LearnerPackageSessionsEnrollDTO enrollDTO,
+                        String instituteId,
+                        EnrollInvite enrollInvite,
+                        UserPlan userPlan,
+                        Map<String, Object> extraData) {
 
                 PaymentInitiationRequestDTO request = enrollDTO.getPaymentInitiationRequest();
 
@@ -148,12 +162,18 @@ public class PaymentService {
                                 .toJson(Map.of("linkedToParentPayment", true, "paymentLogId", paymentLogId)));
                 userPlanService.save(userPlan);
 
-                // Create dummy response
+                // Create response
                 PaymentResponseDTO response = new PaymentResponseDTO();
                 response.setOrderId(paymentLogId);
                 response.setMessage("Payment Log Created (Gateway Skipped)");
                 Map<String, Object> responseData = new HashMap<>();
-                responseData.put("paymentStatus", PaymentStatusEnum.PAYMENT_PENDING.name());
+
+                String status = PaymentStatusEnum.PAYMENT_PENDING.name();
+                if (Boolean.TRUE.equals(extraData.get("FORCE_PAID_STATUS"))) {
+                        log.info("Forcing PAID status for skipped payment as requested");
+                        status = PaymentStatusEnum.PAID.name();
+                }
+                responseData.put("paymentStatus", status);
                 response.setResponseData(responseData);
 
                 updatePaymentLogHelper(paymentLogId, response, request);

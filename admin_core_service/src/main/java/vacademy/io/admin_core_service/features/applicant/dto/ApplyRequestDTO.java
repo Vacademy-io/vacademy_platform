@@ -61,4 +61,10 @@ public class ApplyRequestDTO {
      * Key: custom_field_id (UUID), Value: submitted value
      */
     private Map<String, String> customFieldValues;
+
+    /**
+     * Destination Package Session ID
+     * Represents the specific class or package session the applicant is targeting
+     */
+    private String destinationPackageSessionId;
 }

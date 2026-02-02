@@ -33,6 +33,7 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRepos
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.ParentWithChildDTO;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -161,25 +162,140 @@ public class ApplicantService {
                                 filterDTO.getInstituteId(),
                                 filterDTO.getSource(),
                                 filterDTO.getSourceId(),
+                                filterDTO.getOverallStatus(),
+                                filterDTO.getApplicationStageId(),
+                                filterDTO.getPackageSessionId(),
                                 pageable);
 
                 // Batch fetch Application Stages to avoid N+1
-                java.util.Set<UUID> stageIds = applicants.stream()
-                                .map(a -> UUID.fromString(a.getApplicationStageId()))
+                java.util.Set<String> stageConfigIds = applicants.stream()
+                                .map(Applicant::getApplicationStageId)
                                 .collect(java.util.stream.Collectors.toSet());
 
-                java.util.Map<String, ApplicationStage> stageMap = applicationStageRepository.findAllById(stageIds)
+                java.util.Map<String, ApplicationStage> stageConfigMap = applicationStageRepository
+                                .findAllById(stageConfigIds.stream().map(UUID::fromString).toList())
                                 .stream()
                                 .collect(java.util.stream.Collectors.toMap(
                                                 s -> s.getId().toString(),
                                                 s -> s));
 
+                // Batch fetch Audience Responses (snapshot of source & user link)
+                List<String> applicantIds = applicants.stream().map(a -> a.getId().toString()).toList();
+                Map<String, AudienceResponse> applicantToAudienceResponseMap = audienceResponseRepository
+                                .findByApplicantIdIn(applicantIds)
+                                .stream()
+                                .collect(java.util.stream.Collectors.toMap(
+                                                AudienceResponse::getApplicantId,
+                                                ar -> ar,
+                                                (existing, replacement) -> existing)); // Handle potential duplicates
+                                                                                       // safely
+
+                // Extract Parent/User IDs from Audience Response
+                Set<String> parentUserIds = applicantToAudienceResponseMap.values().stream()
+                                .map(AudienceResponse::getUserId)
+                                .filter(Objects::nonNull)
+                                .collect(java.util.stream.Collectors.toSet());
+
+                Map<String, Student> childUserToStudentMap = new HashMap<>();
+                Map<String, UserDTO> parentUserMap = new HashMap<>(); // ID -> UserDTO
+                Map<String, String> parentToChildIdMap = new HashMap<>(); // ParentID -> ChildID
+
+                if (!parentUserIds.isEmpty()) {
+
+                        try {
+                                // 1. Fetch Parent & Child Links from Auth Service
+                                List<ParentWithChildDTO> parentWithChildList = authService
+                                                .getUsersWithChildren(new ArrayList<>(parentUserIds));
+
+                                // 2. Separate Parents and Children
+                                Set<String> childUserIds = new HashSet<>();
+
+                                for (ParentWithChildDTO pc : parentWithChildList) {
+                                        if (pc.getParent() != null) {
+                                                parentUserMap.put(pc.getParent().getId(), pc.getParent());
+                                                if (pc.getChild() != null) {
+                                                        parentToChildIdMap.put(pc.getParent().getId(),
+                                                                        pc.getChild().getId());
+                                                        childUserIds.add(pc.getChild().getId());
+                                                }
+                                        }
+                                }
+
+                                // 3. Fetch Students using Child IDs
+                                if (!childUserIds.isEmpty()) {
+                                        childUserToStudentMap = instituteStudentRepository
+                                                        .findByUserIdIn(new ArrayList<>(childUserIds))
+                                                        .stream()
+                                                        .collect(java.util.stream.Collectors.toMap(
+                                                                        Student::getUserId,
+                                                                        s -> s));
+                                }
+
+                        } catch (Exception e) {
+                                logger.error("Failed to fetch users/children from auth service", e);
+                        }
+                }
+
+                // Final Assembly
+                Map<String, Student> finalChildUserToStudentMap = childUserToStudentMap;
+                Map<String, UserDTO> finalParentUserMap = parentUserMap;
+                Map<String, String> finalParentToChildIdMap = parentToChildIdMap;
+
                 return applicants.map(applicant -> {
                         ApplicantDTO dto = new ApplicantDTO(applicant);
-                        ApplicationStage stage = stageMap.get(applicant.getApplicationStageId());
+
+                        // Set Stage details
+                        ApplicationStage stage = stageConfigMap.get(applicant.getApplicationStageId());
                         if (stage != null) {
                                 dto.setSourceDetails(stage.getSource(), stage.getSourceId());
                         }
+
+                        // Assemble Data Map
+                        Map<String, Object> data = new HashMap<>();
+                        AudienceResponse ar = applicantToAudienceResponseMap.get(applicant.getId().toString());
+
+                        if (ar != null) {
+                                // 1. Add Source Info
+                                data.put("source_inputs", Map.of(
+                                                "source_type", ar.getSourceType(),
+                                                "source_id", ar.getSourceId() == null ? "" : ar.getSourceId()));
+
+                                if (ar.getUserId() != null) {
+                                        String parentUserId = ar.getUserId();
+
+                                        // 2. Add Student Personal/Academic Details (via Child ID)
+                                        String childUserId = finalParentToChildIdMap.get(parentUserId);
+                                        if (childUserId != null) {
+                                                Student student = finalChildUserToStudentMap.get(childUserId);
+                                                if (student != null) {
+                                                        // Add fields relevant for the application view
+                                                        data.put("student_name", student.getFullName());
+                                                        data.put("gender", student.getGender());
+                                                        data.put("dob", student.getDateOfBirth());
+                                                        data.put("father_name", student.getFatherName());
+                                                        data.put("mother_name", student.getMotherName());
+                                                        data.put("current_school", student.getPreviousSchoolName());
+                                                        data.put("city", student.getCity());
+                                                        data.put("address", student.getAddressLine());
+                                                }
+                                        }
+
+                                        // 3. Add Parent User Contact Details (Phone/Email)
+                                        UserDTO user = finalParentUserMap.get(parentUserId);
+                                        if (user != null) {
+                                                data.put("parent_name", user.getFullName()); // Parent Name
+                                                data.put("mobile_number", user.getMobileNumber());
+                                                data.put("email", user.getEmail());
+                                        }
+                                } else {
+                                        // If no user linked yet, fall back to AudienceResponse snapshot data
+                                        data.put("parent_name", ar.getParentName());
+                                        data.put("mobile_number", ar.getParentMobile());
+                                        data.put("email", ar.getParentEmail());
+                                }
+                        }
+
+                        dto.setData(data);
                         return dto;
                 });
         }
@@ -247,10 +363,10 @@ public class ApplicantService {
                 // If user_id exists, fetch user details from auth-service
                 if (audienceResponse.getUserId() != null) {
                         try {
-                                List<vacademy.io.common.auth.dto.ParentWithChildDTO> usersWithChildren = authService
+                                List<ParentWithChildDTO> usersWithChildren = authService
                                                 .getUsersWithChildren(List.of(audienceResponse.getUserId()));
                                 if (!usersWithChildren.isEmpty()) {
-                                        vacademy.io.common.auth.dto.ParentWithChildDTO parentWithChild = usersWithChildren
+                                        ParentWithChildDTO parentWithChild = usersWithChildren
                                                         .get(0);
                                         UserDTO parentUser = parentWithChild.getParent();
                                         UserDTO childUser = parentWithChild.getChild();
@@ -345,7 +461,7 @@ public class ApplicantService {
                         // Sync/Create Student record using existing User ID
                         if (audienceResponse.getUserId() != null) {
                                 // Fetch child user details to populate student
-                                List<vacademy.io.common.auth.dto.ParentWithChildDTO> users = authService
+                                List<ParentWithChildDTO> users = authService
                                                 .getUsersWithChildren(List.of(audienceResponse.getUserId()));
                                 if (!users.isEmpty() && users.get(0).getChild() != null) {
                                         UserDTO childUser = users.get(0).getChild();
@@ -419,8 +535,12 @@ public class ApplicantService {
                                 .build();
                 applicantStageRepository.save(applicantStage);
 
-                // Update audience_response with applicant_id
+                // Update audience_response with applicant_id and destination_package_session_id
+                // if provided
                 audienceResponse.setApplicantId(savedApplicant.getId().toString());
+                if (request.getDestinationPackageSessionId() != null) {
+                        audienceResponse.setDestinationPackageSessionId(request.getDestinationPackageSessionId());
+                }
                 audienceResponseRepository.save(audienceResponse);
 
                 return ApplyResponseDTO.builder()

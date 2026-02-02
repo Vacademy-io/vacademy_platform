@@ -439,9 +439,9 @@ class GoogleCloudTTSClient:
             print(f"    ✅ Got {len(word_entries)} word timestamps from Google TTS Timepoints")
             raw_json_path.write_text(json.dumps(word_entries, indent=2))
         else:
-            # Fallback to linear interpolation if no timepoints returned
-            print(f"    ⚠️ No timepoints returned, using linear interpolation fallback")
-            self._generate_mock_timestamps(text, raw_json_path)
+            # Fallback to Whisper alignment if no timepoints returned
+            print(f"    ⚠️ No timepoints returned, using Whisper alignment fallback")
+            self._generate_timestamps_with_fallback(output_path, text, raw_json_path)
 
     def _create_ssml_with_marks(self, text: str) -> tuple:
         """Create SSML with <mark> tags for each word to track timing."""
@@ -503,8 +503,65 @@ class GoogleCloudTTSClient:
         
         return word_entries
 
+    def _align_with_whisper(self, audio_path: Path, text: str) -> list:
+        """Use Whisper for forced alignment to get accurate word timestamps from audio."""
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            print("    ⚠️ faster-whisper not installed. Run: pip install faster-whisper")
+            return []
+        
+        try:
+            print("    🎯 Running Whisper forced alignment...")
+            
+            # Use tiny or base model for speed (word-level timing is accurate enough)
+            # Compute type determines precision/speed tradeoff
+            model = WhisperModel("base", device="cpu", compute_type="int8")
+            
+            # Transcribe with word timestamps
+            segments, info = model.transcribe(
+                str(audio_path),
+                word_timestamps=True,
+                language="en"  # TODO: Make this dynamic based on video language
+            )
+            
+            word_entries = []
+            for segment in segments:
+                if segment.words:
+                    for word_info in segment.words:
+                        word_entries.append({
+                            "word": word_info.word.strip(),
+                            "start": round(word_info.start, 3),
+                            "end": round(word_info.end, 3)
+                        })
+            
+            if word_entries:
+                print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
+            else:
+                print("    ⚠️ Whisper returned no word timestamps")
+            
+            return word_entries
+            
+        except Exception as e:
+            print(f"    ❌ Whisper alignment failed: {e}")
+            return []
+
+    def _generate_timestamps_with_fallback(self, audio_path: Path, text: str, raw_json_path: Path) -> None:
+        """Generate word timestamps using Whisper alignment, with linear fallback."""
+        
+        # Try Whisper alignment first
+        word_entries = self._align_with_whisper(audio_path, text)
+        
+        if word_entries:
+            raw_json_path.write_text(json.dumps(word_entries, indent=2))
+            return
+        
+        # Fallback to linear interpolation
+        print("    ⚠️ Using linear interpolation fallback (less accurate)")
+        self._generate_mock_timestamps(text, raw_json_path)
+
     def _generate_mock_timestamps(self, text: str, raw_json_path: Path) -> None:
-        """Fallback: Linear interpolation for timestamps (approx 16 chars/sec)."""
+        """Last resort fallback: Linear interpolation for timestamps (approx 16 chars/sec)."""
         import re
         
         words = re.findall(r'\S+', text)

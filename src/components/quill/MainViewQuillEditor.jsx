@@ -2,7 +2,7 @@ import katex from "katex";
 window.katex = katex;
 import "katex/dist/katex.css";
 import ReactQuill, { Quill } from "react-quill-new";
-import "react-quill-new/dist/quill.snow.css";
+import "quill/dist/quill.snow.css";
 import "./jquery";
 
 import "@edtr-io/mathquill/build/mathquill.js";

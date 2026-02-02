@@ -90,10 +90,7 @@ export const currencySymbols: { [key: string]: string } = {
   DJF: "Fdj",
   ERN: "Nfk",
   SOS: "S",
-  SSP: "£",
-  TZS: "TSh",
-  UGX: "USh",
-  ZAR: "R"
+  SSP: "£"
 };
 
 /**

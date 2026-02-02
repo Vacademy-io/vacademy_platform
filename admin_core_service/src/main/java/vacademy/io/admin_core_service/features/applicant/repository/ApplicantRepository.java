@@ -18,10 +18,15 @@ public interface ApplicantRepository extends JpaRepository<Applicant, UUID> {
                         +
                         "(:source IS NULL OR a.applicationStageId IN (SELECT CAST(s.id AS string) FROM ApplicationStage s WHERE s.source = :source)) AND "
                         +
-                        "(:sourceId IS NULL OR a.applicationStageId IN (SELECT CAST(s.id AS string) FROM ApplicationStage s WHERE s.sourceId = :sourceId))")
+                        "(:sourceId IS NULL OR a.applicationStageId IN (SELECT CAST(s.id AS string) FROM ApplicationStage s WHERE s.sourceId = :sourceId)) AND "
+                        +
+                        "(:overallStatus IS NULL OR a.overallStatus = :overallStatus) AND " +
+                        "(:applicationStageId IS NULL OR a.applicationStageId = :applicationStageId)")
         Page<Applicant> findApplicantsWithFilters(
                         @Param("instituteId") String instituteId,
                         @Param("source") String source,
                         @Param("sourceId") String sourceId,
+                        @Param("overallStatus") String overallStatus,
+                        @Param("applicationStageId") String applicationStageId,
                         Pageable pageable);
 }

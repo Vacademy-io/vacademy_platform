@@ -87,7 +87,7 @@ public class StudentRegistrationManager {
     }
 
     public InstituteStudentDTO addStudentToInstitute(CustomUserDetails user, InstituteStudentDTO instituteStudentDTO,
-            BulkUploadInitRequest bulkUploadInitRequest) {
+                                                     BulkUploadInitRequest bulkUploadInitRequest) {
         instituteStudentDTO = this.updateAsPerConfig(instituteStudentDTO, bulkUploadInitRequest);
         Student student = checkAndCreateStudent(instituteStudentDTO);
         linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
@@ -310,7 +310,7 @@ public class StudentRegistrationManager {
      * Terminates (marks as DELETED) the student's active enrollments in package
      * sessions
      * specified in the policy's terminateActiveSessions list.
-     * 
+     *
      * Use case: When a user upgrades from a demo package to a paid package,
      * the demo enrollment should be automatically terminated.
      *
@@ -320,7 +320,7 @@ public class StudentRegistrationManager {
      *                    list
      */
     private void terminateActiveSessionsIfConfigured(Student student, String instituteId,
-            EnrollmentPolicySettingsDTO policy) {
+                                                     EnrollmentPolicySettingsDTO policy) {
         if (policy == null || policy.getOnEnrollment() == null) {
             return;
         }
@@ -362,7 +362,7 @@ public class StudentRegistrationManager {
     /**
      * Blocks enrollment if user is already active in any of the package sessions
      * specified in the policy's blockIfActiveIn list.
-     * 
+     *
      * Use case: Prevent demo enrollment if user already has an active paid
      * subscription.
      *
@@ -372,7 +372,7 @@ public class StudentRegistrationManager {
      * @throws VacademyException if user is active in any blocking session
      */
     private void blockEnrollmentIfActiveInConfiguredSessions(Student student, String instituteId,
-            EnrollmentPolicySettingsDTO policy) {
+                                                             EnrollmentPolicySettingsDTO policy) {
         if (policy == null || policy.getOnEnrollment() == null) {
             return;
         }
@@ -420,8 +420,8 @@ public class StudentRegistrationManager {
      * Throws VacademyException if re-enrollment is not allowed.
      */
     private void validateReenrollmentEligibility(Student student,
-            InstituteStudentDetails details,
-            EnrollmentPolicySettingsDTO policy) {
+                                                 InstituteStudentDetails details,
+                                                 EnrollmentPolicySettingsDTO policy) {
         if (policy == null || policy.getReenrollmentPolicy() == null) {
             return; // No policy = allow
         }
@@ -487,7 +487,7 @@ public class StudentRegistrationManager {
     }
 
     private Optional<StudentSessionInstituteGroupMapping> getActiveDestinationMapping(Student student,
-            InstituteStudentDetails details) {
+                                                                                      InstituteStudentDetails details) {
         if (!StringUtils.hasText(details.getDestinationPackageSessionId())) {
             return Optional.empty();
         }
@@ -505,18 +505,18 @@ public class StudentRegistrationManager {
      * Now includes EXPIRED status to correctly handle re-enrollment scenarios.
      */
     private Optional<StudentSessionInstituteGroupMapping> getExistingMapping(Student student,
-            InstituteStudentDetails details) {
+                                                                             InstituteStudentDetails details) {
         return studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
-                details.getPackageSessionId(),
-                details.getInstituteId(),
-                student.getUserId(),
-                List.of(
-                        LearnerSessionStatusEnum.ACTIVE.name(),
-                        LearnerSessionStatusEnum.INVITED.name(),
-                        LearnerSessionStatusEnum.TERMINATED.name(),
-                        LearnerSessionStatusEnum.INACTIVE.name(),
-                        LearnerSessionStatusEnum.EXPIRED.name() // <-- ADDED
-                ))
+                        details.getPackageSessionId(),
+                        details.getInstituteId(),
+                        student.getUserId(),
+                        List.of(
+                                LearnerSessionStatusEnum.ACTIVE.name(),
+                                LearnerSessionStatusEnum.INVITED.name(),
+                                LearnerSessionStatusEnum.TERMINATED.name(),
+                                LearnerSessionStatusEnum.INACTIVE.name(),
+                                LearnerSessionStatusEnum.EXPIRED.name() // <-- ADDED
+                        ))
                 .filter(mapping -> !LearnerSessionTypeEnum.ABANDONED_CART.name().equals(mapping.getType()))
                 .filter(mapping -> !LearnerSessionTypeEnum.PAYMENT_FAILED.name().equals(mapping.getType()));
     }
@@ -618,7 +618,8 @@ public class StudentRegistrationManager {
                 details.getDestinationPackageSessionId(),
                 details.getUserPlanId(),
                 details.getSubOrgId(),
-                details.getCommaSeparatedOrgRoles());
+                details.getCommaSeparatedOrgRoles(),
+                details.getType());
 
         return studentSessionId.toString();
     }
@@ -729,7 +730,7 @@ public class StudentRegistrationManager {
      * [NEW HELPER]
      * Calculates the new expiry date based on V2 (UserPlan) or V1
      * (legacyAccessDays).
-     * 
+     *
      * @param baseDate         The date to add validity to (either 'now' or a future
      *                         expiry date).
      * @param userPlanId       The ID of the V2 UserPlan.
@@ -868,7 +869,7 @@ public class StudentRegistrationManager {
     }
 
     public InstituteStudentDTO updateAsPerConfig(InstituteStudentDTO instituteStudentDTO,
-            BulkUploadInitRequest bulkUploadInitRequest) {
+                                                 BulkUploadInitRequest bulkUploadInitRequest) {
         if (Objects.isNull(bulkUploadInitRequest)) {
             return instituteStudentDTO;
         }
@@ -936,7 +937,7 @@ public class StudentRegistrationManager {
     }
 
     public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO, String packageSessionId,
-            Institute subOrg) {
+                                          Institute subOrg) {
         Map<String, Object> contextData = new HashMap<>();
         contextData.put("user", userDTO);
         contextData.put("packageSessionIds", packageSessionId);

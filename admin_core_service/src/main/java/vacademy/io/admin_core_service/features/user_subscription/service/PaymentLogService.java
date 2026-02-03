@@ -531,6 +531,7 @@ public class PaymentLogService {
 
         LocalDateTime startDate = resolveStartDate(filterDTO);
         LocalDateTime endDate = resolveEndDate(filterDTO);
+        String userId = StringUtils.hasText(filterDTO.getUserId()) ? filterDTO.getUserId() : null;
         Page<PaymentLog> paymentLogsPage = paymentLogRepository.findPaymentLogIdsWithFilters(
                 filterDTO.getInstituteId(),
                 startDate,
@@ -540,6 +541,7 @@ public class PaymentLogService {
                 sources,
                 enrollInviteIds,
                 packageSessionIds,
+                userId,
                 pageable);
 
         List<PaymentLog> paymentLogs = paymentLogsPage.getContent();

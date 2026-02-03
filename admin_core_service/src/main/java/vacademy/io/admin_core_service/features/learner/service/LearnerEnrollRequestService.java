@@ -247,18 +247,18 @@ public class LearnerEnrollRequestService {
             if (!hasWorkflow) {
                 log.info("FREE enrollment completed. Sending enrollment notifications for user: {}",
                         learnerEnrollRequestDTO.getUser().getId());
-                sendDynamicNotificationForEnrollment(
-                        learnerEnrollRequestDTO.getInstituteId(),
-                        learnerEnrollRequestDTO.getUser(),
-                        paymentOption,
-                        enrollInvite,
-                        enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
-                );
-
-                sendReferralInvitationEmail(
-                        learnerEnrollRequestDTO.getInstituteId(),
-                        learnerEnrollRequestDTO.getUser(),
-                        enrollInvite);
+//                sendDynamicNotificationForEnrollment(
+//                        learnerEnrollRequestDTO.getInstituteId(),
+//                        learnerEnrollRequestDTO.getUser(),
+//                        paymentOption,
+//                        enrollInvite,
+//                        enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
+//                );
+//
+//                sendReferralInvitationEmail(
+//                        learnerEnrollRequestDTO.getInstituteId(),
+//                        learnerEnrollRequestDTO.getUser(),
+//                        enrollInvite);
             } else {
                 log.info(
                         "FREE enrollment with workflow. Notifications skipped for user: {}. Workflow will handle enrollment.",

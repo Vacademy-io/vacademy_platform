@@ -167,6 +167,8 @@ export const GET_ENROLL_INVITES_BY_USER = `${BASE_URL}/admin-core-service/v1/enr
 export const GET_REFERRAL_BENEFITS = `${BASE_URL}/admin-core-service/v1/referral-detail/get-referral-detail-for-beneficiary`;
 export const GET_POINTS_COUNTS = `${BASE_URL}/admin-core-service/v1/points/counts`;
 
+export const ENROLLMENT_POLICY_URL = `${BASE_URL}/admin-core-service/enrollment-policy/package-session`;
+
 // Server time
 export const GET_SERVER_TIME = `${BASE_URL}/auth-service/v1/server-time/utc`;
 

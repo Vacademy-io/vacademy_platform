@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import ReactQuill from "react-quill-new";
-import "quill/dist/quill.snow.css";
+import "react-quill-new/dist/quill.snow.css";
 import katex from "katex";
 import "katex/dist/katex.css";
 import { cn } from "@/lib/utils";
 
-window.katex = katex;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(window as any).katex = katex;
 
 interface ReadOnlyQuillViewerProps {
   value: string;

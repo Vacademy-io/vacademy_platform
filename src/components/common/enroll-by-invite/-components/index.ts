@@ -7,5 +7,12 @@ export { default as SuccessStep } from "./success-step";
 export { default as CourseInfoCard } from "./course-info-card";
 export { default as StepIndicator } from "./step-indicator";
 export { default as NavigationButtons } from "./navigation-buttons";
+export { default as EnrollmentPolicyDialog } from "./enrollment-policy-dialog";
+export type {
+    EnrollmentPolicyResponse,
+    EnrollmentPolicyDialogType,
+    EnrollmentPolicyFrontendAction,
+    EnrollmentPolicyReenrollment
+} from "./enrollment-policy-dialog";
 export * from "./types";
 export { PaymentGatewayWrapper } from "./payment-gateway-wrapper";

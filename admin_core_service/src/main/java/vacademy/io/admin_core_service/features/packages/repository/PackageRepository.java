@@ -2520,23 +2520,24 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             Pageable pageable);
 
     @Query(value = """
-                -- CTE to find the cheapest payment plan for each session, respecting the 'DEFAULT' tag
+                -- CTE: package_session + default enroll_invite -> pick recent psli -> its payment_option -> min price plan
                 WITH payment_info AS (
                     SELECT
                         ps.id AS package_session_id,
                         ei.id AS enroll_invite_id,
+                        psli.id AS psli_id,
                         po.id AS payment_option_id,
                         po.type AS payment_option_type,
                         po.status AS payment_option_status,
+                        pp.id AS payment_plan_id,
                         pp.actual_price,
                         pp.currency,
-                        pp.id AS payment_plan_id, -- Added payment plan ID
-                        ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY pp.actual_price ASC NULLS LAST) as row_num
+                        ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY psli.updated_at DESC NULLS LAST, pp.actual_price ASC NULLS LAST) as row_num
                     FROM package_session ps
                     LEFT JOIN package_session_learner_invitation_to_payment_option psli ON ps.id = psli.package_session_id
                         AND (:#{#psliStatus == null || #psliStatus.isEmpty()} = true OR psli.status IN (:psliStatus))
                     LEFT JOIN enroll_invite ei ON ei.id = psli.enroll_invite_id
-                        AND ei.tag = 'DEFAULT' -- Important filter included here
+                        AND ei.tag = 'DEFAULT'
                         AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
                     LEFT JOIN payment_option po ON po.id = psli.payment_option_id
                         AND (:#{#paymentOptionStatus == null || #paymentOptionStatus.isEmpty()} = true OR po.status IN (:paymentOptionStatus))
@@ -2572,11 +2573,13 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     ), 0.0) AS rating,
                     COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
 
-                    -- Selecting details from the cheapest plan (row_num = 1)
+                    -- Default invite -> recent psli -> its payment_option -> min price plan (row_num = 1)
                     payment_info.enroll_invite_id AS enrollInviteId,
+                    payment_info.psli_id AS psliId,
                     payment_info.payment_option_id AS paymentOptionId,
                     payment_info.payment_option_type AS paymentOptionType,
                     payment_info.payment_option_status AS paymentOptionStatus,
+                    payment_info.payment_plan_id AS paymentPlanId,
                     payment_info.actual_price AS minPlanActualPrice,
                     payment_info.currency AS currency,
 
@@ -2596,7 +2599,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND fspm.subject_id IS NULL
                     AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true OR fspm.status IN (:facultyPackageSessionStatus))
 
-                -- Join to our pre-calculated payment info CTE
+                -- Join to payment info: default invite, last updated payment_option and its plan
                 LEFT JOIN payment_info
                     ON ps.id = payment_info.package_session_id AND payment_info.row_num = 1
 
@@ -2669,9 +2672,11 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     l.id,
                     ps_read_time.total_read_time_minutes,
                     payment_info.enroll_invite_id,
+                    payment_info.psli_id,
                     payment_info.payment_option_id,
                     payment_info.payment_option_type,
                     payment_info.payment_option_status,
+                    payment_info.payment_plan_id,
                     payment_info.actual_price,
                     payment_info.currency
             """, countQuery = """
@@ -2681,23 +2686,23 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
             WHERE
-                p.is_course_published_to_catalaouge = true
-                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+                    p.is_course_published_to_catalaouge = true
+                    AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                    AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
-                AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
-                AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
-                AND (
+                    AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                    AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
+                    AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
+                    AND (
                     :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
                     EXISTS (
-                        SELECT 1
-                        FROM faculty_subject_package_session_mapping fspm_sub
-                        WHERE fspm_sub.package_session_id = ps.id
-                          AND fspm_sub.user_id IN (:facultyIds)
-                          AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
-                               OR fspm_sub.status IN (:facultyPackageSessionStatus))
+                            SELECT 1
+                            FROM faculty_subject_package_session_mapping fspm_sub
+                            WHERE fspm_sub.package_session_id = ps.id
+                              AND fspm_sub.user_id IN (:facultyIds)
+                              AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                                   OR fspm_sub.status IN (:facultyPackageSessionStatus))
                     )
                 )
             """, nativeQuery = true)
@@ -2723,22 +2728,24 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             Pageable pageable);
 
     @Query(value = """
-                -- CTE LOGIC FIXED: Now starts from package_session to include all sessions
+                -- CTE: package_session + default enroll_invite -> pick recent psli -> its payment_option -> min price plan
                 WITH payment_info AS (
                     SELECT
-                        ps.id AS package_session_id, -- Select the session ID directly from the source
+                        ps.id AS package_session_id,
                         e.id AS enroll_invite_id,
+                        psli.id AS psli_id,
                         po.id AS payment_option_id,
                         po.type AS payment_option_type,
+                        po.status AS payment_option_status,
                         pp.id AS payment_plan_id,
                         pp.actual_price,
                         pp.currency,
-                        -- Partition by the main session ID
-                        ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY pp.actual_price ASC NULLS LAST) as row_num
-                    FROM package_session ps -- START FROM package_session
+                        ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY psli.updated_at DESC NULLS LAST, pp.actual_price ASC NULLS LAST) as row_num
+                    FROM package_session ps
                     LEFT JOIN package_session_learner_invitation_to_payment_option psli ON ps.id = psli.package_session_id
                         AND (:#{#psliStatus == null || #psliStatus.isEmpty()} = true OR psli.status IN (:psliStatus))
                     LEFT JOIN enroll_invite e ON e.id = psli.enroll_invite_id
+                        AND e.tag = 'DEFAULT'
                         AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR e.status IN (:enrollInviteStatus))
                     LEFT JOIN payment_option po ON po.id = psli.payment_option_id
                         AND (:#{#paymentOptionStatus == null || #paymentOptionStatus.isEmpty()} = true OR po.status IN (:paymentOptionStatus))
@@ -2796,13 +2803,15 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         WHERE ps2.package_id = p.id
                     ) AS levelIds,
 
-                    -- ALIASES FIXED: Aliases now match the Projection interface getters
+                    -- Default invite -> recent psli -> its payment_option -> min price plan
                     payment_info.enroll_invite_id AS enrollInviteId,
+                    payment_info.psli_id AS psliId,
                     payment_info.payment_option_id AS paymentOptionId,
                     payment_info.payment_option_type AS paymentOptionType,
+                    payment_info.payment_option_status AS paymentOptionStatus,
                     payment_info.payment_plan_id AS paymentPlanId,
-                    payment_info.actual_price AS minPlanActualPrice, -- FIXED ALIAS
-                    payment_info.currency AS currency,                -- FIXED ALIAS
+                    payment_info.actual_price AS minPlanActualPrice,
+                    payment_info.currency AS currency,
                     ps.available_slots AS availableSlots
 
                 FROM package p
@@ -2818,7 +2827,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         OR fspm.status IN (:facultyPackageSessionStatus)
                     )
 
-                -- Join to our pre-calculated payment info CTE, only taking the cheapest plan
+                -- Join to payment info: default invite, recent psli, its payment_option and plan
                 LEFT JOIN payment_info
                     ON ps.id = payment_info.package_session_id AND payment_info.row_num = 1
 
@@ -2893,8 +2902,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     l.id,
                     ps_read_time.total_read_time_minutes,
                     payment_info.enroll_invite_id,
+                    payment_info.psli_id,
                     payment_info.payment_option_id,
                     payment_info.payment_option_type,
+                    payment_info.payment_option_status,
                     payment_info.payment_plan_id,
                     payment_info.actual_price,
                     payment_info.currency

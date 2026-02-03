@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteSt
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
+import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -52,6 +53,9 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
 
     @Autowired
     private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
+
+    @Autowired
+    private UserPlanService userPlanService;
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
@@ -176,13 +180,12 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
 
             // For synchronous payment gateways (e.g., Eway) that return PAID immediately,
-            // shift the user from INVITED to ACTIVE in the destination package session
+            // use applyOperationsOnFirstPayment which handles:
+            // 1. Terminating active sessions configured in enrollment policy
+            // 2. Shifting from INVITED to ACTIVE in the destination package session
             if (isPaymentSuccessful(paymentResponseDTO)) {
-                log.info("Payment successful for user: {}. Shifting to ACTIVE status.", user.getId());
-                learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(
-                        learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
-                        user.getId(),
-                        enrollInvite.getId());
+                log.info("Payment successful for user: {}. Applying first payment operations.", user.getId());
+                userPlanService.applyOperationsOnFirstPayment(userPlan);
             }
         } else {
             throw new VacademyException("PaymentInitiationRequest is null");

@@ -128,6 +128,8 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   const [error, setError] = useState<string | null>(null);
   // Ref to prevent double auto-enrollment for FREE courses
   const hasAutoEnrolledRef = useRef(false);
+  // Ref to track if prefill data has been applied (prevents double reset)
+  const hasPrefillAppliedRef = useRef(false);
   const [activePackageSessionId, setActivePackageSessionId] = useState<
     string | null
   >(null);
@@ -313,8 +315,91 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   useEffect(() => {
     if (finalCustomFields && finalCustomFields.length > 0) {
       const newDefaultValues = generateDefaultValues(finalCustomFields);
+      let shouldResetForm = false;
+      let hasPrefillData = false;
 
-      form.reset(newDefaultValues);
+      // Check for prefill data from previous upgrade flow
+      try {
+        const prefillDataStr = localStorage.getItem("enrollment_prefill_data");
+        if (prefillDataStr) {
+          console.log("[Prefill] Found prefill data in LocalStorage");
+          const prefillData = JSON.parse(prefillDataStr);
+          hasPrefillData = true;
+
+          Object.keys(prefillData).forEach((key) => {
+            // value is the string value
+            const val = prefillData[key];
+
+            // 1. Try exact key match
+            if (newDefaultValues[key]) {
+              console.log(`[Prefill] Exact match for ${key}`);
+              newDefaultValues[key].value = val;
+            }
+            // 2. Try Smart Matching for standard fields if not a "smart" key itself
+            else if (!key.startsWith('__smart_')) {
+              // Skip non-matching standard keys
+            }
+          });
+
+          // 3. Apply Smart Keys if exist and target field is empty
+          if (prefillData['__smart_email']) {
+            const emailKey = Object.keys(newDefaultValues).find(k =>
+              k.toLowerCase().includes('email') || k.toLowerCase().includes('mail')
+            );
+            if (emailKey && !newDefaultValues[emailKey].value) {
+              console.log(`[Prefill] Smart match for Email -> ${emailKey}`);
+              newDefaultValues[emailKey].value = prefillData['__smart_email'];
+            }
+          }
+
+          if (prefillData['__smart_phone']) {
+            const phoneKey = Object.keys(newDefaultValues).find(k =>
+              k.toLowerCase().includes('phone') || k.toLowerCase().includes('mobile') || k.toLowerCase().includes('contact')
+            );
+            if (phoneKey && !newDefaultValues[phoneKey].value) {
+              console.log(`[Prefill] Smart match for Phone -> ${phoneKey}`);
+              newDefaultValues[phoneKey].value = prefillData['__smart_phone'];
+            }
+          }
+
+          if (prefillData['__smart_name']) {
+            const nameKey = Object.keys(newDefaultValues).find(k =>
+              k.toLowerCase().includes('name') || k.toLowerCase().includes('full_name')
+            );
+            if (nameKey && !newDefaultValues[nameKey].value) {
+              console.log(`[Prefill] Smart match for Name -> ${nameKey}`);
+              newDefaultValues[nameKey].value = prefillData['__smart_name'];
+            }
+          }
+
+          // Remove from localStorage after reading
+          localStorage.removeItem("enrollment_prefill_data");
+
+          // Mark that prefill has been applied
+          hasPrefillAppliedRef.current = true;
+          shouldResetForm = true;
+        } else {
+          console.log("[Prefill] No prefill data found");
+          // Only reset form with empty values if prefill was never applied before
+          // This prevents React Strict Mode / double-render from clearing prefilled values
+          if (!hasPrefillAppliedRef.current) {
+            shouldResetForm = true;
+          } else {
+            console.log("[Prefill] Skipping form reset to preserve prefilled values");
+          }
+        }
+      } catch (e) {
+        console.error("Error applying prefill data", e);
+        // On error, still allow form reset if no prefill was applied
+        if (!hasPrefillAppliedRef.current) {
+          shouldResetForm = true;
+        }
+      }
+
+      if (shouldResetForm) {
+        console.log("[Prefill] Resetting form with values:", newDefaultValues);
+        form.reset(newDefaultValues);
+      }
     }
   }, [finalCustomFields, form, generateDefaultValues]);
 
@@ -663,6 +748,54 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     } catch (err) {
       console.error("[EnrollByInvite] Failed to fetch enrollment policy:", err);
       // Non-blocking - we don't prevent the enrollment flow if policy fetch fails
+    }
+  };
+
+  const handleUpgrade = (url: string) => {
+    // Save form data to LocalStorage for prefilling the next form
+    const formData = form.getValues();
+    const prefillData: Record<string, string> = {};
+
+    console.log("[Prefill] Saving form data for upgrade:", formData);
+
+    // First, save all form values with their original keys for exact matching
+    Object.keys(formData).forEach((key) => {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      const field = formData[key];
+      const val = field?.value;
+
+      if (val) {
+        prefillData[key] = val;
+      }
+    });
+
+    // Use getUserDetails for reliable extraction of Name, Email, and Phone
+    // This ensures smart keys are set correctly regardless of field key variations
+    const userDetails = getUserDetails();
+
+    if (userDetails.email) {
+      prefillData['__smart_email'] = userDetails.email;
+      console.log("[Prefill] Smart Email:", userDetails.email);
+    }
+    if (userDetails.contact) {
+      prefillData['__smart_phone'] = userDetails.contact;
+      console.log("[Prefill] Smart Phone:", userDetails.contact);
+    }
+    if (userDetails.name) {
+      prefillData['__smart_name'] = userDetails.name;
+      console.log("[Prefill] Smart Name:", userDetails.name);
+    }
+
+    try {
+      localStorage.setItem("enrollment_prefill_data", JSON.stringify(prefillData));
+      console.log("[Prefill] Saved to LocalStorage:", prefillData);
+    } catch (e) {
+      console.error("Failed to save prefill data", e);
+    }
+
+    if (url) {
+      window.open(url, "_blank");
     }
   };
 
@@ -1734,6 +1867,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           // Navigate to dashboard after dialog is closed
           window.location.href = `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
         }}
+        onUpgrade={handleUpgrade}
       />
     </div>
   );

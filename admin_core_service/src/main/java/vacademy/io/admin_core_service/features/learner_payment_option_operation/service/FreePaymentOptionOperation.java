@@ -49,18 +49,18 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
 
         @Override
         public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-                        LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-                        String instituteId,
-                        EnrollInvite enrollInvite,
-                        PaymentOption paymentOption,
-                        UserPlan userPlan,
-                        Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+                                                             LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+                                                             String instituteId,
+                                                             EnrollInvite enrollInvite,
+                                                             PaymentOption paymentOption,
+                                                             UserPlan userPlan,
+                                                             Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
                 log.info("Processing FREE enrollment for user: {}", userDTO.getEmail());
 
                 // Use startDate from DTO if provided, otherwise default to current date
                 Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
-                                ? learnerPackageSessionsEnrollDTO.getStartDate()
-                                : new Date();
+                        ? learnerPackageSessionsEnrollDTO.getStartDate()
+                        : new Date();
 
                 List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
                 List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
@@ -72,22 +72,24 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                 boolean hasWorkflow = false;
                 for (String packageSessionId : packageSessionIds) {
                         PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
-                                        .orElse(null);
+                                .orElse(null);
                         if (packageSession != null
-                                        && learnerEnrollmentEntryService.hasWorkflowConfiguration(packageSession)) {
+                                && learnerEnrollmentEntryService.hasWorkflowConfiguration(packageSession)) {
                                 hasWorkflow = true;
                                 log.info("Workflow configuration found for package session: {}",
-                                                packageSessionId);
+                                        packageSessionId);
                                 break;
                         }
                 }
 
                 // Step 2: Build enrollment details
-                // For FREE enrollment, we enroll directly to the ACTUAL package session (not INVITED)
                 String status;
+                String type = null; // null = default PACKAGE_SESSION type
                 if (hasWorkflow) {
-                        // Workflow exists - enroll to INVITED PS and let workflow handle activation
-                        status = LearnerStatusEnum.INVITED.name();
+                        // Workflow exists - set status ACTIVE and type ABANDONED_CART
+                        // This matches what ActivateEnrollmentProcessorStrategy expects
+                        status = LearnerSessionStatusEnum.ACTIVE.name();
+                        type = LearnerSessionTypeEnum.ABANDONED_CART.name();
                 } else if (paymentOption.isRequireApproval()) {
                         status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
                 } else {
@@ -100,57 +102,57 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                         if (hasWorkflow || paymentOption.isRequireApproval()) {
                                 // Use INVITED package session with destination
                                 Optional<PackageSession> invitedPackageSession = packageSessionRepository
-                                                .findInvitedPackageSessionForPackage(
-                                                                packageSessionId,
-                                                                "INVITED",
-                                                                "INVITED",
-                                                                List.of(PackageSessionStatusEnum.INVITED.name()),
-                                                                List.of(PackageSessionStatusEnum.ACTIVE.name(),
-                                                                                PackageSessionStatusEnum.HIDDEN.name()),
-                                                                List.of(PackageStatusEnum.ACTIVE.name()));
+                                        .findInvitedPackageSessionForPackage(
+                                                packageSessionId,
+                                                "INVITED",
+                                                "INVITED",
+                                                List.of(PackageSessionStatusEnum.INVITED.name()),
+                                                List.of(PackageSessionStatusEnum.ACTIVE.name(),
+                                                        PackageSessionStatusEnum.HIDDEN.name()),
+                                                List.of(PackageStatusEnum.ACTIVE.name()));
 
                                 if (invitedPackageSession.isEmpty()) {
                                         throw new VacademyException(
-                                                        "Learner cannot be enrolled as there is no invited package session");
+                                                "Learner cannot be enrolled as there is no invited package session");
                                 }
 
                                 InstituteStudentDetails detail = new InstituteStudentDetails(
-                                                instituteId,
-                                                invitedPackageSession.get().getId(),
-                                                null,
-                                                status,
-                                                enrollmentDate,
-                                                null,
-                                                accessDays != null ? accessDays.toString() : null,
-                                                packageSessionId, // destination package session
-                                                userPlan.getId(), null, null);
+                                        instituteId,
+                                        invitedPackageSession.get().getId(),
+                                        null,
+                                        status,
+                                        enrollmentDate,
+                                        null,
+                                        accessDays != null ? accessDays.toString() : null,
+                                        packageSessionId, // destination package session
+                                        userPlan.getId(), null, null, type);
                                 instituteStudentDetails.add(detail);
                         } else {
                                 // Direct enrollment to actual package session
                                 InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(
-                                                instituteId,
-                                                packageSessionId, null, status, enrollmentDate, null,
-                                                accessDays != null ? accessDays.toString() : null, 
-                                                null, // no destination needed for direct enrollment
-                                                userPlan.getId(), null, null);
+                                        instituteId,
+                                        packageSessionId, null, status, enrollmentDate, null,
+                                        accessDays != null ? accessDays.toString() : null,
+                                        null, // no destination needed for direct enrollment
+                                        userPlan.getId(), null, null, type);
                                 instituteStudentDetails.add(instituteStudentDetail);
                         }
                 }
 
                 UserDTO user = learnerBatchEnrollService.checkAndCreateStudentAndAddToBatch(userDTO, instituteId,
-                                instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
-                                extraData,
-                                learnerExtraDetails, enrollInvite, userPlan);
+                        instituteStudentDetails, learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
+                        extraData,
+                        learnerExtraDetails, enrollInvite, userPlan);
 
                 // Process referral request if present - for free payments, benefits are
                 // activated immediately
                 if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
                         referralBenefitOrchestrator.processAllBenefits(
-                                        learnerPackageSessionsEnrollDTO,
-                                        paymentOption,
-                                        userPlan,
-                                        user,
-                                        instituteId);
+                                learnerPackageSessionsEnrollDTO,
+                                paymentOption,
+                                userPlan,
+                                user,
+                                instituteId);
                 }
 
                 LearnerEnrollResponseDTO learnerEnrollResponseDTO = new LearnerEnrollResponseDTO();

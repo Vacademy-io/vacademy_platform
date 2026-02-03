@@ -173,7 +173,7 @@ public class LearnerEnrollRequestService {
                         .getBlockedPackageSessions().get(0);
                 String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(blocked.getRetryDate());
                 throw new VacademyException(
-                        String.format("You can retry operation on %s", retryDateStr));
+                        new String("You are already enrolled in this demo. Please complete your current trial first."));
             } else {
                 // Multiple package sessions - check if at least one is allowed
                 if (gapValidationResult.getAllowedPackageSessionIds().isEmpty()) {

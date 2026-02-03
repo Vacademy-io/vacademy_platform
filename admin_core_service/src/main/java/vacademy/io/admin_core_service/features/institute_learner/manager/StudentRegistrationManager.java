@@ -261,10 +261,15 @@ public class StudentRegistrationManager {
     public String linkStudentToInstitute(Student student, InstituteStudentDetails details) {
         try {
             // 1. Fetch the policy for the package session they are trying to join
+            // For paid enrollments with destination, use destination's policy for terminateActiveSessions
+            String policyPackageSessionId = StringUtils.hasText(details.getDestinationPackageSessionId())
+                    ? details.getDestinationPackageSessionId()
+                    : details.getPackageSessionId();
+
             vacademy.io.common.institute.entity.session.PackageSession packageSession = packageSessionRepository
-                    .findById(details.getPackageSessionId())
+                    .findById(policyPackageSessionId)
                     .orElseThrow(() -> new VacademyException(
-                            "PackageSession not found with id: " + details.getPackageSessionId()));
+                            "PackageSession not found with id: " + policyPackageSessionId));
 
             EnrollmentPolicySettingsDTO policy = parseEnrollmentPolicy(packageSession.getEnrollmentPolicySettings());
             if (policy == null) {
@@ -278,9 +283,16 @@ public class StudentRegistrationManager {
             // block demo if paid)
             blockEnrollmentIfActiveInConfiguredSessions(student, details.getInstituteId(), policy);
 
-            // 4. Terminate active sessions if configured in policy (e.g., demo to paid
-            // upgrade)
-            terminateActiveSessionsIfConfigured(student, details.getInstituteId(), policy);
+            // 4. Terminate active sessions if configured in policy (e.g., demo to paid upgrade)
+            // IMPORTANT: Skip termination for INVITED status (paid enrollments pending payment)
+            // Termination will happen after payment confirmation in UserPlanService.applyOperationsOnFirstPayment
+            boolean isPendingPayment = LearnerSessionStatusEnum.INVITED.name().equalsIgnoreCase(details.getEnrollmentStatus());
+            if (!isPendingPayment) {
+                terminateActiveSessionsIfConfigured(student, details.getInstituteId(), policy);
+            } else {
+                log.info("Skipping terminateActiveSessions for user {} - enrollment is pending payment. Will terminate after payment confirmation.",
+                        student.getUserId());
+            }
 
             // 5. Check for an active mapping in a *different* session (for stacking)
             Optional<StudentSessionInstituteGroupMapping> activeDestinationMapping = getActiveDestinationMapping(

@@ -292,6 +292,11 @@ public class UserPlanService {
 
             logger.debug("Package session IDs resolved for EnrollInvite ID={}: {}", enrollInvite.getId(),
                     packageSessionIds);
+
+            // Terminate active sessions configured in enrollment policy BEFORE shifting to active
+            // This is for paid enrollments where termination was deferred until payment confirmation
+            terminateActiveSessionsAfterPayment(userPlan.getUserId(), enrollInvite.getInstituteId(), packageSessionIds);
+
             learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
                     userPlan.getUserId(), enrollInvite.getId());
             userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
@@ -349,6 +354,83 @@ public class UserPlanService {
             logger.error("Error sending enrollment notifications after payment for UserPlan ID: {}. " +
                     "Enrollment is complete but notification failed.", userPlan.getId(), e);
             // Don't throw exception - enrollment is complete, notification is secondary
+        }
+    }
+
+    /**
+     * Terminates (marks as DELETED) the user's active enrollments in package sessions
+     * specified in the policy's terminateActiveSessions list.
+     * 
+     * This method is called AFTER payment confirmation for paid enrollments.
+     * Use case: When user upgrades from a demo package to a paid package,
+     * the demo enrollment should be automatically terminated only after payment is confirmed.
+     *
+     * @param userId            The user ID whose sessions should be terminated
+     * @param instituteId       The institute ID
+     * @param packageSessionIds The package sessions the user is enrolling into (to read their policies)
+     */
+    private void terminateActiveSessionsAfterPayment(String userId, String instituteId, List<String> packageSessionIds) {
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            return;
+        }
+
+        for (String packageSessionId : packageSessionIds) {
+            try {
+                PackageSession packageSession = packageSessionRepository.findById(packageSessionId).orElse(null);
+                if (packageSession == null) {
+                    logger.warn("Package session not found for termination check: {}", packageSessionId);
+                    continue;
+                }
+
+                String policyJson = packageSession.getEnrollmentPolicySettings();
+                if (policyJson == null || policyJson.isBlank()) {
+                    continue;
+                }
+
+                EnrollmentPolicyJsonDTOs.EnrollmentPolicySettingsDTO policy = objectMapper.readValue(policyJson,
+                        EnrollmentPolicyJsonDTOs.EnrollmentPolicySettingsDTO.class);
+
+                if (policy == null || policy.getOnEnrollment() == null) {
+                    continue;
+                }
+
+                List<String> sessionsToTerminate = policy.getOnEnrollment().getTerminateActiveSessions();
+                if (sessionsToTerminate == null || sessionsToTerminate.isEmpty()) {
+                    continue;
+                }
+
+                logger.info("Terminating active sessions for user {} after payment confirmation. Sessions to terminate: {}",
+                        userId, sessionsToTerminate);
+
+                // Find and terminate all matching active enrollments
+                for (String sessionIdToTerminate : sessionsToTerminate) {
+                    try {
+                        Optional<StudentSessionInstituteGroupMapping> activeMapping = studentSessionRepository
+                                .findTopByPackageSessionIdAndUserIdAndStatusIn(
+                                        sessionIdToTerminate,
+                                        instituteId,
+                                        userId,
+                                        List.of(LearnerSessionStatusEnum.ACTIVE.name(),
+                                                LearnerSessionStatusEnum.INVITED.name()));
+
+                        if (activeMapping.isPresent()) {
+                            StudentSessionInstituteGroupMapping mapping = activeMapping.get();
+                            mapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
+                            studentSessionRepository.save(mapping);
+                            logger.info("Terminated enrollment for user {} in package session {} after payment confirmation",
+                                    userId, sessionIdToTerminate);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to terminate session {} for user {} after payment: {}",
+                                sessionIdToTerminate, userId, e.getMessage());
+                        // Continue with other sessions even if one fails
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Error processing termination policy for package session {}: {}",
+                        packageSessionId, e.getMessage(), e);
+                // Continue with other package sessions
+            }
         }
     }
 

@@ -15,7 +15,7 @@ import java.util.List;
 @Repository
 public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> {
 
-  @Query(value = "SELECT * FROM payment_log WHERE CAST(payment_specific_data AS TEXT) LIKE %:orderId%", nativeQuery = true)
+  @Query(value = "SELECT * FROM payment_log WHERE CAST(payment_specific_data AS TEXT) LIKE CONCAT('%', :orderId, '%')", nativeQuery = true)
   List<PaymentLog> findAllByOrderIdInJson(@Param("orderId") String orderId);
 
   /**
@@ -30,34 +30,35 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
   List<PaymentLog> findAllByOrderIdInOriginalRequest(@Param("orderId") String orderId);
 
   @Query("SELECT pl FROM PaymentLog pl WHERE pl.userPlan.id = :userPlanId ORDER BY pl.createdAt DESC")
-    List<PaymentLog> findByUserPlanIdOrderByCreatedAtDesc(@Param("userPlanId") String userPlanId);    @Query(value = """
-      SELECT DISTINCT pl FROM PaymentLog pl
-      JOIN FETCH pl.userPlan up
-      JOIN FETCH up.enrollInvite ei
-      LEFT JOIN FETCH up.paymentOption po
-      LEFT JOIN FETCH up.paymentPlan pp
-      WHERE ei.instituteId = :instituteId
-        AND pl.createdAt >= :startDate
-        AND pl.createdAt <= :endDate
+  List<PaymentLog> findByUserPlanIdOrderByCreatedAtDesc(@Param("userPlanId") String userPlanId);
 
-        AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty() ? 1 : 0} = 1 OR pl.paymentStatus IN (:paymentStatuses))
+  @Query(value = """
+            SELECT DISTINCT pl FROM PaymentLog pl
+            JOIN FETCH pl.userPlan up
+            JOIN FETCH up.enrollInvite ei
+            LEFT JOIN FETCH up.paymentOption po
+            LEFT JOIN FETCH up.paymentPlan pp
+            WHERE ei.instituteId = :instituteId
+              AND pl.createdAt >= :startDate
+              AND pl.createdAt <= :endDate
 
-        AND (:#{#userPlanStatuses == null || #userPlanStatuses.isEmpty() ? 1 : 0} = 1 OR up.status IN (:userPlanStatuses))
+              AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty() ? 1 : 0} = 1 OR pl.paymentStatus IN (:paymentStatuses))
 
-        AND (:#{#sources == null || #sources.isEmpty() ? 1 : 0} = 1 OR up.source IN (:sources))
+              AND (:#{#userPlanStatuses == null || #userPlanStatuses.isEmpty() ? 1 : 0} = 1 OR up.status IN (:userPlanStatuses))
 
-        AND (:#{#enrollInviteIds == null || #enrollInviteIds.isEmpty() ? 1 : 0} = 1 OR ei.id IN (:enrollInviteIds))
+              AND (:#{#sources == null || #sources.isEmpty() ? 1 : 0} = 1 OR up.source IN (:sources))
 
-        AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty() ? 1 : 0} = 1 OR EXISTS (
-              SELECT 1
-              FROM PackageSessionLearnerInvitationToPaymentOption psli
-              WHERE psli.enrollInvite.id = ei.id
-                AND psli.status = 'ACTIVE'
-                AND psli.packageSession.id IN (:packageSessionIds)
-            ))
-      ORDER BY pl.createdAt DESC
-""",
-        countQuery = """
+              AND (:#{#enrollInviteIds == null || #enrollInviteIds.isEmpty() ? 1 : 0} = 1 OR ei.id IN (:enrollInviteIds))
+
+              AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty() ? 1 : 0} = 1 OR EXISTS (
+                    SELECT 1
+                    FROM PackageSessionLearnerInvitationToPaymentOption psli
+                    WHERE psli.enrollInvite.id = ei.id
+                      AND psli.status = 'ACTIVE'
+                      AND psli.packageSession.id IN (:packageSessionIds)
+                  ))
+            ORDER BY pl.createdAt DESC
+      """, countQuery = """
       SELECT COUNT(pl) FROM PaymentLog pl
       JOIN pl.userPlan up
       JOIN up.enrollInvite ei
@@ -96,7 +97,6 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       ORDER BY pl.createdAt DESC
       """)
   List<PaymentLog> findPaymentLogsWithRelationshipsByIds(@Param("ids") List<String> ids);
-
 
   /**
    * NATIVE QUERY REPLACEMENT for the Specification

@@ -236,13 +236,18 @@ public class PaymentService {
                         CustomUserDetails userDetails,
                         String userPlanId) {
 
-                String userId = userDetails.getUserId();
+                String userId = (userDetails != null) ? userDetails.getUserId() : null;
 
                 // Validate that user plan exists and belongs to the user
                 UserPlan userPlan = userPlanService.findById(userPlanId);
 
-                if (!userPlan.getUserId().equals(userId)) {
+                if (userId != null && !userPlan.getUserId().equals(userId)) {
                         throw new RuntimeException("User plan does not belong to the specified user");
+                }
+
+                // If user is null (Public/Guest flow), use the ID from the Plan itself
+                if (userId == null) {
+                        userId = userPlan.getUserId();
                 }
 
                 // Create payment log for the user plan
@@ -257,25 +262,49 @@ public class PaymentService {
 
                 request.setOrderId(paymentLogId);
 
-                // Create or get customer for the user
-                UserDTO userDTO = getUserById(userId);
-                UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
-                                instituteId,
-                                userDTO,
-                                request.getVendor(),
-                                request);
+                PaymentResponseDTO response = null;
 
-                paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
-                                gatewayMapping,
-                                request.getVendor(),
-                                request);
+                // Branch: Authenticated User vs. Guest
+                if (userDetails != null) {
+                        // Authenticated User: Fetch UserDTO and Customer Mapping
+                        UserDTO userDTO = getUserById(userId);
+                        UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
+                                        instituteId,
+                                        userDTO,
+                                        request.getVendor(),
+                                        request);
 
-                // Process the payment
-                PaymentResponseDTO response = makePayment(
-                                request.getVendor(),
-                                instituteId,
-                                userDTO,
-                                request);
+                        paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
+                                        gatewayMapping,
+                                        request.getVendor(),
+                                        request);
+
+                        // Process the payment
+                        response = makePayment(
+                                        request.getVendor(),
+                                        instituteId,
+                                        userDTO,
+                                        request);
+                } else {
+                        // Guest/Applicant: Use Unknown User Logic
+                        Map<String, Object> gatewayMapping = createOrGetCustomerForUnknownUser(
+                                        instituteId,
+                                        request.getEmail(),
+                                        request.getVendor(),
+                                        request);
+
+                        paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
+                                        gatewayMapping,
+                                        request.getVendor(),
+                                        request);
+
+                        // Process payment with NULL user
+                        response = makePayment(
+                                        request.getVendor(),
+                                        instituteId,
+                                        null,
+                                        request);
+                }
 
                 // Update payment log with response
                 updatePaymentLogHelper(paymentLogId, response, request);

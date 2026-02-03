@@ -122,31 +122,32 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
      * Find active UserPlan for a sub-organization with payment plan loaded
      * Used to retrieve member count limits for sub-org enrollments
      */
-    @EntityGraph(attributePaths = {"paymentPlan"})
+    @EntityGraph(attributePaths = { "paymentPlan" })
     @Query("SELECT up FROM UserPlan up " +
-           "WHERE up.subOrgId = :subOrgId " +
-           "AND up.source = :source " +
-           "AND up.status = :status")
+            "WHERE up.subOrgId = :subOrgId " +
+            "AND up.source = :source " +
+            "AND up.status = :status")
     Optional<UserPlan> findBySubOrgIdAndSourceAndStatus(
-        @Param("subOrgId") String subOrgId,
-        @Param("source") String source,
-        @Param("status") String status);
+            @Param("subOrgId") String subOrgId,
+            @Param("source") String source,
+            @Param("status") String status);
 
     /**
      * Find UserPlan for ROOT_ADMIN with payment plan loaded
      * Used to get member count limit from the ROOT_ADMIN who purchased the plan
      */
-    @EntityGraph(attributePaths = {"paymentPlan"})
+    @EntityGraph(attributePaths = { "paymentPlan" })
     @Query("SELECT up FROM UserPlan up " +
-           "WHERE up.userId = :userId " +
-           "AND up.subOrgId = :subOrgId " +
-           "AND up.source = :source " +
-           "AND up.status = :status")
+            "WHERE up.userId = :userId " +
+            "AND up.subOrgId = :subOrgId " +
+            "AND up.source = :source " +
+            "AND up.status = :status")
     Optional<UserPlan> findByUserIdAndSubOrgIdAndSourceAndStatus(
-        @Param("userId") String userId,
-        @Param("subOrgId") String subOrgId,
-        @Param("source") String source,
-        @Param("status") String status);
+            @Param("userId") String userId,
+            @Param("subOrgId") String subOrgId,
+            @Param("source") String source,
+            @Param("status") String status);
+
     Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
             String userId,
             String enrollInviteId,
@@ -167,5 +168,10 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
     Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInOrderByCreatedAtAsc(
             String userId,
             String enrollInviteId,
+            List<String> statuses);
+
+    Optional<UserPlan> findTopByUserIdAndPaymentOptionIdAndStatusInOrderByCreatedAtDesc(
+            String userId,
+            String paymentOptionId,
             List<String> statuses);
 }

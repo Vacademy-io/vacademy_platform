@@ -55,12 +55,12 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
 
     @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-            String instituteId,
-            EnrollInvite enrollInvite,
-            PaymentOption paymentOption,
-            UserPlan userPlan,
-            Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+                                                         String instituteId,
+                                                         EnrollInvite enrollInvite,
+                                                         PaymentOption paymentOption,
+                                                         UserPlan userPlan,
+                                                         Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         // Use startDate from DTO if provided, otherwise default to current date
         Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
                 ? learnerPackageSessionsEnrollDTO.getStartDate()
@@ -92,7 +92,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                         null,
                         enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString()
                                 : null,
-                        packageSessionId, userPlan.getId(), null, null);
+                        packageSessionId, userPlan.getId(), null, null, null);
                 instituteStudentDetails.add(detail);
             }
         } else {
@@ -102,7 +102,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
             for (String packageSessionId : packageSessionIds) {
                 InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId,
                         packageSessionId, null, status, enrollmentDate, null,
-                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(), null, null);
+                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(), null, null, null);
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }

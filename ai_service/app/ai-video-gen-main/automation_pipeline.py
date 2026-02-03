@@ -811,23 +811,39 @@ class VideoGenerationPipeline:
             print("🎨 Designing Visual Style Guide ...")
             style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type)
             
-            print("🧠 Building minute-level segments ...")
-            # We need words for segmentation. If words is empty, we can't segment.
-            # But do_html implies we are past words stage, so words should be populated.
-            if not words and self.STAGE_INDEX["words"] < stop_idx:
-                 pass # Warning?
-                 
-            segments = self._segment_words(words)
-            if not segments:
-                raise RuntimeError("Failed to derive segments from narration.")
-            print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
-            html_results, html_usage = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
-            html_segments = html_results
-            accumulate_usage(html_usage)
+            # CHECK FOR INTERACTIVE CONTENT TYPES
+            interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION"]
             
-            print("🖼️  Generating AI images for visual assets ...")
-            html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
-            accumulate_usage(image_usage)
+            if content_type in interactive_types:
+                print(f"🎮 Processing interactive content type: {content_type}")
+                # For interactive content, we bypass audio-based segmentation and directly use the structure from the plan
+                html_segments, html_usage = self._process_interactive_content(script_plan, content_type)
+                accumulate_usage(html_usage)
+                
+                # Some interactive types still need image generation (like Storybooks)
+                print("🖼️  Checking for visual assets to generate ...")
+                html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
+                accumulate_usage(image_usage)
+            else:
+                # STANDARD VIDEO FLOW
+                print("🧠 Building minute-level segments ...")
+                # We need words for segmentation. If words is empty, we can't segment.
+                # But do_html implies we are past words stage, so words should be populated.
+                if not words and self.STAGE_INDEX["words"] < stop_idx:
+                     pass # Warning?
+                     
+                segments = self._segment_words(words)
+                if not segments:
+                    raise RuntimeError("Failed to derive segments from narration.")
+                
+                print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
+                html_results, html_usage = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
+                html_segments = html_results
+                accumulate_usage(html_usage)
+                
+                print("🖼️  Generating AI images for visual assets ...")
+                html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
+                accumulate_usage(image_usage)
             
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(html_segments, run_dir, self._current_branding, self._current_content_type)
@@ -1549,6 +1565,92 @@ class VideoGenerationPipeline:
                     idx += 1
             start_time += window
         return segments
+
+    def _process_interactive_content(self, script_plan: Dict[str, Any], content_type: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Process interactive content (Quiz, etc.) which doesn't use audio alignment for segmentation.
+        Instead, it extracts the pre-generated HTML directly from the script plan.
+        """
+        plan_data = script_plan.get("plan", {})
+        segments = []
+        usage = {"completion_tokens": 0, "total_tokens": 0, "prompt_tokens": 0}
+        
+        # Helper to create a segment
+        def create_segment(html_content, index, entry_id=None, extra_meta=None):
+            segment = {
+                "index": index,
+                "start": 0.0, # Will be ignored in user_driven mode
+                "end": 0.0,   # Will be ignored in user_driven mode
+                "text": "Interactive content",
+                "html": html_content,
+                "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": 1920, "htmlEndY": 1080,
+                "id": entry_id or f"segment-{index}"
+            }
+            if extra_meta:
+                segment["entry_meta"] = extra_meta
+            return segment
+
+        print(f"🧩 Extracting segments for {content_type} from script plan...")
+        
+        if content_type == "QUIZ":
+            questions = plan_data.get("questions", [])
+            for i, q in enumerate(questions):
+                html = q.get("question_html", f"<div>Question {i+1}</div>")
+                segments.append(create_segment(html, i+1, q.get("id"), extra_meta=q))
+                
+        elif content_type == "STORYBOOK":
+            pages = plan_data.get("pages", [])
+            for i, p in enumerate(pages):
+                html = p.get("html", f"<div>Page {i+1}</div>")
+                segments.append(create_segment(html, i+1, f"page-{p.get('page_number', i+1)}", extra_meta=p))
+                
+        elif content_type == "INTERACTIVE_GAME":
+            # Games are usually a single self-contained entry
+            html = plan_data.get("html", "<div>Game Container</div>")
+            segments.append(create_segment(html, 1, "game-container", extra_meta=plan_data))
+            
+        elif content_type == "FLASHCARDS":
+            cards = plan_data.get("cards", [])
+            for i, c in enumerate(cards):
+                # For flashcards, we might want to combine front/back or just use front_html
+                # and let frontend handle the flip. Let's pass the whole card data in meta.
+                # Use front_html as the initial view
+                html = c.get("front_html", f"<div>Card {i+1}</div>")
+                segments.append(create_segment(html, i+1, c.get("id", f"card-{i+1}"), extra_meta=c))
+                
+        elif content_type == "PUZZLE_BOOK":
+            puzzles = plan_data.get("puzzles", [])
+            for i, p in enumerate(puzzles):
+                html = p.get("html", f"<div>Puzzle {i+1}</div>")
+                segments.append(create_segment(html, i+1, p.get("id", f"puzzle-{i+1}"), extra_meta=p))
+        
+        elif content_type == "TIMELINE":
+            events = plan_data.get("events", [])
+            for i, e in enumerate(events):
+                html = e.get("html", f"<div>Event {i+1}</div>")
+                segments.append(create_segment(html, i+1, e.get("id", f"event-{i+1}"), extra_meta=e))
+                
+        # Default fallback for others (WORKSHEET, CODE_PLAYGROUND, CONVERSATION)
+        # Assuming they follow a similar pattern or single entry
+        else:
+            # Try to find a list like 'items', 'sections', 'exercises'
+            found_list = False
+            for key in ["items", "sections", "exercises", "exchanges"]:
+                if key in plan_data and isinstance(plan_data[key], list):
+                    items = plan_data[key]
+                    for i, item in enumerate(items):
+                         html = item.get("html", f"<div>Item {i+1}</div>")
+                         segments.append(create_segment(html, i+1, item.get("id", f"item-{i+1}"), extra_meta=item))
+                    found_list = True
+                    break
+            
+            if not found_list:
+                # Fallback: single entry using 'html' field if present
+                html = plan_data.get("html", f"<div>Content for {content_type}</div>")
+                segments.append(create_segment(html, 1, "main-content", extra_meta=plan_data))
+                
+        print(f"✅ Extracted {len(segments)} segments for {content_type}")
+        return segments, usage
 
     def _generate_html_segments(self, segments: List[Dict[str, Any]], style_guide: Dict[str, Any], script_plan: Optional[Dict[str, Any]], run_dir: Path, language: str = "English") -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         def task(seg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -2947,40 +3049,75 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             timeline_entries.append(intro_entry)
             print(f"   ➕ Added intro branding (0s - {intro_duration}s)")
         
-        # 2. Process content entries - offset by intro duration
-        for entry in html_segments:
-            start = int(entry.get("index", len(timeline_entries) + 1))
+        # 2. Process content entries
+        if navigation in ["user_driven", "self_contained"]:
+            # For interactive content, we want a clean timeline without branding or time-based sequencing
             
-            # Original times from the content
-            original_in_time = float(entry["start"])
-            original_exit_time = float(entry["end"])
+            # Remove intro if it was added
+            if timeline_entries and timeline_entries[0].get("id") == "branding-intro":
+                print(f"   ℹ️ Removing intro branding for {navigation} mode")
+                timeline_entries = []
+                content_starts_at = 0.0
+                intro_duration = 0.0
             
-            # Offset times by intro duration (audio starts after intro)
-            adjusted_in_time = original_in_time + content_starts_at
-            adjusted_exit_time = original_exit_time + content_starts_at
+            # Disable subsequent branding
+            watermark_enabled = False
+            outro_enabled = False
             
-            timeline_entry = {
-                "inTime": adjusted_in_time,
-                "exitTime": adjusted_exit_time,
-                "htmlStartX": int(entry["htmlStartX"]),
-                "htmlStartY": int(entry["htmlStartY"]),
-                "htmlEndX": int(entry["htmlEndX"]),
-                "htmlEndY": int(entry["htmlEndY"]),
-                "html": entry["html"],
-                "id": entry.get("id", f"segment-{start}"),
-            }
-            if "z" in entry:
-                try:
-                    timeline_entry["z"] = int(entry["z"])
-                except (TypeError, ValueError):
-                    pass
-            # Add entry_meta if present (for QUIZ answers, etc.)
-            if "entry_meta" in entry:
-                timeline_entry["entry_meta"] = entry["entry_meta"]
-            timeline_entries.append(timeline_entry)
+            for entry in html_segments:
+                clean_entry = {
+                    "id": entry.get("id"),
+                    "html": entry.get("html"),
+                    "htmlStartX": int(entry.get("htmlStartX", 0)),
+                    "htmlStartY": int(entry.get("htmlStartY", 0)),
+                    "htmlEndX": int(entry.get("htmlEndX", VIDEO_WIDTH)),
+                    "htmlEndY": int(entry.get("htmlEndY", VIDEO_HEIGHT)),
+                    "z": int(entry.get("z", 1))
+                }
+                
+                # Pass through critical metadata (quiz answers, game state etc)
+                if "entry_meta" in entry:
+                    clean_entry["entry_meta"] = entry["entry_meta"]
+                
+                timeline_entries.append(clean_entry)
             
-            # Track the maximum end time for content
-            content_max_end = max(content_max_end, adjusted_exit_time)
+            content_max_end = 0.0
+            
+        else:
+            # Standard Time-Driven Logic (Video)
+            for entry in html_segments:
+                start = int(entry.get("index", len(timeline_entries) + 1))
+                
+                # Original times from the content
+                original_in_time = float(entry.get("start", 0))
+                original_exit_time = float(entry.get("end", 0))
+                
+                # Offset times by intro duration (audio starts after intro)
+                adjusted_in_time = original_in_time + content_starts_at
+                adjusted_exit_time = original_exit_time + content_starts_at
+                
+                timeline_entry = {
+                    "inTime": adjusted_in_time,
+                    "exitTime": adjusted_exit_time,
+                    "htmlStartX": int(entry["htmlStartX"]),
+                    "htmlStartY": int(entry["htmlStartY"]),
+                    "htmlEndX": int(entry["htmlEndX"]),
+                    "htmlEndY": int(entry["htmlEndY"]),
+                    "html": entry["html"],
+                    "id": entry.get("id", f"segment-{start}"),
+                }
+                if "z" in entry:
+                    try:
+                        timeline_entry["z"] = int(entry["z"])
+                    except (TypeError, ValueError):
+                        pass
+                # Add entry_meta if present
+                if "entry_meta" in entry:
+                    timeline_entry["entry_meta"] = entry["entry_meta"]
+                timeline_entries.append(timeline_entry)
+                
+                # Track the maximum end time for content
+                content_max_end = max(content_max_end, adjusted_exit_time)
         
         # If no content entries, use a minimal duration
         if content_max_end <= content_starts_at:

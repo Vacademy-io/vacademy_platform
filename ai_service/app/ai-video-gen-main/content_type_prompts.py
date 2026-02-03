@@ -82,73 +82,125 @@ Create a quiz about the following topic:
     {{
       "id": "q1",
       "type": "multiple_choice",
-      "question_html": "<div class='question-container'>...</div>",
+      "question_html": "<div class='quiz-container'>...</div>",
       "options": [
         {{"id": "a", "text": "Option A", "is_correct": false}},
-        {{"id": "b", "text": "Option B", "is_correct": true}},
-        {{"id": "c", "text": "Option C", "is_correct": false}},
-        {{"id": "d", "text": "Option D", "is_correct": false}}
+        {{"id": "b", "text": "Option B", "is_correct": true}}
       ],
-      "explanation_html": "<div class='explanation'>Why B is correct...</div>",
-      "hint_html": "<div class='hint'>Think about...</div>",
-      "points": 10,
-      "time_limit_seconds": 30
+      "explanation_html": "<div class='explanation'>Why B is correct...</div>"
     }}
   ],
-  "passing_score_percent": 70,
-  "show_correct_on_wrong": true,
-  "allow_retry": true
+  "passing_score_percent": 70
 }}
 
-**QUESTION HTML TEMPLATE**:
+**HTML STRUCTURE & INTERACTION RULES (CRITICAL)**:
+You must generate the HTML exactly as below, including the inline script:
+
 ```html
-<div class="quiz-question">
-  <div class="question-number">Question 1 of 5</div>
-  <h2 class="question-text">What is the powerhouse of the cell?</h2>
+<div class="quiz-container">
+  <div class="quiz-question-number">Question 1/{question_count}</div>
+  <div class="quiz-question-text">Question text goes here?</div>
   
-  <!-- For visual questions, include image/diagram -->
-  <div class="question-visual">
-    <svg viewBox="0 0 400 300"><!-- Cell diagram --></svg>
+  <!-- Optional image/visual -->
+  <div class="quiz-visual">
+    <!-- SVG or Image -->
+  </div>
+
+  <div class="quiz-options">
+    <!-- REPEAT FOR EACH OPTION -->
+    <!-- Use onclick to handle interaction passing (element, answerValue, isCorrectBoolean) -->
+    <div class="quiz-option" onclick="handleOptionClick(this, 'Option Text', false)">
+      <div class="quiz-option-letter">A</div>
+      <div class="quiz-option-text">Option Text</div>
+      <div class="quiz-option-icon correct-icon">✓</div>
+      <div class="quiz-option-icon incorrect-icon">✗</div>
+    </div>
+    
+    <div class="quiz-option" onclick="handleOptionClick(this, 'Correct Answer', true)">
+      <div class="quiz-option-letter">B</div>
+      <div class="quiz-option-text">Correct Answer</div>
+      <div class="quiz-option-icon correct-icon">✓</div>
+      <div class="quiz-option-icon incorrect-icon">✗</div>
+    </div>
   </div>
   
-  <div class="options-grid">
-    <button class="option-btn" data-option="a">
-      <span class="option-letter">A</span>
-      <span class="option-text">Nucleus</span>
-    </button>
-    <button class="option-btn" data-option="b">
-      <span class="option-letter">B</span>
-      <span class="option-text">Mitochondria</span>
-    </button>
-    <button class="option-btn" data-option="c">
-      <span class="option-letter">C</span>
-      <span class="option-text">Ribosome</span>
-    </button>
-    <button class="option-btn" data-option="d">
-      <span class="option-letter">D</span>
-      <span class="option-text">Cell Wall</span>
-    </button>
-  </div>
+  <div id="feedback" class="quiz-feedback"></div>
 </div>
 
 <style>
-.quiz-question {{ padding: 40px; text-align: center; }}
-.question-number {{ font-size: 14px; color: #6b7280; margin-bottom: 20px; }}
-.question-text {{ font-size: 32px; font-weight: 600; margin-bottom: 40px; color: #0f172a; }}
-.options-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 800px; margin: 0 auto; }}
-.option-btn {{ 
-  display: flex; align-items: center; gap: 16px; padding: 24px; 
-  border: 2px solid #e2e8f0; border-radius: 12px; background: white;
-  font-size: 20px; cursor: pointer; transition: all 0.2s;
-}}
-.option-btn:hover {{ border-color: #3b82f6; background: #eff6ff; }}
-.option-letter {{ 
-  width: 40px; height: 40px; border-radius: 50%; background: #f1f5f9;
-  display: flex; align-items: center; justify-content: center; font-weight: 700;
-}}
-.option-btn.correct {{ border-color: #10b981; background: #ecfdf5; }}
-.option-btn.incorrect {{ border-color: #ef4444; background: #fef2f2; }}
+  .quiz-container {{ 
+    width: 100%; height: 100%; display: flex; flex-direction: column; 
+    align-items: center; justify-content: center; padding: 40px; 
+    font-family: 'Inter', sans-serif; 
+  }}
+  .quiz-question-number {{ 
+    font-size: 14px; color: #64748b; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.1em; 
+  }}
+  .quiz-question-text {{ 
+    font-size: 32px; font-weight: 700; color: #0f172a; margin-bottom: 40px; text-align: center; max-width: 800px;
+  }}
+  .quiz-options {{ 
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; max-width: 800px; 
+  }}
+  .quiz-option {{ 
+    background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px;
+    display: flex; align-items: center; gap: 16px; cursor: pointer; transition: all 0.2s;
+    position: relative; overflow: hidden;
+  }}
+  .quiz-option:hover {{ border-color: #3b82f6; background: #eff6ff; }}
+  .quiz-option.correct {{ border-color: #22c55e; background: #f0fdf4; }}
+  .quiz-option.incorrect {{ border-color: #ef4444; background: #fef2f2; }}
+  
+  .quiz-option-letter {{ 
+    width: 32px; height: 32px; background: #f1f5f9; border-radius: 50%; 
+    display: flex; align-items: center; justify-content: center; font-weight: 700; color: #475569;
+  }}
+  .quiz-option.correct .quiz-option-letter {{ background: #22c55e; color: white; }}
+  .quiz-option.incorrect .quiz-option-letter {{ background: #ef4444; color: white; }}
+  
+  .quiz-option-text {{ font-size: 18px; font-weight: 500; color: #1e293b; flex: 1; }}
+  
+  .quiz-option-icon {{ display: none; font-weight: bold; font-size: 20px; }}
+  .quiz-option.correct .correct-icon {{ display: block; color: #22c55e; }}
+  .quiz-option.incorrect .incorrect-icon {{ display: block; color: #ef4444; }}
 </style>
+
+<script>
+  function handleOptionClick(el, answer, isCorrect) {{
+    // Prevent multiple clicks
+    if (document.querySelector('.quiz-option.correct') || document.querySelector('.quiz-option.incorrect')) return;
+    
+    // 1. Visual Feedback
+    el.classList.add(isCorrect ? 'correct' : 'incorrect');
+    
+    // Show correct answer if wrong
+    if (!isCorrect) {{
+       // Find and highlight the correct one (simple approach via DOM)
+       const buttons = document.querySelectorAll('.quiz-option');
+       buttons.forEach(btn => {{
+          if (btn.getAttribute('onclick').includes('true')) {{
+              btn.classList.add('correct');
+          }}
+       }});
+    }}
+    
+    // 2. Notify Parent Player
+    try {{
+        window.parent.postMessage({{ 
+          type: 'QUIZ_ANSWER_SELECTED', 
+          payload: {{ answer: answer, correct: isCorrect }} 
+        }}, '*');
+    }} catch (e) {{ console.error("PostMessage failed", e); }}
+
+    // 3. Navigation (Auto-advance on success)
+    if (isCorrect) {{
+      if (window.confetti) window.confetti({{ particleCount: 100, spread: 70, origin: {{ y: 0.6 }} }});
+      setTimeout(() => {{
+        window.parent.postMessage({{ type: 'NAVIGATE_NEXT' }}, '*');
+      }}, 1500);
+    }}
+  }}
+</script>
 ```
 
 Now generate the quiz JSON. Return ONLY valid JSON, no markdown.

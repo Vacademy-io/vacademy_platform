@@ -148,22 +148,34 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     let mobile_number = '';
     let username = '';
 
-    // Helper to find value by approximation if needed, or rely on specific keys if known. 
-    // Since keys are like 'email_inst_<id>', we search by fieldName.
+    // Helper to find field by name (case-insensitive)
+    const findFieldByName = (names: string[]) => {
+      return instituteCustomFields.find(f => 
+        names.some(name => f.custom_field.fieldName.toLowerCase() === name.toLowerCase())
+      );
+    };
 
-    // First Name + Last Name -> Full Name
-    const firstNameField = instituteCustomFields.find(f => f.custom_field.fieldName === 'First Name');
-    const lastNameField = instituteCustomFields.find(f => f.custom_field.fieldName === 'Last Name');
-    const firstName = firstNameField ? formData[firstNameField.custom_field.fieldKey] : '';
-    const lastName = lastNameField ? formData[lastNameField.custom_field.fieldKey] : '';
-    full_name = `${firstName || ''} ${lastName || ''}`.trim();
+    // Name field - could be 'name', 'Name', 'Full Name', 'full_name'
+    const nameField = findFieldByName(['name', 'full name', 'full_name']);
+    if (nameField) {
+      full_name = formData[nameField.custom_field.fieldKey] || '';
+    }
 
-    // Email
-    const emailField = instituteCustomFields.find(f => f.custom_field.fieldName === 'Email');
+    // If no single name field, try First Name + Last Name combination
+    if (!full_name) {
+      const firstNameField = findFieldByName(['first name', 'firstname']);
+      const lastNameField = findFieldByName(['last name', 'lastname']);
+      const firstName = firstNameField ? formData[firstNameField.custom_field.fieldKey] : '';
+      const lastName = lastNameField ? formData[lastNameField.custom_field.fieldKey] : '';
+      full_name = `${firstName || ''} ${lastName || ''}`.trim();
+    }
+
+    // Email field - could be 'email', 'Email'
+    const emailField = findFieldByName(['email']);
     email = emailField ? formData[emailField.custom_field.fieldKey] : '';
 
-    // Phone
-    const phoneField = instituteCustomFields.find(f => f.custom_field.fieldName === 'Phone');
+    // Phone field - could be 'phone', 'Phone', 'Mobile', 'mobile_number'
+    const phoneField = findFieldByName(['phone', 'mobile', 'mobile_number']);
     mobile_number = phoneField ? formData[phoneField.custom_field.fieldKey] : '';
 
     // If standard fields form fallback (if custom fields didn't cover them or failed to load)
@@ -369,14 +381,23 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     }
   };
 
+  // Helper function to capitalize first letter of each word
+  const capitalizeFieldName = (name: string): string => {
+    return name
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   const renderField = (field: InstituteCustomField) => {
     const { fieldKey, fieldName, fieldType, isMandatory, config } = field.custom_field;
+    const displayName = capitalizeFieldName(fieldName);
 
     // Check if field is "Practice Name" to disable it
     if (fieldName === 'Practice Name') {
       return (
         <div key={field.id}>
-          <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+          <Label htmlFor={fieldKey}>{displayName} {isMandatory && '*'}</Label>
           <Input
             id={fieldKey}
             value={formData[fieldKey] || ''}
@@ -392,7 +413,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     if ((fieldName.toLowerCase().includes('phone') || fieldKey.includes('phone')) && !fieldName.toLowerCase().includes('type')) {
       return (
         <div key={field.id}>
-          <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+          <Label htmlFor={fieldKey}>{displayName} {isMandatory && '*'}</Label>
           <div className={formData[fieldKey] && !validatePhoneNumber(formData[fieldKey]) ? "phone-input-error" : ""}>
             <PhoneInput
               country={'au'}
@@ -416,12 +437,12 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       case 'textarea': // Render textarea as Input for now or use Textarea component if available
         return (
           <div key={field.id}>
-            <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+            <Label htmlFor={fieldKey}>{displayName} {isMandatory && '*'}</Label>
             <Input
               id={fieldKey}
               value={formData[fieldKey] || ''}
               onChange={(e) => setFormData((prev: any) => ({ ...prev, [fieldKey]: e.target.value }))}
-              placeholder={`Enter ${fieldName}`}
+              placeholder={`Enter ${displayName}`}
               required={isMandatory}
             />
           </div>
@@ -435,13 +456,13 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         }
         return (
           <div key={field.id}>
-            <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+            <Label htmlFor={fieldKey}>{displayName} {isMandatory && '*'}</Label>
             <Select
               value={formData[fieldKey] || ''}
               onValueChange={(value) => setFormData((prev: any) => ({ ...prev, [fieldKey]: value }))}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={`Select ${fieldName}`} />
+                <SelectValue placeholder={`Select ${displayName}`} />
               </SelectTrigger>
               <SelectContent className="max-h-60 z-[10000]">
                 {options.map((opt: any) => (
@@ -457,13 +478,13 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         // Reuse Input type number? Or just text validation
         return (
           <div key={field.id}>
-            <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+            <Label htmlFor={fieldKey}>{displayName} {isMandatory && '*'}</Label>
             <Input
               id={fieldKey}
               type="text" // using text to allow control over validation if needed, or numeric
               value={formData[fieldKey] || ''}
               onChange={(e) => setFormData((prev: any) => ({ ...prev, [fieldKey]: e.target.value }))}
-              placeholder={`Enter ${fieldName}`}
+              placeholder={`Enter ${displayName}`}
               required={isMandatory}
             />
           </div>
@@ -474,7 +495,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         if (fieldName.toLowerCase().includes('phone') || fieldKey.includes('phone')) {
           return (
             <div key={field.id}>
-              <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+              <Label htmlFor={fieldKey}>{displayName} {isMandatory && '*'}</Label>
               <div className={formData[fieldKey] && !validatePhoneNumber(formData[fieldKey]) ? "phone-input-error" : ""}>
                 <PhoneInput
                   country={'au'}
@@ -496,12 +517,12 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
 
         return (
           <div key={field.id}>
-            <Label htmlFor={fieldKey}>{fieldName} {isMandatory && '*'}</Label>
+            <Label htmlFor={fieldKey}>{displayName} {isMandatory && '*'}</Label>
             <Input
               id={fieldKey}
               value={formData[fieldKey] || ''}
               onChange={(e) => setFormData((prev: any) => ({ ...prev, [fieldKey]: e.target.value }))}
-              placeholder={`Enter ${fieldName}`}
+              placeholder={`Enter ${displayName}`}
               required={isMandatory}
             />
           </div>
@@ -545,7 +566,12 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                 ) : instituteCustomFields.length > 0 ? (
                   <>
                     {instituteCustomFields
-                      .filter(field => field.custom_field.fieldName !== 'Practice Name')
+                      .filter(field => {
+                        const fieldName = field.custom_field.fieldName;
+                        // Only hide Practice Name from the form (it's auto-filled)
+                        return fieldName !== 'Practice Name';
+                      })
+                      .sort((a, b) => (a.custom_field.formOrder || 0) - (b.custom_field.formOrder || 0))
                       .map(field => renderField(field))}
                   </>
                 ) : (
@@ -791,10 +817,6 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             (() => {
               // Fields to hide from the table
               const hiddenFields = new Set([
-                'Job Portal',
-                'Job Location',
-                'Moodle Username',
-                'Moodle Password',
                 'Practice Name'
               ]);
 
@@ -819,21 +841,79 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                 }
               });
 
-              // Sort columns: First Name first, Last Name second, then others
+              // Sort columns: name/First Name first, email second, phone third, then others
               customFieldColumns.sort((a, b) => {
-                const order: Record<string, number> = {
-                  'First Name': 0,
-                  'Last Name': 1,
+                const getOrder = (fieldName: string): number => {
+                  const nameLower = fieldName.toLowerCase();
+                  if (nameLower === 'name' || nameLower === 'first name' || nameLower === 'full name') return 0;
+                  if (nameLower === 'last name') return 1;
+                  if (nameLower === 'email') return 2;
+                  if (nameLower === 'phone' || nameLower === 'phone type') return 3;
+                  if (nameLower === 'city') return 4;
+                  if (nameLower === 'state') return 5;
+                  if (nameLower.includes('zip') || nameLower.includes('postal')) return 6;
+                  if (nameLower === 'country') return 7;
+                  if (nameLower === 'job title') return 8;
+                  return 999;
                 };
-                const orderA = order[a.field_name] ?? 999;
-                const orderB = order[b.field_name] ?? 999;
-                return orderA - orderB;
+                return getOrder(a.field_name) - getOrder(b.field_name);
               });
 
               // Helper function to get custom field value for a member
-              const getCustomFieldValue = (member: StudentMapping, fieldKey: string): string => {
+              // Falls back to user object data when custom field value is null
+              const getCustomFieldValue = (member: StudentMapping, fieldKey: string, fieldName: string): string => {
                 const field = member.custom_fields?.find(cf => cf.field_key === fieldKey);
-                return field?.field_value || '-';
+                
+                // If custom field has a value, return it
+                if (field?.field_value) {
+                  return field.field_value;
+                }
+                
+                // Fall back to user object data based on field name/key
+                const user = member.user as any;
+                if (!user) return '-';
+                
+                const fieldNameLower = fieldName.toLowerCase();
+                const fieldKeyLower = fieldKey.toLowerCase();
+                
+                // Map field names to user object properties
+                if (fieldNameLower === 'name' || fieldNameLower === 'full name') {
+                  return user.full_name || '-';
+                }
+                if (fieldNameLower === 'first name') {
+                  // Extract first name from full_name
+                  const fullName = user.full_name || '';
+                  return fullName.split(' ')[0] || '-';
+                }
+                if (fieldNameLower === 'last name') {
+                  // Extract last name from full_name
+                  const fullName = user.full_name || '';
+                  const parts = fullName.split(' ');
+                  return parts.length > 1 ? parts.slice(1).join(' ') : '-';
+                }
+                if (fieldNameLower === 'email' || fieldKeyLower === 'email') {
+                  return user.email || '-';
+                }
+                if (fieldNameLower === 'phone' || fieldKeyLower === 'phone' || fieldNameLower.includes('mobile')) {
+                  return user.mobile_number || '-';
+                }
+                if (fieldNameLower === 'city' || fieldKeyLower.includes('city')) {
+                  return user.city || '-';
+                }
+                if (fieldNameLower.includes('zip') || fieldNameLower.includes('postal') || fieldKeyLower.includes('zip') || fieldKeyLower.includes('postal')) {
+                  return user.pin_code || '-';
+                }
+                if (fieldNameLower === 'state' || fieldKeyLower.includes('state')) {
+                  return user.region || '-';
+                }
+                if (fieldNameLower === 'country' || fieldKeyLower.includes('country')) {
+                  return user.country || '-';
+                }
+                if (fieldNameLower === 'address' || fieldKeyLower.includes('address')) {
+                  return user.address_line || '-';
+                }
+                
+                return '-';
               };
 
               return (
@@ -850,7 +930,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         {/* Dynamic columns from custom fields */}
                         {customFieldColumns.map((col) => (
                           <TableHead key={col.field_key} className="whitespace-nowrap">
-                            {col.field_name}
+                            {capitalizeFieldName(col.field_name)}
                           </TableHead>
                         ))}
                         <TableHead className="sticky right-0 bg-white z-10">Status</TableHead>
@@ -868,7 +948,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                           {/* Dynamic cells from custom fields */}
                           {customFieldColumns.map((col) => (
                             <TableCell key={`${member.id}-${col.field_key}`} className="whitespace-nowrap">
-                              {getCustomFieldValue(member, col.field_key)}
+                              {getCustomFieldValue(member, col.field_key, col.field_name)}
                             </TableCell>
                           ))}
                           <TableCell className="sticky right-0 bg-white z-10">

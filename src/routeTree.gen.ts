@@ -30,6 +30,7 @@ import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
 import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
+import { Route as AuthTransferIndexRouteImport } from './routes/auth-transfer/index'
 import { Route as AudienceResponseIndexRouteImport } from './routes/audience-response/index'
 import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
 import { Route as AiSettingsIndexRouteImport } from './routes/ai-settings/index'
@@ -176,6 +177,11 @@ const CoursesIndexRoute = CoursesIndexRouteImport.update({
 const ChangePasswordIndexRoute = ChangePasswordIndexRouteImport.update({
   id: '/change-password/',
   path: '/change-password/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthTransferIndexRoute = AuthTransferIndexRouteImport.update({
+  id: '/auth-transfer/',
+  path: '/auth-transfer/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AudienceResponseIndexRoute = AudienceResponseIndexRouteImport.update({
@@ -419,6 +425,7 @@ export interface FileRoutesByFullPath {
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
+  '/auth-transfer': typeof AuthTransferIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -483,6 +490,7 @@ export interface FileRoutesByTo {
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
+  '/auth-transfer': typeof AuthTransferIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -548,6 +556,7 @@ export interface FileRoutesById {
   '/ai-settings/': typeof AiSettingsIndexRoute
   '/assessment/': typeof AssessmentIndexRoute
   '/audience-response/': typeof AudienceResponseIndexRoute
+  '/auth-transfer/': typeof AuthTransferIndexRoute
   '/change-password/': typeof ChangePasswordIndexRoute
   '/courses/': typeof CoursesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -614,6 +623,7 @@ export interface FileRouteTypes {
     | '/ai-settings'
     | '/assessment'
     | '/audience-response'
+    | '/auth-transfer'
     | '/change-password'
     | '/courses'
     | '/dashboard'
@@ -678,6 +688,7 @@ export interface FileRouteTypes {
     | '/ai-settings'
     | '/assessment'
     | '/audience-response'
+    | '/auth-transfer'
     | '/change-password'
     | '/courses'
     | '/dashboard'
@@ -742,6 +753,7 @@ export interface FileRouteTypes {
     | '/ai-settings/'
     | '/assessment/'
     | '/audience-response/'
+    | '/auth-transfer/'
     | '/change-password/'
     | '/courses/'
     | '/dashboard/'
@@ -807,6 +819,7 @@ export interface RootRouteChildren {
   AiSettingsIndexRoute: typeof AiSettingsIndexRoute
   AssessmentIndexRoute: typeof AssessmentIndexRoute
   AudienceResponseIndexRoute: typeof AudienceResponseIndexRoute
+  AuthTransferIndexRoute: typeof AuthTransferIndexRoute
   ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
   CoursesIndexRoute: typeof CoursesIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
@@ -1014,6 +1027,13 @@ declare module '@tanstack/react-router' {
       path: '/change-password'
       fullPath: '/change-password'
       preLoaderRoute: typeof ChangePasswordIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth-transfer/': {
+      id: '/auth-transfer/'
+      path: '/auth-transfer'
+      fullPath: '/auth-transfer'
+      preLoaderRoute: typeof AuthTransferIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/audience-response/': {
@@ -1311,6 +1331,7 @@ const rootRouteChildren: RootRouteChildren = {
   AiSettingsIndexRoute: AiSettingsIndexRoute,
   AssessmentIndexRoute: AssessmentIndexRoute,
   AudienceResponseIndexRoute: AudienceResponseIndexRoute,
+  AuthTransferIndexRoute: AuthTransferIndexRoute,
   ChangePasswordIndexRoute: ChangePasswordIndexRoute,
   CoursesIndexRoute: CoursesIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,

@@ -294,11 +294,11 @@ export const loginEnrolledUser = async (
   instituteId: string
 ): Promise<RegisterUserResponse> => {
   try {
+    // Match working login page payload: user_name, password, client_name: "ADMIN_PORTAL" (no institute_id)
     const response = await axios.post(LOGIN_URL, {
       user_name: username,
       password: password,
       client_name: "ADMIN_PORTAL",
-      institute_id: instituteId,
     }, {
       headers: {
         accept: "*/*",

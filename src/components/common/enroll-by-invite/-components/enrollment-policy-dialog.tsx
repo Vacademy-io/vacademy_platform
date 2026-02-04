@@ -88,6 +88,7 @@ interface EnrollmentPolicyDialogProps {
     policyResponse: EnrollmentPolicyResponse | null;
     courseName?: string;
     onContinue?: () => void;
+    onUpgrade?: (url: string) => void;
 }
 
 const EnrollmentPolicyDialog = ({
@@ -97,6 +98,7 @@ const EnrollmentPolicyDialog = ({
     policyResponse,
     courseName = "this course",
     onContinue,
+    onUpgrade,
 }: EnrollmentPolicyDialogProps) => {
     const [isRedirecting, setIsRedirecting] = useState(false);
 
@@ -118,7 +120,11 @@ const EnrollmentPolicyDialog = ({
     const handleUpgradeClick = (url: string) => {
         if (url) {
             setIsRedirecting(true);
-            window.open(url, "_blank");
+            if (onUpgrade) {
+                onUpgrade(url);
+            } else {
+                window.open(url, "_blank");
+            }
             setTimeout(() => setIsRedirecting(false), 1000);
         }
     };
@@ -216,7 +222,7 @@ const EnrollmentPolicyDialog = ({
                 </div>
             </DialogHeader>
 
-            <div className="py-4">
+            <div className="py-4 space-y-4">
                 <div className="rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-4">
                     <div className="flex items-start gap-3">
                         <Sparkles className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
@@ -225,6 +231,31 @@ const EnrollmentPolicyDialog = ({
                         </p>
                     </div>
                 </div>
+
+                {/* Upgrade option if available */}
+                {reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
+                    <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
+                        <div className="flex flex-col items-center text-center space-y-3">
+                            <Sparkles className="w-6 h-6 text-primary-600" />
+                            <h4 className="font-semibold text-gray-900">Want to Upgrade?</h4>
+                            <p className="text-sm text-gray-600">
+                                {reenrollmentPolicy.upgradeOptions.paid_upgrade.text || "Upgrade to get access to premium features."}
+                            </p>
+                            <MyButton
+                                type="button"
+                                buttonType="primary"
+                                scale="medium"
+                                layoutVariant="default"
+                                onClick={() => handleUpgradeClick(reenrollmentPolicy.upgradeOptions?.paid_upgrade?.url || "")}
+                                disabled={isRedirecting}
+                                className="flex items-center gap-2 px-6 shadow-lg shadow-primary-500/30 hover:shadow-primary-500/40"
+                            >
+                                <span>Upgrade Now</span>
+                                <ExternalLink className="w-4 h-4 ml-2" />
+                            </MyButton>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <DialogFooter className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row gap-3">

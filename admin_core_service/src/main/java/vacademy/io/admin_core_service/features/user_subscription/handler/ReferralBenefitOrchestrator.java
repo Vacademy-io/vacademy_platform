@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.user_subscription.handler;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,7 +81,7 @@ public class ReferralBenefitOrchestrator {
         }
 
         try {
-            BenefitConfigDTO config = objectMapper.readValue(benefitJson, new TypeReference<>() {});
+            BenefitConfigDTO config = objectMapper.readValue(benefitJson, BenefitConfigDTO.class);
             long activeReferralCount = referralMappingRepository.countActiveReferralsByReferrerUserId(referrer.getId());
 
             List<BenefitConfigDTO.BenefitTierDTO> matchingTiers = findTiersForReferralCount(config.getTiers(), activeReferralCount,status,beneficiary);
@@ -115,16 +114,17 @@ public class ReferralBenefitOrchestrator {
             String status,
             String befitir
     ) {
+        // Handle null or empty tiers first
+        if (tiers == null || tiers.isEmpty()) {
+            return new ArrayList<>();
+        }
+
         if (befitir.equalsIgnoreCase(ReferralBenefitLogsBeneficiary.REFEREE.name())){
             return tiers;
         }
         long effectiveCount = count;
         if (ReferralStatusEnum.PENDING.name().equalsIgnoreCase(status)) {
             effectiveCount++;
-        }
-
-        if (tiers == null || tiers.isEmpty()) {
-            return new ArrayList<>();
         }
 
         final long finalCount = effectiveCount;

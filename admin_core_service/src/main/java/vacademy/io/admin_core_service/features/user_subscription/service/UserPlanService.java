@@ -39,6 +39,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.service.ReferralMappingService;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -89,6 +90,10 @@ public class UserPlanService {
 
     @Autowired
     private PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    @Lazy
+    private ReferralMappingService referralMappingService;
 
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
@@ -303,6 +308,10 @@ public class UserPlanService {
             userPlanRepository.save(userPlan);
 
             logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
+
+            // Process pending referral benefits after payment confirmation
+            // This sends referrer reward emails that were deferred during enrollment
+            referralMappingService.processReferralBenefitsIfApplicable(userPlan);
 
             // Send enrollment notifications after successful PAID enrollment
 

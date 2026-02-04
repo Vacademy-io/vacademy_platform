@@ -167,6 +167,8 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     targetAudience: "",
   });
   const [referRequest, setReferRequest] = useState<ReferRequest | null>(null);
+  // Ref to track the latest referRequest value (to avoid closure issues)
+  const referRequestRef = useRef<ReferRequest | null>(null);
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
     registrationData: {},
     selectedPayment: null,
@@ -179,6 +181,13 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   });
 
   const { instituteId, inviteCode, ref } = Route.useSearch();
+  
+  // Keep ref in sync with state for referRequest (to avoid closure issues)
+  useEffect(() => {
+    referRequestRef.current = referRequest;
+    console.log("[enroll-form] referRequest state updated:", referRequest);
+  }, [referRequest]);
+
   const { data: instituteData, isLoading: isInstituteLoading } =
     useSuspenseQuery(handleGetPublicInstituteDetails({ instituteId }));
 
@@ -804,6 +813,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     if (paymentType === "FREE") {
       setLoading(true);
       try {
+        // Use ref to get the latest referRequest value (avoids closure issues)
+        const currentReferRequest = referRequestRef.current;
+        console.log("[FREE Enrollment] Using referRequest:", currentReferRequest);
+        
         const paymentResponse = await handleEnrollLearnerForPayment({
           registrationData: form.getValues(),
           enrollmentData: enrollmentData,
@@ -817,7 +830,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               (ps: { package_session_id: string }) => ps?.package_session_id
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
-          referRequest: referRequest,
+          referRequest: currentReferRequest,
           paymentVendor: "STRIPE", // Default for FREE payments
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
           // userId: submittedUserId || undefined,
@@ -1246,13 +1259,21 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   // State to track if there is unapplied referral code text
   const [hasUnappliedReferral, setHasUnappliedReferral] = useState(false);
 
+  // Wrapper function to update both state and ref for referRequest
+  const updateReferRequest = (newReferRequest: ReferRequest | null) => {
+    console.log("[enroll-form] updateReferRequest called with:", newReferRequest);
+    referRequestRef.current = newReferRequest; // Update ref immediately
+    setReferRequest(newReferRequest); // Also update state
+  };
+
   // Handler for when referral is successfully applied - auto-enroll for FREE courses
   const handleReferralApplied = () => {
     // For FREE courses, auto-submit enrollment after referral is applied
     if (paymentType === "FREE" && currentStep === 2 && !hasAutoEnrolledRef.current) {
       hasAutoEnrolledRef.current = true;
-      // Small delay to ensure referRequest state is updated
+      // Small delay to ensure UI has updated
       setTimeout(() => {
+        console.log("[handleReferralApplied] Triggering auto-enrollment, referRequestRef.current:", referRequestRef.current);
         handleSubmitEnrollment();
       }, 500);
     }
@@ -1311,7 +1332,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 inviteData?.package_session_to_payment_options[0]
                   ?.package_session_id
               }
-              setReferRequest={setReferRequest}
+              setReferRequest={updateReferRequest}
               refCode={ref || ""}
               onUnappliedCodeChange={setHasUnappliedReferral}
               onReferralApplied={handleReferralApplied}
@@ -1364,7 +1385,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               inviteData?.package_session_to_payment_options[0]
                 ?.package_session_id
             }
-            setReferRequest={setReferRequest}
+            setReferRequest={updateReferRequest}
             refCode={ref || ""}
             onUnappliedCodeChange={setHasUnappliedReferral}
             onReferralApplied={handleReferralApplied}

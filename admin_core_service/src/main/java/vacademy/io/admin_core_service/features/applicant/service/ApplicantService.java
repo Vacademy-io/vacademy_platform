@@ -21,8 +21,6 @@ import vacademy.io.admin_core_service.features.applicant.repository.ApplicationS
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
-import vacademy.io.admin_core_service.features.common.entity.CustomFields;
-import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
@@ -71,9 +69,6 @@ public class ApplicantService {
         private CustomFieldValuesRepository customFieldValuesRepository;
 
         @Autowired
-        private CustomFieldRepository customFieldRepository;
-
-        @Autowired
         private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
         @Autowired
@@ -82,21 +77,6 @@ public class ApplicantService {
         private static final Logger logger = LoggerFactory.getLogger(ApplicantService.class);
 
         private final ObjectMapper objectMapper = new ObjectMapper();
-
-        // Standard fields mapped to Student table columns - any other keys are custom
-        // fields
-        private static final Set<String> STANDARD_FIELD_KEYS = Set.of(
-                        "parent_name", "parent_phone", "parent_email",
-                        "child_name", "child_dob", "child_gender",
-                        "address_line", "city", "pin_code", "father_name", "mother_name",
-                        "id_number", "id_type",
-                        "previous_school_name", "previous_school_board", "last_class_attended",
-                        "last_exam_result", "subjects_studied",
-                        "applying_for_class", "academic_year", "board_preference",
-                        "tc_number", "tc_issue_date", "tc_pending",
-                        "has_special_education_needs", "is_physically_challenged",
-                        "medical_conditions", "dietary_restrictions",
-                        "blood_group", "mother_tongue", "languages_known", "category", "nationality");
 
         /**
          * Create a new Application Stage configuration

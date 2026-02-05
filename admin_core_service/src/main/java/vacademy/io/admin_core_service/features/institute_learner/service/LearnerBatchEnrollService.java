@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtr
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
@@ -187,9 +188,31 @@ public class LearnerBatchEnrollService {
 
     private void shiftLearnerToActiveStatus(List<String> packageSessionIds, String userId, String enrollInviteId,
             LearnerStatusEnum fromStatus) {
+        // First, find entries with the specified status (INVITED or PENDING_FOR_APPROVAL)
         List<StudentSessionInstituteGroupMapping> invitedMappings = studentSessionRepository
                 .findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
                         packageSessionIds, userId, List.of(fromStatus.name()));
+
+        // Also find ABANDONED_CART entries (status=ACTIVE, type=ABANDONED_CART) for paid enrollments
+        // These are created during form submission step and need to be shifted after payment
+        if (fromStatus == LearnerStatusEnum.INVITED) {
+            List<StudentSessionInstituteGroupMapping> abandonedCartMappings = studentSessionRepository
+                    .findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
+                            packageSessionIds, userId, List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+            
+            // Filter to only include ABANDONED_CART type entries
+            List<StudentSessionInstituteGroupMapping> filteredAbandonedCart = abandonedCartMappings.stream()
+                    .filter(m -> LearnerSessionTypeEnum.ABANDONED_CART.name().equals(m.getType()))
+                    .toList();
+            
+            // Combine both lists, avoiding duplicates
+            if (!filteredAbandonedCart.isEmpty()) {
+                List<StudentSessionInstituteGroupMapping> combined = new java.util.ArrayList<>(invitedMappings);
+                combined.addAll(filteredAbandonedCart);
+                invitedMappings = combined;
+                log.info("Found {} ABANDONED_CART entries to shift for user: {}", filteredAbandonedCart.size(), userId);
+            }
+        }
 
         UserDTO userDTO = authService.getUsersFromAuthServiceWithPasswordByUserId(userId);
 

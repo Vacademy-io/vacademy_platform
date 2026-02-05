@@ -145,8 +145,8 @@ public class ActivateEnrollmentProcessorStrategy implements DataProcessorStrateg
             // Step 5: Create new ACTIVE entry in actual package session
             StudentSessionInstituteGroupMapping newEntry = new StudentSessionInstituteGroupMapping();
             newEntry.setUserId(userId);
-            newEntry.setPackageSession(destinationSession); // package_session_id = destination
-            newEntry.setDestinationPackageSession(destinationSession); // destination = destination
+            newEntry.setPackageSession(destinationSession); // package_session_id = actual destination
+            // destinationPackageSession should be null for final PACKAGE_SESSION entries
             newEntry.setType(LearnerSessionTypeEnum.PACKAGE_SESSION.name());
             newEntry.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
 

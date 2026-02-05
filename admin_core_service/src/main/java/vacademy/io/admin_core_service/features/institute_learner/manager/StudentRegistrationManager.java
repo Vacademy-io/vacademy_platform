@@ -697,8 +697,9 @@ public class StudentRegistrationManager {
             activePackageSession.setStatus(newStatus);
             activePackageSession.setPackageSession(invitedPackageSession.getDestinationPackageSession());
             activePackageSession.setUserPlanId(invitedPackageSession.getUserPlanId());
-            activePackageSession.setType(invitedPackageSession.getType());
-            activePackageSession.setTypeId(invitedPackageSession.getTypeId());
+            // Set type to PACKAGE_SESSION for final enrollment (not ABANDONED_CART or PAYMENT_FAILED)
+            activePackageSession.setType(LearnerSessionTypeEnum.PACKAGE_SESSION.name());
+            // destinationPackageSession should be null for final enrollment (not set)
         }
         if (invitedPackageSession.getSubOrg() != null) {
             activePackageSession.setSubOrg(invitedPackageSession.getSubOrg());

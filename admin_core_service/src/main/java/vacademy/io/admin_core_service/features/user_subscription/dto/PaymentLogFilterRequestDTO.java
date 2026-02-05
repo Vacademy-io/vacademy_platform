@@ -19,6 +19,11 @@ import java.util.Map;
 public class PaymentLogFilterRequestDTO {
     private String instituteId;
 
+    /**
+     * Optional filter by user ID. When provided, only payment logs for this user are returned.
+     */
+    private String userId;
+
     private LocalDateTime startDateInUtc;
 
     private LocalDateTime endDateInUtc;

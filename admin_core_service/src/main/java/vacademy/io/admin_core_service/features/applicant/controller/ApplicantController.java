@@ -8,6 +8,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplicantDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplicantFilterDTO;
+import vacademy.io.admin_core_service.features.applicant.dto.ApplicantListRequestDTO;
+import vacademy.io.admin_core_service.features.applicant.dto.ApplicantListResponseDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplyRequestDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplyResponseDTO;
 import vacademy.io.admin_core_service.features.applicant.service.ApplicantService;
@@ -49,6 +51,28 @@ public class ApplicantController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Enhanced list API with collective filters
+     * Supports multiple packageSessionIds, overallStatuses, and search
+     */
+    @PostMapping("/list")
+    public ResponseEntity<Page<ApplicantListResponseDTO>> getApplicantsEnhanced(
+            @RequestBody ApplicantListRequestDTO request,
+            @RequestParam(name = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
+            @RequestParam(name = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize) {
+
+        logger.info("Request to list Applicants. Institute: {}, Source: {}, SourceId: {}, Search: {}", 
+                request.getInstituteId(), request.getSource(), request.getSourceId(), request.getSearch());
+        
+        Page<ApplicantListResponseDTO> applicants = applicantService.getApplicantsEnhanced(request, pageNo, pageSize);
+        return ResponseEntity.ok(applicants);
+    }
+
+    /**
+     * Legacy list API - kept for backward compatibility
+     * @deprecated Use POST /list instead
+     */
+    @Deprecated
     @GetMapping("/list")
     public ResponseEntity<Page<ApplicantDTO>> getApplicants(
             @RequestParam(required = false) String instituteId,

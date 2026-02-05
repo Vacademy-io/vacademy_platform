@@ -269,6 +269,15 @@ public class UserPlanService {
 
         EnrollInvite enrollInvite = userPlan.getEnrollInvite();
 
+        // Fix: Handle cases where EnrollInvite is null (e.g. Direct Applicant Payments)
+        if (enrollInvite == null) {
+            logger.info("No EnrollInvite found for UserPlan ID={}. Marking as ACTIVE without stacking logic.",
+                    userPlan.getId());
+            userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+            userPlanRepository.save(userPlan);
+            return;
+        }
+
         // Check for OTHER existing ACTIVE or PENDING plans for stacking
         // We exclude the current plan ID just in case, though it shouldn't be
         // active/pending yet

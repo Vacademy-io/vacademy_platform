@@ -5,6 +5,7 @@ import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -78,6 +79,10 @@ public class PaymentLogService {
 
     @Autowired
     private PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.applicant.service.ApplicantService applicantService;
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
             UserPlan userPlan) {
@@ -320,6 +325,31 @@ public class PaymentLogService {
                             "Failed to generate invoice for payment log ID: {}. Payment confirmation will continue without invoice.",
                             paymentLog.getId(), e);
                 }
+            }
+
+            // Sync Applicant Stage (if applicable)
+            try {
+                // Fix: Extract the actual Order ID from the JSON data, as paymentLog.getId() is
+                // the PK
+                String orderIdToSync = paymentLog.getId(); // Default fall back
+                try {
+                    Map<String, Object> pData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
+                    if (pData != null && pData.containsKey("originalRequest")) {
+                        Map<String, Object> originalReq = (Map<String, Object>) pData.get("originalRequest");
+                        if (originalReq != null && originalReq.containsKey("order_id")) {
+                            orderIdToSync = (String) originalReq.get("order_id");
+                        }
+                    }
+                } catch (Exception ex) {
+                    log.error("Failed to extract order_id for applicant sync: {}", ex.getMessage());
+                }
+
+                // Call Applicant Service with correct Order ID
+                applicantService.handlePaymentSuccess(orderIdToSync);
+
+            } catch (Exception e) {
+                // Expected for non-applicant payments
+                log.debug("No applicant stage updated for payment log {}: {}", paymentLog.getId(), e.getMessage());
             }
 
             // Parse the paymentSpecificData which now contains both response and original

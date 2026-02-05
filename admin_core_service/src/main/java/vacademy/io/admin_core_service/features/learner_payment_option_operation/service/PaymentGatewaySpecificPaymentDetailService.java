@@ -48,22 +48,19 @@ public class PaymentGatewaySpecificPaymentDetailService {
 
         switch (paymentGateway) {
             case STRIPE:
-                if (paymentInitiationRequestDTO.getStripeRequest() != null) {
-                    paymentInitiationRequestDTO.getStripeRequest()
-                            .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
-                }
+                // Original behavior: Frontend must provide stripe_request
+                paymentInitiationRequestDTO.getStripeRequest()
+                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 break;
             case RAZORPAY:
-                if (paymentInitiationRequestDTO.getRazorpayRequest() != null) {
-                    paymentInitiationRequestDTO.getRazorpayRequest()
-                            .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
-                }
+                // Original behavior: Frontend must provide razorpay_request
+                paymentInitiationRequestDTO.getRazorpayRequest()
+                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 break;
             case EWAY:
-                if (paymentInitiationRequestDTO.getEwayRequest() != null) {
-                    paymentInitiationRequestDTO.getEwayRequest()
-                            .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
-                }
+                // Original behavior: Frontend must provide eway_request
+                paymentInitiationRequestDTO.getEwayRequest()
+                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 break;
             case PHONEPE:
                 // No specific customer ID configuration needed for PhonePe at this stage

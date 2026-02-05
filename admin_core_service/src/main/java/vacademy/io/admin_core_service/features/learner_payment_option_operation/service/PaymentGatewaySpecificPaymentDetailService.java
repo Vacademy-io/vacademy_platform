@@ -66,6 +66,8 @@ public class PaymentGatewaySpecificPaymentDetailService {
                 }
                 break;
             case PHONEPE:
+                break;
+
             default:
                 throw new IllegalStateException("Unexpected value: " + vendor);
         }

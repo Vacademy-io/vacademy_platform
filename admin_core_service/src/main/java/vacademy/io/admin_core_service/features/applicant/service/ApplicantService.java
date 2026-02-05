@@ -32,9 +32,11 @@ import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.ParentWithChildDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.*;
 
@@ -73,6 +75,9 @@ public class ApplicantService {
 
         @Autowired
         private InstituteCustomFieldRepository instituteCustomFieldRepository;
+
+        @Autowired
+        private PackageSessionRepository packageSessionRepository;
 
         private static final Logger logger = LoggerFactory.getLogger(ApplicantService.class);
 
@@ -309,6 +314,232 @@ public class ApplicantService {
                                 .stream()
                                 .map(stage -> new ApplicationStageDTO(stage))
                                 .collect(java.util.stream.Collectors.toList());
+        }
+
+        /**
+         * Enhanced get applicants with collective filters and enriched response
+         */
+        public Page<ApplicantListResponseDTO> getApplicantsEnhanced(ApplicantListRequestDTO request, int pageNo,
+                        int pageSize) {
+                Pageable pageable = PageRequest.of(pageNo, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+                Page<Applicant> applicants = applicantRepository.findApplicantsWithEnhancedFilters(
+                                request.getInstituteId(),
+                                request.getSource(),
+                                request.getSourceId(),
+                                request.getOverallStatuses(),
+                                request.getApplicationStageId(),
+                                request.getPackageSessionIds(),
+                                request.getSearch(),
+                                pageable);
+
+                // Batch fetch Application Stages
+                Set<String> stageConfigIds = applicants.stream()
+                                .map(Applicant::getApplicationStageId)
+                                .collect(java.util.stream.Collectors.toSet());
+
+                Map<String, ApplicationStage> stageConfigMap = applicationStageRepository
+                                .findAllById(stageConfigIds.stream().map(UUID::fromString).toList())
+                                .stream()
+                                .collect(java.util.stream.Collectors.toMap(
+                                                s -> s.getId().toString(),
+                                                s -> s));
+
+                // Batch fetch Audience Responses
+                List<String> applicantIds = applicants.stream().map(a -> a.getId().toString()).toList();
+                Map<String, AudienceResponse> applicantToAudienceResponseMap = audienceResponseRepository
+                                .findByApplicantIdIn(applicantIds)
+                                .stream()
+                                .collect(java.util.stream.Collectors.toMap(
+                                                AudienceResponse::getApplicantId,
+                                                ar -> ar,
+                                                (existing, replacement) -> existing));
+
+                // Extract Parent/User IDs
+                Set<String> parentUserIds = applicantToAudienceResponseMap.values().stream()
+                                .map(AudienceResponse::getUserId)
+                                .filter(Objects::nonNull)
+                                .collect(java.util.stream.Collectors.toSet());
+
+                // Batch fetch PackageSession IDs
+                Set<String> packageSessionIds = applicantToAudienceResponseMap.values().stream()
+                                .map(AudienceResponse::getDestinationPackageSessionId)
+                                .filter(Objects::nonNull)
+                                .collect(java.util.stream.Collectors.toSet());
+
+                Map<String, PackageSession> packageSessionMap = new HashMap<>();
+                if (!packageSessionIds.isEmpty()) {
+                        packageSessionMap = packageSessionRepository.findAllById(new ArrayList<>(packageSessionIds))
+                                        .stream()
+                                        .collect(java.util.stream.Collectors.toMap(
+                                                        PackageSession::getId,
+                                                        ps -> ps));
+                }
+
+                Map<String, Student> childUserToStudentMap = new HashMap<>();
+                Map<String, UserDTO> parentUserMap = new HashMap<>();
+                Map<String, UserDTO> childUserMap = new HashMap<>();
+                Map<String, String> parentToChildIdMap = new HashMap<>();
+
+                if (!parentUserIds.isEmpty()) {
+                        try {
+                                List<ParentWithChildDTO> parentWithChildList = authService
+                                                .getUsersWithChildren(new ArrayList<>(parentUserIds));
+
+                                Set<String> childUserIds = new HashSet<>();
+
+                                for (ParentWithChildDTO pc : parentWithChildList) {
+                                        if (pc.getParent() != null) {
+                                                parentUserMap.put(pc.getParent().getId(), pc.getParent());
+                                                if (pc.getChild() != null) {
+                                                        parentToChildIdMap.put(pc.getParent().getId(),
+                                                                        pc.getChild().getId());
+                                                        childUserIds.add(pc.getChild().getId());
+                                                        childUserMap.put(pc.getChild().getId(), pc.getChild());
+                                                }
+                                        }
+                                }
+
+                                if (!childUserIds.isEmpty()) {
+                                        childUserToStudentMap = instituteStudentRepository
+                                                        .findByUserIdIn(new ArrayList<>(childUserIds))
+                                                        .stream()
+                                                        .collect(java.util.stream.Collectors.toMap(
+                                                                        Student::getUserId,
+                                                                        s -> s));
+                                }
+
+                        } catch (Exception e) {
+                                logger.error("Failed to fetch users/children from auth service", e);
+                        }
+                }
+
+                // Final maps for lambda
+                Map<String, PackageSession> finalPackageSessionMap = packageSessionMap;
+                Map<String, Student> finalChildUserToStudentMap = childUserToStudentMap;
+                Map<String, UserDTO> finalParentUserMap = parentUserMap;
+                Map<String, UserDTO> finalChildUserMap = childUserMap;
+                Map<String, String> finalParentToChildIdMap = parentToChildIdMap;
+
+                return applicants.map(applicant -> {
+                        ApplicantListResponseDTO dto = ApplicantListResponseDTO.builder()
+                                        .applicantId(applicant.getId().toString())
+                                        .trackingId(applicant.getTrackingId())
+                                        .overallStatus(applicant.getOverallStatus())
+                                        .applicationStageStatus(applicant.getApplicationStageStatus())
+                                        .createdAt(applicant.getCreatedAt())
+                                        .updatedAt(applicant.getUpdatedAt())
+                                        .build();
+
+                        // Set Application Stage Info
+                        ApplicationStage stage = stageConfigMap.get(applicant.getApplicationStageId());
+                        if (stage != null) {
+                                dto.setApplicationStage(ApplicantListResponseDTO.ApplicationStageInfo.builder()
+                                                .stageId(stage.getId().toString())
+                                                .stageName(stage.getStageName())
+                                                .source(stage.getSource())
+                                                .sourceId(stage.getSourceId())
+                                                .type(stage.getType() != null ? stage.getType().name() : null)
+                                                .build());
+                        }
+
+                        AudienceResponse ar = applicantToAudienceResponseMap.get(applicant.getId().toString());
+
+                        if (ar != null) {
+                                String parentUserId = ar.getUserId();
+
+                                // Set Student Data
+                                if (parentUserId != null) {
+                                        String childUserId = finalParentToChildIdMap.get(parentUserId);
+                                        if (childUserId != null) {
+                                                Student student = finalChildUserToStudentMap.get(childUserId);
+                                                UserDTO childUser = finalChildUserMap.get(childUserId);
+
+                                                if (student != null || childUser != null) {
+                                                        ApplicantListResponseDTO.StudentData studentData = ApplicantListResponseDTO.StudentData
+                                                                        .builder()
+                                                                        .userId(childUserId)
+                                                                        .build();
+
+                                                        if (student != null) {
+                                                                studentData.setFullName(student.getFullName());
+                                                                studentData.setGender(student.getGender());
+                                                                studentData.setDateOfBirth(student.getDateOfBirth());
+                                                                studentData.setFatherName(student.getFatherName());
+                                                                studentData.setMotherName(student.getMotherName());
+                                                                studentData.setAddressLine(student.getAddressLine());
+                                                                studentData.setCity(student.getCity());
+                                                                studentData.setPinCode(student.getPinCode());
+                                                                studentData.setPreviousSchoolName(
+                                                                                student.getPreviousSchoolName());
+                                                                studentData.setApplyingForClass(
+                                                                                student.getApplyingForClass());
+                                                                studentData.setAcademicYear(student.getAcademicYear());
+                                                        } else if (childUser != null) {
+                                                                studentData.setFullName(childUser.getFullName());
+                                                                studentData.setGender(childUser.getGender());
+                                                                studentData.setDateOfBirth(
+                                                                                childUser.getDateOfBirth());
+                                                        }
+
+                                                        dto.setStudentData(studentData);
+                                                }
+                                        }
+
+                                        // Set Parent Data
+                                        UserDTO parentUser = finalParentUserMap.get(parentUserId);
+                                        if (parentUser != null) {
+                                                dto.setParentData(ApplicantListResponseDTO.ParentData.builder()
+                                                                .userId(parentUserId)
+                                                                .fullName(parentUser.getFullName())
+                                                                .email(parentUser.getEmail())
+                                                                .mobileNumber(parentUser.getMobileNumber())
+                                                                .addressLine(parentUser.getAddressLine())
+                                                                .city(parentUser.getCity())
+                                                                .pinCode(parentUser.getPinCode())
+                                                                .build());
+                                        }
+                                } else {
+                                        // Fallback to AudienceResponse snapshot data if no user linked
+                                        dto.setParentData(ApplicantListResponseDTO.ParentData.builder()
+                                                        .fullName(ar.getParentName())
+                                                        .email(ar.getParentEmail())
+                                                        .mobileNumber(ar.getParentMobile())
+                                                        .build());
+                                }
+
+                                // Set PackageSession Data
+                                if (ar.getDestinationPackageSessionId() != null) {
+                                        PackageSession ps = finalPackageSessionMap
+                                                        .get(ar.getDestinationPackageSessionId());
+                                        if (ps != null) {
+                                                dto.setPackageSession(
+                                                                ApplicantListResponseDTO.PackageSessionData.builder()
+                                                                                .packageSessionId(ps.getId())
+                                                                                .sessionName(ps.getSession() != null
+                                                                                                ? ps.getSession()
+                                                                                                                .getSessionName()
+                                                                                                : null)
+                                                                                .levelName(ps.getLevel() != null
+                                                                                                ? ps.getLevel().getLevelName()
+                                                                                                : null)
+                                                                                .packageName(
+                                                                                                ps.getPackageEntity() != null
+                                                                                                                ? ps.getPackageEntity()
+                                                                                                                                .getPackageName()
+                                                                                                                : null)
+                                                                                .groupName(ps.getGroup() != null
+                                                                                                ? ps.getGroup().getGroupName()
+                                                                                                : null)
+                                                                                .startTime(ps.getStartTime())
+                                                                                .status(ps.getStatus())
+                                                                                .build());
+                                        }
+                                }
+                        }
+
+                        return dto;
+                });
         }
 
         /**

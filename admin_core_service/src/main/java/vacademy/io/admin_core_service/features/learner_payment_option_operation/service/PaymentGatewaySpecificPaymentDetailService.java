@@ -48,17 +48,25 @@ public class PaymentGatewaySpecificPaymentDetailService {
 
         switch (paymentGateway) {
             case STRIPE:
-                // Original behavior: Frontend must provide stripe_request
+                if (paymentInitiationRequestDTO.getStripeRequest() == null) {
+                    paymentInitiationRequestDTO
+                            .setStripeRequest(new vacademy.io.common.payment.dto.StripeRequestDTO());
+                }
                 paymentInitiationRequestDTO.getStripeRequest()
                         .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 break;
             case RAZORPAY:
-                // Original behavior: Frontend must provide razorpay_request
+                if (paymentInitiationRequestDTO.getRazorpayRequest() == null) {
+                    paymentInitiationRequestDTO
+                            .setRazorpayRequest(new vacademy.io.common.payment.dto.RazorpayRequestDTO());
+                }
                 paymentInitiationRequestDTO.getRazorpayRequest()
                         .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 break;
             case EWAY:
-                // Original behavior: Frontend must provide eway_request
+                if (paymentInitiationRequestDTO.getEwayRequest() == null) {
+                    paymentInitiationRequestDTO.setEwayRequest(new vacademy.io.common.payment.dto.EwayRequestDTO());
+                }
                 paymentInitiationRequestDTO.getEwayRequest()
                         .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 break;

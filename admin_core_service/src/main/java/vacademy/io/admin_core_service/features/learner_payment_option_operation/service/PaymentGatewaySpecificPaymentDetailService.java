@@ -48,31 +48,24 @@ public class PaymentGatewaySpecificPaymentDetailService {
 
         switch (paymentGateway) {
             case STRIPE:
-                if (paymentInitiationRequestDTO.getStripeRequest() == null) {
-                    paymentInitiationRequestDTO
-                            .setStripeRequest(new vacademy.io.common.payment.dto.StripeRequestDTO());
+                if (paymentInitiationRequestDTO.getStripeRequest() != null) {
+                    paymentInitiationRequestDTO.getStripeRequest()
+                            .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 }
-                paymentInitiationRequestDTO.getStripeRequest()
-                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 break;
             case RAZORPAY:
-                if (paymentInitiationRequestDTO.getRazorpayRequest() == null) {
-                    paymentInitiationRequestDTO
-                            .setRazorpayRequest(new vacademy.io.common.payment.dto.RazorpayRequestDTO());
+                if (paymentInitiationRequestDTO.getRazorpayRequest() != null) {
+                    paymentInitiationRequestDTO.getRazorpayRequest()
+                            .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 }
-                paymentInitiationRequestDTO.getRazorpayRequest()
-                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 break;
             case EWAY:
-                if (paymentInitiationRequestDTO.getEwayRequest() == null) {
-                    paymentInitiationRequestDTO.setEwayRequest(new vacademy.io.common.payment.dto.EwayRequestDTO());
+                if (paymentInitiationRequestDTO.getEwayRequest() != null) {
+                    paymentInitiationRequestDTO.getEwayRequest()
+                            .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 }
-                paymentInitiationRequestDTO.getEwayRequest()
-                        .setCustomerId((String) userInstitutePaymentGatewayMapping.get("customerId"));
                 break;
             case PHONEPE:
-                // No specific customer ID configuration needed for PhonePe at this stage
-                break;
             default:
                 throw new IllegalStateException("Unexpected value: " + vendor);
         }

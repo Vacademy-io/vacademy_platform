@@ -168,6 +168,14 @@ public class UserPlanService {
                         enrollInvite.getId(),
                         List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name()));
 
+        // Filter out plans that only have ABANDONED_CART entries (unverified enrollments)
+        // These should not be considered for stacking as the user never completed verification
+        if (existingPlan.isPresent() && !hasRealEnrollmentEntries(existingPlan.get())) {
+            logger.info("Existing UserPlan ID={} has only ABANDONED_CART entries, ignoring for stacking",
+                    existingPlan.get().getId());
+            existingPlan = Optional.empty();
+        }
+
         Date effectiveStartDate;
         if (existingPlan.isPresent()) {
             // Stack the new plan after the existing one
@@ -222,6 +230,37 @@ public class UserPlanService {
         UserPlan saved = userPlanRepository.save(userPlan);
         logger.info("UserPlan created with ID={}", saved.getId());
         return saved;
+    }
+
+    /**
+     * Checks if a UserPlan has any real (verified) enrollment entries.
+     * Returns false if the UserPlan only has ABANDONED_CART or PAYMENT_FAILED entries,
+     * which represent unverified/failed enrollments that shouldn't count for stacking.
+     *
+     * @param userPlan The UserPlan to check
+     * @return true if the plan has at least one real (PACKAGE_SESSION type) ACTIVE entry
+     */
+    private boolean hasRealEnrollmentEntries(UserPlan userPlan) {
+        if (userPlan == null || userPlan.getId() == null) {
+            return false;
+        }
+
+        List<StudentSessionInstituteGroupMapping> entries = studentSessionRepository
+                .findAllByUserPlanIdAndStatusIn(userPlan.getId(), 
+                        List.of("ACTIVE", "INVITED", "EXPIRED", "TERMINATED", "INACTIVE"));
+
+        // Check if any entry is NOT ABANDONED_CART and NOT PAYMENT_FAILED
+        for (StudentSessionInstituteGroupMapping entry : entries) {
+            String type = entry.getType();
+            if (type == null || 
+                (!"ABANDONED_CART".equalsIgnoreCase(type) && !"PAYMENT_FAILED".equalsIgnoreCase(type))) {
+                // Found a real entry (PACKAGE_SESSION or null type which is default)
+                return true;
+            }
+        }
+
+        // All entries are ABANDONED_CART or PAYMENT_FAILED
+        return false;
     }
 
     private void setPaymentPlan(UserPlan userPlan, PaymentPlan plan) {

@@ -8,9 +8,11 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
@@ -47,6 +49,9 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
         @Autowired
         private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
 
+        @Autowired
+        private StudentRegistrationManager studentRegistrationManager;
+
         @Override
         public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
                                                              LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
@@ -62,32 +67,70 @@ public class FreePaymentOptionOperation implements PaymentOptionOperationStrateg
                         ? learnerPackageSessionsEnrollDTO.getStartDate()
                         : new Date();
 
-                List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
                 List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
-
-                // Note: For FREE payment option, frontend skips ABANDONED_CART step
-                // So we directly proceed to enrollment
 
                 // Step 1: Check if workflow is configured for the destination package session
                 boolean hasWorkflow = false;
+                PackageSession workflowPackageSession = null;
                 for (String packageSessionId : packageSessionIds) {
                         PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                                 .orElse(null);
                         if (packageSession != null
                                 && learnerEnrollmentEntryService.hasWorkflowConfiguration(packageSession)) {
                                 hasWorkflow = true;
+                                workflowPackageSession = packageSession;
                                 log.info("Workflow configuration found for package session: {}",
                                         packageSessionId);
                                 break;
                         }
                 }
 
-                // Step 2: Build enrollment details
+                // Step 2: For workflow enrollments, check if ACTIVE ABANDONED_CART already exists
+                if (hasWorkflow) {
+                        // First, ensure user exists in auth service
+                        UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(userDTO, instituteId, false);
+                        
+                        // Check for existing ACTIVE ABANDONED_CART entry
+                        List<StudentSessionInstituteGroupMapping> existingEntries = 
+                                learnerEnrollmentEntryService.findExistingAbandonedCartEntries(
+                                        createdUser.getId(),
+                                        packageSessionIds,
+                                        instituteId);
+
+                        if (!existingEntries.isEmpty()) {
+                                // ABANDONED_CART already exists - just resend WhatsApp workflow
+                                log.info("Found existing ABANDONED_CART entry for user: {}. Resending workflow notification.", 
+                                        createdUser.getEmail());
+                                
+                                StudentSessionInstituteGroupMapping existingEntry = existingEntries.get(0);
+                                String invitedPackageSessionId = existingEntry.getPackageSession().getId();
+                                
+                                // Trigger workflow to resend WhatsApp
+                                studentRegistrationManager.triggerEnrollmentWorkflow(
+                                        instituteId, 
+                                        createdUser, 
+                                        invitedPackageSessionId, 
+                                        null);
+                                
+                                log.info("Workflow re-triggered for existing ABANDONED_CART. User: {}, PackageSession: {}", 
+                                        createdUser.getEmail(), invitedPackageSessionId);
+                                
+                                LearnerEnrollResponseDTO response = new LearnerEnrollResponseDTO();
+                                response.setUser(createdUser);
+                                return response;
+                        }
+                        
+                        // No existing entry - fall through to create new one
+                        log.info("No existing ABANDONED_CART entry found. Creating new entry for user: {}", 
+                                createdUser.getEmail());
+                }
+
+                // Step 3: Build enrollment details (for new enrollments)
+                List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
                 String status;
                 String type = null; // null = default PACKAGE_SESSION type
                 if (hasWorkflow) {
                         // Workflow exists - set status ACTIVE and type ABANDONED_CART
-                        // This matches what ActivateEnrollmentProcessorStrategy expects
                         status = LearnerSessionStatusEnum.ACTIVE.name();
                         type = LearnerSessionTypeEnum.ABANDONED_CART.name();
                 } else if (paymentOption.isRequireApproval()) {

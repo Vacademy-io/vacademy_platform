@@ -124,7 +124,7 @@
                 }
             } catch (e) {}
 
-            // Close or redirect after a short delay unless in debug mode
+            // Close or redirect after delay so parent has time to receive storage/BroadcastChannel
             if (!window.DEBUG) {
                 setTimeout(() => {
                     try {
@@ -140,7 +140,7 @@
                         }
                         window.close();
                     } catch (e) {}
-                }, 300);
+                }, 1200);
             } else {
                 console.log('[OAuth Popup][DEBUG] Suppressed auto-close. Payload sent to parent.', payload);
                 // Offer a manual close button
@@ -334,8 +334,8 @@
                             }, 300);
                         }
                     } else if (isPopupWindow) {
-                        // In popup mode, just close after sending result; parent will handle navigation
-                        setTimeout(() => { try { window.close(); } catch(e) {} }, 400);
+                        // In popup mode, close after delay so parent has time to receive storage/BroadcastChannel
+                        setTimeout(() => { try { window.close(); } catch(e) {} }, 1200);
                     }
                 } catch (e) {}
             // Special case: error=true with signupData means "email not found" (new user) - this is SUCCESS for signup

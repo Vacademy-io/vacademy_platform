@@ -348,13 +348,13 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 })}
                             </div>
 
-                            {/* Pagination */}
+                            {/* Pagination: API uses 0-based page (0, 1, 2...), UI shows 1-based (1, 2, 3...) */}
                             {courseData.totalPages > 1 && (
                                 <div className="flex justify-center mt-4 sm:mt-6">
                                     <Pagination
-                                        currentPage={courseData.number}
+                                        currentPage={courseData.number + 1}
                                         totalPages={courseData.totalPages}
-                                        onPageChange={handlePageChange}
+                                        onPageChange={(page) => handlePageChange(page - 1)}
                                     />
                                 </div>
                             )}

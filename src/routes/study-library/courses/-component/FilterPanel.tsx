@@ -182,7 +182,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                 </div>
             )}
 
-            <ScrollArea className="h-[calc(100vh-300px)] lg:h-auto lg:max-h-[600px]">
+            <ScrollArea className="h-[calc(100vh-300px)] min-h-[200px] lg:h-[min(600px,calc(100vh-14rem))] lg:min-h-[240px]">
                 <div className="p-4">
                     <Accordion type="multiple" defaultValue={["levels", "tags", "instructors"]} className="w-full">
                         <AccordionItem value="levels" className="border-b-0">

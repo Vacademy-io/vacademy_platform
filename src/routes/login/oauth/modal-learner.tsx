@@ -214,6 +214,31 @@ const handleModalOAuthCallback = async (
 
   if (accessToken && refreshToken) {
     try {
+      // Multiple institutes: send tokens to parent so it can redirect to /institute-selection (don't complete login in popup)
+      const decodedData = getTokenDecodedData(accessToken);
+      const authorities = decodedData?.authorities;
+      const authorityKeys = authorities ? Object.keys(authorities) : [];
+      if (authorityKeys.length > 1) {
+        const payload = { type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true, ts: Date.now() };
+        try {
+          localStorage.setItem('OAUTH_RESULT', JSON.stringify(payload));
+        } catch { /* ignore */ }
+        try {
+          if (typeof BroadcastChannel !== 'undefined') {
+            const bc = new BroadcastChannel('OAUTH_CHANNEL');
+            bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true });
+            try { bc.close(); } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true }, '*');
+          }
+        } catch { /* ignore */ }
+        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 1000);
+        return;
+      }
+
       await setToStorage("accessToken", accessToken);
       await setToStorage("refreshToken", refreshToken);
       await setTokenInStorage(TokenKey.accessToken, accessToken);

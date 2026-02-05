@@ -42,12 +42,14 @@ function OAuthRedirectHandler() {
 }
 
 // Robust success notifier for popup contexts: postMessage, localStorage, BroadcastChannel
+// isModalLogin: true so the parent (modal) processes the result; parent ignores when isModalLogin === false
 function sendOAuthSuccessToParent(accessToken: string, refreshToken: string) {
+  const payload = { type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true, ts: Date.now() };
   // Try postMessage (may be blocked by COOP)
   try {
     if (window.opener && !window.opener.closed) {
       window.opener.postMessage(
-        { type: 'oauth_success', data: { accessToken, refreshToken } },
+        { type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true },
         '*'
       );
     }
@@ -55,21 +57,18 @@ function sendOAuthSuccessToParent(accessToken: string, refreshToken: string) {
     // ignore postMessage failures
   }
 
-  // Always write to localStorage so parent can pick via storage event
+  // Always write to localStorage so parent can pick via storage event (same-origin)
   try {
-    localStorage.setItem(
-      'OAUTH_RESULT',
-      JSON.stringify({ type: 'oauth_success', data: { accessToken, refreshToken }, ts: Date.now() })
-    );
+    localStorage.setItem('OAUTH_RESULT', JSON.stringify(payload));
   } catch {
     // ignore storage errors
   }
 
-  // BroadcastChannel fallback
+  // BroadcastChannel fallback (works when COOP blocks postMessage)
   try {
     if (typeof BroadcastChannel !== 'undefined') {
       const bc = new BroadcastChannel('OAUTH_CHANNEL');
-      bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken } });
+      bc.postMessage({ type: 'oauth_success', data: { accessToken, refreshToken }, isModalLogin: true });
       try { bc.close(); } catch { /* ignore */ }
     }
   } catch {
@@ -164,7 +163,7 @@ const handleOAuthCallback = async (
       // If this is a popup window, send tokens to parent and close without navigating here
       if (isPopupWindow) {
         sendOAuthSuccessToParent(accessToken, refreshToken);
-        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 500);
+        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 800);
         return;
       }
 
@@ -280,10 +279,8 @@ const handleSuccessfulLogin = async (
       // For multiple institutes
       // If this is a popup, send tokens to parent and close - parent will handle institute selection
       if (isPopupWindow && window.opener && !window.opener.closed) {
-        // Send tokens to parent for processing
         sendOAuthSuccessToParent(accessToken, refreshToken);
-        // Close popup after sending tokens
-        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 500);
+        setTimeout(() => { try { window.close(); } catch { /* ignore */ } }, 800);
         return;
       }
       

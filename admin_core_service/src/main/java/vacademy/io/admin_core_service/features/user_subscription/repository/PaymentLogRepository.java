@@ -88,6 +88,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("sources") List<String> sources,
       @Param("enrollInviteIds") List<String> enrollInviteIds,
       @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("userId") String userId,
       Pageable pageable);
 
   @Query("""

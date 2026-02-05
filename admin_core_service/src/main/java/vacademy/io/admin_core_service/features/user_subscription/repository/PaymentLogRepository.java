@@ -57,6 +57,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                       AND psli.status = 'ACTIVE'
                       AND psli.packageSession.id IN (:packageSessionIds)
                   ))
+              AND (:#{#userId == null ? 1 : 0} = 1 OR up.userId = :userId)
             ORDER BY pl.createdAt DESC
       """, countQuery = """
       SELECT COUNT(pl) FROM PaymentLog pl
@@ -76,6 +77,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 AND psli.status = 'ACTIVE'
                 AND psli.packageSession.id IN (:packageSessionIds)
             ))
+        AND (:#{#userId == null ? 1 : 0} = 1 OR up.userId = :userId)
       """)
   Page<PaymentLog> findPaymentLogIdsWithFilters(
       @Param("instituteId") String instituteId,

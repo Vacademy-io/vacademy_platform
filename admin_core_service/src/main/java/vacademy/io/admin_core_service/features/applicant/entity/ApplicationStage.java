@@ -9,8 +9,6 @@ import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.admin_core_service.features.applicant.enums.ApplicantStageType;
 
 import java.util.UUID;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "application_stage")

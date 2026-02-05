@@ -66,8 +66,8 @@ public class PaymentGatewaySpecificPaymentDetailService {
                 }
                 break;
             case PHONEPE:
-                // No specific customer ID configuration needed for PhonePe at this stage
                 break;
+
             default:
                 throw new IllegalStateException("Unexpected value: " + vendor);
         }

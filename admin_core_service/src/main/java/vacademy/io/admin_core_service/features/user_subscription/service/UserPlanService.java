@@ -162,11 +162,15 @@ public class UserPlanService {
         // --- Date Logic with Timestamp ---
 
         // Check for existing ACTIVE or PENDING plans for stacking
-        Optional<UserPlan> existingPlan = userPlanRepository
-                .findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
-                        userId,
-                        enrollInvite.getId(),
-                        List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name()));
+        Optional<UserPlan> existingPlan = Optional.empty();
+
+        if (enrollInvite != null) {
+            existingPlan = userPlanRepository
+                    .findTopByUserIdAndEnrollInviteIdAndStatusInOrderByEndDateDesc(
+                            userId,
+                            enrollInvite.getId(),
+                            List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name()));
+        }
 
         // Filter out plans that only have ABANDONED_CART entries (unverified enrollments)
         // These should not be considered for stacking as the user never completed verification
@@ -308,6 +312,15 @@ public class UserPlanService {
         }
 
         EnrollInvite enrollInvite = userPlan.getEnrollInvite();
+
+        // Fix: Handle cases where EnrollInvite is null (e.g. Direct Applicant Payments)
+        if (enrollInvite == null) {
+            logger.info("No EnrollInvite found for UserPlan ID={}. Marking as ACTIVE without stacking logic.",
+                    userPlan.getId());
+            userPlan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+            userPlanRepository.save(userPlan);
+            return;
+        }
 
         // Check for OTHER existing ACTIVE or PENDING plans for stacking
         // We exclude the current plan ID just in case, though it shouldn't be
@@ -540,7 +553,10 @@ public class UserPlanService {
                 userPlanFilterDTO.getInstituteId());
         Sort thisSort = ListService.createSortObject(userPlanFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, thisSort);
-        List<String> status = List.of(UserPlanStatusEnum.ACTIVE.name(),UserPlanStatusEnum.PENDING.name(),UserPlanStatusEnum.PENDING_FOR_PAYMENT.name(),UserPlanStatusEnum.CANCELED.name(),UserPlanStatusEnum.EXPIRED.name(),UserPlanStatusEnum.PAYMENT_FAILED.name(),UserPlanStatusEnum.TERMINATED.name());
+        List<String> status = List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name(),
+                UserPlanStatusEnum.PENDING_FOR_PAYMENT.name(), UserPlanStatusEnum.CANCELED.name(),
+                UserPlanStatusEnum.EXPIRED.name(), UserPlanStatusEnum.PAYMENT_FAILED.name(),
+                UserPlanStatusEnum.TERMINATED.name());
         Page<UserPlan> userPlansPage = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
                 userPlanFilterDTO.getUserId(), userPlanFilterDTO.getInstituteId(), status, pageable);
 

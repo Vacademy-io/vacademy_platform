@@ -133,12 +133,13 @@ public class PhonePePaymentManager implements PaymentServiceStrategy {
         return PhonePePaymentRequestDTO.builder()
                 .merchantId(merchantId)
                 .merchantTransactionId(request.getOrderId()) // Utilizing orderId as transaction Id
-                .merchantUserId("USER_" + user.getId()) // Unique user ID
+                .merchantUserId(user != null ? "USER_" + user.getId() : "GUEST_" + request.getOrderId()) // Unique user
+                                                                                                         // ID
                 .amount(amountInPaise)
                 .redirectUrl(redirectUrl) // Where user goes after payment (frontend)
                 .redirectMode("REDIRECT") // Standard mode
                 .callbackUrl(callbackUrl) // Where PhonePe POSTs webhook (backend)
-                .mobileNumber(user.getMobileNumber()) // Pass mobile number if available
+                .mobileNumber(user != null ? user.getMobileNumber() : null) // Pass mobile number if available
                 .paymentInstrument(PhonePePaymentRequestDTO.PaymentInstrument.builder()
                         .type("PAY_PAGE")
                         .build())
@@ -154,13 +155,13 @@ public class PhonePePaymentManager implements PaymentServiceStrategy {
         // In production/stage: https://backend-stage.vacademy.io
         // In local dev: http://localhost:8072
         // String baseUrl = System.getenv("AUTH_SERVER_BASE_URL");
-         String baseUrl = "https://backend-stage.vacademy.io" ;
+        String baseUrl = "https://backend-stage.vacademy.io";
         // Construct webhook URL
         // Format:
         // {baseUrl}/admin-core-service/payments/webhook/callback/phonepe?instituteId={instituteId}
         String webhookUrl = baseUrl + "/admin-core-service/payments/webhook/callback/phonepe?instituteId="
                 + instituteId;
-                logger.info("PhonePe Callback URL being sent: {}", webhookUrl);
+        logger.info("PhonePe Callback URL being sent: {}", webhookUrl);
 
         return webhookUrl;
     }

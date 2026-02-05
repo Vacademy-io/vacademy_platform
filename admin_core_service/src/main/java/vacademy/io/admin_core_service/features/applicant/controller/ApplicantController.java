@@ -11,7 +11,11 @@ import vacademy.io.admin_core_service.features.applicant.dto.ApplicantFilterDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplyRequestDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplyResponseDTO;
 import vacademy.io.admin_core_service.features.applicant.service.ApplicantService;
+import vacademy.io.admin_core_service.features.applicant.service.ApplicantService;
 import vacademy.io.common.auth.config.PageConstants;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
 @RestController
 @RequestMapping("/admin-core-service/v1/applicant")
@@ -71,5 +75,22 @@ public class ApplicantController {
 
         Page<ApplicantDTO> applicants = applicantService.getApplicants(filterDTO);
         return ResponseEntity.ok(applicants);
+    }
+
+    /**
+     * Initiate Payment for Applicant
+     * Wrapper that calls Payment Service and updates Applicant JSON
+     */
+    @PostMapping("/{applicantId}/payment/initiate")
+    public ResponseEntity<PaymentResponseDTO> initiatePayment(
+            @PathVariable String applicantId,
+            @RequestParam String paymentOptionId,
+            @RequestBody PaymentInitiationRequestDTO requestDTO,
+            @RequestAttribute(name = "user", required = false) CustomUserDetails userDetails) {
+
+        logger.info("Request to initiate payment. Applicant: {}, Option: {}", applicantId, paymentOptionId);
+        PaymentResponseDTO response = applicantService.preparePayment(applicantId, paymentOptionId,
+                requestDTO, userDetails);
+        return ResponseEntity.ok(response);
     }
 }

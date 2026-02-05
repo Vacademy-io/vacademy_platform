@@ -595,94 +595,6 @@ export const CourseDetailsPage = () => {
     }
   }, [instituteId, searchParams.courseId, updateLoadingState, setInstituteDetails]);
 
-  // Effect 2: Map session/level to packageSessionId when batches or selections change
-  // This does NOT re-fetch data, only re-calculates the mapping
-  useEffect(() => {
-    if (fetchedBatches.length === 0) return;
-
-    // Fix: Prioritize packageSessionId from URL if available
-    if (searchParams.packageSessionId) {
-        const targetBatch = fetchedBatches.find(b => b.id === searchParams.packageSessionId);
-        
-        if (targetBatch?.session?.id && targetBatch?.level?.id) {
-             setPackageSessionIdForCurrentLevel(targetBatch.id);
-             
-             // Ensure level options are populated for the selected session
-             const sessions = form.getValues("courseData")?.sessions || [];
-             const selectedSessionData = sessions.find(s => s.sessionDetails.id === targetBatch.session.id);
-             if (selectedSessionData) {
-                  const newLevelOptions = selectedSessionData.levelDetails.map(level => ({
-                      _id: level.id,
-                      value: level.id,
-                      label: level.name,
-                  }));
-                  setLevelOptions(newLevelOptions);
-             }
-
-             // Check if we need to update session/level (avoid loops)
-             if (selectedSession !== targetBatch.session.id) {
-                setSelectedSession(targetBatch.session.id);
-                // Also set level immediately since we know exactly which combination it is
-                if (selectedLevel !== targetBatch.level.id) {
-                     setSelectedLevel(targetBatch.level.id);
-                }
-             } else if (selectedLevel !== targetBatch.level.id) {
-                 setSelectedLevel(targetBatch.level.id);
-             }
-             return; 
-        }
-    }
-
-    const packageSessionId = getIdByLevelAndSession(
-      fetchedBatches,
-      selectedSession,
-      selectedLevel,
-      searchParams.courseId || ""
-    );
-
-    if (packageSessionId) {
-      setPackageSessionIdForCurrentLevel(packageSessionId);
-      if (import.meta.env.MODE !== "production") {
-        console.info("[CourseDetailsPage] mapping result", {
-          selectedSession,
-          selectedLevel,
-          courseId: searchParams.courseId,
-          packageSessionIdForCurrentLevel: packageSessionId,
-        });
-      }
-      return; // Found a direct match, done
-    }
-
-    // Fallback mapping: when exact session+level mapping is missing
-    const byCourseAndSession = fetchedBatches.find(
-      (b) =>
-        b.package_dto?.id === (searchParams.courseId || "") &&
-        b.session?.id === selectedSession
-    );
-    const byCourseOnly = fetchedBatches.find(
-      (b) => b.package_dto?.id === (searchParams.courseId || "")
-    );
-
-    const chosen = byCourseAndSession || byCourseOnly;
-
-    if (chosen?.id) {
-      setPackageSessionIdForCurrentLevel(chosen.id);
-      // Only set session/level if they are currently empty to avoid loops
-      if (!selectedSession && chosen.session?.id) {
-        setSelectedSession(chosen.session.id);
-      }
-      if (!selectedLevel && chosen.level?.id) {
-        setSelectedLevel(chosen.level.id);
-      }
-    }
-  }, [
-    fetchedBatches,
-    selectedSession,
-    selectedLevel,
-    searchParams.courseId,
-    searchParams.packageSessionId,
-  ]);
-
   // Fetch payment type when institute ID is available
   useEffect(() => {
     const fetchPaymentType = async () => {
@@ -714,6 +626,189 @@ export const CourseDetailsPage = () => {
         instituteId: instituteId || "",
       })
     );
+
+  // Course depth from course-init API (so we show correct structure before form is reset)
+  const courseStructureFromApi = (courseDetailsData as { course?: { course_depth?: number } } | null)?.course?.course_depth;
+
+  // Subjects from course-init (first session, first level); used to call modules-with-chapters and show content when form isn't ready
+  const courseInitSubjectsFromCourseInit = useMemo(() => {
+    const data = courseDetailsData as {
+      sessions?: Array<{
+        level_with_details?: Array<{
+          subjects?: Array<{
+            id: string;
+            subject_name?: string;
+            subject_code?: string;
+            credit?: number;
+            thumbnail_id?: string | null;
+            created_at?: string | null;
+            updated_at?: string | null;
+            subject_order?: number;
+          }>;
+        }>;
+      }>;
+    } | null | undefined;
+    const firstLevel = data?.sessions?.[0]?.level_with_details?.[0];
+    const subjects = firstLevel?.subjects;
+    return Array.isArray(subjects) && subjects.length > 0 ? subjects : undefined;
+  }, [courseDetailsData]);
+
+  // Effect 2: Map session/level to packageSessionId when batches or selections change.
+  // Uses batches API when available; falls back to course-init's package_sessions when
+  // batches are empty or session/level IDs don't match (e.g. "DEFAULT" vs UUID), so content still loads.
+  // Must run after courseDetailsData is defined (useSuspenseQuery above).
+  useEffect(() => {
+    let resolved: string | null = null;
+
+    // 1) Prioritize packageSessionId from URL if available (and we can validate from batches when present)
+    if (searchParams.packageSessionId) {
+      if (fetchedBatches.length > 0) {
+        const targetBatch = fetchedBatches.find(
+          (b) => b.id === searchParams.packageSessionId
+        );
+        if (targetBatch?.session?.id && targetBatch?.level?.id) {
+          resolved = targetBatch.id;
+          setPackageSessionIdForCurrentLevel(targetBatch.id);
+          const sessions = form.getValues("courseData")?.sessions || [];
+          const selectedSessionData = sessions.find(
+            (s) => s.sessionDetails.id === targetBatch.session.id
+          );
+          if (selectedSessionData) {
+            setLevelOptions(
+              selectedSessionData.levelDetails.map((level) => ({
+                _id: level.id,
+                value: level.id,
+                label: level.name,
+              }))
+            );
+          }
+          if (selectedSession !== targetBatch.session.id) {
+            setSelectedSession(targetBatch.session.id);
+            if (selectedLevel !== targetBatch.level.id) {
+              setSelectedLevel(targetBatch.level.id);
+            }
+          } else if (selectedLevel !== targetBatch.level.id) {
+            setSelectedLevel(targetBatch.level.id);
+          }
+        }
+      }
+      if (resolved) {
+        return;
+      }
+      // URL has packageSessionId but no batch match (e.g. batches empty) – trust URL
+      if (!resolved && searchParams.packageSessionId) {
+        resolved = searchParams.packageSessionId;
+        setPackageSessionIdForCurrentLevel(searchParams.packageSessionId);
+        return;
+      }
+    }
+
+    // 2) From batches: exact match or fallbacks
+    if (fetchedBatches.length > 0) {
+      const packageSessionId = getIdByLevelAndSession(
+        fetchedBatches,
+        selectedSession,
+        selectedLevel,
+        searchParams.courseId || ""
+      );
+      if (packageSessionId) {
+        setPackageSessionIdForCurrentLevel(packageSessionId);
+        if (import.meta.env.MODE !== "production") {
+          console.info("[CourseDetailsPage] mapping result", {
+            selectedSession,
+            selectedLevel,
+            courseId: searchParams.courseId,
+            packageSessionIdForCurrentLevel: packageSessionId,
+          });
+        }
+        return;
+      }
+      const byCourseAndSession = fetchedBatches.find(
+        (b) =>
+          b.package_dto?.id === (searchParams.courseId || "") &&
+          b.session?.id === selectedSession
+      );
+      const byCourseOnly = fetchedBatches.find(
+        (b) => b.package_dto?.id === (searchParams.courseId || "")
+      );
+      const chosen = byCourseAndSession || byCourseOnly;
+      if (chosen?.id) {
+        setPackageSessionIdForCurrentLevel(chosen.id);
+        if (!selectedSession && chosen.session?.id) {
+          setSelectedSession(chosen.session.id);
+        }
+        if (!selectedLevel && chosen.level?.id) {
+          setSelectedLevel(chosen.level.id);
+        }
+        return;
+      }
+    }
+
+    // 3) Fallback: use course-init's package_sessions so content loads even when
+    // batches are empty or session/level IDs don't match (e.g. "DEFAULT" in init, UUIDs in batches).
+    try {
+      const data = courseDetailsData as {
+        package_sessions?: Array<{ id: string; session?: { id: string }; level?: { id: string }; package_dto?: { id?: string } }>;
+        sessions?: Array<{ session_dto?: { id: string }; level_with_details?: Array<{ id: string; name?: string }> }>;
+      } | null | undefined;
+      const packageSessions = Array.isArray(data?.package_sessions) ? data.package_sessions : undefined;
+      const courseId = searchParams.courseId || "";
+      if (packageSessions && packageSessions.length > 0 && courseId) {
+        // Prefer package_session that matches current course (and optionally session/level)
+        const forCourse = packageSessions.filter(
+          (ps) => !ps.package_dto?.id || ps.package_dto.id === courseId
+        );
+        const list = forCourse.length > 0 ? forCourse : packageSessions;
+        const match =
+          selectedSession && selectedLevel
+            ? list.find(
+                (ps) =>
+                  ps.session?.id === selectedSession &&
+                  ps.level?.id === selectedLevel
+              )
+            : null;
+        const toUse = match ?? list[0];
+        if (toUse?.id) {
+          setPackageSessionIdForCurrentLevel(toUse.id);
+          // Set session/level from course-init so getSubjectDetails() returns subjects and modules-with-chapters runs.
+          // (Auto-select may be delayed by isEnrollmentLoading; without this, module fetch never fires.)
+          const firstSession = data?.sessions?.[0];
+          const levelDetails = firstSession?.level_with_details;
+          const firstLevel = levelDetails?.[0];
+          if (firstSession?.session_dto?.id && firstLevel?.id) {
+            if (!selectedSession) setSelectedSession(firstSession.session_dto.id);
+            if (!selectedLevel) setSelectedLevel(firstLevel.id);
+            if (Array.isArray(levelDetails) && levelDetails.length > 0) {
+              setLevelOptions(
+                levelDetails.map((l) => ({
+                  _id: l.id,
+                  value: l.id,
+                  label: l.name ?? l.id,
+                }))
+              );
+            }
+          }
+          if (import.meta.env.MODE !== "production") {
+            console.info("[CourseDetailsPage] packageSessionId from course-init fallback", {
+              packageSessionId: toUse.id,
+              fromMatch: !!match,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (import.meta.env.MODE !== "production") {
+        console.warn("[CourseDetailsPage] course-init fallback error", e);
+      }
+    }
+  }, [
+    fetchedBatches,
+    selectedSession,
+    selectedLevel,
+    searchParams.courseId,
+    searchParams.packageSessionId,
+    courseDetailsData,
+  ]);
 
   // Update course details loading state
   useEffect(() => {
@@ -1825,7 +1920,7 @@ export const CourseDetailsPage = () => {
                 <CourseStructureDetails
                   selectedSession={selectedSession}
                   selectedLevel={selectedLevel}
-                  courseStructure={stableCourseData?.courseData?.courseStructure || 5}
+                  courseStructure={courseStructureFromApi ?? stableCourseData?.courseData?.courseStructure ?? 5}
                   courseData={stableCourseData}
                   packageSessionId={packageSessionIdForCurrentLevel || ""}
                   selectedTab={selectedTab}
@@ -1835,6 +1930,7 @@ export const CourseDetailsPage = () => {
                       enrolledSession.package_dto.id === searchParams.courseId
                   )}
                   onLoadingChange={handleModulesLoadingChange}
+                  courseInitSubjects={courseInitSubjectsFromCourseInit}
                   {...(paymentType && { paymentType })}
                 />
               </div>

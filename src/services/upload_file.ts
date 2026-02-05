@@ -106,9 +106,17 @@ const acknowledgeUpload = async (
     return response.data;
 };
 
+/** If the value is already a direct http(s) URL, return true (callers should use it as-is and not call the file API). */
+export function isDirectUrl(value: string | undefined | null): value is string {
+    if (!value || typeof value !== "string") return false;
+    const t = value.trim();
+    return t.startsWith("http://") || t.startsWith("https://");
+}
+
 export const getPublicUrl = async (
     fileId: string | undefined | null
 ): Promise<string> => {
+    if (isDirectUrl(fileId)) return fileId.trim();
     return getWithETag<string>(
         authenticatedAxiosInstance,
         GET_PUBLIC_URL,
@@ -120,6 +128,7 @@ export const getPublicUrlWithoutLogin = async (
     fileId: string | undefined | null
 ): Promise<string> => {
     if (!fileId) return "";
+    if (isDirectUrl(fileId)) return fileId.trim();
     return getWithETag<string>(
         undefined,
         GET_PUBLIC_URL_PUBLIC,

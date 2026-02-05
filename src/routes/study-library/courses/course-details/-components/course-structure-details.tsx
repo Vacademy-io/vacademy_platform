@@ -108,6 +108,18 @@ export interface ModuleWithChapters {
 }
 export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
 
+/** Minimal subject shape from course-init; used when form-based subjects aren't ready yet */
+export type CourseInitSubject = {
+  id: string;
+  subject_name?: string;
+  subject_code?: string;
+  credit?: number;
+  thumbnail_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  subject_order?: number;
+};
+
 export const CourseStructureDetails = ({
   selectedSession,
   selectedLevel,
@@ -120,6 +132,7 @@ export const CourseStructureDetails = ({
   updateModuleStats,
   paymentType,
   dripConditionJson,
+  courseInitSubjects,
 }: {
   selectedSession: string;
   selectedLevel: string;
@@ -134,6 +147,8 @@ export const CourseStructureDetails = ({
   ) => void;
   paymentType?: string | null;
   dripConditionJson?: string | null;
+  /** Subjects from course-init (first session/level); used to call modules-with-chapters when form data isn't ready */
+  courseInitSubjects?: CourseInitSubject[] | null;
 }) => {
   const router = useRouter();
   const searchParams = router.state.location.search;
@@ -776,32 +791,35 @@ export const CourseStructureDetails = ({
   const slidesRequestsRef = useRef<Set<string>>(new Set());
 
   const getSlidesWithChapterId = useCallback(async (chapterId: string) => {
-    // Check if already loaded or currently loading
+    const key = String(chapterId);
     setSlidesLoadingStatus((prevStatus) => {
       if (
-        prevStatus[chapterId] === "loaded" ||
-        prevStatus[chapterId] === "loading"
+        prevStatus[key] === "loaded" ||
+        prevStatus[key] === "loading"
       ) {
-        return prevStatus; // Already handled
+        return prevStatus;
       }
-      return { ...prevStatus, [chapterId]: "loading" };
+      return { ...prevStatus, [key]: "loading" };
     });
 
-    // Prevent duplicate concurrent requests
-    if (slidesRequestsRef.current.has(chapterId)) {
+    if (slidesRequestsRef.current.has(key)) {
       return;
     }
-
-    slidesRequestsRef.current.add(chapterId);
+    slidesRequestsRef.current.add(key);
 
     try {
-      const slides = await fetchSlidesByChapterId(chapterId);
-      setSlidesMap((prev) => ({ ...prev, [chapterId]: slides }));
-      setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "loaded" }));
+      const raw = await fetchSlidesByChapterId(chapterId);
+      const slides = Array.isArray(raw)
+        ? raw
+        : (raw && typeof raw === "object" && (raw as { data?: unknown[] }).data)
+          ? (raw as { data: unknown[] }).data
+          : [];
+      setSlidesMap((prev) => ({ ...prev, [key]: slides }));
+      setSlidesLoadingStatus((prev) => ({ ...prev, [key]: "loaded" }));
     } catch {
-      setSlidesLoadingStatus((prev) => ({ ...prev, [chapterId]: "error" }));
+      setSlidesLoadingStatus((prev) => ({ ...prev, [key]: "error" }));
     } finally {
-      slidesRequestsRef.current.delete(chapterId);
+      slidesRequestsRef.current.delete(key);
     }
   }, []);
 
@@ -945,8 +963,6 @@ export const CourseStructureDetails = ({
         allModuleIds.add(mod.module.id);
         mod.chapters.forEach((ch) => {
           allChapterIds.add(ch.id);
-          // ✅ REMOVED: Don't load slides on expand all
-          // Slides will be loaded lazily when each chapter is opened
         });
       });
     });
@@ -954,6 +970,11 @@ export const CourseStructureDetails = ({
     setOpenSubjects(allSubjectIds);
     setOpenModules(allModuleIds);
     setOpenChapters(allChapterIds);
+
+    // Eager-load slides for all chapters so slide list shows when expanded
+    allChapterIds.forEach((chapterId) => {
+      getSlidesWithChapterId(chapterId);
+    });
   };
 
   const collapseAll = () => {
@@ -1574,7 +1595,7 @@ export const CourseStructureDetails = ({
               );
             })}
           {courseStructure === 4 &&
-            studyLibraryData?.map((subject: SubjectType) => {
+            studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
               return (
                 <Collapsible
@@ -1582,8 +1603,33 @@ export const CourseStructureDetails = ({
                   open={isSubjectOpen}
                   onOpenChange={() => toggleSubject(subject.id)}
                 >
+                  <CollapsibleTrigger
+                    className={cn(
+                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20"
+                    )}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                      {isSubjectOpen ? (
+                        <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                      ) : (
+                        <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                      )}
+                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary-600 text-white text-xs font-bold shrink-0">
+                        <Folder size={12} />
+                      </div>
+                      {showContentPrefixes && (
+                        <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
+                          S{idx + 1}
+                        </span>
+                      )}
+                      <span className="break-words font-medium" title={toTitleCase(subject.subject_name)}>
+                        {toTitleCase(subject.subject_name)}
+                      </span>
+                    </div>
+                  </CollapsibleTrigger>
                   <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative">
+                    <div className="space-y-1 relative pl-3 border-l-2 border-primary-200/60">
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
@@ -1926,28 +1972,24 @@ export const CourseStructureDetails = ({
                 </Collapsible>
               );
             })}
-          {courseStructure === 3 &&
-            studyLibraryData?.map((subject: SubjectType) => {
-              const isSubjectOpen = openSubjects.has(subject.id);
-              return (
-                <Collapsible
-                  key={subject.id}
-                  open={isSubjectOpen}
-                  onOpenChange={() => toggleSubject(subject.id)}
-                >
-                  <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative">
-                      {(subjectModulesMap[subject.id] ?? []).map((mod) => {
-                        const isModuleOpen = openModules.has(mod.module.id);
-                        return (
-                          <Collapsible
-                            key={mod.module.id}
-                            open={isModuleOpen}
-                            onOpenChange={() => toggleModule(mod.module.id)}
-                          >
-                            <CollapsibleContent className={`py-1`}>
-                              <div className="space-y-0.5">
-                                {(mod.chapters ?? []).map((ch, chIdx) => {
+          {/* Depth 3: chapters only (no subject, no module) */}
+          {courseStructure === 3 && (
+            <div className="space-y-0.5">
+              {(() => {
+                const chaptersWithContext: Array<{
+                  subject: SubjectType;
+                  mod: ModuleWithChapters;
+                  ch: Chapter;
+                  chIdx: number;
+                }> = [];
+                studyLibraryData?.forEach((subject: SubjectType) => {
+                  (subjectModulesMap[subject.id] ?? []).forEach((mod) => {
+                    (mod.chapters ?? []).forEach((ch, chIdx) => {
+                      chaptersWithContext.push({ subject, mod, ch, chIdx });
+                    });
+                  });
+                });
+                return chaptersWithContext.map(({ subject, mod, ch, chIdx }) => {
                                   const isChapterOpen = openChapters.has(ch.id);
 
                                   // Apply drip conditions
@@ -2207,20 +2249,13 @@ export const CourseStructureDetails = ({
                                       </CollapsibleContent>
                                     </Collapsible>
                                   );
-                                })}
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        );
-                      })}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            })}
+                });
+              })()}
+            </div>
+          )}
 
           {courseStructure === 2 &&
-            studyLibraryData?.map((subject: SubjectType) => {
+            studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
               return (
                 <Collapsible
@@ -2228,9 +2263,34 @@ export const CourseStructureDetails = ({
                   open={isSubjectOpen}
                   onOpenChange={() => toggleSubject(subject.id)}
                 >
+                  <CollapsibleTrigger
+                    className={cn(
+                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20"
+                    )}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                      {isSubjectOpen ? (
+                        <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                      ) : (
+                        <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                      )}
+                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary-600 text-white text-xs font-bold shrink-0">
+                        <Folder size={12} />
+                      </div>
+                      {showContentPrefixes && (
+                        <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
+                          S{idx + 1}
+                        </span>
+                      )}
+                      <span className="break-words font-medium" title={toTitleCase(subject.subject_name)}>
+                        {toTitleCase(subject.subject_name)}
+                      </span>
+                    </div>
+                  </CollapsibleTrigger>
                   <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative">
-                      {(subjectModulesMap[subject.id] ?? []).map((mod) => {
+                    <div className="space-y-1 relative pl-3 border-l-2 border-primary-200/60">
+                      {(subjectModulesMap[subject.id] ?? []).map((mod, modIdx) => {
                         const isModuleOpen = openModules.has(mod.module.id);
                         return (
                           <Collapsible
@@ -2238,9 +2298,29 @@ export const CourseStructureDetails = ({
                             open={isModuleOpen}
                             onOpenChange={() => toggleModule(mod.module.id)}
                           >
-                            <CollapsibleContent className={`py-1`}>
-                              <div className="space-y-0.5">
-                                {(mod.chapters ?? []).map((ch) => {
+                            <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                              <div className="flex min-w-0 flex-1 items-center gap-2">
+                                {isModuleOpen ? (
+                                  <CaretDown size={16} className="shrink-0 text-neutral-500" />
+                                ) : (
+                                  <CaretRight size={16} className="shrink-0 text-neutral-500" />
+                                )}
+                                <div className="flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white">
+                                  <FileText size={12} />
+                                </div>
+                                {showContentPrefixes && (
+                                  <span className="w-6 shrink-0 text-center font-mono text-xs text-neutral-500 bg-neutral-100 rounded px-1">
+                                    M{modIdx + 1}
+                                  </span>
+                                )}
+                                <span className="break-words" title={toTitleCase(mod.module.module_name)}>
+                                  {toTitleCase(mod.module.module_name)}
+                                </span>
+                              </div>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className={`py-1 pl-2`}>
+                              <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5">
+                                {(mod.chapters ?? []).map((ch, chIdx) => {
                                   const isChapterOpen = openChapters.has(ch.id);
 
                                   return (
@@ -2252,6 +2332,26 @@ export const CourseStructureDetails = ({
                                         getSlidesWithChapterId(ch.id);
                                       }}
                                     >
+                                      <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer">
+                                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                          {isChapterOpen ? (
+                                            <CaretDown size={14} className="shrink-0 text-neutral-500" />
+                                          ) : (
+                                            <CaretRight size={14} className="shrink-0 text-neutral-500" />
+                                          )}
+                                          <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
+                                            <PresentationChart size={10} />
+                                          </div>
+                                          {showContentPrefixes && (
+                                            <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
+                                              C{chIdx + 1}
+                                            </span>
+                                          )}
+                                          <span className="break-words text-sm font-semibold text-neutral-800" title={toTitleCase(ch.chapter_name)}>
+                                            {toTitleCase(ch.chapter_name)}
+                                          </span>
+                                        </div>
+                                      </CollapsibleTrigger>
                                       <CollapsibleContent>
                                         <div className="space-y-px pl-2 relative">
                                           {(slidesMap[ch.id] ?? []).length ===
@@ -2791,6 +2891,16 @@ export const CourseStructureDetails = ({
     getSlidesWithChapterIdRef.current = getSlidesWithChapterId;
   }, [getSlidesWithChapterId]);
 
+  // When any chapter is open and its slides are not yet loaded (or failed), load them
+  useEffect(() => {
+    openChapters.forEach((chapterId) => {
+      const status = slidesLoadingStatus[chapterId] ?? "idle";
+      if (status !== "loading" && status !== "loaded") {
+        getSlidesWithChapterId(chapterId);
+      }
+    });
+  }, [openChapters, slidesLoadingStatus, getSlidesWithChapterId]);
+
   useEffect(() => {
     handleLoadingChangeRef.current = handleLoadingChange;
   }, [handleLoadingChange]);
@@ -2805,19 +2915,51 @@ export const CourseStructureDetails = ({
     courseDataRef.current = courseData;
   }, [courseData]);
 
-  // Trigger module loading when session or level changes
+  // Map course-init subjects to SubjectType for use in fetch and UI
+  const courseInitSubjectsAsSubjectType = useMemo((): SubjectType[] => {
+    if (!courseInitSubjects?.length) return [];
+    return courseInitSubjects.map((s, index) => ({
+      id: s.id,
+      subject_name: s.subject_name ?? "",
+      subject_code: s.subject_code ?? "",
+      credit: s.credit ?? 0,
+      thumbnail_id: s.thumbnail_id ?? null,
+      created_at: s.created_at ?? null,
+      updated_at: s.updated_at ?? null,
+      subject_order: s.subject_order ?? index,
+      percentage_completed: 0,
+    }));
+  }, [courseInitSubjects]);
+
+  // Subjects to use: from form (getSubjectDetails) or fallback to course-init when form not ready
+  const effectiveSubjects = useMemo(() => {
+    const fromForm = getSubjectDetails(courseData, selectedSession, selectedLevel);
+    if (fromForm.length > 0) return fromForm;
+    return courseInitSubjectsAsSubjectType;
+  }, [courseData, selectedSession, selectedLevel, courseInitSubjectsAsSubjectType]);
+
+  // Key that changes when subjects for current session/level become available (form or course-init).
+  const subjectsKeyForCurrentSelection = useMemo(
+    () => effectiveSubjects.map((s) => s.id).join(","),
+    [effectiveSubjects]
+  );
+
+  // Trigger module loading when session, level, or courseData (subjects) changes
   // Use an additional ref to prevent running while already loading
   const isLoadingModulesRef = useRef(false);
-  
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   useEffect(() => {
-    // Create a composite key that captures all relevant data
-    // Use courseDataRef.current to avoid courseData being a dependency
-    const subjects = getSubjectDetails(courseDataRef.current, selectedSession, selectedLevel);
-    const fetchKey = `${packageSessionId}:${subjects.map(s => s.id).join(",")}`;
+    // Use effectiveSubjects (form or course-init) so we call modules-with-chapters as soon as we have packageSessionId + subjects
+    const subjects = effectiveSubjects;
+    const fetchKey = `${packageSessionId}:${subjects.map((s) => s.id).join(",")}`;
 
     // Skip if we've already fetched for this exact combination OR if currently loading
-    if (!packageSessionId || !subjects.length || fetchKey === lastFetchedKeyRef.current || isLoadingModulesRef.current) {
+    if (
+      !packageSessionId ||
+      !subjects.length ||
+      fetchKey === lastFetchedKeyRef.current ||
+      isLoadingModulesRef.current
+    ) {
       return;
     }
 
@@ -2847,13 +2989,24 @@ export const CourseStructureDetails = ({
           }
           if (firstChapterId) {
             openChaptersSet.add(firstChapterId);
-            // Automatically load slides for the first opened chapter
-            getSlidesWithChapterIdRef.current(firstChapterId);
           }
 
           setOpenSubjects(openSubjectsSet);
           setOpenModules(openModulesSet);
           setOpenChapters(openChaptersSet);
+
+          // Load slides for ALL chapters so the slide list shows when any chapter is expanded (course-details page)
+          const allChapterIds: string[] = [];
+          Object.values(modulesMap).forEach((mods) => {
+            mods.forEach((m) => {
+              (m.chapters ?? []).forEach((ch) => {
+                if (ch?.id) allChapterIds.push(ch.id);
+              });
+            });
+          });
+          allChapterIds.forEach((chapterId) => {
+            getSlidesWithChapterIdRef.current(chapterId);
+          });
         }
 
         // Update module stats for parent component
@@ -2869,17 +3022,12 @@ export const CourseStructureDetails = ({
       }
     };
     loadModules();
-  }, [packageSessionId, selectedSession, selectedLevel]);
+  }, [packageSessionId, selectedSession, selectedLevel, subjectsKeyForCurrentSelection, effectiveSubjects]);
 
+  // Keep studyLibraryData in sync with effective subjects (form or course-init) so UI shows the list
   useEffect(() => {
-    const studyLibraryData = getSubjectDetails(
-      courseData,
-      selectedSession,
-      selectedLevel
-    );
-
-    setStudyLibraryData(studyLibraryData);
-  }, [selectedSession, selectedLevel, courseData]);
+    setStudyLibraryData(effectiveSubjects);
+  }, [effectiveSubjects]);
 
   // Prefetch thumbnails for modules/chapters when at their depth
   useEffect(() => {

@@ -173,7 +173,7 @@ public class LearnerEnrollRequestService {
                         .getBlockedPackageSessions().get(0);
                 String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(blocked.getRetryDate());
                 throw new VacademyException(
-                        String.format("You can retry operation on %s", retryDateStr));
+                        new String("You are already enrolled in this demo. Please complete your current trial first."));
             } else {
                 // Multiple package sessions - check if at least one is allowed
                 if (gapValidationResult.getAllowedPackageSessionIds().isEmpty()) {
@@ -247,18 +247,18 @@ public class LearnerEnrollRequestService {
             if (!hasWorkflow) {
                 log.info("FREE enrollment completed. Sending enrollment notifications for user: {}",
                         learnerEnrollRequestDTO.getUser().getId());
-                sendDynamicNotificationForEnrollment(
-                        learnerEnrollRequestDTO.getInstituteId(),
-                        learnerEnrollRequestDTO.getUser(),
-                        paymentOption,
-                        enrollInvite,
-                        enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
-                );
-
-                sendReferralInvitationEmail(
-                        learnerEnrollRequestDTO.getInstituteId(),
-                        learnerEnrollRequestDTO.getUser(),
-                        enrollInvite);
+//                sendDynamicNotificationForEnrollment(
+//                        learnerEnrollRequestDTO.getInstituteId(),
+//                        learnerEnrollRequestDTO.getUser(),
+//                        paymentOption,
+//                        enrollInvite,
+//                        enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
+//                );
+//
+//                sendReferralInvitationEmail(
+//                        learnerEnrollRequestDTO.getInstituteId(),
+//                        learnerEnrollRequestDTO.getUser(),
+//                        enrollInvite);
             } else {
                 log.info(
                         "FREE enrollment with workflow. Notifications skipped for user: {}. Workflow will handle enrollment.",

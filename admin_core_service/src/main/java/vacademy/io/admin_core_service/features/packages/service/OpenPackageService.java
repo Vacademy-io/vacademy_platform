@@ -290,9 +290,11 @@ public class OpenPackageService {
                                         projection.getReadTimeInMinutes(),
                                         projection.getPackageType(),
                                         projection.getEnrollInviteId(),
+                                        projection.getPsliId(),
                                         projection.getPaymentOptionId(),
                                         projection.getPaymentOptionType(),
-                                        null, // Corrected: paymentOptionStatus is not in the projection
+                                        projection.getPaymentOptionStatus(),
+                                        projection.getPaymentPlanId(),
                                         projection.getMinPlanActualPrice(),
                                         projection.getCurrency(),
                                         projection.getAvailableSlots());

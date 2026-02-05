@@ -37,11 +37,13 @@ public class PackageDetailV2DTO {
     private Long readTimeInMinutes;
     private String packageType;
 
-    // Enroll Invite + Payment details
+    // Enroll Invite + Payment details (default invite -> psli -> last updated payment_option -> its plan)
     private String enrollInviteId;
+    private String psliId;
     private String paymentOptionId;
     private String paymentOptionType;
     private String paymentOptionStatus;
+    private String paymentPlanId;
     private Double minPlanActualPrice;
     private String currency;
     private Integer availableSlots;

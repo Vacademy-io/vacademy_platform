@@ -428,5 +428,118 @@ Follow these rules strictly at all times.
             logger.error(f"Error validating API key: {e}")
             return None
 
+    def get_video_branding(self, institute_id: str) -> Dict[str, Any]:
+        """
+        Get video branding configuration for an institute.
+        Returns default Vacademy branding if not configured.
+        
+        Args:
+            institute_id: ID of the institute
+            
+        Returns:
+            Dictionary containing video branding configuration
+        """
+        # Default Vacademy branding
+        DEFAULT_BRANDING = {
+            "intro": {
+                "enabled": True,
+                "duration_seconds": 3.0,
+                "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);'><h1 style='color:#fff; font-size:72px; font-family:Inter,sans-serif; margin:0;'>Vacademy</h1><p style='color:rgba(255,255,255,0.8); font-size:24px; margin-top:16px;'>Learn Smarter</p></div>"
+            },
+            "outro": {
+                "enabled": True,
+                "duration_seconds": 4.0,
+                "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:#111;'><h2 style='color:#fff; font-size:56px; font-family:Inter,sans-serif; margin:0;'>Thank You for Watching</h2><p style='color:#888; font-size:28px; margin-top:24px;'>Powered by Vacademy</p></div>"
+            },
+            "watermark": {
+                "enabled": True,
+                "position": "top-right",
+                "max_width": 200,
+                "max_height": 80,
+                "margin": 40,
+                "opacity": 0.7,
+                "html": "<div style='font-family:Inter,sans-serif; font-weight:bold; color:rgba(170,170,170,0.7); font-size:18px; text-align:right;'>Vacademy</div>"
+            }
+        }
+        
+        try:
+            stmt = text("SELECT setting_json FROM institutes WHERE id = :institute_id")
+            result = self.db.execute(stmt, {"institute_id": institute_id})
+            row = result.fetchone()
+            
+            if not row or not row[0]:
+                return {"branding": DEFAULT_BRANDING, "has_custom_branding": False}
+                
+            settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            branding = settings.get("setting", {}).get("VIDEO_BRANDING")
+            
+            if branding:
+                # Merge with defaults to ensure all keys exist
+                merged = {
+                    "intro": {**DEFAULT_BRANDING["intro"], **(branding.get("intro") or {})},
+                    "outro": {**DEFAULT_BRANDING["outro"], **(branding.get("outro") or {})},
+                    "watermark": {**DEFAULT_BRANDING["watermark"], **(branding.get("watermark") or {})}
+                }
+                return {"branding": merged, "has_custom_branding": True}
+            
+            return {"branding": DEFAULT_BRANDING, "has_custom_branding": False}
+            
+        except Exception as e:
+            logger.error(f"Error fetching video branding for institute {institute_id}: {e}")
+            return {"branding": DEFAULT_BRANDING, "has_custom_branding": False}
+
+    def update_video_branding(self, institute_id: str, branding: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update video branding configuration for an institute.
+        
+        Args:
+            institute_id: ID of the institute
+            branding: Branding configuration dictionary
+            
+        Returns:
+            Updated branding configuration
+        """
+        try:
+            # Get current settings
+            stmt = text("SELECT setting_json FROM institutes WHERE id = :institute_id")
+            result = self.db.execute(stmt, {"institute_id": institute_id})
+            row = result.fetchone()
+            
+            if not row:
+                raise ValueError(f"Institute {institute_id} not found")
+            
+            current_settings = {}
+            if row[0]:
+                current_settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            
+            # Ensure the nested structure exists
+            if "setting" not in current_settings:
+                current_settings["setting"] = {}
+            
+            # Update VIDEO_BRANDING
+            current_settings["setting"]["VIDEO_BRANDING"] = branding
+            
+            # Update the database
+            update_stmt = text("""
+                UPDATE institutes
+                SET setting_json = :setting_json
+                WHERE id = :institute_id
+            """)
+            
+            self.db.execute(update_stmt, {
+                "setting_json": json.dumps(current_settings),
+                "institute_id": institute_id
+            })
+            
+            self.db.commit()
+            
+            return {"branding": branding, "has_custom_branding": True}
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating video branding for institute {institute_id}: {e}")
+            raise
+
 
 __all__ = ["InstituteSettingsService"]
+

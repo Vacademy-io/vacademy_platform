@@ -3,25 +3,47 @@ Schemas for AI Video Generation API.
 """
 from __future__ import annotations
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field
 
 
+# Content types supported by the generation pipeline
+ContentTypeEnum = Literal[
+    "VIDEO",              # Time-synced HTML overlays with audio (default)
+    "QUIZ",               # Question-based assessments  
+    "STORYBOOK",          # Page-by-page narratives
+    "INTERACTIVE_GAME",   # Self-contained HTML games
+    "PUZZLE_BOOK",        # Collection of puzzles
+    "SIMULATION",         # Physics/economic sandboxes
+    "FLASHCARDS",         # Spaced-repetition cards
+    "MAP_EXPLORATION",    # Interactive SVG maps
+    # New content types
+    "WORKSHEET",          # Printable/interactive homework
+    "CODE_PLAYGROUND",    # Interactive code exercises
+    "TIMELINE",           # Chronological event visualization
+    "CONVERSATION"        # Language learning dialogues
+]
+
+
 class VideoGenerationRequest(BaseModel):
-    """Request for generating AI video."""
+    """Request for generating AI video or interactive content."""
     
-    prompt: str = Field(..., description="Text prompt for video generation")
-    language: str = Field(default="English", description="Language for video content (e.g., English, Spanish, French)")
-    captions_enabled: bool = Field(default=True, description="Enable/disable captions in the video")
+    prompt: str = Field(..., description="Text prompt for content generation")
+    content_type: ContentTypeEnum = Field(
+        default="VIDEO",
+        description="Type of content to generate. Determines navigation mode and required libraries."
+    )
+    language: str = Field(default="English", description="Language for content (e.g., English, Spanish, French)")
+    captions_enabled: bool = Field(default=True, description="Enable/disable captions (primarily for VIDEO type)")
     html_quality: str = Field(default="advanced", description="HTML quality mode: 'classic' (frames/animation only) or 'advanced' (all features)")
-    video_id: Optional[str] = Field(default=None, description="Optional video ID (generated if not provided)")
+    video_id: Optional[str] = Field(default=None, description="Optional content ID (generated if not provided)")
     target_audience: str = Field(
         default="General/Adult", 
         description="Target audience for age-appropriate content. Examples: 'Class 3 (Ages 7-8)', 'Class 9-10 (Ages 14-15)', 'College/Adult'"
     )
     target_duration: str = Field(
         default="2-3 minutes", 
-        description="Target video duration. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'"
+        description="Target duration for VIDEO type. For other types, controls content length."
     )
     institute_id: Optional[str] = Field(
         default=None,
@@ -37,7 +59,7 @@ class VideoGenerationRequest(BaseModel):
     )
     voice_gender: str = Field(
         default="female",
-        description="Voice gender for TTS: 'male' or 'female'. Default is 'female'."
+        description="Voice gender for TTS (VIDEO/STORYBOOK): 'male' or 'female'. Default is 'female'."
     )
     tts_provider: str = Field(
         default="edge",
@@ -48,6 +70,7 @@ class VideoGenerationRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "prompt": "Explain the concept of quantum entanglement to a 5 year old",
+                "content_type": "VIDEO",
                 "language": "English",
                 "captions_enabled": True,
                 "html_quality": "advanced",
@@ -74,12 +97,13 @@ class VideoGenerationResumeRequest(BaseModel):
 
 
 class VideoStatusResponse(BaseModel):
-    """Response for video generation status."""
+    """Response for video/content generation status."""
     
     id: str
     video_id: str
     current_stage: str
     status: str
+    content_type: str = Field(default="VIDEO", description="Content type: VIDEO, QUIZ, STORYBOOK, etc.")
     file_ids: Dict[str, str]
     s3_urls: Dict[str, str]
     prompt: Optional[str]
@@ -97,6 +121,7 @@ class VideoStatusResponse(BaseModel):
                 "video_id": "quantum-entanglement-101",
                 "current_stage": "HTML",
                 "status": "COMPLETED",
+                "content_type": "VIDEO",
                 "file_ids": {
                     "script": "file-uuid-1",
                     "audio": "file-uuid-2",

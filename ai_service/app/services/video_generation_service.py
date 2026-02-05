@@ -94,6 +94,7 @@ class VideoGenerationService:
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
         tts_provider: str = "edge",
+        content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None
@@ -109,6 +110,7 @@ class VideoGenerationService:
             resume: Whether to resume from existing progress
             target_audience: Target audience for age-appropriate content
             target_duration: Target video duration (e.g., '5 minutes')
+            content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
             
         Yields:
             SSE events with progress updates
@@ -116,7 +118,7 @@ class VideoGenerationService:
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info(f"[VideoGenService] generate_till_stage called with video_id={video_id}, target={target_stage}, resume={resume}")
+        logger.info(f"[VideoGenService] generate_till_stage called with video_id={video_id}, target={target_stage}, content_type={content_type}, resume={resume}")
         logger.info(f"[VideoGenService] Prompt: {prompt[:100]}...")
         
         # Validate target stage
@@ -144,13 +146,15 @@ class VideoGenerationService:
             video_record = self.repository.create(
                 video_id=video_id,
                 prompt=prompt,
-                language=language
+                language=language,
+                content_type=content_type
             )
             yield {
                 "type": "progress",
                 "stage": "PENDING",
-                "message": "Video generation initialized",
+                "message": f"{content_type} generation initialized",
                 "video_id": video_id,
+                "content_type": content_type,
                 "percentage": 0
             }
         
@@ -193,6 +197,7 @@ class VideoGenerationService:
                     target_duration=target_duration,
                     voice_gender=voice_gender,
                     tts_provider=tts_provider,
+                    content_type=content_type,
                     db_session=db_session,
                     institute_id=institute_id,
                     user_id=user_id
@@ -251,6 +256,7 @@ class VideoGenerationService:
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
         tts_provider: str = "edge",
+        content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None
@@ -301,6 +307,21 @@ class VideoGenerationService:
             pipeline_args["html_model"] = model
             
         pipeline = VideoGenerationPipeline(**pipeline_args)
+        
+        # Fetch branding configuration from institute settings
+        branding_config = None
+        if institute_id and db_session:
+            try:
+                from .institute_settings_service import InstituteSettingsService
+                settings_service = InstituteSettingsService(db_session)
+                branding_result = settings_service.get_video_branding(institute_id)
+                branding_config = branding_result.get("branding")
+                if branding_result.get("has_custom_branding"):
+                    logger.info(f"[VideoGenService] Using custom branding for institute {institute_id}")
+                else:
+                    logger.info(f"[VideoGenService] Using default Vacademy branding for institute {institute_id}")
+            except Exception as e:
+                logger.warning(f"[VideoGenService] Could not fetch branding config: {e}. Using defaults.")
         
         # Map stage indices to pipeline stage names and file keys
         stage_config = {
@@ -409,6 +430,16 @@ class VideoGenerationService:
                         logger.info(f"[VideoGenService] Downloading narration.words.json from S3...")
                         if self.s3_service.download_file(words_url, words_path):
                             logger.info(f"[VideoGenService] Successfully downloaded narration.words.json")
+            
+            # Need branding_meta.json for render stage (audio delay)
+            if start_stage_idx >= 5:  # RENDER
+                branding_meta_url = video_record.s3_urls.get("branding_meta")
+                if branding_meta_url:
+                    branding_meta_path = run_dir / "branding_meta.json"
+                    if not branding_meta_path.exists():
+                        logger.info(f"[VideoGenService] Downloading branding_meta.json from S3...")
+                        if self.s3_service.download_file(branding_meta_url, branding_meta_path):
+                            logger.info(f"[VideoGenService] Successfully downloaded branding_meta.json")
         
         # Calculate percentage per stage
         total_stages = target_stage_idx - start_stage_idx + 1
@@ -450,6 +481,7 @@ class VideoGenerationService:
             ],
             "html": [
                 (None, "generated_images", "generated_images"),  # Directory - process FIRST to build image mapping
+                (None, "branding_meta", "branding_meta.json"),  # Branding metadata for audio delay
                 ("timeline_json", "timeline", "time_based_frame.json")  # Process AFTER images to update URLs
             ],
             "render": [("video_path", "video", "output.mp4")]
@@ -499,7 +531,9 @@ class VideoGenerationService:
                     target_audience=target_audience,
                     target_duration=target_duration,
                     voice_gender=voice_gender,
-                    tts_provider=tts_provider
+                    tts_provider=tts_provider,
+                    branding_config=branding_config,
+                    content_type=content_type
                 )
                 
                 with ThreadPoolExecutor() as executor:
@@ -696,11 +730,23 @@ class VideoGenerationService:
                                                 timeline_content = file_path_obj.read_text(encoding='utf-8')
                                                 timeline_data = json.loads(timeline_content)
                                                 
+                                                # Handle both new format (dict with meta + entries) and old format (flat list)
+                                                if isinstance(timeline_data, dict) and "entries" in timeline_data:
+                                                    # New format: { "meta": {...}, "entries": [...] }
+                                                    entries_list = timeline_data["entries"]
+                                                    is_new_format = True
+                                                    logger.info(f"[VideoGenService] Detected new timeline format with meta + entries")
+                                                else:
+                                                    # Old format: flat list of entries
+                                                    entries_list = timeline_data
+                                                    is_new_format = False
+                                                    logger.info(f"[VideoGenService] Detected old timeline format (flat list)")
+                                                
                                                 # Update image URLs in HTML
                                                 updated_count = 0
-                                                total_entries = len(timeline_data)
+                                                total_entries = len(entries_list)
                                                 
-                                                for entry_idx, entry in enumerate(timeline_data):
+                                                for entry_idx, entry in enumerate(entries_list):
                                                     html = entry.get("html", "")
                                                     if html:
                                                         original_html = html
@@ -747,7 +793,7 @@ class VideoGenerationService:
                                                                 logger.debug(f"[VideoGenService] Replaced src {src_value} with {matched_s3_url} in entry {entry_idx}")
                                                         
                                                         # Strategy 3: Regex replace file:// paths in src attributes (fallback)
-                                                        file_url_pattern = r'src=["\'](file://[^"\']+)["\']'
+                                                        file_url_pattern = r'src=["\']?(file://[^"\'\s]+)["\']?'
                                                         def replace_file_url(m):
                                                             src_path = m.group(1)
                                                             src_normalized = src_path.replace('\\', '/').lower()
@@ -781,9 +827,10 @@ class VideoGenerationService:
                                                         sample_keys = list(image_path_mapping.keys())[:3]
                                                         logger.debug(f"[VideoGenService] Sample image_path_mapping keys: {sample_keys}")
                                                         # Check if HTML contains any file:// URLs
-                                                        file_urls_in_html = re.findall(r'src=["\'](file://[^"\']+)["\']', timeline_data[0].get("html", ""))
-                                                        if file_urls_in_html:
-                                                            logger.debug(f"[VideoGenService] Found file:// URLs in HTML: {file_urls_in_html[:3]}")
+                                                        if entries_list:
+                                                            file_urls_in_html = re.findall(r'src=["\']?(file://[^"\'\s]+)["\']?', entries_list[0].get("html", ""))
+                                                            if file_urls_in_html:
+                                                                logger.debug(f"[VideoGenService] Found file:// URLs in HTML: {file_urls_in_html[:3]}")
                                             except Exception as e:
                                                 logger.warning(f"[VideoGenService] Failed to update image URLs in {file_name}: {e}. Uploading original file.", exc_info=True)
                                         else:

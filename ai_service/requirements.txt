@@ -12,3 +12,4 @@ moviepy==1.0.3
 playwright==1.49.1
 beautifulsoup4==4.12.3
 google-cloud-texttospeech
+faster-whisper

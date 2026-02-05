@@ -57,6 +57,21 @@ except ImportError:
     # We will raise to ensure the user knows something is wrong.
     raise RuntimeError("Could not import prompts.py. Ensure it exists in the same directory.")
 
+# Import content-type-specific prompts for QUIZ, STORYBOOK, etc.
+try:
+    from content_type_prompts import (
+        CONTENT_TYPE_PROMPTS,
+        get_content_type_prompts,
+        format_user_prompt,
+    )
+except ImportError:
+    # Not all deployments may have content_type_prompts yet
+    CONTENT_TYPE_PROMPTS = {}
+    def get_content_type_prompts(content_type):
+        return {}
+    def format_user_prompt(content_type, **kwargs):
+        return None
+
 DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 DEFAULT_GEMINI_IMAGE_KEY = os.environ.get("GEMINI_API_KEY", "")
 
@@ -407,26 +422,41 @@ class GoogleCloudTTSClient:
         )
 
         # Request timepoints for SSML marks
-        response = client.synthesize_speech(
-            input=input_text, 
-            voice=voice, 
-            audio_config=audio_config,
-            enable_time_pointing=[texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK]
-        )
+        # Note: Time pointing may not be available in all API versions/voices
+        try:
+            # Try using TimepointType enum (newer API versions)
+            response = client.synthesize_speech(
+                request={
+                    "input": input_text,
+                    "voice": voice,
+                    "audio_config": audio_config,
+                    "enable_time_pointing": ["SSML_MARK"]
+                }
+            )
+        except Exception as tp_error:
+            # Fallback: synthesize without timepoints if API doesn't support it
+            print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis")
+            response = client.synthesize_speech(
+                input=input_text, 
+                voice=voice, 
+                audio_config=audio_config
+            )
 
         # Save audio
         output_path.write_bytes(response.audio_content)
         
-        # Process timepoints to create word timestamps
-        word_entries = self._process_timepoints(response, word_list)
+        # Process timepoints to create word timestamps (if available)
+        word_entries = []
+        if hasattr(response, 'timepoints') and response.timepoints:
+            word_entries = self._process_timepoints(response, word_list)
         
         if word_entries:
             print(f"    ✅ Got {len(word_entries)} word timestamps from Google TTS Timepoints")
             raw_json_path.write_text(json.dumps(word_entries, indent=2))
         else:
-            # Fallback to linear interpolation if no timepoints returned
-            print(f"    ⚠️ No timepoints returned, using linear interpolation fallback")
-            self._generate_mock_timestamps(text, raw_json_path)
+            # Fallback to Whisper alignment if no timepoints returned
+            print(f"    ⚠️ No timepoints returned, using Whisper alignment fallback")
+            self._generate_timestamps_with_fallback(output_path, text, raw_json_path)
 
     def _create_ssml_with_marks(self, text: str) -> tuple:
         """Create SSML with <mark> tags for each word to track timing."""
@@ -488,8 +518,65 @@ class GoogleCloudTTSClient:
         
         return word_entries
 
+    def _align_with_whisper(self, audio_path: Path, text: str) -> list:
+        """Use Whisper for forced alignment to get accurate word timestamps from audio."""
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            print("    ⚠️ faster-whisper not installed. Run: pip install faster-whisper")
+            return []
+        
+        try:
+            print("    🎯 Running Whisper forced alignment...")
+            
+            # Use tiny or base model for speed (word-level timing is accurate enough)
+            # Compute type determines precision/speed tradeoff
+            model = WhisperModel("base", device="cpu", compute_type="int8")
+            
+            # Transcribe with word timestamps
+            segments, info = model.transcribe(
+                str(audio_path),
+                word_timestamps=True,
+                language="en"  # TODO: Make this dynamic based on video language
+            )
+            
+            word_entries = []
+            for segment in segments:
+                if segment.words:
+                    for word_info in segment.words:
+                        word_entries.append({
+                            "word": word_info.word.strip(),
+                            "start": round(word_info.start, 3),
+                            "end": round(word_info.end, 3)
+                        })
+            
+            if word_entries:
+                print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
+            else:
+                print("    ⚠️ Whisper returned no word timestamps")
+            
+            return word_entries
+            
+        except Exception as e:
+            print(f"    ❌ Whisper alignment failed: {e}")
+            return []
+
+    def _generate_timestamps_with_fallback(self, audio_path: Path, text: str, raw_json_path: Path) -> None:
+        """Generate word timestamps using Whisper alignment, with linear fallback."""
+        
+        # Try Whisper alignment first
+        word_entries = self._align_with_whisper(audio_path, text)
+        
+        if word_entries:
+            raw_json_path.write_text(json.dumps(word_entries, indent=2))
+            return
+        
+        # Fallback to linear interpolation
+        print("    ⚠️ Using linear interpolation fallback (less accurate)")
+        self._generate_mock_timestamps(text, raw_json_path)
+
     def _generate_mock_timestamps(self, text: str, raw_json_path: Path) -> None:
-        """Fallback: Linear interpolation for timestamps (approx 16 chars/sec)."""
+        """Last resort fallback: Linear interpolation for timestamps (approx 16 chars/sec)."""
         import re
         
         words = re.findall(r'\S+', text)
@@ -533,6 +620,31 @@ class VideoGenerationPipeline:
         self.runs_dir = runs_dir
         self.runs_dir.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def _get_default_branding() -> Dict[str, Any]:
+        """Return default Vacademy branding configuration."""
+        return {
+            "intro": {
+                "enabled": True,
+                "duration_seconds": 3.0,
+                "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);'><h1 style='color:#fff; font-size:72px; font-family:Inter,sans-serif; margin:0;'>Vacademy</h1><p style='color:rgba(255,255,255,0.8); font-size:24px; margin-top:16px;'>Learn Smarter</p></div>"
+            },
+            "outro": {
+                "enabled": True,
+                "duration_seconds": 4.0,
+                "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:#111;'><h2 style='color:#fff; font-size:56px; font-family:Inter,sans-serif; margin:0;'>Thank You for Watching</h2><p style='color:#888; font-size:28px; margin-top:24px;'>Powered by Vacademy</p></div>"
+            },
+            "watermark": {
+                "enabled": True,
+                "position": "top-right",
+                "max_width": 200,
+                "max_height": 80,
+                "margin": 40,
+                "opacity": 0.7,
+                "html": "<div style='font-family:Inter,sans-serif; font-weight:bold; color:rgba(170,170,170,0.7); font-size:18px; text-align:right;'>Vacademy</div>"
+            }
+        }
+
     def run(
         self,
         base_prompt: Optional[str],
@@ -548,6 +660,8 @@ class VideoGenerationPipeline:
         target_duration: str = "2-3 minutes",
         voice_gender: str = "female",
         tts_provider: str = "edge",
+        branding_config: Optional[Dict[str, Any]] = None,
+        content_type: str = "VIDEO",
     ) -> Dict[str, Any]:
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
@@ -576,12 +690,17 @@ class VideoGenerationPipeline:
         print(f"📝 Captions enabled: {show_captions}")
         print(f"🎨 HTML Quality: {html_quality}")
         print(f"🖼️  Background Type: {background_type}")
+        print(f"📦 Content Type: {content_type}")
         
         # Store parameters for use in pipeline stages
         self._current_language = language
         self._current_show_captions = show_captions
         self._current_html_quality = html_quality
         self._current_background_type = background_type
+        self._current_content_type = content_type
+        
+        # Store branding config (use defaults if not provided)
+        self._current_branding = branding_config or self._get_default_branding()
         
         stage_idx = self.STAGE_INDEX[start_from]
         # stop_at means "stop after this stage", so stop_idx is the next stage after stop_at
@@ -628,7 +747,7 @@ class VideoGenerationPipeline:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
             print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
-            script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration)
+            script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
             script_plan = script_out["result"]
             accumulate_usage(script_out.get("usage", {}))
         else:
@@ -692,26 +811,42 @@ class VideoGenerationPipeline:
             print("🎨 Designing Visual Style Guide ...")
             style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type)
             
-            print("🧠 Building minute-level segments ...")
-            # We need words for segmentation. If words is empty, we can't segment.
-            # But do_html implies we are past words stage, so words should be populated.
-            if not words and self.STAGE_INDEX["words"] < stop_idx:
-                 pass # Warning?
-                 
-            segments = self._segment_words(words)
-            if not segments:
-                raise RuntimeError("Failed to derive segments from narration.")
-            print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
-            html_results, html_usage = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
-            html_segments = html_results
-            accumulate_usage(html_usage)
+            # CHECK FOR INTERACTIVE CONTENT TYPES
+            interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION"]
             
-            print("🖼️  Generating AI images for visual assets ...")
-            html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
-            accumulate_usage(image_usage)
+            if content_type in interactive_types:
+                print(f"🎮 Processing interactive content type: {content_type}")
+                # For interactive content, we bypass audio-based segmentation and directly use the structure from the plan
+                html_segments, html_usage = self._process_interactive_content(script_plan, content_type)
+                accumulate_usage(html_usage)
+                
+                # Some interactive types still need image generation (like Storybooks)
+                print("🖼️  Checking for visual assets to generate ...")
+                html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
+                accumulate_usage(image_usage)
+            else:
+                # STANDARD VIDEO FLOW
+                print("🧠 Building minute-level segments ...")
+                # We need words for segmentation. If words is empty, we can't segment.
+                # But do_html implies we are past words stage, so words should be populated.
+                if not words and self.STAGE_INDEX["words"] < stop_idx:
+                     pass # Warning?
+                     
+                segments = self._segment_words(words)
+                if not segments:
+                    raise RuntimeError("Failed to derive segments from narration.")
+                
+                print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
+                html_results, html_usage = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
+                html_segments = html_results
+                accumulate_usage(html_usage)
+                
+                print("🖼️  Generating AI images for visual assets ...")
+                html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
+                accumulate_usage(image_usage)
             
             print("🧾 Writing timeline JSON ...")
-            timeline_path = self._write_timeline(html_segments, run_dir)
+            timeline_path = self._write_timeline(html_segments, run_dir, self._current_branding, self._current_content_type)
         
         if do_render:
             print("🎥 Rendering final video with Playwright...")
@@ -762,34 +897,193 @@ class VideoGenerationPipeline:
         }
 
     # --- Script generation -------------------------------------------------
-    def _draft_script(self, base_prompt: str, run_dir: Path, language: str = "English", target_audience: str = "General/Adult", target_duration: str = "2-3 minutes") -> Dict[str, Any]:
-        system_prompt = SCRIPT_SYSTEM_PROMPT
-        user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
-            base_prompt=base_prompt.strip(), 
-            language=language,
-            target_audience=target_audience,
-            target_duration=target_duration
-        ).strip()
+    def _draft_script(
+        self, 
+        base_prompt: str, 
+        run_dir: Path, 
+        language: str = "English", 
+        target_audience: str = "General/Adult", 
+        target_duration: str = "2-3 minutes",
+        content_type: str = "VIDEO"
+    ) -> Dict[str, Any]:
+        """
+        Generate a script or content plan based on the content type.
+        
+        For VIDEO: Generates a narration script for TTS
+        For QUIZ: Generates quiz questions and answers
+        For STORYBOOK: Generates page-by-page story with illustrations
+        For INTERACTIVE_GAME: Generates game data and logic
+        etc.
+        """
+        # Get content-type-specific prompts if available
+        ct_prompts = get_content_type_prompts(content_type)
+        
+        if content_type == "VIDEO" or not ct_prompts.get("system"):
+            # Use existing VIDEO prompts
+            system_prompt = SCRIPT_SYSTEM_PROMPT
+            user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
+                base_prompt=base_prompt.strip(), 
+                language=language,
+                target_audience=target_audience,
+                target_duration=target_duration
+            ).strip()
+        else:
+            # Use content-type-specific prompts
+            system_prompt = ct_prompts["system"]
+            
+            # Format user prompt with all available parameters
+            defaults = ct_prompts.get("defaults", {})
+            user_prompt = ct_prompts["user_template"].format(
+                base_prompt=base_prompt.strip(),
+                language=language,
+                target_audience=target_audience,
+                target_duration=target_duration,
+                # Content-type-specific defaults
+                question_count=defaults.get("question_count", 10),
+                page_count=defaults.get("page_count", 12),
+                card_count=defaults.get("card_count", 20),
+                puzzle_count=defaults.get("puzzle_count", 5),
+                game_type=defaults.get("game_type", "memory_match"),
+                illustration_style=defaults.get("illustration_style", "watercolor"),
+                puzzle_types=defaults.get("puzzle_types", "crossword"),
+                simulation_type=defaults.get("simulation_type", "physics"),
+                map_type=defaults.get("map_type", "geographic"),
+                # New content type parameters
+                worksheet_type=defaults.get("worksheet_type", "practice_problems"),
+                programming_language=defaults.get("programming_language", "javascript"),
+                difficulty_level=defaults.get("difficulty_level", "beginner"),
+                exercise_count=defaults.get("exercise_count", 5),
+                event_count=defaults.get("event_count", 10),
+                timeline_type=defaults.get("timeline_type", "historical"),
+                time_period=defaults.get("time_period", "auto"),
+                scenario_type=defaults.get("scenario_type", "role_play"),
+                exchange_count=defaults.get("exchange_count", 8),
+            ).strip()
+            
+        print(f"📝 Generating {content_type} content...")
 
         raw, usage = self.script_client.chat(
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
             temperature=0.5,
-            max_tokens=12000,
+            max_tokens=16000,  # Increased for complex content types
         )
         data = _extract_json_blob(raw)
-        script_text = str(data.get("script") or data.get("script_text") or "").strip()
-        if not script_text:
-            # fallback for older responses with segments
-            segments = data.get("segments") or []
-            script_parts: List[str] = []
-            for seg in segments:
-                part = seg.get("script", "").strip()
-                if part:
-                    script_parts.append(part)
+        
+        # Handle different content type outputs
+        if content_type == "VIDEO":
+            # Standard video script extraction
+            script_text = str(data.get("script") or data.get("script_text") or "").strip()
+            if not script_text:
+                # fallback for older responses with segments
+                segments = data.get("segments") or []
+                script_parts: List[str] = []
+                for seg in segments:
+                    part = seg.get("script", "").strip()
+                    if part:
+                        script_parts.append(part)
+                script_text = "\n\n".join(script_parts).strip()
+            if not script_text:
+                raise RuntimeError("Script model did not return usable narration text.")
+        elif content_type == "QUIZ":
+            # Extract quiz questions for TTS narration (read questions aloud)
+            questions = data.get("questions", [])
+            script_parts = []
+            for i, q in enumerate(questions, 1):
+                # Extract question text from HTML or text field
+                q_text = q.get("question_text", "")
+                if not q_text and "question_html" in q:
+                    # Try to extract text from HTML (simplified)
+                    import re
+                    q_text = re.sub(r'<[^>]+>', '', q.get("question_html", ""))
+                if q_text:
+                    script_parts.append(f"Question {i}. {q_text}")
+                    # Read options for audio
+                    for opt in q.get("options", []):
+                        script_parts.append(f"Option {opt.get('id', '').upper()}. {opt.get('text', '')}")
+            script_text = "\n\n".join(script_parts) if script_parts else data.get("title", "Quiz")
+        elif content_type == "STORYBOOK":
+            # Extract page text for TTS narration
+            pages = data.get("pages", [])
+            script_parts = [data.get("title", "")]
+            for page in pages:
+                audio_text = page.get("audio_text") or page.get("text", "")
+                if audio_text:
+                    script_parts.append(audio_text)
             script_text = "\n\n".join(script_parts).strip()
-        if not script_text:
-            raise RuntimeError("Script model did not return usable narration text.")
+        elif content_type in ["INTERACTIVE_GAME", "SIMULATION"]:
+            # Games/simulations may have minimal or no narration
+            script_text = data.get("title", content_type) + ". " + data.get("instructions", data.get("description", ""))
+        elif content_type == "FLASHCARDS":
+            # Read cards: front, then back
+            cards = data.get("cards", [])
+            script_parts = [data.get("deck_title", "Flashcard Deck")]
+            for card in cards[:5]:  # Limit audio to first 5 cards for demo
+                # Simplified extraction
+                script_parts.append(f"Card. {card.get('front_text', 'Question')}. Answer. {card.get('back_text', 'Answer')}")
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "WORKSHEET":
+            # Extract worksheet title and section instructions for audio
+            script_parts = [data.get("title", "Worksheet")]
+            instructions = data.get("instructions", "")
+            if instructions:
+                script_parts.append(instructions)
+            # Read first few questions as examples
+            sections = data.get("sections", [])
+            for section in sections[:2]:  # Limit to first 2 sections
+                section_title = section.get("section_title", "")
+                if section_title:
+                    script_parts.append(section_title)
+                section_instructions = section.get("section_instructions", "")
+                if section_instructions:
+                    script_parts.append(section_instructions)
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "CODE_PLAYGROUND":
+            # Code playgrounds are self-contained - minimal audio needed
+            script_parts = [data.get("title", "Code Playground")]
+            description = data.get("description", "")
+            if description:
+                script_parts.append(description)
+            # Read first exercise instructions
+            exercises = data.get("exercises", [])
+            if exercises and len(exercises) > 0:
+                first_ex = exercises[0]
+                script_parts.append(f"Exercise 1. {first_ex.get('title', '')}")
+                script_parts.append(first_ex.get("instructions", ""))
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "TIMELINE":
+            # Read timeline events for narration
+            script_parts = [data.get("title", "Timeline")]
+            description = data.get("description", "")
+            if description:
+                script_parts.append(description)
+            events = data.get("events", [])
+            for event in events[:5]:  # Limit to first 5 events
+                date_display = event.get("date_display", event.get("date", ""))
+                title = event.get("title", "")
+                desc = event.get("description", "")
+                if title:
+                    script_parts.append(f"{date_display}. {title}. {desc}")
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "CONVERSATION":
+            # Read dialogue exchanges for TTS
+            script_parts = [data.get("title", "Conversation Practice")]
+            scenario = data.get("scenario", "")
+            if scenario:
+                script_parts.append(f"Scenario: {scenario}")
+            exchanges = data.get("exchanges", [])
+            for ex in exchanges[:5]:  # Limit to first 5 exchanges
+                speaker_name = ex.get("speaker_name", "Speaker")
+                speech = ex.get("audio_text", ex.get("speech_text", ""))
+                if speech:
+                    script_parts.append(f"{speaker_name} says: {speech}")
+            script_text = "\n\n".join(script_parts)
+        else:
+            # Default fallback
+            script_text = data.get("script", data.get("title", content_type))
 
+        # Store the content type in the plan for later stages
+        data["_content_type"] = content_type
+        
         plan_path = run_dir / "script_plan.json"
         plan_path.write_text(json.dumps(data, indent=2))
         script_path = run_dir / "script.txt"
@@ -923,7 +1217,7 @@ class VideoGenerationPipeline:
                 # However, re-running is cheap for us here to ensure correctness.
                 
                 print("    🔄 Re-running generation to capture Subtitles...")
-                communicate_retry = edge_tts.Communicate(script_text, voice)
+                communicate_retry = edge_tts.Communicate(script_text, selected_voice)
                 submaker = edge_tts.SubMaker()
                 audio_data_retry = bytearray() # Re-capture to be safe
                 chunk_count = 0
@@ -1271,6 +1565,92 @@ class VideoGenerationPipeline:
                     idx += 1
             start_time += window
         return segments
+
+    def _process_interactive_content(self, script_plan: Dict[str, Any], content_type: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Process interactive content (Quiz, etc.) which doesn't use audio alignment for segmentation.
+        Instead, it extracts the pre-generated HTML directly from the script plan.
+        """
+        plan_data = script_plan.get("plan", {})
+        segments = []
+        usage = {"completion_tokens": 0, "total_tokens": 0, "prompt_tokens": 0}
+        
+        # Helper to create a segment
+        def create_segment(html_content, index, entry_id=None, extra_meta=None):
+            segment = {
+                "index": index,
+                "start": 0.0, # Will be ignored in user_driven mode
+                "end": 0.0,   # Will be ignored in user_driven mode
+                "text": "Interactive content",
+                "html": html_content,
+                "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": 1920, "htmlEndY": 1080,
+                "id": entry_id or f"segment-{index}"
+            }
+            if extra_meta:
+                segment["entry_meta"] = extra_meta
+            return segment
+
+        print(f"🧩 Extracting segments for {content_type} from script plan...")
+        
+        if content_type == "QUIZ":
+            questions = plan_data.get("questions", [])
+            for i, q in enumerate(questions):
+                html = q.get("question_html", f"<div>Question {i+1}</div>")
+                segments.append(create_segment(html, i+1, q.get("id"), extra_meta=q))
+                
+        elif content_type == "STORYBOOK":
+            pages = plan_data.get("pages", [])
+            for i, p in enumerate(pages):
+                html = p.get("html", f"<div>Page {i+1}</div>")
+                segments.append(create_segment(html, i+1, f"page-{p.get('page_number', i+1)}", extra_meta=p))
+                
+        elif content_type == "INTERACTIVE_GAME":
+            # Games are usually a single self-contained entry
+            html = plan_data.get("html", "<div>Game Container</div>")
+            segments.append(create_segment(html, 1, "game-container", extra_meta=plan_data))
+            
+        elif content_type == "FLASHCARDS":
+            cards = plan_data.get("cards", [])
+            for i, c in enumerate(cards):
+                # For flashcards, we might want to combine front/back or just use front_html
+                # and let frontend handle the flip. Let's pass the whole card data in meta.
+                # Use front_html as the initial view
+                html = c.get("front_html", f"<div>Card {i+1}</div>")
+                segments.append(create_segment(html, i+1, c.get("id", f"card-{i+1}"), extra_meta=c))
+                
+        elif content_type == "PUZZLE_BOOK":
+            puzzles = plan_data.get("puzzles", [])
+            for i, p in enumerate(puzzles):
+                html = p.get("html", f"<div>Puzzle {i+1}</div>")
+                segments.append(create_segment(html, i+1, p.get("id", f"puzzle-{i+1}"), extra_meta=p))
+        
+        elif content_type == "TIMELINE":
+            events = plan_data.get("events", [])
+            for i, e in enumerate(events):
+                html = e.get("html", f"<div>Event {i+1}</div>")
+                segments.append(create_segment(html, i+1, e.get("id", f"event-{i+1}"), extra_meta=e))
+                
+        # Default fallback for others (WORKSHEET, CODE_PLAYGROUND, CONVERSATION)
+        # Assuming they follow a similar pattern or single entry
+        else:
+            # Try to find a list like 'items', 'sections', 'exercises'
+            found_list = False
+            for key in ["items", "sections", "exercises", "exchanges"]:
+                if key in plan_data and isinstance(plan_data[key], list):
+                    items = plan_data[key]
+                    for i, item in enumerate(items):
+                         html = item.get("html", f"<div>Item {i+1}</div>")
+                         segments.append(create_segment(html, i+1, item.get("id", f"item-{i+1}"), extra_meta=item))
+                    found_list = True
+                    break
+            
+            if not found_list:
+                # Fallback: single entry using 'html' field if present
+                html = plan_data.get("html", f"<div>Content for {content_type}</div>")
+                segments.append(create_segment(html, 1, "main-content", extra_meta=plan_data))
+                
+        print(f"✅ Extracted {len(segments)} segments for {content_type}")
+        return segments, usage
 
     def _generate_html_segments(self, segments: List[Dict[str, Any]], style_guide: Dict[str, Any], script_plan: Optional[Dict[str, Any]], run_dir: Path, language: str = "English") -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         def task(seg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -2573,28 +2953,268 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
     # --- Timeline + video -------------------------------------------------
     @staticmethod
-    def _write_timeline(html_segments: List[Dict[str, Any]], run_dir: Path) -> Path:
+    def _write_timeline(
+        html_segments: List[Dict[str, Any]], 
+        run_dir: Path,
+        branding_config: Optional[Dict[str, Any]] = None,
+        content_type: str = "VIDEO"
+    ) -> Path:
+        """
+        Write timeline JSON with branding support.
+        
+        Branding is injected as timeline entries:
+        - Intro: Full-screen centered, shown before audio starts
+        - Outro: Full-screen centered, shown after audio ends
+        - Watermark: Corner overlay, shown throughout the video content
+        
+        Args:
+            html_segments: List of HTML segment entries
+            run_dir: Directory to write timeline file
+            branding_config: Branding configuration (intro, outro, watermark)
+            content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
+        """
+        # Video dimensions for positioning
+        VIDEO_WIDTH = 1920
+        VIDEO_HEIGHT = 1080
+        
+        # Determine navigation mode based on content type
+        NAVIGATION_MAP = {
+            "VIDEO": "time_driven",
+            "QUIZ": "user_driven",
+            "STORYBOOK": "user_driven", 
+            "INTERACTIVE_GAME": "self_contained",
+            "PUZZLE_BOOK": "user_driven",
+            "SIMULATION": "self_contained",
+            "FLASHCARDS": "user_driven",
+            "MAP_EXPLORATION": "user_driven",
+            # New content types
+            "WORKSHEET": "user_driven",
+            "CODE_PLAYGROUND": "self_contained",
+            "TIMELINE": "user_driven",
+            "CONVERSATION": "user_driven"
+        }
+        navigation = NAVIGATION_MAP.get(content_type, "time_driven")
+        
+        # Determine entry label based on content type
+        ENTRY_LABEL_MAP = {
+            "VIDEO": "segment",
+            "QUIZ": "question",
+            "STORYBOOK": "page",
+            "INTERACTIVE_GAME": "game",
+            "PUZZLE_BOOK": "puzzle",
+            "SIMULATION": "simulation",
+            "FLASHCARDS": "card",
+            "MAP_EXPLORATION": "region",
+            # New content types
+            "WORKSHEET": "exercise",
+            "CODE_PLAYGROUND": "exercise",
+            "TIMELINE": "event",
+            "CONVERSATION": "exchange"
+        }
+        entry_label = ENTRY_LABEL_MAP.get(content_type, "segment")
+        
+        # Get branding settings with defaults
+        branding = branding_config or {}
+        intro_config = branding.get("intro", {})
+        outro_config = branding.get("outro", {})
+        watermark_config = branding.get("watermark", {})
+        
+        intro_enabled = intro_config.get("enabled", False)
+        intro_duration = float(intro_config.get("duration_seconds", 3.0)) if intro_enabled else 0.0
+        
+        outro_enabled = outro_config.get("enabled", False)
+        outro_duration = float(outro_config.get("duration_seconds", 4.0)) if outro_enabled else 0.0
+        
+        watermark_enabled = watermark_config.get("enabled", False)
+        
         timeline_entries: List[Dict[str, Any]] = []
-        for entry in html_segments:
-            start = int(entry.get("index", len(timeline_entries) + 1))
-            timeline_entry = {
-                "inTime": float(entry["start"]),
-                "exitTime": float(entry["end"]),
-                "htmlStartX": int(entry["htmlStartX"]),
-                "htmlStartY": int(entry["htmlStartY"]),
-                "htmlEndX": int(entry["htmlEndX"]),
-                "htmlEndY": int(entry["htmlEndY"]),
-                "html": entry["html"],
-                "id": entry.get("id", f"segment-{start}"),
+        
+        # Track the end time of all content for outro positioning
+        content_starts_at = intro_duration
+        content_max_end = 0.0
+        
+        # 1. Add INTRO entry if enabled (full-screen, before audio starts)
+        if intro_enabled and intro_config.get("html"):
+            intro_entry = {
+                "id": "branding-intro",
+                "inTime": 0.0,
+                "exitTime": intro_duration,
+                "htmlStartX": 0,
+                "htmlStartY": 0,
+                "htmlEndX": VIDEO_WIDTH,
+                "htmlEndY": VIDEO_HEIGHT,
+                "html": intro_config["html"],
+                "z": 9999,  # Very high z-index to be on top
             }
-            if "z" in entry:
-                try:
-                    timeline_entry["z"] = int(entry["z"])
-                except (TypeError, ValueError):
-                    pass
-            timeline_entries.append(timeline_entry)
+            timeline_entries.append(intro_entry)
+            print(f"   ➕ Added intro branding (0s - {intro_duration}s)")
+        
+        # 2. Process content entries
+        if navigation in ["user_driven", "self_contained"]:
+            # For interactive content, we want a clean timeline without branding or time-based sequencing
+            
+            # Remove intro if it was added
+            if timeline_entries and timeline_entries[0].get("id") == "branding-intro":
+                print(f"   ℹ️ Removing intro branding for {navigation} mode")
+                timeline_entries = []
+                content_starts_at = 0.0
+                intro_duration = 0.0
+            
+            # Disable subsequent branding
+            watermark_enabled = False
+            outro_enabled = False
+            
+            for entry in html_segments:
+                clean_entry = {
+                    "id": entry.get("id"),
+                    "html": entry.get("html"),
+                    "htmlStartX": int(entry.get("htmlStartX", 0)),
+                    "htmlStartY": int(entry.get("htmlStartY", 0)),
+                    "htmlEndX": int(entry.get("htmlEndX", VIDEO_WIDTH)),
+                    "htmlEndY": int(entry.get("htmlEndY", VIDEO_HEIGHT)),
+                    "z": int(entry.get("z", 1))
+                }
+                
+                # Pass through critical metadata (quiz answers, game state etc)
+                if "entry_meta" in entry:
+                    clean_entry["entry_meta"] = entry["entry_meta"]
+                
+                timeline_entries.append(clean_entry)
+            
+            content_max_end = 0.0
+            
+        else:
+            # Standard Time-Driven Logic (Video)
+            for entry in html_segments:
+                start = int(entry.get("index", len(timeline_entries) + 1))
+                
+                # Original times from the content
+                original_in_time = float(entry.get("start", 0))
+                original_exit_time = float(entry.get("end", 0))
+                
+                # Offset times by intro duration (audio starts after intro)
+                adjusted_in_time = original_in_time + content_starts_at
+                adjusted_exit_time = original_exit_time + content_starts_at
+                
+                timeline_entry = {
+                    "inTime": adjusted_in_time,
+                    "exitTime": adjusted_exit_time,
+                    "htmlStartX": int(entry["htmlStartX"]),
+                    "htmlStartY": int(entry["htmlStartY"]),
+                    "htmlEndX": int(entry["htmlEndX"]),
+                    "htmlEndY": int(entry["htmlEndY"]),
+                    "html": entry["html"],
+                    "id": entry.get("id", f"segment-{start}"),
+                }
+                if "z" in entry:
+                    try:
+                        timeline_entry["z"] = int(entry["z"])
+                    except (TypeError, ValueError):
+                        pass
+                # Add entry_meta if present
+                if "entry_meta" in entry:
+                    timeline_entry["entry_meta"] = entry["entry_meta"]
+                timeline_entries.append(timeline_entry)
+                
+                # Track the maximum end time for content
+                content_max_end = max(content_max_end, adjusted_exit_time)
+        
+        # If no content entries, use a minimal duration
+        if content_max_end <= content_starts_at:
+            content_max_end = content_starts_at + 1.0
+        
+        # 3. Add WATERMARK entry if enabled (spans entire content duration, positioned in corner)
+        if watermark_enabled and watermark_config.get("html"):
+            position = watermark_config.get("position", "top-right")
+            max_width = int(watermark_config.get("max_width", 200))
+            max_height = int(watermark_config.get("max_height", 80))
+            margin = int(watermark_config.get("margin", 40))
+            
+            # Calculate position based on setting
+            if position == "top-left":
+                wm_x = margin
+                wm_y = margin
+            elif position == "top-right":
+                wm_x = VIDEO_WIDTH - max_width - margin
+                wm_y = margin
+            elif position == "bottom-left":
+                wm_x = margin
+                wm_y = VIDEO_HEIGHT - max_height - margin
+            elif position == "bottom-right":
+                wm_x = VIDEO_WIDTH - max_width - margin
+                wm_y = VIDEO_HEIGHT - max_height - margin
+            else:  # default to top-right
+                wm_x = VIDEO_WIDTH - max_width - margin
+                wm_y = margin
+            
+            watermark_entry = {
+                "id": "branding-watermark",
+                "inTime": content_starts_at,  # Start when content starts (after intro)
+                "exitTime": content_max_end,  # End when content ends (before outro)
+                "htmlStartX": wm_x,
+                "htmlStartY": wm_y,
+                "htmlEndX": wm_x + max_width,
+                "htmlEndY": wm_y + max_height,
+                "html": watermark_config["html"],
+                "z": 1000,  # High z-index but below intro/outro
+            }
+            timeline_entries.append(watermark_entry)
+            print(f"   ➕ Added watermark branding ({content_starts_at}s - {content_max_end}s) at {position}")
+        
+        # 4. Add OUTRO entry if enabled (full-screen, after audio ends)
+        if outro_enabled and outro_config.get("html"):
+            outro_start = content_max_end
+            outro_end = outro_start + outro_duration
+            
+            outro_entry = {
+                "id": "branding-outro",
+                "inTime": outro_start,
+                "exitTime": outro_end,
+                "htmlStartX": 0,
+                "htmlStartY": 0,
+                "htmlEndX": VIDEO_WIDTH,
+                "htmlEndY": VIDEO_HEIGHT,
+                "html": outro_config["html"],
+                "z": 9999,  # Very high z-index to be on top
+            }
+            timeline_entries.append(outro_entry)
+            print(f"   ➕ Added outro branding ({outro_start}s - {outro_end}s)")
+        
+        # Calculate final duration
+        final_duration = (content_max_end + outro_duration) if outro_enabled else content_max_end
+        
+        # Create timeline object with metadata for the frontend player
+        # The player needs to know when to start the audio (after intro)
+        timeline_output = {
+            "meta": {
+                "content_type": content_type,              # NEW: Tells frontend what type of content
+                "navigation": navigation,                  # NEW: "time_driven", "user_driven", or "self_contained"
+                "entry_label": entry_label,                # NEW: Label for entries (question, page, segment)
+                "audio_start_at": content_starts_at,       # Audio should start playing at this time
+                "total_duration": final_duration,
+                "intro_duration": intro_duration,
+                "outro_duration": outro_duration if outro_enabled else 0.0,
+                "content_starts_at": content_starts_at,
+                "content_ends_at": content_max_end,
+            },
+            "entries": timeline_entries
+        }
+        
         timeline_path = run_dir / "time_based_frame.json"
-        timeline_path.write_text(json.dumps(timeline_entries, indent=2))
+        timeline_path.write_text(json.dumps(timeline_output, indent=2))
+        print(f"   📊 Timeline meta: content_type={content_type}, navigation={navigation}, audio starts at {content_starts_at}s, total duration {final_duration}s")
+        
+        # Also save branding metadata separately for backward compatibility
+        branding_meta = {
+            "intro_duration_seconds": intro_duration,
+            "outro_duration_seconds": outro_duration if outro_enabled else 0.0,
+            "content_starts_at": content_starts_at,
+            "content_ends_at": content_max_end,
+            "total_duration": final_duration,
+        }
+        branding_meta_path = run_dir / "branding_meta.json"
+        branding_meta_path.write_text(json.dumps(branding_meta, indent=2))
+        
         return timeline_path
 
     def _render_video(
@@ -2609,6 +3229,28 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
     ) -> Path:
         output_video = run_dir / "output.mp4"
         frames_dir = run_dir / ".render_frames"
+        
+        # Get audio delay from branding config (intro duration)
+        audio_delay = 0.0
+        
+        # First try to get from stored branding config (works within same pipeline run)
+        if hasattr(self, '_current_branding') and self._current_branding:
+            intro_config = self._current_branding.get("intro", {})
+            if intro_config.get("enabled", False):
+                audio_delay = float(intro_config.get("duration_seconds", 0.0))
+                print(f"   🎵 Audio will start at {audio_delay}s (from branding config)")
+        
+        # Fallback: check branding_meta.json file (for resumed runs)
+        if audio_delay == 0.0:
+            branding_meta_path = run_dir / "branding_meta.json"
+            if branding_meta_path.exists():
+                try:
+                    branding_meta = json.loads(branding_meta_path.read_text())
+                    audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
+                    print(f"   🎵 Audio will start at {audio_delay}s (from branding_meta.json)")
+                except Exception as e:
+                    print(f"   ⚠️ Could not load branding metadata: {e}")
+        
         cmd = [
             sys.executable,
             str(GENERATE_VIDEO_SCRIPT),
@@ -2621,14 +3263,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             str(words_json_path),
             "--captions-settings",
             str(DEFAULT_CAPTIONS_SETTINGS),
-            "--show-branding",
-            "--branding-json",
-            str(DEFAULT_BRANDING),
             "--frames-dir",
             str(frames_dir),
             "--background",
             background_color,
         ]
+        
+        # Add audio delay for intro silence
+        if audio_delay > 0:
+            cmd.extend(["--audio-delay", str(audio_delay)])
         if show_captions:
             cmd.append("--show-captions")
         if avatar_video_path:

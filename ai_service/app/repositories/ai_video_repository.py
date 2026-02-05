@@ -38,6 +38,7 @@ class AiVideoRepository:
         video_id: str,
         prompt: str,
         language: str = "English",
+        content_type: str = "VIDEO",
         metadata: Optional[Dict[str, Any]] = None
     ) -> AiGenVideo:
         """
@@ -47,6 +48,7 @@ class AiVideoRepository:
             video_id: Unique identifier for the video
             prompt: Text prompt for video generation
             language: Language for video content
+            content_type: Type of content (VIDEO, QUIZ, STORYBOOK, etc.)
             metadata: Additional metadata
             
         Returns:
@@ -58,6 +60,7 @@ class AiVideoRepository:
                 video_id=video_id,
                 prompt=prompt,
                 language=language,
+                content_type=content_type,
                 current_stage="PENDING",
                 status="PENDING",
                 extra_metadata=metadata or {},

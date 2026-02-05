@@ -194,6 +194,7 @@ public class ReenrollmentGapValidationService {
     /**
      * Finds the last purchase (mapping) for a package session.
      * Checks all statuses, not just ACTIVE.
+     * Excludes ABANDONED_CART type entries as they represent unverified enrollments.
      * Looks for mappings where:
      * 1. packageSession.id = actualPackageSessionId (direct purchase)
      * 2. destinationPackageSession.id = actualPackageSessionId (purchased through
@@ -209,16 +210,35 @@ public class ReenrollmentGapValidationService {
                 .findByUserIdAndPackageSessionIdAndInstituteId(
                         userId, actualPackageSessionId, instituteId);
 
-        if (byPackageSession.isPresent()) {
+        // Filter out ABANDONED_CART type entries - they represent unverified enrollments
+        // that shouldn't block re-enrollment attempts
+        if (byPackageSession.isPresent() && !isAbandonedCartType(byPackageSession.get())) {
             return byPackageSession;
         }
 
         // If not found, try to find by destinationPackageSession
         // This means user purchased through another session that leads to this one
-        return mappingRepository.findLatestByDestinationPackageSessionIdAndStatusInAndUserId(
+        Optional<StudentSessionInstituteGroupMapping> byDestination = mappingRepository.findLatestByDestinationPackageSessionIdAndStatusInAndUserId(
                 actualPackageSessionId,
                 List.of("ACTIVE", "EXPIRED", "TERMINATED", "INVITED", "INACTIVE"),
                 userId);
+
+        // Filter out ABANDONED_CART type entries from destination lookup as well
+        if (byDestination.isPresent() && !isAbandonedCartType(byDestination.get())) {
+            return byDestination;
+        }
+
+        return Optional.empty();
+    }
+
+    /**
+     * Checks if a mapping is of ABANDONED_CART type.
+     * ABANDONED_CART entries represent unverified enrollments that are pending user action
+     * (e.g., WhatsApp verification) and should not be considered as actual enrollments.
+     */
+    private boolean isAbandonedCartType(StudentSessionInstituteGroupMapping mapping) {
+        return mapping.getType() != null && 
+               "ABANDONED_CART".equalsIgnoreCase(mapping.getType());
     }
 
     /**

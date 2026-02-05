@@ -74,6 +74,7 @@ async def generate_video_external(
             target_duration=payload.target_duration,
             voice_gender=payload.voice_gender,
             tts_provider=payload.tts_provider,
+            content_type=payload.content_type,  # NEW: Pass content type for multi-format support
             db_session=db,
             model=payload.model or VIDEO_GENERATION_DEFAULT_MODEL,
             institute_id=institute_id, # Authenticated institute
@@ -87,7 +88,8 @@ async def generate_video_external(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Video-ID": video_id
+            "X-Video-ID": video_id,
+            "X-Content-Type": payload.content_type  # NEW: Include content type in response headers
         }
     )
 

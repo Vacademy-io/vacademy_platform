@@ -10,10 +10,6 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
-/**
- * Request DTO for POST /v1/applicant/list API
- * Supports multiple filters applied collectively
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -22,41 +18,17 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ApplicantListRequestDTO {
 
-    /**
-     * Institute ID filter
-     */
     private String instituteId;
 
-    /**
-     * Source type filter (e.g., LEVEL, INSTITUTE, CAMPAIGN)
-     */
     private String source;
 
-    /**
-     * Source ID filter
-     */
     private String sourceId;
 
-    /**
-     * Application Stage ID filter
-     */
     private String applicationStageId;
 
-    /**
-     * Package Session IDs filter - supports multiple values
-     */
     private List<String> packageSessionIds;
 
-    /**
-     * Overall Status filter - supports multiple values (e.g., PENDING, APPROVED, REJECTED)
-     */
     private List<String> overallStatuses;
 
-    /**
-     * Search string for matching:
-     * - tracking_id
-     * - applicant_id
-     * - application_stage_id
-     */
     private String search;
 }

@@ -10,10 +10,6 @@ import lombok.NoArgsConstructor;
 import java.sql.Timestamp;
 import java.util.Date;
 
-/**
- * Enhanced response DTO for applicant list API
- * Returns comprehensive applicant, student, parent, and session information
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -29,16 +25,12 @@ public class ApplicantListResponseDTO {
     private Timestamp createdAt;
     private Timestamp updatedAt;
 
-    // Application stage info
     private ApplicationStageInfo applicationStage;
 
-    // Student information
     private StudentData studentData;
 
-    // Parent information
     private ParentData parentData;
 
-    // Package Session information
     private PackageSessionData packageSession;
 
     @Data

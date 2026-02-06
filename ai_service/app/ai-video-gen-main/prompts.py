@@ -97,19 +97,31 @@ JSON shape:
     {{
       "label": "Hook",
       "summary": "...",
-      "visual_idea": "Describe a key visual metaphor for this section"
+      "visual_type": "IMAGE_HERO or IMAGE_SPLIT or TEXT_DIAGRAM or LOWER_THIRD",
+      "visual_idea": "Describe a key visual metaphor for this section",
+      "image_prompt_hint": "Only if visual_type uses images: cinematic photo description, 16:9, no text/faces",
+      "key_terms": ["term1", "term2"]
     }}
   ],
   "cta": "..."
 }}
+
+**visual_type guide for beat_outline**:
+- Use IMAGE_HERO for hooks, real-world scene-setters, topic introductions
+- Use IMAGE_SPLIT when explaining with a visual reference alongside text
+- Use TEXT_DIAGRAM for abstract concepts, math, code, processes, comparisons
+- Use LOWER_THIRD for vocabulary definitions (pairs with another shot type)
+- Most beats should be TEXT_DIAGRAM. Only use image types when the topic is visual/physical.
 """
 
+# NOTE: Style guide prompts below are NOT actively used by the pipeline.
+# The pipeline uses BACKGROUND_PRESETS directly via _generate_style_guide().
+# Kept for reference only — do not rely on these for video generation.
 STYLE_GUIDE_SYSTEM_PROMPT = (
     "You are a Creative Director. Create a JSON style guide for an educational video based on the provided script. "
     "Define a color palette (background, text, accent), font choices (use Google Fonts, default to Inter), "
     "and a general shape/border-radius aesthetic. "
     "The style should be modern, clean, and accessible. "
-    "RECOMMENDATION: Use a 'Dark Mode Tech' aesthetic for coding topics (e.g., Deep Navy #0f172a background, White text, Bright Blue/Teal accents). "
     "Fonts: Use 'Montserrat' for Headings (Bold/Black) and 'Inter' or 'Lato' for Body."
 )
 
@@ -136,9 +148,8 @@ Return JSON ONLY:
     "secondary": "Inter",
     "code": "Fira Code"
   }},
-  "borderRadius": "24px",
-  "glassmorphism": true, 
-  "notes": "Premium dark tech aesthetic. Use glassmorphism cards with backdrop-filter: blur(12px). High contrast text."
+  "borderRadius": "8px",
+  "notes": "Clean educational aesthetic. No shadows. High contrast text."
 }}
 """
 
@@ -147,11 +158,12 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "Think: Khan Academy, 3Blue1Brown, whiteboard explainer videos.\n\n"
     
     "**⚠️ CRITICAL: THIS IS A LEARNING VIDEO, NOT AN APP**:\n"
-    "- **NO SHADOWS** - No box-shadow, drop-shadow. Keep it flat and clean.\n"
+    "- **NO drop-shadows / box-shadows** on UI elements. Keep it flat and clean.\n"
+    "- **Gradient scrims ARE allowed** only as legibility overlays on IMAGE_HERO / IMAGE_SPLIT shots.\n"
     "- **NO APP-LIKE CARDS** - Don't make things look like mobile app UI or web dashboards.\n"
-    "- **NO FANCY TEXT ANIMATIONS** - Text should appear simply. Don't animate text flying/sliding in.\n"
+    "- **NO FANCY TEXT ANIMATIONS** - Text should appear simply (fadeIn/popIn). No flying/bouncing/spinning.\n"
     "- **ANIMATE CONCEPTS, NOT LAYOUTS** - Use animations to EXPLAIN (draw arrows, build diagrams, show flow).\n"
-    "- **CLEAN & MINIMAL** - Like a whiteboard or presentation slide, not a website.\n\n"
+    "- **CLEAN & MINIMAL** - Like a whiteboard or documentary, not a website.\n\n"
     
     "**🛠️ PLATFORM CAPABILITIES**:\n"
     "1. **Math**: Use LaTeX: `$$ E=mc^2 $$` (renders via KaTeX).\n"
@@ -159,6 +171,95 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "3. **Diagrams**: Use `<div class='mermaid'>graph TD; A-->B;</div>` (Mermaid.js).\n"
     "4. **SVG Animations**: **USE THIS FOR EXPLAINING CONCEPTS** - Draw lines, animate icons, show processes.\n"
     "5. **Images**: Include 1-2 AI images: `<img class='generated-image' data-img-prompt='...' src='placeholder.png' />`.\n\n"
+    
+    "**🎬 CINEMATIC SHOT TYPES (USE THESE FOR HIGH-QUALITY VIDEOS!)**:\n"
+    "These shot types make videos look like professional documentaries/YouTube explainers.\n"
+    "**MIX** these with regular text-based shots for visual variety. Use at least 1 cinematic shot per segment.\n\n"
+    
+    "**SHOT TYPE 1: IMAGE_HERO** — Full-screen image with Ken Burns zoom + text overlay.\n"
+    "USE FOR: Hook/opening, real-world examples, dramatic moments, introducing new topics.\n"
+    "The image fills the entire screen. A slow zoom/pan (Ken Burns) draws attention.\n"
+    "Text appears over a gradient scrim for readability.\n"
+    "```html\n"
+    "<div class='image-hero'>\n"
+    "  <img class='generated-image'\n"
+    "       data-img-prompt='realistic photograph of a scientist examining DNA strands under blue microscope light, cinematic, 16:9'\n"
+    "       data-ken-burns='zoom-in'\n"
+    "       src='placeholder.png' />\n"
+    "  <div class='image-text-overlay gradient-bottom'>\n"
+    "    <h1 id='hero-title' style='opacity:0'>The Building Blocks of Life</h1>\n"
+    "    <p id='hero-sub' style='opacity:0'>Every living thing carries a unique code</p>\n"
+    "  </div>\n"
+    "</div>\n"
+    "<script>\n"
+    "fadeIn('#hero-title', 0.8, 0.5);\n"
+    "fadeIn('#hero-sub', 0.6, 1.2);\n"
+    "</script>\n"
+    "```\n"
+    "Ken Burns options: `zoom-in`, `zoom-out`, `pan-left`, `pan-right`, `pan-up`, `zoom-pan-tl`\n"
+    "Gradient options: `gradient-bottom` (default), `gradient-top`, `gradient-full`, `gradient-center`\n\n"
+    
+    "**SHOT TYPE 2: IMAGE_SPLIT** — Image on one side, text on the other.\n"
+    "USE FOR: Explaining a concept with a real-world visual reference.\n"
+    "```html\n"
+    "<div class='image-split-layout'>\n"
+    "  <div class='split-image'>\n"
+    "    <img class='generated-image'\n"
+    "         data-img-prompt='close-up of plant cells under electron microscope, green chloroplasts visible, scientific illustration'\n"
+    "         data-ken-burns='pan-right'\n"
+    "         src='placeholder.png' />\n"
+    "  </div>\n"
+    "  <div class='split-text'>\n"
+    "    <h2 id='split-title' style='opacity:0'>Chloroplasts</h2>\n"
+    "    <p id='split-body' style='opacity:0'>These tiny green organelles capture sunlight and convert it into energy through photosynthesis.</p>\n"
+    "  </div>\n"
+    "</div>\n"
+    "<script>\n"
+    "fadeIn('#split-title', 0.5, 0.3);\n"
+    "fadeIn('#split-body', 0.5, 0.8);\n"
+    "</script>\n"
+    "```\n\n"
+    
+    "**SHOT TYPE 3: LOWER_THIRD** — Key term banner at bottom of screen.\n"
+    "USE FOR: Introducing vocabulary, definitions, key facts. Can OVERLAY other shots.\n"
+    "```html\n"
+    "<div class='lower-third'>\n"
+    "  <div class='lt-accent-bar'></div>\n"
+    "  <div class='lt-content'>\n"
+    "    <span class='lt-label'>KEY TERM</span>\n"
+    "    <span class='lt-text'>Photosynthesis — Converting sunlight into chemical energy</span>\n"
+    "  </div>\n"
+    "</div>\n"
+    "```\n\n"
+    
+    "**📸 IMAGE PROMPT GUIDELINES (for data-img-prompt)**:\n"
+    "Write descriptive, cinematic prompts (20-50 words) for AI image generation:\n"
+    "- Specify style: 'realistic photograph', 'scientific illustration', 'infographic style', 'watercolor'\n"
+    "- Specify composition: 'close-up', 'wide shot', 'aerial view', 'cross-section diagram'\n"
+    "- Specify lighting: 'cinematic lighting', 'soft natural light', 'dramatic side lighting'\n"
+    "- Specify aspect: always think 16:9 landscape\n"
+    "- AVOID: text in images, logos, watermarks, human faces (privacy)\n"
+    "Example: 'Realistic wide-shot photograph of a coral reef ecosystem, vivid colors, fish swimming through coral formations, clear blue water, underwater cinematic lighting, 16:9'\n\n"
+    
+    "**🎯 WHEN TO USE IMAGE SHOTS vs TEXT/DIAGRAM SHOTS**:\n"
+    "Images are EXPENSIVE to generate. Only use IMAGE_HERO or IMAGE_SPLIT when the image genuinely adds understanding.\n\n"
+    "✅ **USE an image shot when**:\n"
+    "- Showing something real-world that text/SVG cannot convey (a coral reef, a historical scene, a lab setup)\n"
+    "- Opening a new topic/section (1 hero image to set the scene)\n"
+    "- The narration describes a physical object, place, or phenomenon\n\n"
+    "❌ **DO NOT use an image shot when**:\n"
+    "- Explaining an abstract concept (use SVG diagrams, Mermaid, or text instead)\n"
+    "- Showing a process/flow (use animated SVG or Mermaid)\n"
+    "- Presenting math, code, or formulas (use KaTeX, Prism)\n"
+    "- The text/annotation alone is clear enough\n"
+    "- Listing steps, comparisons, or definitions (use text layouts)\n\n"
+    "**RECOMMENDED MIX**: Max 1-2 image shots per segment. The rest should be text/diagram shots.\n"
+    "A typical ~60s segment with 3-4 shots:\n"
+    "- Shot 1: IMAGE_HERO (set the scene) — 8-12 seconds\n"
+    "- Shot 2: Text/diagram shot (explain the concept) — 10-15 seconds\n"
+    "- Shot 3: Text/diagram or IMAGE_SPLIT (only if a visual reference helps) — 10-15 seconds\n"
+    "- Shot 4: Key takeaway card (text, NOT image) — 8-10 seconds\n"
+    "If the topic is purely abstract (math, programming, logic), use 0 image shots — diagrams and code are better.\n\n"
     
     "**🛠️ ANIMATION TOOLS AVAILABLE**:\n"
     "1. **Text Appearance** - fadeIn, typewriter, popIn, slideUp, showThenAnnotate\n"
@@ -299,18 +400,20 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "```\n\n"
     
     "**❌ DO NOT USE**:\n"
-    "- Shadows (box-shadow, drop-shadow)\n"
-    "- Glassmorphism or blur effects\n"
+    "- Drop-shadows / box-shadows on elements\n"
+    "- Glassmorphism or heavy blur effects (gradient scrims over images ARE fine)\n"
     "- Card-heavy layouts that look like apps\n"
-    "- Fancy entrance animations for text (no flying/bouncing)\n"
-    "- Gradient backgrounds on cards\n"
+    "- Fancy entrance animations for text (no flying/bouncing/spinning)\n"
+    "- Gradient backgrounds on cards or containers (only on image overlays)\n"
     "- Rounded card grids that look like mobile UI\n\n"
     
     "**LAYOUT RULES**:\n"
-    "- **ALWAYS WRAP** content in `<div class='full-screen-center'>...</div>`\n"
-    "- Use `.layout-split` for: Text on left, Visual (SVG/diagram/image) on right\n"
+    "- For text/diagram shots: WRAP content in `<div class='full-screen-center'>...</div>`\n"
+    "- Use `.layout-split` for: Text on left, Visual (SVG/diagram) on right\n"
     "- Use `.layout-hero` for: Single big concept in center\n"
-    "- Keep backgrounds clean - solid color from the palette\n\n"
+    "- Use `.image-hero` for: Full-screen cinematic image with text overlay\n"
+    "- Use `.image-split-layout` for: Image on one side, text on the other\n"
+    "- Keep backgrounds clean - solid color from the palette (except IMAGE_HERO which uses the image itself)\n\n"
     
     "**EXAMPLE: Complete Shot with Annotations**:\n"
     "```html\n"
@@ -429,22 +532,40 @@ For ALL SVG strokes/lines/paths: `stroke="{svg_stroke}"`
 For SVG fills (shapes): `fill="{svg_fill}"`
 For annotations: `color: '{annotation_color}'`
 
-**⚠️ EDUCATIONAL VIDEO PATTERN**:
-1. Show 1-2 lines of text (matching narration)
-2. Text appears simply (fade in, NOT flying)
-3. Annotate the key term (underline, circle, highlight)
-4. Draw a diagram if helpful
+**⚠️ EDUCATIONAL VIDEO PATTERN — MIX CINEMATIC + TEXT SHOTS**:
+Use a **variety of shot types** for visual engagement:
+1. **IMAGE_HERO**: Full-screen AI image with Ken Burns zoom + text overlay (for hooks, real-world context)
+2. **IMAGE_SPLIT**: Image on one side, text on the other (for explanations with visual reference)
+3. **Text/Diagram shot**: Text + SVG/diagram on clean background (for detailed explanations)
+4. **LOWER_THIRD**: Key term banner (can overlay other shots)
 
-**EXAMPLE - THE CORRECT PATTERN FOR {background_type_upper} BACKGROUND**:
+**EXAMPLE 1 — IMAGE_HERO SHOT (cinematic opening)**:
+```html
+<div class="image-hero">
+  <img class="generated-image"
+       data-img-prompt="realistic wide-shot photograph of a coral reef ecosystem, vivid tropical fish, clear blue water, cinematic underwater lighting, 16:9"
+       data-ken-burns="zoom-in"
+       src="placeholder.png" />
+  <div class="image-text-overlay gradient-bottom">
+    <h1 id="hero-title" style="opacity:0;color:#ffffff;">Life Under the Sea</h1>
+    <p id="hero-sub" style="opacity:0;color:rgba(255,255,255,0.9);">Coral reefs support 25% of all marine species</p>
+  </div>
+</div>
+<script>
+fadeIn('#hero-title', 0.8, 0.5);
+fadeIn('#hero-sub', 0.6, 1.2);
+</script>
+```
+Ken Burns: `zoom-in`, `zoom-out`, `pan-left`, `pan-right`, `pan-up`, `zoom-pan-tl`
+Gradient: `gradient-bottom` (default), `gradient-top`, `gradient-full`, `gradient-center`
+
+**EXAMPLE 2 — TEXT/DIAGRAM SHOT (classic explanation)**:
 ```html
 <div class="full-screen-center">
   <div class="layout-hero">
-    <!-- The text that appears - short, 1-2 lines max -->
     <p id="main-text" class="text-display" style="opacity:0;color:{text_color};">
       An <span id="key-term">API</span> lets programs talk to each other
     </p>
-    
-    <!-- Optional diagram that draws after text -->
     <svg id="diagram" viewBox="0 0 500 120" style="margin-top:40px;">
       <rect x="20" y="30" width="100" height="60" fill="{svg_fill}" rx="8"/>
       <text x="70" y="65" fill="#fff" text-anchor="middle" font-size="16">App A</text>
@@ -456,18 +577,33 @@ For annotations: `color: '{annotation_color}'`
   </div>
 </div>
 <script>
-// 1. Text fades in simply
 fadeIn('#main-text', 0.5, 0);
-
-// 2. After text appears, annotate key term
 setTimeout(() => {{
   annotate('#key-term', {{type: 'underline', color: '{annotation_color}', duration: 600}});
 }}, 800);
-
-// 3. Then draw the diagram
 setTimeout(() => {{
   animateSVG('diagram', 100);
 }}, 1500);
+</script>
+```
+
+**EXAMPLE 3 — IMAGE_SPLIT SHOT (visual + explanation)**:
+```html
+<div class="image-split-layout">
+  <div class="split-image">
+    <img class="generated-image"
+         data-img-prompt="close-up scientific illustration of plant cells, green chloroplasts glowing, cross-section view, detailed, 16:9"
+         data-ken-burns="pan-right"
+         src="placeholder.png" />
+  </div>
+  <div class="split-text" style="color:{text_color};">
+    <h2 id="split-title" style="opacity:0">Chloroplasts</h2>
+    <p id="split-body" style="opacity:0">Tiny green organelles that capture sunlight for photosynthesis.</p>
+  </div>
+</div>
+<script>
+fadeIn('#split-title', 0.5, 0.3);
+fadeIn('#split-body', 0.5, 0.8);
 </script>
 ```
 
@@ -485,18 +621,17 @@ showThenAnnotate('#text', '#key', 'underline', '{annotation_color}', 0, 0.8);  /
 - 'highlight' - Marker highlight (use yellow: #fef08a)
 - 'box' - Box around content (use: {primary_color})
 
-**AI Images**: Include 1-2 images for real-world context:
-`<img class="generated-image" data-img-prompt="description of the image you want" src="placeholder.png" style="max-width:400px;" />`
-- Use for: real-world examples, complex visuals that can't be drawn with SVG
-- Keep prompts descriptive (20-40 words): style, subject, colors, composition
+**AI Images** (for IMAGE_HERO and IMAGE_SPLIT shots):
+- Write cinematic prompts (20-50 words): style, subject, composition, lighting
+- AVOID: text in images, logos, human faces
+- Always add `data-ken-burns` attribute for motion
 
 **DO NOT**:
-- Text flying in from sides
-- Bouncing or spinning text
-- Shadows or blur effects
+- Text flying in from sides, bouncing, or spinning
+- Drop-shadows / box-shadows / heavy blur (gradient scrims over images ARE fine)
 - Card-heavy app-like design
 - Use colors that don't contrast with {background_type} background
-- Long setTimeout delays (keep under 3 seconds)
+- Reveals after 60% of shot duration — if a reveal needs >3s delay, split into a new shot instead
 
 **🚨 CRITICAL: EVERY SHOT MUST HAVE A `<script>` TAG**:
 - If ANY element has `style="opacity:0"`, you MUST include a `<script>` block

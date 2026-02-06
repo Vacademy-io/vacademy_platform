@@ -1150,10 +1150,17 @@ public class ApplicantService {
                 // 3. Update Response JSON with Order ID
                 try {
                         // Read existing JSON (which is the Template)
-                        java.util.Map<String, Object> jsonMap = objectMapper.readValue(
-                                        currentStage.getResponseJson(),
-                                        new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {
-                                        });
+                        java.util.Map<String, Object> jsonMap = new java.util.HashMap<>();
+                        if (org.springframework.util.StringUtils.hasText(currentStage.getResponseJson())) {
+                                try {
+                                        jsonMap = objectMapper.readValue(
+                                                        currentStage.getResponseJson(),
+                                                        new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {
+                                                        });
+                                } catch (Exception e) {
+                                        logger.warn("Metadata JSON invalid/empty in stage, initializing new map");
+                                }
+                        }
 
                         // Update Keys
                         jsonMap.put("order_id", response.getOrderId());

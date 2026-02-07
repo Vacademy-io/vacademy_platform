@@ -17,6 +17,8 @@ public class LearnerPackageFilterDTO {
     private List<String>packageTypes;
     private String searchByName;
     private List<String>tag;
+    /** When set, only packages created by this user are returned. Optional. */
+    private String createdByUserId;
     private double minPercentageCompleted;
     private double maxPercentageCompleted;
     private Map<String, String> sortColumns;

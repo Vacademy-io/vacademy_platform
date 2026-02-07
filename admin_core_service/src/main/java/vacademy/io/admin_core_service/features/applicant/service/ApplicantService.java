@@ -734,6 +734,7 @@ public class ApplicantService {
                         audienceResponse = AudienceResponse.builder()
                                         .audienceId(audience.getId())
                                         .userId(parentUser.getId())
+                                        .studentUserId(childUser != null ? childUser.getId() : null) // Store child ID
                                         .sourceType("DIRECT_APPLICATION")
                                         .sourceId(request.getSourceId())
                                         .enquiryId(null) // Skip Enquiry
@@ -1031,33 +1032,46 @@ public class ApplicantService {
                 Applicant applicant = applicantRepository.findById(UUID.fromString(applicantId))
                                 .orElseThrow(() -> new VacademyException("Applicant not found"));
 
-                // CRITICAL FIX: Get real user ID from AudienceResponse
-                // Applicants have a real parent user created during application submission
-                // We need to use that user ID for UserPlan, not the applicantId
+                // CRITICAL FIX: Get child user ID from AudienceResponse
+                // Use studentUserId if available (new records), otherwise fall back to parent
+                // resolution (legacy records)
                 AudienceResponse audienceResponse = audienceResponseRepository
                                 .findByApplicantId(applicantId)
                                 .orElseThrow(() -> new VacademyException(
                                                 "No audience response found for applicant. Application may be incomplete."));
 
-                String parentUserId = audienceResponse.getUserId();
-                if (parentUserId == null || parentUserId.isEmpty()) {
-                        throw new VacademyException(
-                                        "No user linked to this applicant. Please complete the application first.");
+                String childUserId;
+
+                // NEW LOGIC: Check if studentUserId is populated (solves multi-child issue)
+                if (audienceResponse.getStudentUserId() != null && !audienceResponse.getStudentUserId().isEmpty()) {
+                        // Direct child ID available - use it (works for multi-child parents)
+                        childUserId = audienceResponse.getStudentUserId();
+                        logger.info("Using stored student_user_id: {} for applicant: {}", childUserId, applicantId);
+                } else {
+                        // LEGACY FALLBACK: For old records without studentUserId
+                        logger.warn("No student_user_id found for applicant: {}, falling back to parent resolution",
+                                        applicantId);
+                        String parentUserId = audienceResponse.getUserId();
+
+                        if (parentUserId == null || parentUserId.isEmpty()) {
+                                throw new VacademyException(
+                                                "No user linked to this applicant. Please complete the application first.");
+                        }
+
+                        logger.info("Applicant {} linked to parent user ID: {}", applicantId, parentUserId);
+
+                        // Get child user ID from parent
+                        List<vacademy.io.common.auth.dto.ParentWithChildDTO> parentWithChildren = authService
+                                        .getUsersWithChildren(List.of(parentUserId));
+
+                        if (parentWithChildren.isEmpty() || parentWithChildren.get(0).getChild() == null) {
+                                throw new VacademyException(
+                                                "No child found for parent. Please ensure child user is created for this applicant.");
+                        }
+
+                        childUserId = parentWithChildren.get(0).getChild().getId();
+                        logger.info("Found child user ID: {} for parent: {}", childUserId, parentUserId);
                 }
-
-                logger.info("Applicant {} linked to parent user ID: {}", applicantId, parentUserId);
-
-                // NEW: Get child user ID from parent
-                List<vacademy.io.common.auth.dto.ParentWithChildDTO> parentWithChildren = authService
-                                .getUsersWithChildren(List.of(parentUserId));
-
-                if (parentWithChildren.isEmpty() || parentWithChildren.get(0).getChild() == null) {
-                        throw new VacademyException(
-                                        "No child found for parent. Please ensure child user is created for this applicant.");
-                }
-
-                String childUserId = parentWithChildren.get(0).getChild().getId();
-                logger.info("Found child user ID: {} for parent: {}", childUserId, parentUserId);
 
                 // Get Institute ID from Application Stage (linked to Applicant)
                 String appStageId = applicant.getApplicationStageId();

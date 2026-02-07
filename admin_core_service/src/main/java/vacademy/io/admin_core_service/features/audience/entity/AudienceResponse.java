@@ -29,7 +29,10 @@ public class AudienceResponse {
     private String audienceId;
 
     @Column(name = "user_id")
-    private String userId; // NULL until converted to student (references auth_service.users)
+    private String userId; // Parent user ID (references auth_service.users)
+
+    @Column(name = "student_user_id")
+    private String studentUserId; // Child/Student user ID - explicitly stores which child this application is for
 
     @Column(name = "source_type", nullable = false, length = 50)
     private String sourceType; // WEBSITE, GOOGLE_ADS, FACEBOOK_ADS, LINKEDIN_ADS, etc.

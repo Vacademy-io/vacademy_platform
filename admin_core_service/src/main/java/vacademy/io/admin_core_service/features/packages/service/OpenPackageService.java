@@ -60,6 +60,7 @@ public class OpenPackageService {
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
+                                        learnerPackageFilterDTO.getCreatedByUserId(),
                                         pageable);
                 } else {
                         learnerPackageDetail = packageRepository.getOpenCatalogPackageDetail(
@@ -78,13 +79,17 @@ public class OpenPackageService {
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
+                                        learnerPackageFilterDTO.getCreatedByUserId(),
                                         pageable);
                 }
 
-                // Get all instructor userIds
+                // Get all instructor userIds (faculty first; fallback to createdByUserId when no faculty mapped)
                 List<String> instructorIds = learnerPackageDetail.getContent().stream()
-                                .map(PackageDetailProjection::getFacultyUserIds)
-                                .filter(Objects::nonNull)
+                                .map(proj -> {
+                                        List<String> ids = Optional.ofNullable(proj.getFacultyUserIds()).orElse(List.of());
+                                        if (!ids.isEmpty()) return ids;
+                                        return Optional.ofNullable(proj.getCreatedByUserId()).map(List::of).orElse(List.of());
+                                })
                                 .flatMap(List::stream)
                                 .distinct()
                                 .collect(Collectors.toList());
@@ -94,10 +99,13 @@ public class OpenPackageService {
                 Map<String, UserDTO> userMap = userDTOS.stream()
                                 .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
 
-                // Map projections to DTOs
+                // Map projections to DTOs (instructors = faculty list, or single creator as fallback)
                 List<PackageDetailDTO> dtos = learnerPackageDetail.getContent().stream().map(projection -> {
-                        List<UserDTO> instructors = Optional.ofNullable(projection.getFacultyUserIds())
-                                        .orElse(List.of()).stream()
+                        List<String> instructorIdList = Optional.ofNullable(projection.getFacultyUserIds()).orElse(List.of());
+                        if (instructorIdList.isEmpty() && projection.getCreatedByUserId() != null) {
+                                instructorIdList = List.of(projection.getCreatedByUserId());
+                        }
+                        List<UserDTO> instructors = instructorIdList.stream()
                                         .map(userMap::get)
                                         .filter(Objects::nonNull)
                                         .collect(Collectors.toList());
@@ -219,6 +227,7 @@ public class OpenPackageService {
                                         List.of(StatusEnum.ACTIVE.name()), // psliStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentOptionStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentPlanStatus
+                                        learnerPackageFilterDTO.getCreatedByUserId(),
                                         pageable);
                 } else {
                         // Corrected getTag() to getTags() to match List<String> type
@@ -242,13 +251,17 @@ public class OpenPackageService {
                                         List.of(StatusEnum.ACTIVE.name()), // psliStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentOptionStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentPlanStatus
+                                        learnerPackageFilterDTO.getCreatedByUserId(),
                                         pageable);
                 }
 
-                // Get all instructor userIds
+                // Get all instructor userIds (faculty first; fallback to createdByUserId when no faculty mapped)
                 List<String> instructorIds = learnerPackageDetail.getContent().stream()
-                                .map(PackageDetailV2Projection::getFacultyUserIds)
-                                .filter(Objects::nonNull)
+                                .map(proj -> {
+                                        List<String> ids = Optional.ofNullable(proj.getFacultyUserIds()).orElse(List.of());
+                                        if (!ids.isEmpty()) return ids;
+                                        return Optional.ofNullable(proj.getCreatedByUserId()).map(List::of).orElse(List.of());
+                                })
                                 .flatMap(List::stream)
                                 .distinct()
                                 .collect(Collectors.toList());
@@ -258,10 +271,13 @@ public class OpenPackageService {
                 Map<String, UserDTO> userMap = userDTOS.stream()
                                 .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
 
-                // Map projections to DTOs
+                // Map projections to DTOs (instructors = faculty list, or single creator as fallback)
                 List<PackageDetailV2DTO> dtos = learnerPackageDetail.getContent().stream().map(projection -> {
-                        List<UserDTO> instructors = Optional.ofNullable(projection.getFacultyUserIds())
-                                        .orElse(List.of()).stream()
+                        List<String> instructorIdList = Optional.ofNullable(projection.getFacultyUserIds()).orElse(List.of());
+                        if (instructorIdList.isEmpty() && projection.getCreatedByUserId() != null) {
+                                instructorIdList = List.of(projection.getCreatedByUserId());
+                        }
+                        List<UserDTO> instructors = instructorIdList.stream()
                                         .map(userMap::get)
                                         .filter(Objects::nonNull)
                                         .collect(Collectors.toList());

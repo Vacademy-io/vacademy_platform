@@ -435,9 +435,11 @@ class GoogleCloudTTSClient:
             )
         except Exception as tp_error:
             # Fallback: synthesize without timepoints if API doesn't support it
-            print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis")
+            print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis without SSML marks")
+            # Create simple input from plain text to avoid <mark> tag issues
+            simple_input = texttospeech.SynthesisInput(text=text)
             response = client.synthesize_speech(
-                input=input_text, 
+                input=simple_input, 
                 voice=voice, 
                 audio_config=audio_config
             )

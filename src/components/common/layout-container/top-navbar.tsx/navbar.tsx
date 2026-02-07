@@ -339,7 +339,7 @@ export function Navbar() {
 
         {hasTeacherAndStudentRole && (
           <Tooltip delayDuration={0}>
-            <TooltipTrigger>
+            <TooltipTrigger asChild>
               <Button
                 variant="outline"
                 className="h-8 md:h-10 rounded-full px-2 md:px-3 py-1.5 md:py-2 flex items-center gap-1.5 md:gap-2"

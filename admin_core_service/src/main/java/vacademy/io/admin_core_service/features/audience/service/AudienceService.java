@@ -680,6 +680,7 @@ public class AudienceService {
 
         // STEP 2: Create parent and child users using batch endpoint
         String parentUserId = null;
+        String childUserId = null; // Declare at method level for use in AudienceResponse builder
         UserDTO parentUserDTO = null;
         UserDTO childUserDTO = null;
 
@@ -699,9 +700,10 @@ public class AudienceService {
             parentUserDTO = createdUsers.get(0);
             childUserDTO = createdUsers.get(1);
             parentUserId = parentUserDTO.getId();
+            childUserId = childUserDTO.getId(); // Assign child user ID
 
             logger.info("Created parent user with ID: {} and child user with ID: {}",
-                    parentUserId, childUserDTO.getId());
+                    parentUserId, childUserId);
 
             // Duplicate submission guard - check if parent has already submitted
             if (StringUtils.hasText(parentUserId) &&
@@ -738,12 +740,13 @@ public class AudienceService {
         }
 
         // STEP 4: Create Audience Response Entry with new fields - store parent's
-        // user_id
+        // user_id and child's student_user_id
         AudienceResponse response = AudienceResponse.builder()
                 .audienceId(requestDTO.getAudienceId())
                 .sourceType(requestDTO.getSourceType())
                 .sourceId(requestDTO.getSourceId())
                 .userId(parentUserId) // Store parent's user_id
+                .studentUserId(childUserId) // Store child's student_user_id
                 .enquiryId(enquiryId != null ? enquiryId.toString() : null)
                 .destinationPackageSessionId(requestDTO.getDestinationPackageSessionId())
                 .parentName(requestDTO.getParentName())

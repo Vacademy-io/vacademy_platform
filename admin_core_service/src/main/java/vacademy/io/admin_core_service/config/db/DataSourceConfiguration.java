@@ -28,6 +28,7 @@ public class DataSourceConfiguration {
     }
 
     @Bean
+    @ConfigurationProperties("spring.datasource.hikari")
     public DataSource masterDataSource(
             @Qualifier("masterDataSourceProperties") DataSourceProperties masterProperties) {
         return masterProperties
@@ -36,6 +37,7 @@ public class DataSourceConfiguration {
     }
 
     @Bean
+    @ConfigurationProperties("spring.datasource.read.hikari")
     public DataSource slaveDataSource(
             @Qualifier("masterDataSourceProperties") DataSourceProperties masterProperties,
             @Qualifier("slaveDataSourceProperties") DataSourceProperties slaveProperties) {
@@ -49,6 +51,9 @@ public class DataSourceConfiguration {
         }
         if (slaveProperties.getDriverClassName() == null) {
             slaveProperties.setDriverClassName(masterProperties.getDriverClassName());
+        }
+        if (slaveProperties.getUrl() == null) {
+            slaveProperties.setUrl(masterProperties.getUrl());
         }
 
         return slaveProperties

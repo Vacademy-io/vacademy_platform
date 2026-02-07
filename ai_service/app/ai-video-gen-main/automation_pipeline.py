@@ -1709,7 +1709,7 @@ class VideoGenerationPipeline:
                 f"```\n"
                 f"\n**ROUGH NOTATION** (for annotations):\n"
                 f"```javascript\n"
-                f"RoughNotation.annotate(element, {{type: 'underline', color: '{palette.get('annotation_color')}'}}).show();\n"
+                f"annotate('#element-id', {{type: 'underline', color: '{palette.get('annotation_color')}'}});\n"
                 f"```\n"
             )
 

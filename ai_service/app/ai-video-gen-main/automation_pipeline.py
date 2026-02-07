@@ -1922,7 +1922,8 @@ class VideoGenerationPipeline:
         # Actually, for correctness in code/Mermaid, strict ASCII is safer.
         # Ideally we allow UTF-8 but LLM outputting corrupted ligatures is the issue.
         # Let's strip non-ascii.
-        html = re.sub(r'[^\x00-\x7F]+', ' ', html)
+        # UPDATE: Disabled this because it strips Math symbols (σ, π) and non-English languages.
+        # html = re.sub(r'[^\x00-\x7F]+', ' ', html)
         
         # 5. FIX CRITICAL: Ensure elements with opacity:0 have animations
         # Find all elements with opacity:0 and extract their IDs

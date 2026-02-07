@@ -127,6 +127,8 @@ public class AuthService {
                 user.setGender(registerRequest.getGender());
             if (StringUtils.hasText(registerRequest.getProfilePicFileId()))
                 user.setProfilePicFileId(registerRequest.getProfilePicFileId());
+            if (StringUtils.hasText(registerRequest.getLinkedParentId()))
+                user.setLinkedParentId(registerRequest.getLinkedParentId());
             if (!user.isRootUser())
                 user.setRootUser(true);
             user = userRepository.save(user);
@@ -149,6 +151,7 @@ public class AuthService {
                     .dateOfBirth(registerRequest.getDateOfBirth())
                     .gender(registerRequest.getGender())
                     .profilePicFileId(registerRequest.getProfilePicFileId())
+                    .linkedParentId(registerRequest.getLinkedParentId())
                     .isRootUser(true)
                     .build();
             user = userRepository.save(user);
@@ -379,6 +382,8 @@ public class AuthService {
                 user.setGender(registerRequest.getGender());
             if (StringUtils.hasText(registerRequest.getProfilePicFileId()))
                 user.setProfilePicFileId(registerRequest.getProfilePicFileId());
+            if (StringUtils.hasText(registerRequest.getLinkedParentId()))
+                user.setLinkedParentId(registerRequest.getLinkedParentId());
             if (!user.isRootUser())
                 user.setRootUser(true);
             user = userRepository.save(user);
@@ -401,6 +406,7 @@ public class AuthService {
                     .dateOfBirth(registerRequest.getDateOfBirth())
                     .gender(registerRequest.getGender())
                     .profilePicFileId(registerRequest.getProfilePicFileId())
+                    .linkedParentId(registerRequest.getLinkedParentId())
                     .isRootUser(true)
                     .build();
             user = userRepository.save(user);

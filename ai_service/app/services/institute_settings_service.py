@@ -282,7 +282,13 @@ Follow these rules strictly at all times.
                 current_settings["setting"] = {}
                 
             # Get existing keys list
-            api_keys = current_settings["setting"].get("VIDEO_API_KEYS", [])
+            video_api_keys_data = current_settings["setting"].get("VIDEO_API_KEYS", {})
+            api_keys = []
+            
+            if isinstance(video_api_keys_data, list):
+                api_keys = video_api_keys_data
+            else:
+                api_keys = video_api_keys_data.get("keys", [])
             
             # Add new key
             new_key_entry = {
@@ -295,7 +301,7 @@ Follow these rules strictly at all times.
             }
             api_keys.append(new_key_entry)
             
-            current_settings["setting"]["VIDEO_API_KEYS"] = api_keys
+            current_settings["setting"]["VIDEO_API_KEYS"] = {"keys": api_keys}
             
             # Update DB
             update_stmt = text("""
@@ -330,7 +336,12 @@ Follow these rules strictly at all times.
                 return []
                 
             settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-            api_keys = settings.get("setting", {}).get("VIDEO_API_KEYS", [])
+            video_api_keys_data = settings.get("setting", {}).get("VIDEO_API_KEYS", {})
+            
+            if isinstance(video_api_keys_data, list):
+                api_keys = video_api_keys_data
+            else:
+                api_keys = video_api_keys_data.get("keys", [])
             
             # Mask keys for display
             masked_keys = []
@@ -362,7 +373,12 @@ Follow these rules strictly at all times.
                 return False
                 
             current_settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
-            api_keys = current_settings.get("setting", {}).get("VIDEO_API_KEYS", [])
+            video_api_keys_data = current_settings.get("setting", {}).get("VIDEO_API_KEYS", {})
+            
+            if isinstance(video_api_keys_data, list):
+                api_keys = video_api_keys_data
+            else:
+                api_keys = video_api_keys_data.get("keys", [])
             
             # Filter out the key to delete
             original_count = len(api_keys)
@@ -371,7 +387,7 @@ Follow these rules strictly at all times.
             if len(api_keys) == original_count:
                 return False  # Key not found
                 
-            current_settings["setting"]["VIDEO_API_KEYS"] = api_keys
+            current_settings["setting"]["VIDEO_API_KEYS"] = {"keys": api_keys}
             
             update_stmt = text("""
                 UPDATE institutes
@@ -415,7 +431,11 @@ Follow these rules strictly at all times.
                 inst_id, settings_raw = row
                 settings = json.loads(settings_raw) if isinstance(settings_raw, str) else settings_raw
                 
-                keys = settings.get("setting", {}).get("VIDEO_API_KEYS", [])
+                keys_data = settings.get("setting", {}).get("VIDEO_API_KEYS", {})
+                if isinstance(keys_data, list):
+                    keys = keys_data
+                else:
+                    keys = keys_data.get("keys", [])
                 for k in keys:
                     if k.get("key") == api_key and k.get("status") == "active":
                         # Valid key found!

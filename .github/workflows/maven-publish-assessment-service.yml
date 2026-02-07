@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - 'assessment_service/**'
+      - "assessment_service/**"
 
 jobs:
   build-and-deploy:
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -28,7 +28,6 @@ jobs:
           echo "${JAVA_TOKEN}" | docker login ghcr.io -u ${ACCESS_GITHUB_USERNAME} --password-stdin
           mkdir -p ~/.m2
           echo "<settings><servers><server><id>github</id><username>${ACCESS_GITHUB_USERNAME}</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
-
 
       - name: Build Project
         working-directory: ./assessment_service
@@ -95,6 +94,7 @@ jobs:
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
             ASSESSMENT_SERVICE_DB_URL=${{ secrets.ASSESSMENT_SERVICE_DB_URL }} \
+            ASSESSMENT_SERVICE_READ_DB_URL=${{ secrets.ASSESSMENT_SERVICE_READ_DB_URL || secrets.ASSESSMENT_SERVICE_DB_URL }} \
             SCHEDULING_TIME_FRAME=${{ secrets.SCHEDULING_TIME_FRAME }} \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}

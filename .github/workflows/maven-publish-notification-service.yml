@@ -107,6 +107,7 @@ jobs:
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
             NOTIFICATION_SERVICE_DB_URL=${{ secrets.NOTIFICATION_SERVICE_DB_URL }} \
+            NOTIFICATION_SERVICE_READ_DB_URL=${{ secrets.NOTIFICATION_SERVICE_READ_DB_URL || secrets.NOTIFICATION_SERVICE_DB_URL }} \
             MAIL_HOST=${{ secrets.MAIL_HOST }} \
             MAIL_PORT=${{ secrets.MAIL_PORT }} \
             AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }} \

@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - 'auth_service/**'
+      - "auth_service/**"
 
 jobs:
   build-and-deploy:
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -84,6 +84,7 @@ jobs:
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
             AUTH_SERVICE_DB_URL=${{ secrets.AUTH_SERVICE_DB_URL }} \
+            AUTH_SERVICE_READ_DB_URL=${{ secrets.AUTH_SERVICE_READ_DB_URL || secrets.AUTH_SERVICE_DB_URL }} \
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
             TEACHER_PORTAL_CLIENT_URL=${{ secrets.TEACHER_PORTAL_CLIENT_URL }} \
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \

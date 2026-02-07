@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - 'media_service/**'
+      - "media_service/**"
 
 jobs:
   build-and-deploy:
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -28,7 +28,6 @@ jobs:
           echo "${JAVA_TOKEN}" | docker login ghcr.io -u ${ACCESS_GITHUB_USERNAME} --password-stdin
           mkdir -p ~/.m2
           echo "<settings><servers><server><id>github</id><username>${ACCESS_GITHUB_USERNAME}</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
-
 
       - name: Build Project
         working-directory: ./media_service
@@ -104,6 +103,7 @@ jobs:
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
             MEDIA_SERVICE_DB_URL=${{ secrets.MEDIA_SERVICE_DB_URL }} \
+            MEDIA_SERVICE_READ_DB_URL=${{ secrets.MEDIA_SERVICE_READ_DB_URL || secrets.MEDIA_SERVICE_DB_URL }} \
             S3_AWS_ACCESS_KEY=${{ secrets.S3_AWS_ACCESS_KEY }} \
             S3_AWS_ACCESS_SECRET=${{ secrets.S3_AWS_ACCESS_SECRET }} \
             S3_AWS_REGION=${{ secrets.S3_AWS_REGION }} \

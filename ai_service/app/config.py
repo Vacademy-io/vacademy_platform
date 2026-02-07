@@ -68,8 +68,8 @@ class Settings(BaseSettings):
     admin_core_jdbc_url: Optional[str] = os.getenv("ADMIN_CORE_SERVICE_DB_URL")
 
     # SQLAlchemy pool tuning
-    db_pool_size: int = 5
-    db_max_overflow: int = 10
+    db_pool_size: int = 2
+    db_max_overflow: int = 2
     db_pool_timeout_seconds: int = 30
     db_pool_recycle_seconds: int = 1800  # 30 minutes
 

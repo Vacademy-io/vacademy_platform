@@ -22,162 +22,169 @@ import java.util.stream.Collectors;
 @Service
 public class CourseCatalogueService {
 
-    @Autowired
-    private CourseCatalogueRepository courseCatalogueRepository;
+        @Autowired
+        private CourseCatalogueRepository courseCatalogueRepository;
 
-    @Autowired
-    private CatalogueInstituteMappingRepository catalogueInstituteMappingRepository;
+        @Autowired
+        private CatalogueInstituteMappingRepository catalogueInstituteMappingRepository;
 
-    @Transactional
-    public List<CourseCatalogueResponse> createCatalogues(List<CourseCatalogueRequest> requests, String instituteId,
-            Institute institute) {
-        List<CourseCatalogueResponse> responses = new ArrayList<>();
+        @Transactional
+        public List<CourseCatalogueResponse> createCatalogues(List<CourseCatalogueRequest> requests, String instituteId,
+                        Institute institute) {
+                List<CourseCatalogueResponse> responses = new ArrayList<>();
 
-        for (CourseCatalogueRequest request : requests) {
-            // Enforce uniqueness of (instituteId, tagName) among ACTIVE mappings
-            if (request.getTagName() != null && !request.getTagName().isBlank()) {
-                Optional<CatalogueInstituteMapping> existing = catalogueInstituteMappingRepository
-                        .findByInstituteIdAndTagName(instituteId, request.getTagName(),
-                                List.of(CatalogueStatusEnum.ACTIVE.name()));
-                if (existing.isPresent()) {
-                    throw new VacademyException(HttpStatus.CONFLICT, "Catalogue tag already exists for this institute");
+                for (CourseCatalogueRequest request : requests) {
+                        // Enforce uniqueness of (instituteId, tagName) among ACTIVE mappings
+                        if (request.getTagName() != null && !request.getTagName().isBlank()) {
+                                Optional<CatalogueInstituteMapping> existing = catalogueInstituteMappingRepository
+                                                .findByInstituteIdAndTagName(instituteId, request.getTagName(),
+                                                                List.of(CatalogueStatusEnum.ACTIVE.name()));
+                                if (existing.isPresent()) {
+                                        throw new VacademyException(HttpStatus.CONFLICT,
+                                                        "Catalogue tag already exists for this institute");
+                                }
+                        }
+                        CourseCatalogue catalogue = CourseCatalogue.builder()
+                                        .catalogueJson(request.getCatalogueJson())
+                                        .tagName(request.getTagName())
+                                        .status(request.getStatus())
+                                        .build();
+                        catalogue = courseCatalogueRepository.save(catalogue);
+
+                        CatalogueInstituteMapping mapping = CatalogueInstituteMapping.builder()
+                                        .courseCatalogue(catalogue)
+                                        .institute(institute)
+                                        .source(request.getSource())
+                                        .sourceId(request.getSourceId())
+                                        .status(request.getStatus())
+                                        .isDefault(request.getIsDefault())
+                                        .build();
+                        catalogueInstituteMappingRepository.save(mapping);
+
+                        responses.add(
+                                        CourseCatalogueResponse.builder()
+                                                        .id(catalogue.getId())
+                                                        .catalogueJson(catalogue.getCatalogueJson())
+                                                        .tagName(catalogue.getTagName())
+                                                        .status(catalogue.getStatus())
+                                                        .source(mapping.getSource())
+                                                        .sourceId(mapping.getSourceId())
+                                                        .instituteId(instituteId)
+                                                        .build());
                 }
-            }
-            CourseCatalogue catalogue = CourseCatalogue.builder()
-                    .catalogueJson(request.getCatalogueJson())
-                    .tagName(request.getTagName())
-                    .status(request.getStatus())
-                    .build();
-            catalogue = courseCatalogueRepository.save(catalogue);
-
-            CatalogueInstituteMapping mapping = CatalogueInstituteMapping.builder()
-                    .courseCatalogue(catalogue)
-                    .institute(institute)
-                    .source(request.getSource())
-                    .sourceId(request.getSourceId())
-                    .status(request.getStatus())
-                    .isDefault(request.getIsDefault())
-                    .build();
-            catalogueInstituteMappingRepository.save(mapping);
-
-            responses.add(
-                    CourseCatalogueResponse.builder()
-                            .id(catalogue.getId())
-                            .catalogueJson(catalogue.getCatalogueJson())
-                            .tagName(catalogue.getTagName())
-                            .status(catalogue.getStatus())
-                            .source(mapping.getSource())
-                            .sourceId(mapping.getSourceId())
-                            .instituteId(instituteId)
-                            .build());
-        }
-        return responses;
-    }
-
-    @Transactional
-    public CourseCatalogueResponse updateCatalogue(String catalogueId, CourseCatalogueRequest request) {
-        Optional<CourseCatalogue> optional = courseCatalogueRepository.findById(catalogueId);
-        if (optional.isEmpty()) {
-            throw new RuntimeException("Catalogue not found");
+                return responses;
         }
 
-        CourseCatalogue catalogue = optional.get();
-        catalogue.setCatalogueJson(request.getCatalogueJson());
-        catalogue.setTagName(request.getTagName());
-        catalogue.setStatus(request.getStatus());
-        catalogue = courseCatalogueRepository.save(catalogue);
+        @Transactional
+        public CourseCatalogueResponse updateCatalogue(String catalogueId, CourseCatalogueRequest request) {
+                Optional<CourseCatalogue> optional = courseCatalogueRepository.findById(catalogueId);
+                if (optional.isEmpty()) {
+                        throw new RuntimeException("Catalogue not found");
+                }
 
-        Optional<CatalogueInstituteMapping> mapping = catalogueInstituteMappingRepository
-                .findByCourseCatalogueId(catalogueId);
-        if (mapping.isEmpty())
-            throw new VacademyException(HttpStatus.NOT_FOUND, "Catalogue Not Found");
+                CourseCatalogue catalogue = optional.get();
+                catalogue.setCatalogueJson(request.getCatalogueJson());
+                catalogue.setTagName(request.getTagName());
+                catalogue.setStatus(request.getStatus());
+                catalogue = courseCatalogueRepository.save(catalogue);
 
-        mapping.get().setStatus(request.getStatus());
-        mapping.get().setSource(request.getSource());
-        mapping.get().setSourceId(request.getSourceId());
-        mapping.get().setIsDefault(request.getIsDefault());
-        catalogueInstituteMappingRepository.save(mapping.get());
+                Optional<CatalogueInstituteMapping> mapping = catalogueInstituteMappingRepository
+                                .findByCourseCatalogueId(catalogueId);
+                if (mapping.isEmpty())
+                        throw new VacademyException(HttpStatus.NOT_FOUND, "Catalogue Not Found");
 
-        return CourseCatalogueResponse.builder()
-                .id(catalogue.getId())
-                .catalogueJson(catalogue.getCatalogueJson())
-                .tagName(catalogue.getTagName())
-                .status(catalogue.getStatus())
-                .source(mapping.get().getSource())
-                .sourceId(mapping.get().getSourceId())
-                .instituteId(mapping.get().getInstitute().getId())
-                .isDefault(mapping.get().getIsDefault())
-                .build();
-    }
+                mapping.get().setStatus(request.getStatus());
+                mapping.get().setSource(request.getSource());
+                mapping.get().setSourceId(request.getSourceId());
+                mapping.get().setIsDefault(request.getIsDefault());
+                catalogueInstituteMappingRepository.save(mapping.get());
 
-    public List<CourseCatalogueResponse> getAllCataloguesByInstitute(String instituteId) {
-        List<CatalogueInstituteMapping> mappings = catalogueInstituteMappingRepository
-                .findByInstituteIdAndStatusIn(instituteId, List.of(CatalogueStatusEnum.ACTIVE.name()));
-
-        return mappings.stream()
-                .map(m -> CourseCatalogueResponse.builder()
-                        .id(m.getCourseCatalogue().getId())
-                        .catalogueJson(m.getCourseCatalogue().getCatalogueJson())
-                        .tagName(m.getCourseCatalogue().getTagName())
-                        .status(m.getCourseCatalogue().getStatus())
-                        .source(m.getSource())
-                        .sourceId(m.getSourceId())
-                        .instituteId(m.getInstitute().getId())
-                        .build())
-                .collect(Collectors.toList());
-    }
-
-    public List<CourseCatalogueResponse> getCataloguesForInstituteAndSourceAndSourceId(String instituteId,
-            String source, String sourceId) {
-        List<CatalogueInstituteMapping> mappings = catalogueInstituteMappingRepository
-                .findByInstituteIdAndSourceAndSourceIdAndStatusIn(instituteId, source, sourceId,
-                        List.of(CatalogueStatusEnum.ACTIVE.name()));
-        return mappings.stream()
-                .map(m -> CourseCatalogueResponse.builder()
-                        .id(m.getCourseCatalogue().getId())
-                        .catalogueJson(m.getCourseCatalogue().getCatalogueJson())
-                        .tagName(m.getCourseCatalogue().getTagName())
-                        .status(m.getCourseCatalogue().getStatus())
-                        .source(m.getSource())
-                        .sourceId(m.getSourceId())
-                        .instituteId(m.getInstitute().getId())
-                        .build())
-                .collect(Collectors.toList());
-    }
-
-    public CourseCatalogueResponse getDefaultCatalogueForInstituteId(String instituteId) {
-        Optional<CatalogueInstituteMapping> catalogueInstituteMappingOptional = catalogueInstituteMappingRepository
-                .findDefaultCatalogueForInstituteId(instituteId, List.of(CatalogueStatusEnum.ACTIVE.name()));
-        if (catalogueInstituteMappingOptional.isEmpty())
-            throw new VacademyException("No Default Catalogue Found");
-        CatalogueInstituteMapping mapping = catalogueInstituteMappingOptional.get();
-
-        return CourseCatalogueResponse.builder()
-                .id(mapping.getCourseCatalogue().getId())
-                .catalogueJson(mapping.getCourseCatalogue().getCatalogueJson())
-                .tagName(mapping.getCourseCatalogue().getTagName())
-                .status(mapping.getCourseCatalogue().getStatus())
-                .source(mapping.getSource())
-                .sourceId(mapping.getSourceId())
-                .instituteId(mapping.getInstitute().getId())
-                .build();
-    }
-
-    public CourseCatalogueResponse getCatalogueByInstituteAndTag(String instituteId, String tagName) {
-        Optional<CatalogueInstituteMapping> mappingOpt = catalogueInstituteMappingRepository
-                .findByInstituteIdAndTagName(instituteId, tagName, List.of(CatalogueStatusEnum.ACTIVE.name()));
-        if (mappingOpt.isEmpty()) {
-            throw new VacademyException(HttpStatus.NOT_FOUND, "Catalogue not found for tag");
+                return CourseCatalogueResponse.builder()
+                                .id(catalogue.getId())
+                                .catalogueJson(catalogue.getCatalogueJson())
+                                .tagName(catalogue.getTagName())
+                                .status(catalogue.getStatus())
+                                .source(mapping.get().getSource())
+                                .sourceId(mapping.get().getSourceId())
+                                .instituteId(mapping.get().getInstitute().getId())
+                                .isDefault(mapping.get().getIsDefault())
+                                .build();
         }
-        CatalogueInstituteMapping mapping = mappingOpt.get();
-        return CourseCatalogueResponse.builder()
-                .id(mapping.getCourseCatalogue().getId())
-                .catalogueJson(mapping.getCourseCatalogue().getCatalogueJson())
-                .tagName(mapping.getCourseCatalogue().getTagName())
-                .status(mapping.getCourseCatalogue().getStatus())
-                .source(mapping.getSource())
-                .sourceId(mapping.getSourceId())
-                .instituteId(mapping.getInstitute().getId())
-                .build();
-    }
+
+        @Transactional(readOnly = true)
+        public List<CourseCatalogueResponse> getAllCataloguesByInstitute(String instituteId) {
+                List<CatalogueInstituteMapping> mappings = catalogueInstituteMappingRepository
+                                .findByInstituteIdAndStatusIn(instituteId, List.of(CatalogueStatusEnum.ACTIVE.name()));
+
+                return mappings.stream()
+                                .map(m -> CourseCatalogueResponse.builder()
+                                                .id(m.getCourseCatalogue().getId())
+                                                .catalogueJson(m.getCourseCatalogue().getCatalogueJson())
+                                                .tagName(m.getCourseCatalogue().getTagName())
+                                                .status(m.getCourseCatalogue().getStatus())
+                                                .source(m.getSource())
+                                                .sourceId(m.getSourceId())
+                                                .instituteId(m.getInstitute().getId())
+                                                .build())
+                                .collect(Collectors.toList());
+        }
+
+        @Transactional(readOnly = true)
+        public List<CourseCatalogueResponse> getCataloguesForInstituteAndSourceAndSourceId(String instituteId,
+                        String source, String sourceId) {
+                List<CatalogueInstituteMapping> mappings = catalogueInstituteMappingRepository
+                                .findByInstituteIdAndSourceAndSourceIdAndStatusIn(instituteId, source, sourceId,
+                                                List.of(CatalogueStatusEnum.ACTIVE.name()));
+                return mappings.stream()
+                                .map(m -> CourseCatalogueResponse.builder()
+                                                .id(m.getCourseCatalogue().getId())
+                                                .catalogueJson(m.getCourseCatalogue().getCatalogueJson())
+                                                .tagName(m.getCourseCatalogue().getTagName())
+                                                .status(m.getCourseCatalogue().getStatus())
+                                                .source(m.getSource())
+                                                .sourceId(m.getSourceId())
+                                                .instituteId(m.getInstitute().getId())
+                                                .build())
+                                .collect(Collectors.toList());
+        }
+
+        @Transactional(readOnly = true)
+        public CourseCatalogueResponse getDefaultCatalogueForInstituteId(String instituteId) {
+                Optional<CatalogueInstituteMapping> catalogueInstituteMappingOptional = catalogueInstituteMappingRepository
+                                .findDefaultCatalogueForInstituteId(instituteId,
+                                                List.of(CatalogueStatusEnum.ACTIVE.name()));
+                if (catalogueInstituteMappingOptional.isEmpty())
+                        throw new VacademyException("No Default Catalogue Found");
+                CatalogueInstituteMapping mapping = catalogueInstituteMappingOptional.get();
+
+                return CourseCatalogueResponse.builder()
+                                .id(mapping.getCourseCatalogue().getId())
+                                .catalogueJson(mapping.getCourseCatalogue().getCatalogueJson())
+                                .tagName(mapping.getCourseCatalogue().getTagName())
+                                .status(mapping.getCourseCatalogue().getStatus())
+                                .source(mapping.getSource())
+                                .sourceId(mapping.getSourceId())
+                                .instituteId(mapping.getInstitute().getId())
+                                .build();
+        }
+
+        @Transactional(readOnly = true)
+        public CourseCatalogueResponse getCatalogueByInstituteAndTag(String instituteId, String tagName) {
+                Optional<CatalogueInstituteMapping> mappingOpt = catalogueInstituteMappingRepository
+                                .findByInstituteIdAndTagName(instituteId, tagName,
+                                                List.of(CatalogueStatusEnum.ACTIVE.name()));
+                if (mappingOpt.isEmpty()) {
+                        throw new VacademyException(HttpStatus.NOT_FOUND, "Catalogue not found for tag");
+                }
+                CatalogueInstituteMapping mapping = mappingOpt.get();
+                return CourseCatalogueResponse.builder()
+                                .id(mapping.getCourseCatalogue().getId())
+                                .catalogueJson(mapping.getCourseCatalogue().getCatalogueJson())
+                                .tagName(mapping.getCourseCatalogue().getTagName())
+                                .status(mapping.getCourseCatalogue().getStatus())
+                                .source(mapping.getSource())
+                                .sourceId(mapping.getSourceId())
+                                .instituteId(mapping.getInstitute().getId())
+                                .build();
+        }
 }

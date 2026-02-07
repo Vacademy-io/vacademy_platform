@@ -19,18 +19,19 @@ public class LearnerModuleDetailsService {
     private final ModuleChapterMappingRepository moduleChapterMappingRepository;
     private final ObjectMapper objectMapper;
 
-    public List<LearnerModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId, String userId, CustomUserDetails user) {
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<LearnerModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId,
+            String userId, CustomUserDetails user) {
         String rawResponse = moduleChapterMappingRepository.getModuleChapterProgress(
-            subjectId,
-            packageSessionId,
-            user.getUserId(),
-            LearnerOperationEnum.PERCENTAGE_MODULE_COMPLETED.name(),
-            LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name(),
-            List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
-            List.of(SlideStatus.PUBLISHED.name(),SlideStatus.UNSYNC.name()),
-            List.of(vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus.ACTIVE.name()),
-            List.of(ModuleStatusEnum.ACTIVE.name())
-        );
+                subjectId,
+                packageSessionId,
+                user.getUserId(),
+                LearnerOperationEnum.PERCENTAGE_MODULE_COMPLETED.name(),
+                LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name(),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
+                List.of(vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus.ACTIVE.name()),
+                List.of(ModuleStatusEnum.ACTIVE.name()));
         List<LearnerModuleDTOWithDetails> modules = mapToLearnerModuleDTOWithDetails(rawResponse);
         return modules;
     }
@@ -39,12 +40,11 @@ public class LearnerModuleDetailsService {
         try {
             return objectMapper.readValue(
                     rawJson,
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, LearnerModuleDTOWithDetails.class)
-            );
+                    objectMapper.getTypeFactory().constructCollectionType(List.class,
+                            LearnerModuleDTOWithDetails.class));
         } catch (Exception e) {
             throw new VacademyException("Error parsing module JSON response");
         }
     }
-
 
 }

@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - 'admin_core_service/**'
+      - "admin_core_service/**"
 
 jobs:
   build-and-deploy:
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -28,7 +28,6 @@ jobs:
           echo "${JAVA_TOKEN}" | docker login ghcr.io -u ${ACCESS_GITHUB_USERNAME} --password-stdin
           mkdir -p ~/.m2
           echo "<settings><servers><server><id>github</id><username>${ACCESS_GITHUB_USERNAME}</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
-
 
       - name: Build Project
         working-directory: ./admin_core_service
@@ -68,7 +67,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          
+
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN} --build-arg SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
@@ -91,17 +90,18 @@ jobs:
 
       - name: Deploy to Kubernetes
         run: |
-            kubectl set env deployment/admin-core-service \
-              DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              DB_USERNAME=${{ secrets.DB_USERNAME }} \
-              APP_USERNAME=${{ secrets.APP_USERNAME }} \
-              APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
-              CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-              ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }} \
-              GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
-              OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
-              SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} \
-              SENTRY_DSN=${{ secrets.SENTRY_DSN }} 
+          kubectl set env deployment/admin-core-service \
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            DB_USERNAME=${{ secrets.DB_USERNAME }} \
+            APP_USERNAME=${{ secrets.APP_USERNAME }} \
+            APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
+            CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
+            ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }} \
+            ADMIN_CORE_SERVICE_READ_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_READ_DB_URL || secrets.ADMIN_CORE_SERVICE_DB_URL }} \
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} \
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
 
       - name: Restart deployment
         id: restart-deployment

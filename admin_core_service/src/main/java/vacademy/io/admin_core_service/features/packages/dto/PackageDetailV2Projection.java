@@ -49,8 +49,11 @@ public interface PackageDetailV2Projection {
 
     String getLevelName();
 
-    // Faculty IDs
+    // Faculty IDs (from faculty_subject_package_session_mapping)
     List<String> getFacultyUserIds();
+
+    /** Package creator user id (for instructor fallback when no faculty mapped). */
+    String getCreatedByUserId();
 
     // Enroll Invite + Payment details (default invite -> psli -> last updated payment_option -> its plan)
     String getEnrollInviteId();

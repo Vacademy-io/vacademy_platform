@@ -102,6 +102,10 @@ class CourseOutlinePromptBuilder:
             - VIDEO+CODE DETECTION: If user prompt mentions "video+code", "video with code", "video and code",
               "include code editor", "split slide", "code video", "video code slide", "video code", or "code editor",
               use type `VIDEO_CODE` (for YouTube videos) or `AI_VIDEO_CODE` (for AI-generated videos) instead of `VIDEO` or `AI_VIDEO`
+            - HOMEWORK / SOLUTIONS: If user prompt mentions "homework", "practice problems", "include solutions",
+              "exercises", or "problem set", do NOT add any ASSESSMENT (quiz) slides for that. Homework and solution
+              slides are added automatically as DOCUMENT slides after outline generation. Only add type `ASSESSMENT`
+              when the user explicitly asks for a "quiz", "assessment", "MCQ", or "multiple choice questions" slide.
 
             GENERATION CONFIGURATION:
             {generationRequirements}

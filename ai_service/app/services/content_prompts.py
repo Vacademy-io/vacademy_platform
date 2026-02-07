@@ -239,6 +239,75 @@ Explanation of the code output or key concepts.
 **Important**: Return ONLY the Markdown content with code blocks. No explanations outside the markdown, no code block wrappers around the entire response, just the markdown content with code examples.
 """
 
+    @staticmethod
+    def build_homework_prompt(text_prompt: str, title: str) -> str:
+        """
+        Build prompt for homework slides. Content should be coding-focused: mini projects,
+        setup tasks, implementations—not simple question-answer type.
+        """
+        return f"""**Task**: Generate HOMEWORK for a chapter. The homework must be CODING- and TASK-oriented, NOT simple Q&A.
+
+**Topic / Chapter**: {title}
+
+**Context**:
+{text_prompt}
+
+**Content requirements**:
+- Do NOT create simple "what is X?" or short-answer conceptual questions.
+- DO create hands-on tasks such as:
+  - Mini projects (e.g. "Build a small CLI calculator", "Create a REST endpoint that...")
+  - Setup/configuration tasks (e.g. "Set up a local dev environment for...", "Configure X to do Y")
+  - Implementation tasks (e.g. "Implement a function that...", "Write a script that...")
+  - Debugging/fix tasks (e.g. "The following code has a bug; find and fix it")
+  - Integration tasks (e.g. "Connect component A to B and handle errors")
+- Include exactly ONE task per chapter (one mini project, setup, or implementation task—not multiple).
+- The single task should have: clear title, brief context, concrete instructions, and expected outcome or acceptance criteria.
+- Where code is part of the question, use proper code blocks or placeholders so the student knows what to implement or fix.
+
+**Output format**:
+- HTML only. Use <h2> for the single task title, <p> for instructions, <pre><code> for code snippets or starter code.
+- Structure: short introduction paragraph, then one section for the single homework task.
+
+**Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML."""
+
+    @staticmethod
+    def build_solution_prompt(text_prompt: str, title: str, homework_content: str | None = None) -> str:
+        """
+        Build prompt for solution slides. For the homework: provide HINT first, then Solution.
+        If homework_content is provided, the solution must match this exact homework task.
+        """
+        if homework_content:
+            context_block = f"""**The exact homework task from the previous slide (you MUST solve this and only this):**
+{homework_content}
+
+**Chapter context** (for reference): {text_prompt}
+"""
+        else:
+            context_block = f"""**Context** (homework was based on this):
+{text_prompt}
+"""
+        return f"""**Task**: Generate the SOLUTION for the homework from the previous slide. The solution MUST have two parts: (1) HINT first, (2) Solution after.
+
+**Topic / Chapter**: {title}
+
+{context_block}
+
+**Structure** (exactly one homework task per chapter):
+1. **Hint** (first):
+   - One or more hints that guide the student without giving the full answer (e.g. "Think about which data structure fits.", "Check the order of arguments in the API.")
+   - Keep hints short and actionable.
+2. **Solution** (after the hint):
+   - Full, correct solution: complete code (if coding), step-by-step commands (if setup), or full explanation (if implementation).
+   - Code must be complete, runnable, and formatted in code blocks.
+   - For mini projects or setup tasks, include any necessary files/commands and expected output or verification steps.
+
+**Output format**:
+- HTML only.
+- Use exactly two subsection headings: "Hint" (first), then "Solution" (second). Do not use "Exact solution" or "Exact Solution"—use "Solution" only.
+- Use <pre><code> for all code. Use <ol> or <p> for step-by-step instructions where appropriate.
+
+**Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML. Always put the HINT before the Solution. Use the heading "Solution", not "Exact Solution"."""
+
 
 __all__ = ["ContentGenerationPrompts"]
 

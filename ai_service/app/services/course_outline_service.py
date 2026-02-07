@@ -493,21 +493,30 @@ class CourseOutlineGenerationService:
                 self._content_generation_service._user_id = extracted_user_id or self._content_generation_service._user_id
                 self._content_generation_service._db_session = self._db_session or self._content_generation_service._db_session
             
-            # Process todos concurrently (non-blocking)
-            async def process_todo_async(todo: Todo, event_queue: asyncio.Queue):
-                """Process a single todo and put all events into the queue."""
+            # Process todos in order so "Homework Solutions" can use the generated "Homework Questions" content
+            generated_content_by_path = {}
+            for todo in content_todos:
                 try:
-                    logger.info(f"Starting async content generation for todo: {todo.path} (Type: {todo.type})")
-                    event_count = 0
-                    async for content_update in self._content_generation_service.generate_content_for_todo(todo):
-                        await event_queue.put((todo.path, content_update))
-                        event_count += 1
-                    logger.info(f"Completed async content generation for todo: {todo.path} ({event_count} events)")
-                    # Signal completion
-                    await event_queue.put((todo.path, None))  # None signals completion
+                    logger.info(f"Starting content generation for todo: {todo.path} (Type: {todo.type})")
+                    async for content_update in self._content_generation_service.generate_content_for_todo(
+                        todo, generated_content_by_path
+                    ):
+                        yield content_update
+                        # Accumulate generated content so solution slides can use homework content
+                        try:
+                            data = json.loads(content_update)
+                            if (
+                                data.get("type") == "SLIDE_CONTENT_UPDATE"
+                                and data.get("status")
+                                and "contentData" in data
+                            ):
+                                generated_content_by_path[data["path"]] = data["contentData"]
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    logger.info(f"Completed content generation for todo: {todo.path}")
                 except Exception as e:
                     logger.error(f"Error processing todo {todo.path}: {str(e)}")
-                    error_response = {
+                    error_response = json.dumps({
                         "type": "SLIDE_CONTENT_ERROR",
                         "path": todo.path,
                         "status": False,
@@ -515,61 +524,8 @@ class CourseOutlineGenerationService:
                         "slideType": todo.type,
                         "errorMessage": f"Failed to generate content: {str(e)}",
                         "contentData": "Error generating content for this slide. Please try again or contact support.",
-                    }
-                    await event_queue.put((todo.path, json.dumps(error_response)))
-                    await event_queue.put((todo.path, None))  # Signal completion even on error
-            
-            # Create event queue to merge events from all concurrent tasks
-            event_queue = asyncio.Queue()
-            
-            # Create tasks for all todos (they run concurrently)
-            tasks = []
-            for todo in content_todos:
-                task = asyncio.create_task(process_todo_async(todo, event_queue))
-                tasks.append(task)
-            
-            # Track completed todos
-            completed_todos = set()
-            
-            # Stream events as they arrive from any task
-            while len(completed_todos) < len(content_todos):
-                try:
-                    # Wait for next event with a timeout to periodically check task status
-                    try:
-                        todo_path, content_update = await asyncio.wait_for(event_queue.get(), timeout=1.0)
-                    except asyncio.TimeoutError:
-                        # Check if any tasks completed without sending completion signal
-                        for i, task in enumerate(tasks):
-                            todo = content_todos[i]
-                            if task.done() and todo.path not in completed_todos:
-                                completed_todos.add(todo.path)
-                                try:
-                                    await task  # This will raise if task had an exception
-                                except Exception as task_error:
-                                    logger.error(f"Task for {todo.path} failed: {str(task_error)}")
-                        continue
-                    
-                    # Check if this is a completion signal
-                    if content_update is None:
-                        completed_todos.add(todo_path)
-                        logger.debug(f"Todo {todo_path} completed. {len(completed_todos)}/{len(content_todos)} done.")
-                        continue
-                    
-                    # Yield the actual event
-                    yield content_update
-                    
-                except Exception as e:
-                    logger.error(f"Error processing event from queue: {str(e)}")
-                    # Check if tasks are still running
-                    for i, task in enumerate(tasks):
-                        if task.done() and content_todos[i].path not in completed_todos:
-                            try:
-                                await task
-                                completed_todos.add(content_todos[i].path)
-                            except Exception as task_error:
-                                logger.error(f"Task {i} (todo: {content_todos[i].path}) failed: {str(task_error)}")
-                                completed_todos.add(content_todos[i].path)  # Mark as done even on error
-                    continue
+                    })
+                    yield error_response
             
             logger.info("All 'todo' content generation tasks have completed.")
             
@@ -611,6 +567,35 @@ class CourseOutlineGenerationService:
             return outline_response
         
         logger.info("Detected practice problems/solutions keywords. Adding homework slides to each chapter.")
+        
+        # Remove any LLM-generated homework/solution slides (quiz or document). We add exactly one "Homework Questions -"
+        # and one "Homework Solutions -" DOCUMENT per chapter; the user wants only those, not extra "X Homework" or
+        # "X Homework Solution" slides from the outline.
+        def _is_llm_homework_or_solution_todo(t: Todo) -> bool:
+            title = (t.title or "").strip().lower()
+            name = (t.name or "").strip().lower()
+            # Our canonical slides we inject start with these prefixes
+            if title.startswith("homework questions -") or title.startswith("homework solutions -"):
+                return False
+            if name.startswith("homework questions -") or name.startswith("homework solutions -"):
+                return False
+            # LLM-generated ones look like "Spark Data Processing Homework", "X Homework Solution", etc.
+            if "homework" in title or "homework" in name:
+                return True
+            if ("solution" in title or "solution" in name) and ("homework" in title or "homework" in name):
+                return True
+            # LLM sometimes adds a standalone "Solution: [Topic]" slide (e.g. "Solution: Your First Spark Program");
+            # we only want our single "Homework Solutions -" slide per chapter.
+            if title.startswith("solution:") or title.startswith("solution -"):
+                return True
+            if name.startswith("solution:") or name.startswith("solution -"):
+                return True
+            # Quiz/assessment for practice
+            if t.type == "ASSESSMENT" and any(k in title or k in name for k in ("practice", "exercise")):
+                return True
+            return False
+
+        outline_response.todos = [t for t in outline_response.todos if not _is_llm_homework_or_solution_todo(t)]
         
         # Group todos by chapter and find insertion points
         # We need to insert homework slides right after the last slide of each chapter
@@ -696,53 +681,45 @@ class CourseOutlineGenerationService:
             # Determine order based on last todo in chapter
             last_order = last_chapter_todo.order if last_chapter_todo.order else last_chapter_idx + 1
             
-            # Create homework questions todo for this chapter
+            # Create homework questions todo for this chapter (coding/task-focused, not simple Q&A)
             homework_todo = Todo(
                 name=f"Homework Questions - {chapter_name}",
                 title=f"Homework Questions - {chapter_name}",
                 type="DOCUMENT",
                 path=homework_path,
                 action_type="ADD",
-                prompt=f"""Create a comprehensive set of homework questions based ONLY on the course content covered in {chapter_name} from the following slides in this chapter: {slide_references}.
+                prompt=f"""Create homework tasks based ONLY on the course content covered in {chapter_name} from the following slides in this chapter: {slide_references}.
 
-IMPORTANT: These homework questions should ONLY reference content from {chapter_name}. Do not include questions from other chapters.
+IMPORTANT: These homework tasks should ONLY reference content from {chapter_name}. Do not include tasks from other chapters.
 
-The homework should:
-- Include questions that test understanding of key concepts from the slides in {chapter_name} ONLY
-- Mix different question types: conceptual questions, problem-solving questions, and application questions
-- Cover all major topics from THIS chapter's slides only
-- Be appropriate for the course level
-- Include clear instructions for each question
-- Focus exclusively on the content from: {slide_references}
-
-Format the output as HTML with proper structure using headings, paragraphs, and lists.""",
+The homework must be CODING- and TASK-oriented, NOT simple question-answer type. Include exactly ONE task per chapter, such as:
+- One mini project (e.g. build a small app, implement a feature, create a script), or
+- One setup/configuration task (e.g. set up environment, configure a tool), or
+- One implementation task (e.g. implement a function, write code that does X)
+The single task must have: clear title, brief context, concrete instructions, and expected outcome. Include code snippets or starter code where relevant. Base it on THIS chapter only: {slide_references}. Format as HTML with headings, paragraphs, and code blocks.""",
                 order=last_order + 1,
                 chapter_name=chapter_document_slides[0].chapter_name,
                 module_name=chapter_document_slides[0].module_name,
                 subject_name=chapter_document_slides[0].subject_name
             )
             
-            # Create solutions todo for this chapter
+            # Create solutions todo for this chapter (hint first, then exact solution per item)
             solutions_todo = Todo(
                 name=f"Homework Solutions - {chapter_name}",
                 title=f"Homework Solutions - {chapter_name}",
                 type="DOCUMENT",
                 path=solutions_path,
                 action_type="ADD",
-                prompt=f"""Create detailed solutions for the homework questions from the previous slide in {chapter_name}.
+                prompt=f"""Create solutions for the homework tasks from the previous slide in {chapter_name}. For EACH task you MUST give: (1) HINT first, (2) then the EXACT solution.
 
-IMPORTANT: These solutions should ONLY reference content from {chapter_name}. The homework questions are based on the following slides from this chapter: {slide_references}.
+IMPORTANT: Solutions should ONLY reference content from {chapter_name}. The homework tasks are based on these slides: {slide_references}.
 
-The solutions should:
-- Provide step-by-step explanations for each homework question
-- Include reasoning and methodology
-- Show all work clearly
-- Explain why each answer is correct
-- Reference concepts ONLY from the chapter slides: {slide_references}
-- Be comprehensive and educational
-- Focus exclusively on content from {chapter_name}
+For every homework item:
+- First provide one or more HINTs (short, actionable, without giving the full answer).
+- Then provide the full EXACT solution: complete code (if coding), step-by-step commands (if setup), or full implementation with explanation.
+- Code must be complete and runnable; for setup tasks include commands and how to verify. Reference concepts only from: {slide_references}.
 
-Format the output as HTML with proper structure using headings, paragraphs, code blocks (if applicable), and lists.""",
+Format as HTML: for each task use a heading, then a "Hint" subsection, then a "Solution" subsection with code in <pre><code> and steps in lists/paragraphs.""",
                 order=last_order + 2,
                 chapter_name=chapter_document_slides[0].chapter_name,
                 module_name=chapter_document_slides[0].module_name,

@@ -59,7 +59,7 @@ class ContentGenerationService:
         logger.info("[ContentGenService] ContentGenerationService fully initialized")
 
     async def generate_document_content(
-        self, todo: Todo, prompt: str
+        self, todo: Todo, prompt: str, homework_content: Optional[str] = None
     ) -> dict:
         """
         Generate document content for a DOCUMENT type todo.
@@ -77,21 +77,40 @@ class ContentGenerationService:
         try:
             logger.info(f"Generating document content for slide: {todo.path}")
             
-            # Check if diagrams should be included based on prompt
-            diagram_keywords = ["include diagrams", "include diagram", "with diagrams", "with diagram", 
-                               "add diagrams", "add diagram", "diagrams", "mermaid"]
-            prompt_lower = prompt.lower()
-            include_diagrams = any(keyword in prompt_lower for keyword in diagram_keywords)
-            
-            if include_diagrams:
-                logger.info(f"Detected diagram request in prompt for slide: {todo.path}, generating markdown with Mermaid diagrams")
-            
-            # Build document prompt (will generate markdown if diagrams requested, HTML otherwise)
-            document_prompt = ContentGenerationPrompts.build_document_prompt(
-                text_prompt=prompt,
-                title=todo.title or todo.name,
-                include_diagrams=include_diagrams
-            )
+            title = todo.title or todo.name or ""
+            title_lower = title.lower()
+            is_homework_questions = "homework questions" in title_lower
+            is_homework_solutions = "homework solutions" in title_lower
+
+            if is_homework_questions:
+                logger.info(f"Using homework (coding/task-focused) prompt for slide: {todo.path}")
+                document_prompt = ContentGenerationPrompts.build_homework_prompt(
+                    text_prompt=prompt,
+                    title=title,
+                )
+            elif is_homework_solutions:
+                logger.info(f"Using solution (hint then solution) prompt for slide: {todo.path}")
+                document_prompt = ContentGenerationPrompts.build_solution_prompt(
+                    text_prompt=prompt,
+                    title=title,
+                    homework_content=homework_content,
+                )
+            else:
+                # Check if diagrams should be included based on prompt
+                diagram_keywords = ["include diagrams", "include diagram", "with diagrams", "with diagram",
+                                   "add diagrams", "add diagram", "diagrams", "mermaid"]
+                prompt_lower = prompt.lower()
+                include_diagrams = any(keyword in prompt_lower for keyword in diagram_keywords)
+
+                if include_diagrams:
+                    logger.info(f"Detected diagram request in prompt for slide: {todo.path}, generating markdown with Mermaid diagrams")
+
+                # Build document prompt (will generate markdown if diagrams requested, HTML otherwise)
+                document_prompt = ContentGenerationPrompts.build_document_prompt(
+                    text_prompt=prompt,
+                    title=title,
+                    include_diagrams=include_diagrams
+                )
             
             # Generate content using the enhanced prompt and capture token usage
             usage_info = {}
@@ -822,23 +841,50 @@ class ContentGenerationService:
         # Fallback: return as string wrapped in dict
         return {"raw_content": response}
 
+    def _get_homework_path_for_solution(self, solution_path: str) -> Optional[str]:
+        """Get the homework slide path for a solution slide (same chapter, previous SL number). E.g. C1.CH1.SL3 -> C1.CH1.SL2."""
+        parts = solution_path.split(".")
+        for i in range(len(parts) - 1, -1, -1):
+            if parts[i].startswith("SL"):
+                try:
+                    num = int(parts[i][2:])
+                    if num <= 1:
+                        return None
+                    parts[i] = f"SL{num - 1}"
+                    return ".".join(parts)
+                except ValueError:
+                    return None
+        return None
+
     async def generate_content_for_todo(
-        self, todo: Todo
+        self, todo: Todo, generated_content_by_path: Optional[dict] = None
     ) -> AsyncGenerator[str, None]:
         """
         Generate content for a single todo and yield the formatted JSON update.
-        This matches the pattern from media-service processSingleTodoForContent.
+        When generating a "Homework Solutions" slide, pass generated_content_by_path (path -> contentData)
+        so the solution can use the actual homework content from the previous slide.
         """
         try:
             logger.info(
                 f"Initiating content generation for slide: {todo.path} "
                 f"(Type: {todo.type}, Action: {todo.action_type})"
             )
-            
+            generated_content_by_path = generated_content_by_path or {}
+            homework_content = None
+            if todo.type == "DOCUMENT":
+                title_lower = (todo.title or todo.name or "").lower()
+                if "homework solutions" in title_lower:
+                    homework_path = self._get_homework_path_for_solution(todo.path)
+                    if homework_path:
+                        homework_content = generated_content_by_path.get(homework_path)
+                        if homework_content:
+                            logger.info(f"Using homework content from {homework_path} for solution slide {todo.path}")
+                        else:
+                            logger.warning(f"No homework content found at {homework_path} for solution {todo.path}")
             # Generate content based on todo type
             if todo.type == "DOCUMENT":
                 content_update = await self.generate_document_content(
-                    todo=todo, prompt=todo.prompt
+                    todo=todo, prompt=todo.prompt, homework_content=homework_content
                 )
                 # Yield the content update as JSON string (matches media-service format)
                 yield json.dumps(content_update)

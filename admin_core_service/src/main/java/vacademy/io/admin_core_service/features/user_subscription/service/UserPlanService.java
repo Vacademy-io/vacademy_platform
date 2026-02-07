@@ -172,8 +172,10 @@ public class UserPlanService {
                             List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.PENDING.name()));
         }
 
-        // Filter out plans that only have ABANDONED_CART entries (unverified enrollments)
-        // These should not be considered for stacking as the user never completed verification
+        // Filter out plans that only have ABANDONED_CART entries (unverified
+        // enrollments)
+        // These should not be considered for stacking as the user never completed
+        // verification
         if (existingPlan.isPresent() && !hasRealEnrollmentEntries(existingPlan.get())) {
             logger.info("Existing UserPlan ID={} has only ABANDONED_CART entries, ignoring for stacking",
                     existingPlan.get().getId());
@@ -238,11 +240,14 @@ public class UserPlanService {
 
     /**
      * Checks if a UserPlan has any real (verified) enrollment entries.
-     * Returns false if the UserPlan only has ABANDONED_CART or PAYMENT_FAILED entries,
-     * which represent unverified/failed enrollments that shouldn't count for stacking.
+     * Returns false if the UserPlan only has ABANDONED_CART or PAYMENT_FAILED
+     * entries,
+     * which represent unverified/failed enrollments that shouldn't count for
+     * stacking.
      *
      * @param userPlan The UserPlan to check
-     * @return true if the plan has at least one real (PACKAGE_SESSION type) ACTIVE entry
+     * @return true if the plan has at least one real (PACKAGE_SESSION type) ACTIVE
+     *         entry
      */
     private boolean hasRealEnrollmentEntries(UserPlan userPlan) {
         if (userPlan == null || userPlan.getId() == null) {
@@ -250,14 +255,14 @@ public class UserPlanService {
         }
 
         List<StudentSessionInstituteGroupMapping> entries = studentSessionRepository
-                .findAllByUserPlanIdAndStatusIn(userPlan.getId(), 
+                .findAllByUserPlanIdAndStatusIn(userPlan.getId(),
                         List.of("ACTIVE", "INVITED", "EXPIRED", "TERMINATED", "INACTIVE"));
 
         // Check if any entry is NOT ABANDONED_CART and NOT PAYMENT_FAILED
         for (StudentSessionInstituteGroupMapping entry : entries) {
             String type = entry.getType();
-            if (type == null || 
-                (!"ABANDONED_CART".equalsIgnoreCase(type) && !"PAYMENT_FAILED".equalsIgnoreCase(type))) {
+            if (type == null ||
+                    (!"ABANDONED_CART".equalsIgnoreCase(type) && !"PAYMENT_FAILED".equalsIgnoreCase(type))) {
                 // Found a real entry (PACKAGE_SESSION or null type which is default)
                 return true;
             }
@@ -350,8 +355,10 @@ public class UserPlanService {
             logger.debug("Package session IDs resolved for EnrollInvite ID={}: {}", enrollInvite.getId(),
                     packageSessionIds);
 
-            // Terminate active sessions configured in enrollment policy BEFORE shifting to active
-            // This is for paid enrollments where termination was deferred until payment confirmation
+            // Terminate active sessions configured in enrollment policy BEFORE shifting to
+            // active
+            // This is for paid enrollments where termination was deferred until payment
+            // confirmation
             terminateActiveSessionsAfterPayment(userPlan.getUserId(), enrollInvite.getInstituteId(), packageSessionIds);
 
             learnerBatchEnrollService.shiftLearnerFromInvitedToActivePackageSessions(packageSessionIds,
@@ -419,18 +426,22 @@ public class UserPlanService {
     }
 
     /**
-     * Terminates (marks as DELETED) the user's active enrollments in package sessions
+     * Terminates (marks as DELETED) the user's active enrollments in package
+     * sessions
      * specified in the policy's terminateActiveSessions list.
      * 
      * This method is called AFTER payment confirmation for paid enrollments.
      * Use case: When user upgrades from a demo package to a paid package,
-     * the demo enrollment should be automatically terminated only after payment is confirmed.
+     * the demo enrollment should be automatically terminated only after payment is
+     * confirmed.
      *
      * @param userId            The user ID whose sessions should be terminated
      * @param instituteId       The institute ID
-     * @param packageSessionIds The package sessions the user is enrolling into (to read their policies)
+     * @param packageSessionIds The package sessions the user is enrolling into (to
+     *                          read their policies)
      */
-    private void terminateActiveSessionsAfterPayment(String userId, String instituteId, List<String> packageSessionIds) {
+    private void terminateActiveSessionsAfterPayment(String userId, String instituteId,
+            List<String> packageSessionIds) {
         if (packageSessionIds == null || packageSessionIds.isEmpty()) {
             return;
         }
@@ -460,7 +471,8 @@ public class UserPlanService {
                     continue;
                 }
 
-                logger.info("Terminating active sessions for user {} after payment confirmation. Sessions to terminate: {}",
+                logger.info(
+                        "Terminating active sessions for user {} after payment confirmation. Sessions to terminate: {}",
                         userId, sessionsToTerminate);
 
                 // Find and terminate all matching active enrollments
@@ -478,7 +490,8 @@ public class UserPlanService {
                             StudentSessionInstituteGroupMapping mapping = activeMapping.get();
                             mapping.setStatus(LearnerSessionStatusEnum.DELETED.name());
                             studentSessionRepository.save(mapping);
-                            logger.info("Terminated enrollment for user {} in package session {} after payment confirmation",
+                            logger.info(
+                                    "Terminated enrollment for user {} in package session {} after payment confirmation",
                                     userId, sessionIdToTerminate);
                         }
                     } catch (Exception e) {
@@ -496,6 +509,7 @@ public class UserPlanService {
     }
 
     @Cacheable(value = "userPlanWithPaymentLogs", key = "#userPlanId + '_' + #includePolicyDetails")
+    @Transactional(readOnly = true)
     public UserPlanDTO getUserPlanWithPaymentLogs(String userPlanId, boolean includePolicyDetails) {
         logger.info("Getting UserPlan with payment logs for ID: {}, includePolicyDetails: {}", userPlanId,
                 includePolicyDetails);
@@ -522,11 +536,13 @@ public class UserPlanService {
 
     // Overloaded method for backward compatibility
     @Cacheable(value = "userPlanWithPaymentLogs", key = "#userPlanId + '_false'")
+    @Transactional(readOnly = true)
     public UserPlanDTO getUserPlanWithPaymentLogs(String userPlanId) {
         return getUserPlanWithPaymentLogs(userPlanId, false);
     }
 
     @Cacheable(value = "userPlanById", key = "#userPlanId")
+    @Transactional(readOnly = true)
     public UserPlan findById(String userPlanId) {
         logger.info("Finding UserPlan by ID: {}", userPlanId);
         return userPlanRepository.findById(userPlanId)
@@ -547,6 +563,7 @@ public class UserPlanService {
     }
 
     @Cacheable(value = "userPlansByUser", key = "#userPlanFilterDTO.userId + ':' + #userPlanFilterDTO.instituteId + ':' + #pageNo + ':' + #pageSize + ':' + #userPlanFilterDTO.statuses + ':' + #userPlanFilterDTO.sortColumns")
+    @Transactional(readOnly = true)
     public Page<UserPlanDTO> getUserPlansByUserIdAndInstituteId(int pageNo, int pageSize,
             UserPlanFilterDTO userPlanFilterDTO) {
         logger.info("Getting paginated UserPlans for userId={}, instituteId={}", userPlanFilterDTO.getUserId(),
@@ -923,6 +940,7 @@ public class UserPlanService {
             "(#filterDTO.membershipStatuses != null ? #filterDTO.membershipStatuses.toString() : 'null') + '_' + " +
             "(#filterDTO.packageSessionIds != null ? #filterDTO.packageSessionIds.toString() : 'null') + '_' + " +
             "(#filterDTO.sortOrder != null ? #filterDTO.sortOrder.toString() : 'null')", unless = "#result == null || #result.isEmpty()")
+    @Transactional(readOnly = true)
     public Page<MembershipDetailsDTO> getMembershipDetails(MembershipFilterDTO filterDTO, int pageNo, int pageSize) {
         Pageable pageable = createPageable(pageNo, pageSize, filterDTO.getSortOrder());
 
@@ -1050,6 +1068,7 @@ public class UserPlanService {
             "(#filterDTO.membershipStatuses != null ? #filterDTO.membershipStatuses.toString() : 'null') + '_' + " +
             "(#filterDTO.packageSessionIds != null ? #filterDTO.packageSessionIds.toString() : 'null') + '_' + " +
             "(#filterDTO.sortOrder != null ? #filterDTO.sortOrder.toString() : 'null')", unless = "#result == null || #result.isEmpty()")
+    @Transactional(readOnly = true)
     public Page<MembershipDetailsDTO> getMembershipDetailsCached(MembershipFilterDTO filterDTO, int pageNo,
             int pageSize) {
         return getMembershipDetails(filterDTO, pageNo, pageSize);

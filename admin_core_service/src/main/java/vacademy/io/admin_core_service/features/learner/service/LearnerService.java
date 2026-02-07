@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.learner.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
@@ -30,8 +31,10 @@ public class LearnerService {
         if (Objects.isNull(learnerDetailsEditDTO)) {
             throw new VacademyException("Invalid request");
         }
-        Student student = instituteStudentRepository.findTopByUserId(learnerDetailsEditDTO.getUserId()).orElseThrow(() -> new VacademyException("User not found"));
-        if (StringUtils.hasText(learnerDetailsEditDTO.getEmail())) student.setEmail(learnerDetailsEditDTO.getEmail());
+        Student student = instituteStudentRepository.findTopByUserId(learnerDetailsEditDTO.getUserId())
+                .orElseThrow(() -> new VacademyException("User not found"));
+        if (StringUtils.hasText(learnerDetailsEditDTO.getEmail()))
+            student.setEmail(learnerDetailsEditDTO.getEmail());
         if (StringUtils.hasText(learnerDetailsEditDTO.getFullName()))
             student.setFullName(learnerDetailsEditDTO.getFullName());
         if (StringUtils.hasText(learnerDetailsEditDTO.getContactNumber()))
@@ -40,7 +43,8 @@ public class LearnerService {
             student.setGender(learnerDetailsEditDTO.getGender());
         if (StringUtils.hasText(learnerDetailsEditDTO.getAddressLine()))
             student.setAddressLine(learnerDetailsEditDTO.getAddressLine());
-        if (StringUtils.hasText(learnerDetailsEditDTO.getState())) student.setRegion(learnerDetailsEditDTO.getState());
+        if (StringUtils.hasText(learnerDetailsEditDTO.getState()))
+            student.setRegion(learnerDetailsEditDTO.getState());
         if (StringUtils.hasText(learnerDetailsEditDTO.getPinCode()))
             student.setPinCode(learnerDetailsEditDTO.getPinCode());
         if (StringUtils.hasText(learnerDetailsEditDTO.getInstituteName()))
@@ -53,7 +57,7 @@ public class LearnerService {
             student.setParentToMotherMobileNumber(learnerDetailsEditDTO.getParentsMobileNumber());
         if (StringUtils.hasText(learnerDetailsEditDTO.getParentsEmail()))
             student.setParentsEmail(learnerDetailsEditDTO.getParentsEmail());
-        if (StringUtils.hasText(learnerDetailsEditDTO.getUserName())){
+        if (StringUtils.hasText(learnerDetailsEditDTO.getUserName())) {
             student.setUsername(learnerDetailsEditDTO.getUserName());
         }
         student.setFaceFileId(learnerDetailsEditDTO.getFaceFileId());
@@ -71,7 +75,8 @@ public class LearnerService {
 
     public String updateFaceFileId(String faceFileId, CustomUserDetails userDetails) {
         if (StringUtils.hasText(userDetails.getId()) && StringUtils.hasText(faceFileId)) {
-            Student student = instituteStudentRepository.findTopByUserId(userDetails.getId()).orElseThrow(() -> new VacademyException("User not found"));
+            Student student = instituteStudentRepository.findTopByUserId(userDetails.getId())
+                    .orElseThrow(() -> new VacademyException("User not found"));
             student.setFaceFileId(faceFileId);
             instituteStudentRepository.save(student);
             return "success";
@@ -79,13 +84,18 @@ public class LearnerService {
         return "failed";
     }
 
-    public List<LearnerDetailsDTO> getStudentsByPackageSessionId(String packageSessionId, String instituteId, CustomUserDetails user) {
-        return instituteStudentRepository.findStudentsByPackageSessionIdAndInstituteIdAndStatus(packageSessionId, instituteId, List.of(LearnerStatusEnum.ACTIVE.name())).stream()
-                .map(student -> new LearnerDetailsDTO(student.getFullName(), student.getUserId())).collect(Collectors.toList());
+    @Transactional(readOnly = true)
+    public List<LearnerDetailsDTO> getStudentsByPackageSessionId(String packageSessionId, String instituteId,
+            CustomUserDetails user) {
+        return instituteStudentRepository
+                .findStudentsByPackageSessionIdAndInstituteIdAndStatus(packageSessionId, instituteId,
+                        List.of(LearnerStatusEnum.ACTIVE.name()))
+                .stream()
+                .map(student -> new LearnerDetailsDTO(student.getFullName(), student.getUserId()))
+                .collect(Collectors.toList());
     }
 
-
-    public String updateLearnerDetail(UserDTO userDTO,LearnerExtraDetails learnerExtraDetails) {
+    public String updateLearnerDetail(UserDTO userDTO, LearnerExtraDetails learnerExtraDetails) {
         Student student = instituteStudentRepository.findTopByUserId(userDTO.getId())
                 .orElseThrow(() -> new VacademyException("User not found"));
 
@@ -105,7 +115,7 @@ public class LearnerService {
         student.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
         student.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
         student.setParentToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
-       student.setFaceFileId(userDTO.getProfilePicFileId());
+        student.setFaceFileId(userDTO.getProfilePicFileId());
 
         instituteStudentRepository.save(student);
         return "done";

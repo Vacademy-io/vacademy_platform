@@ -267,6 +267,7 @@ public class AudienceService {
     /**
      * Get all campaigns for an institute with filters
      */
+    @Transactional(readOnly = true)
     public Page<AudienceDTO> getCampaigns(AudienceFilterDTO filterDTO) {
         Pageable pageable = PageRequest.of(
                 filterDTO.getPage() != null ? filterDTO.getPage() : 0,
@@ -1099,6 +1100,7 @@ public class AudienceService {
     /**
      * Get all leads for a campaign with filters
      */
+    @Transactional(readOnly = true)
     public Page<LeadDetailDTO> getLeads(LeadFilterDTO filterDTO) {
         // Create Pageable without sorting since the query already has ORDER BY clause
         // Native queries don't map camelCase to snake_case automatically
@@ -1145,6 +1147,7 @@ public class AudienceService {
     /**
      * Get lead details by ID
      */
+    @Transactional(readOnly = true)
     public LeadDetailDTO getLeadById(String responseId) {
         AudienceResponse response = audienceResponseRepository.findById(responseId)
                 .orElseThrow(() -> new VacademyException("Lead not found"));

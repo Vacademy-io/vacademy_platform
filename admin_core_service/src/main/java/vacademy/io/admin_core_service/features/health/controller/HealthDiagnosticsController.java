@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.health.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -65,14 +66,36 @@ public class HealthDiagnosticsController {
      * Database latency measurement
      * Returns connection acquisition time and validation time
      */
+    @Autowired
+    @Qualifier("slaveDataSource")
+    private DataSource slaveDataSource;
+
+    /**
+     * Database latency measurement for Master DB
+     * Returns connection acquisition time and validation time
+     */
     @GetMapping("/db")
     public ResponseEntity<Map<String, Object>> getDatabaseLatency() {
+        return checkDatabaseHealth(dataSource, "master");
+    }
+
+    /**
+     * Database latency measurement for Read Replica DB
+     * Returns connection acquisition time and validation time
+     */
+    @GetMapping("/db/read-replica")
+    public ResponseEntity<Map<String, Object>> getReadReplicaLatency() {
+        return checkDatabaseHealth(slaveDataSource, "read-replica");
+    }
+
+    private ResponseEntity<Map<String, Object>> checkDatabaseHealth(DataSource ds, String dbType) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("service", "admin-core-service");
+        response.put("db_type", dbType);
         response.put("timestamp", Instant.now());
 
         long connectionStart = System.currentTimeMillis();
-        try (Connection conn = dataSource.getConnection()) {
+        try (Connection conn = ds.getConnection()) {
             long connectionTime = System.currentTimeMillis() - connectionStart;
 
             long validationStart = System.currentTimeMillis();
@@ -84,11 +107,15 @@ public class HealthDiagnosticsController {
             response.put("connection_time_ms", connectionTime);
             response.put("validation_time_ms", validationTime);
             response.put("total_latency_ms", connectionTime + validationTime);
+
+            // For routing datasource (master), getCatalog might return actual DB name
             response.put("database", conn.getCatalog());
 
             // Get pool stats if available
             try {
                 response.put("pool_name", conn.getMetaData().getDriverName());
+                response.put("url", conn.getMetaData().getURL()); // Be careful with exposing full URL in prod logs, but
+                                                                  // OK for internal health check if secured
             } catch (Exception ignored) {
             }
 

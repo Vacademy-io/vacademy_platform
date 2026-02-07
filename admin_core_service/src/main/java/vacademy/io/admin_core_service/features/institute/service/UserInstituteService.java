@@ -168,6 +168,7 @@ public class UserInstituteService {
         return institute;
     }
 
+    @Transactional(readOnly = true)
     public ResponseEntity<InstituteDashboardResponse> getInstituteDashboardDetail(CustomUserDetails user,
             String instituteId) {
         Optional<Institute> instituteOptional = instituteRepository.findById(instituteId);

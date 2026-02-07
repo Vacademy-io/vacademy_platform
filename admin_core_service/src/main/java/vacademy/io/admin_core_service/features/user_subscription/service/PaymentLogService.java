@@ -1,7 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
-import com.razorpay.Payment;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -544,6 +543,7 @@ public class PaymentLogService {
         }
     }
 
+    @Transactional(readOnly = true)
     public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(
             PaymentLogFilterRequestDTO filterDTO,
             int pageNo,
@@ -767,6 +767,7 @@ public class PaymentLogService {
     // This method is no longer needed as the logic is in the SQL query
     // private String resolveFailedPaymentStatus(PaymentLog paymentLog) { ... }
 
+    @Transactional(readOnly = true)
     public PaymentLogDTO getPaymentLog(String paymentLogId) {
         PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId)
                 .orElseThrow(() -> new RuntimeException("Payment log not found with ID: " + paymentLogId));

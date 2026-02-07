@@ -197,6 +197,24 @@ export function ModularDynamicLoginContainer({
     // Ensure we only process once
     let processed = false;
 
+    // When OAuth fails (e.g. GitHub private email / invalid response), show signup with "your email is private" flow
+    const handleOAuthErrorFromPopup = (data?: { message?: string }) => {
+      if (onSwitchToSignup) {
+        try {
+          sessionStorage.setItem(
+            'oauth_signup_data',
+            JSON.stringify({ signupData: { provider: 'github', email: null, name: null } })
+          );
+        } catch (e) {
+          console.error('[OAuth Parent] Failed to store signup data:', e);
+        }
+        onSwitchToSignup('', false);
+        toast.info('Your email may be private. Please provide your email below to continue.');
+      } else {
+        toast.error(data?.message || 'We could not complete sign-in. Please try again or use another method.');
+      }
+    };
+
     // Listen for OAuth completion messages from popup
     const messageHandler = async (event: MessageEvent) => {
       const data = event.data;
@@ -269,7 +287,7 @@ export function ModularDynamicLoginContainer({
           toast.info("Please sign up to continue");
         }
       } else if (data && data.type === 'oauth_error') {
-        toast.error(data?.data?.message || "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.");
+        handleOAuthErrorFromPopup(data?.data);
       }
     };
 
@@ -309,7 +327,7 @@ export function ModularDynamicLoginContainer({
             }
             localStorage.removeItem('OAUTH_RESULT');
           } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
-            toast.error(parsed?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
+            handleOAuthErrorFromPopup(parsed?.data);
             localStorage.removeItem('OAUTH_RESULT');
           }
           // Don't remove localStorage if it's a page-level login - let __root.tsx handle it
@@ -345,7 +363,7 @@ export function ModularDynamicLoginContainer({
               toast.info("Please sign up to continue");
             }
           } else if (msg.isModalLogin !== false && msg.type === 'oauth_error') {
-            toast.error(msg?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
+            handleOAuthErrorFromPopup(msg?.data);
           }
         };
       }
@@ -380,7 +398,7 @@ export function ModularDynamicLoginContainer({
             }
             localStorage.removeItem('OAUTH_RESULT');
           } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
-            toast.error(parsed?.data?.message || 'OAuth authentication failed');
+            handleOAuthErrorFromPopup(parsed?.data);
             localStorage.removeItem('OAUTH_RESULT');
           }
           // Don't remove localStorage if it's a page-level login - let __root.tsx handle it

@@ -227,38 +227,38 @@
             };
         }
 
-        // Handle OAuth success
+        // Handle OAuth success (signup path: backend sent signupData + state, no tokens)
         function handleOAuthSuccess(params) {
+            // Helper to safely decode possible base64 JSON, else try plain JSON
+            function safeDecode(payload) {
+                if (!payload) return null;
+                try { return JSON.parse(atob(payload)); } catch {}
+                try { return JSON.parse(payload); } catch {}
+                try { return JSON.parse(decodeURIComponent(payload)); } catch {}
+                return null;
+            }
+
+            const signupData = safeDecode(params.signupData);
+            const state = safeDecode(params.state);
+
+            if (window.DEBUG) {
+                console.log('[OAuth Popup][DEBUG] Raw params', params);
+                console.log('[OAuth Popup][DEBUG] Decoded', { signupData, state });
+            }
+
+            if (!signupData || !state) {
+                var friendlyMsg = 'We couldn\'t complete sign-in with this provider. Please try again or use another sign-in method.';
+                showError(friendlyMsg);
+                try { sendToParent('oauth_error', { message: friendlyMsg }); } catch (e) {}
+                return;
+            }
+
             try {
-                // Helper to safely decode possible base64 JSON, else try plain JSON
-                function safeDecode(payload) {
-                    if (!payload) return null;
-                    try { return JSON.parse(atob(payload)); } catch {}
-                    try { return JSON.parse(payload); } catch {}
-                    try { return JSON.parse(decodeURIComponent(payload)); } catch {}
-                    return null;
-                }
-
-                // Decode parameters
-                const signupData = safeDecode(params.signupData);
-                const state = safeDecode(params.state);
-                
-                if (window.DEBUG) {
-                    console.log('[OAuth Popup][DEBUG] Raw params', params);
-                    console.log('[OAuth Popup][DEBUG] Decoded', { signupData, state });
-                }
-                
-                if (!signupData || !state) {
-                    throw new Error('Invalid OAuth response data');
-                }
-
-                // Send success data to parent window
                 sendToParent('oauth_success', {
                     signupData,
                     state,
                     emailVerified: params.emailVerified === 'true'
                 });
-
             } catch (error) {
                 showError('Failed to process OAuth response. If you already have an account, please sign in. Error: ' + error);
             }
@@ -344,9 +344,13 @@
             } else if (params.error && !params.signupData) {
                 // Real OAuth error (no user data)
                 handleOAuthError(params);
-                } else {
-                // Normal OAuth success
+            } else if (params.signupData && params.state) {
+                // Normal OAuth success (signup path with valid params)
                 handleOAuthSuccess(params);
+            } else {
+                var msg = 'We couldn\'t complete sign-in with this provider. Please try again or use another sign-in method.';
+                showError(msg);
+                try { sendToParent('oauth_error', { message: msg }); } catch (e) {}
             }
         } catch (error) {
             showError('An unexpected error occurred. Please try again.');

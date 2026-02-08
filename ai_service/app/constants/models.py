@@ -133,7 +133,7 @@ class ModelInfo:
 def _get_models_from_db() -> List[ModelInfo]:
     """Fetch all models from the database."""
     try:
-        from app.db import db_session
+        from ..db import db_session
         from sqlalchemy import text
         
         with db_session() as session:
@@ -190,7 +190,7 @@ def _get_models_from_db() -> List[ModelInfo]:
 def _get_use_case_defaults_from_db() -> Dict[str, Dict[str, str]]:
     """Fetch use case defaults from the database."""
     try:
-        from app.db import db_session
+        from ..db import db_session
         from sqlalchemy import text
         
         with db_session() as session:

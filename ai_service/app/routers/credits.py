@@ -18,10 +18,10 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.db import db_dependency
-from app.core.security import get_current_user
-from app.services.credit_service import CreditService
-from app.schemas.credits import (
+from ..db import db_dependency
+from ..core.security import get_current_user
+from ..services.credit_service import CreditService
+from ..schemas.credits import (
     CreditBalanceResponse,
     CreditGrantRequest,
     CreditGrantResponse,

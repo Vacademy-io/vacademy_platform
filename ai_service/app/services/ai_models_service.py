@@ -17,7 +17,7 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.schemas.ai_models import (
+from ..schemas.ai_models import (
     AIModelResponse,
     AIModelSummary,
     ModelsListResponse,

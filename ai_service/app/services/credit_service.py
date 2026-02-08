@@ -18,7 +18,7 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.schemas.credits import (
+from ..schemas.credits import (
     CreditBalanceResponse,
     CreditGrantRequest,
     CreditGrantResponse,

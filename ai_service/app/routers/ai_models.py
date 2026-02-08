@@ -21,10 +21,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.db import db_dependency
-from app.core.security import get_current_user
-from app.services.ai_models_service import AIModelsService
-from app.schemas.ai_models import (
+from ..db import db_dependency
+from ..core.security import get_current_user
+from ..services.ai_models_service import AIModelsService
+from ..schemas.ai_models import (
     AIModelResponse,
     ModelsListResponse,
     ModelsForUseCaseResponse,

@@ -13,7 +13,7 @@
 -- 1. Institute Credits Table - Tracks balance for each institute
 -- ================================================================================
 CREATE TABLE IF NOT EXISTS institute_credits (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     institute_id VARCHAR(255) NOT NULL UNIQUE,
     total_credits DECIMAL(12,2) DEFAULT 0,         -- Total credits ever allocated
     used_credits DECIMAL(12,2) DEFAULT 0,          -- Total credits consumed
@@ -30,7 +30,7 @@ CREATE INDEX IF NOT EXISTS idx_institute_credits_balance ON institute_credits(cu
 -- 2. Credit Transactions - Audit log of all credit changes
 -- ================================================================================
 CREATE TABLE IF NOT EXISTS credit_transactions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     institute_id VARCHAR(255) NOT NULL,
     transaction_type VARCHAR(50) NOT NULL,         -- 'INITIAL_GRANT', 'ADMIN_GRANT', 'USAGE_DEDUCTION', 'REFUND'
     amount DECIMAL(12,4) NOT NULL,                 -- Positive for grants, negative for usage
@@ -52,7 +52,7 @@ CREATE INDEX IF NOT EXISTS idx_credit_transactions_reference_id ON credit_transa
 -- 3. Credit Pricing - Configurable rates per request type
 -- ================================================================================
 CREATE TABLE IF NOT EXISTS credit_pricing (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_type VARCHAR(50) NOT NULL UNIQUE,
     base_cost DECIMAL(8,4) NOT NULL DEFAULT 0.5,   -- Fixed cost per request
     token_rate DECIMAL(10,8) NOT NULL DEFAULT 0.0001, -- Cost per token (or character for TTS)
@@ -82,7 +82,7 @@ ON CONFLICT (request_type) DO NOTHING;
 -- 4. Model Pricing - Tier multipliers for different models
 -- ================================================================================
 CREATE TABLE IF NOT EXISTS model_pricing (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     model_pattern VARCHAR(100) NOT NULL UNIQUE,    -- e.g., 'google/gemini-2.5-pro%'
     tier VARCHAR(20) NOT NULL DEFAULT 'standard',  -- 'standard', 'premium', 'ultra'
     multiplier DECIMAL(4,2) NOT NULL DEFAULT 1.0,
@@ -110,7 +110,7 @@ ON CONFLICT (model_pattern) DO NOTHING;
 -- 5. Credit Alerts - Track low balance alerts to prevent flooding
 -- ================================================================================
 CREATE TABLE IF NOT EXISTS credit_alerts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     institute_id VARCHAR(255) NOT NULL,
     alert_type VARCHAR(50) NOT NULL,               -- 'LOW_BALANCE', 'ZERO_BALANCE', 'NEGATIVE_BALANCE'
     threshold_value DECIMAL(12,2),                 -- What threshold triggered this

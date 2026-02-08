@@ -20,6 +20,8 @@ from ..schemas.video_generation import (
 from ..services.video_generation_service import VideoGenerationService
 from ..repositories.ai_video_repository import AiVideoRepository
 from ..services.s3_service import S3Service
+from ..core.security import get_optional_user
+from ..schemas.auth import CustomUserDetails
 
 
 router = APIRouter(prefix="/video", tags=["ai-video-generation"])
@@ -50,7 +52,8 @@ def get_video_service() -> VideoGenerationService:
 async def generate_till_script(
     payload: VideoGenerationRequest,
     service: VideoGenerationService = Depends(get_video_service),
-    db: Session = Depends(db_dependency)
+    db: Session = Depends(db_dependency),
+    user: Optional[CustomUserDetails] = Depends(get_optional_user)
 ) -> StreamingResponse:
     """
     Generate AI video up to script stage only.
@@ -61,6 +64,13 @@ async def generate_till_script(
     **Output files**: script.txt
     """
     video_id = payload.video_id or str(uuid4())
+    
+    # Inject user context if authenticated
+    if user:
+        if not payload.user_id:
+            payload.user_id = user.user_id
+        if not payload.institute_id and user.institute_id:
+            payload.institute_id = user.institute_id
     
     async def event_generator():
         async for event in service.generate_till_stage(
@@ -99,7 +109,8 @@ async def generate_till_script(
 async def generate_till_mp3(
     payload: VideoGenerationRequest,
     service: VideoGenerationService = Depends(get_video_service),
-    db: Session = Depends(db_dependency)
+    db: Session = Depends(db_dependency),
+    user: Optional[CustomUserDetails] = Depends(get_optional_user)
 ) -> StreamingResponse:
     """
     Generate AI video up to TTS (Text-to-Speech) stage.
@@ -110,6 +121,13 @@ async def generate_till_mp3(
     **Output files**: script.txt, narration.mp3
     """
     video_id = payload.video_id or str(uuid4())
+    
+    # Inject user context if authenticated
+    if user:
+        if not payload.user_id:
+            payload.user_id = user.user_id
+        if not payload.institute_id and user.institute_id:
+            payload.institute_id = user.institute_id
     
     async def event_generator():
         async for event in service.generate_till_stage(
@@ -148,7 +166,8 @@ async def generate_till_mp3(
 async def generate_till_html(
     payload: VideoGenerationRequest,
     service: VideoGenerationService = Depends(get_video_service),
-    db: Session = Depends(db_dependency)
+    db: Session = Depends(db_dependency),
+    user: Optional[CustomUserDetails] = Depends(get_optional_user)
 ) -> StreamingResponse:
     """
     Generate AI video up to HTML generation stage.
@@ -167,6 +186,13 @@ async def generate_till_html(
     render HTML overlays with synchronized audio.
     """
     video_id = payload.video_id or str(uuid4())
+    
+    # Inject user context if authenticated
+    if user:
+        if not payload.user_id:
+            payload.user_id = user.user_id
+        if not payload.institute_id and user.institute_id:
+            payload.institute_id = user.institute_id
     
     async def event_generator():
         async for event in service.generate_till_stage(
@@ -205,7 +231,8 @@ async def generate_till_html(
 async def generate_till_render(
     payload: VideoGenerationRequest,
     service: VideoGenerationService = Depends(get_video_service),
-    db: Session = Depends(db_dependency)
+    db: Session = Depends(db_dependency),
+    user: Optional[CustomUserDetails] = Depends(get_optional_user)
 ) -> StreamingResponse:
     """
     Generate complete AI video including final rendering.
@@ -219,6 +246,13 @@ async def generate_till_render(
     several minutes depending on video length.
     """
     video_id = payload.video_id or str(uuid4())
+    
+    # Inject user context if authenticated
+    if user:
+        if not payload.user_id:
+            payload.user_id = user.user_id
+        if not payload.institute_id and user.institute_id:
+            payload.institute_id = user.institute_id
     
     async def event_generator():
         async for event in service.generate_till_stage(

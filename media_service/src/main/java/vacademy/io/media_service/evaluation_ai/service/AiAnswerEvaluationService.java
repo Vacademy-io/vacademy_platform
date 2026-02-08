@@ -52,7 +52,8 @@ public class AiAnswerEvaluationService {
     private final ObjectMapper objectMapper;
 
     public static String extractBody(String html) {
-        if (!StringUtils.hasText(html)) return "";
+        if (!StringUtils.hasText(html))
+            return "";
         Pattern pattern = Pattern.compile("<body[^>]*>(.*?)</body>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
         Matcher matcher = pattern.matcher(html);
         return matcher.find() ? matcher.group(1).trim() : html;
@@ -70,7 +71,8 @@ public class AiAnswerEvaluationService {
         EvaluationRequestResponse response = initializeResponse(taskId, evaluationUsers);
         response.setStatus(TaskStatusEnum.PROCESSING.name());
 
-        List<EvaluationResultFromDeepSeek.EvaluationData> evaluationData = createEvaluationResultFromUsers(evaluationUsers);
+        List<EvaluationResultFromDeepSeek.EvaluationData> evaluationData = createEvaluationResultFromUsers(
+                evaluationUsers);
         log.info("Prepared evaluation data for users: {}", parseObjectToString(evaluationData));
 
         EvaluationResultFromDeepSeek evaluationResultFromDeepSeek = new EvaluationResultFromDeepSeek();
@@ -80,15 +82,19 @@ public class AiAnswerEvaluationService {
 
         response.setResponse(responseJson);
 
-        new Thread(() -> handleEvaluationInBackground(taskId, metadata, assessmentId, evaluationResultFromDeepSeek, evaluationData)).start();
+        new Thread(() -> handleEvaluationInBackground(taskId, metadata, assessmentId, evaluationResultFromDeepSeek,
+                evaluationData)).start();
 
         return response;
     }
 
-    private void handleEvaluationInBackground(String taskId, AiEvaluationMetadata metadata, String assessmentId, EvaluationResultFromDeepSeek evaluationResultFromDeepSeek, List<EvaluationResultFromDeepSeek.EvaluationData> evaluationData) {
+    private void handleEvaluationInBackground(String taskId, AiEvaluationMetadata metadata, String assessmentId,
+            EvaluationResultFromDeepSeek evaluationResultFromDeepSeek,
+            List<EvaluationResultFromDeepSeek.EvaluationData> evaluationData) {
         try {
             for (int i = 0; i < evaluationData.size(); i++) {
-                processAndSaveUserEvaluation(evaluationData.get(i), metadata, assessmentId, evaluationResultFromDeepSeek, taskId);
+                processAndSaveUserEvaluation(evaluationData.get(i), metadata, assessmentId,
+                        evaluationResultFromDeepSeek, taskId);
             }
             finalizeEvaluationResults(taskId, evaluationResultFromDeepSeek);
         } catch (Exception e) {
@@ -98,10 +104,10 @@ public class AiAnswerEvaluationService {
     }
 
     private void processAndSaveUserEvaluation(EvaluationResultFromDeepSeek.EvaluationData evaluationData,
-                                              AiEvaluationMetadata metadata,
-                                              String assessmentId,
-                                              EvaluationResultFromDeepSeek resultContainer,
-                                              String taskId) throws Exception {
+            AiEvaluationMetadata metadata,
+            String assessmentId,
+            EvaluationResultFromDeepSeek resultContainer,
+            String taskId) throws Exception {
         log.info("Processing evaluation for user: {}", evaluationData.getUserId());
 
         String htmlAnswer = fetchHtmlAnswer(evaluationData);
@@ -109,11 +115,13 @@ public class AiAnswerEvaluationService {
 
         extractAndSetAnswers(evaluationData, metadata, resultContainer, taskId, htmlAnswer);
         saveEvaluationToDb(evaluationData, assessmentId);
-        log.debug("Extracted section-wise answers for userId={}: {}", evaluationData.getUserId(), parseObjectToString(evaluationData.getSectionWiseAnsExtracted()));
+        log.debug("Extracted section-wise answers for userId={}: {}", evaluationData.getUserId(),
+                parseObjectToString(evaluationData.getSectionWiseAnsExtracted()));
 
         evaluateAndSetResults(evaluationData, metadata, resultContainer, taskId);
         saveEvaluationToDb(evaluationData, assessmentId);
-        log.debug("Evaluated answers for userId={}: {}", evaluationData.getUserId(), parseObjectToString(evaluationData.getEvaluationResult()));
+        log.debug("Evaluated answers for userId={}: {}", evaluationData.getUserId(),
+                parseObjectToString(evaluationData.getEvaluationResult()));
 
     }
 
@@ -122,27 +130,27 @@ public class AiAnswerEvaluationService {
     }
 
     private void extractAndSetAnswers(EvaluationResultFromDeepSeek.EvaluationData evaluationData,
-                                      AiEvaluationMetadata metadata,
-                                      EvaluationResultFromDeepSeek resultContainer,
-                                      String taskId,
-                                      String htmlAnswer) {
+            AiEvaluationMetadata metadata,
+            EvaluationResultFromDeepSeek resultContainer,
+            String taskId,
+            String htmlAnswer) {
         evaluationData.setStatus(EvaluationStepsStatusEnum.EXTRACTING_ANSWER.name());
         updateTask(taskId, parseObjectToString(resultContainer), TaskStatusEnum.PROCESSING.name());
 
-        List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> extracted =
-                extractSectionWiseAns(metadata.getSections(), htmlAnswer);
+        List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> extracted = extractSectionWiseAns(
+                metadata.getSections(), htmlAnswer);
         evaluationData.setSectionWiseAnsExtracted(extracted);
     }
 
     private void evaluateAndSetResults(EvaluationResultFromDeepSeek.EvaluationData evaluationData,
-                                       AiEvaluationMetadata metadata,
-                                       EvaluationResultFromDeepSeek resultContainer,
-                                       String taskId) throws Exception {
+            AiEvaluationMetadata metadata,
+            EvaluationResultFromDeepSeek resultContainer,
+            String taskId) throws Exception {
         evaluationData.setStatus(EvaluationStepsStatusEnum.EVALUATING.name());
         updateTask(taskId, parseObjectToString(resultContainer), TaskStatusEnum.PROCESSING.name());
 
-        EvaluationResultFromDeepSeek.EvaluationResult result =
-                evaluateAnswers(evaluationData.getSectionWiseAnsExtracted(), metadata);
+        EvaluationResultFromDeepSeek.EvaluationResult result = evaluateAnswers(
+                evaluationData.getSectionWiseAnsExtracted(), metadata);
         evaluationData.setEvaluationResult(result);
         evaluationData.setStatus(EvaluationStepsStatusEnum.EVALUATION_COMPLETED.name());
 
@@ -155,8 +163,7 @@ public class AiAnswerEvaluationService {
                 evaluationData.getUserId(),
                 EvaluationUserSourceEnum.ASSESSMENT_EVALUATION.name(),
                 assessmentId,
-                buildEvaluationJsonForUser(evaluationData.getEvaluationResult())
-        );
+                buildEvaluationJsonForUser(evaluationData.getEvaluationResult()));
     }
 
     private void finalizeEvaluationResults(String taskId, EvaluationResultFromDeepSeek results) throws Exception {
@@ -177,7 +184,8 @@ public class AiAnswerEvaluationService {
         return response;
     }
 
-    private List<EvaluationResultFromDeepSeek.EvaluationData> createEvaluationResultFromUsers(List<EvaluationUserDTO> users) {
+    private List<EvaluationResultFromDeepSeek.EvaluationData> createEvaluationResultFromUsers(
+            List<EvaluationUserDTO> users) {
         List<EvaluationResultFromDeepSeek.EvaluationData> evaluationDataList = new ArrayList<>();
         for (EvaluationUserDTO evaluationUserDTO : users) {
             EvaluationResultFromDeepSeek.EvaluationData evaluationData = new EvaluationResultFromDeepSeek.EvaluationData();
@@ -223,14 +231,22 @@ public class AiAnswerEvaluationService {
     }
 
     private String getEvaluationFromAI(String prompt) {
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-09-2025", prompt, 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion(
+                "google/gemini-2.5-flash-preview-09-2025",
+                prompt,
+                30000,
+                "evaluation", // Request type for token usage logging
+                null, // No institute ID available
+                null // No user ID available
+        );
         return response.getChoices().get(0).getMessage().getContent();
     }
 
     private String convertFileToHtml(String pdfId) {
         var fileStatus = fileConversionStatusService.findByVendorFileId(pdfId);
         String html = newDocConverterService.getConvertedHtml(pdfId);
-        if (html == null) throw new VacademyException("File Still Processing");
+        if (html == null)
+            throw new VacademyException("File Still Processing");
         return extractBody(html);
     }
 
@@ -276,7 +292,8 @@ public class AiAnswerEvaluationService {
 
     private String generateUsername(String fullName) {
         String namePart = fullName.replaceAll("\\s+", "").substring(0, Math.min(fullName.length(), 4)).toLowerCase();
-        if (namePart.length() < 4) namePart = String.format("%-4s", namePart).replace(' ', 'X');
+        if (namePart.length() < 4)
+            namePart = String.format("%-4s", namePart).replace(' ', 'X');
         return namePart + RandomStringUtils.randomNumeric(4);
     }
 
@@ -288,7 +305,8 @@ public class AiAnswerEvaluationService {
         return raw.replaceAll("(?i)^```json\\s*", "").replaceAll("```$", "").trim();
     }
 
-    private List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> extractSectionWiseAns(List<AiEvaluationSectionDTO> sections, String htmlAnswerSheet) {
+    private List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> extractSectionWiseAns(
+            List<AiEvaluationSectionDTO> sections, String htmlAnswerSheet) {
         String prompt = extractAnsForEachQuestionPromptForDeepSeek(sections, htmlAnswerSheet);
 
         for (int attempt = 1; attempt <= 5; attempt++) {
@@ -297,8 +315,9 @@ public class AiAnswerEvaluationService {
                 String extractedJson = getEvaluationFromAI(prompt);
                 extractedJson = cleanJsonMarkdown(extractedJson);
                 System.out.println(extractedJson);
-                List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> result = objectMapper.readValue(extractedJson, new TypeReference<>() {
-                });
+                List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> result = objectMapper
+                        .readValue(extractedJson, new TypeReference<>() {
+                        });
                 return result;
             } catch (Exception e) {
                 log.warn("Attempt {} failed to parse DeepSeek answer extraction: {}", attempt, e.getMessage());
@@ -311,15 +330,18 @@ public class AiAnswerEvaluationService {
         return Collections.emptyList();
     }
 
-    private EvaluationResultFromDeepSeek.EvaluationResult evaluateAnswers(List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> sectionWiseAnsExtractedss, AiEvaluationMetadata metadata) {
+    private EvaluationResultFromDeepSeek.EvaluationResult evaluateAnswers(
+            List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> sectionWiseAnsExtractedss,
+            AiEvaluationMetadata metadata) {
         String prompt = generatePromptToEvaluateAnswer(sectionWiseAnsExtractedss, metadata);
 
         for (int attempt = 1; attempt <= 5; attempt++) {
             try {
                 String evaluationJson = getEvaluationFromAI(prompt);
                 evaluationJson = cleanJsonMarkdown(evaluationJson);
-                log.debug("Parsed answer: {}", objectMapper.writeValueAsString(objectMapper.readValue(evaluationJson, new TypeReference<>() {
-                })));
+                log.debug("Parsed answer: {}",
+                        objectMapper.writeValueAsString(objectMapper.readValue(evaluationJson, new TypeReference<>() {
+                        })));
                 return objectMapper.readValue(evaluationJson, new TypeReference<>() {
                 });
             } catch (Exception e) {
@@ -333,60 +355,62 @@ public class AiAnswerEvaluationService {
         throw new RuntimeException("Unexpected error during evaluation parsing");
     }
 
-    public String extractAnsForEachQuestionPromptForDeepSeek(List<AiEvaluationSectionDTO> sections, String htmlAnswerSheet) {
+    public String extractAnsForEachQuestionPromptForDeepSeek(List<AiEvaluationSectionDTO> sections,
+            String htmlAnswerSheet) {
         StringBuilder prompt = new StringBuilder();
 
-        prompt.append("""
-                You are an AI assistant tasked with extracting answers from a student's HTML answer sheet.
+        prompt.append(
+                """
+                        You are an AI assistant tasked with extracting answers from a student's HTML answer sheet.
 
-                DO NOT evaluate the answers or assign any marks.
-                Your ONLY task is to map each question (provided in the assessment metadata) to the answer written by the student.
-                If the student has not written an answer for a question, mark it as "NOT_ATTEMPTED".
+                        DO NOT evaluate the answers or assign any marks.
+                        Your ONLY task is to map each question (provided in the assessment metadata) to the answer written by the student.
+                        If the student has not written an answer for a question, mark it as "NOT_ATTEMPTED".
 
-                Instructions:
-                - Every question from the metadata must be included in the output.
-                - Group the results section-wise.
-                - Sort questions by their 'question_order'.
-                - For each question, return:
-                  - question_id
-                  - question_order
-                  - question_text (wrap inside [[ ]] to preserve formatting and HTML safely)
-                  - question_wise_ans_extracted: {
-                      answer_html (wrap inside [[ ]] to preserve formatting and HTML safely),
-                      status ("ATTEMPTED" or "NOT_ATTEMPTED")
-                    }
+                        Instructions:
+                        - Every question from the metadata must be included in the output.
+                        - Group the results section-wise.
+                        - Sort questions by their 'question_order'.
+                        - For each question, return:
+                          - question_id
+                          - question_order
+                          - question_text (wrap inside [[ ]] to preserve formatting and HTML safely)
+                          - question_wise_ans_extracted: {
+                              answer_html (wrap inside [[ ]] to preserve formatting and HTML safely),
+                              status ("ATTEMPTED" or "NOT_ATTEMPTED")
+                            }
 
-                Important:
-                - ONLY return the extracted result as a valid JSON in the exact structure below.
-                - Do NOT include any explanation, extra text, or formatting outside of the JSON.
-                - Use double quotes for all JSON keys and string values.
-                - Ensure all special characters in HTML (like quotes) are escaped properly.
-                - Wrap HTML content and question text in double square brackets [[ ... ]] to prevent breaking the JSON format.
-                        
-                Additional Instructions for Answer Formatting:
-                 - **Correct any spelling errors** in the student's answers based on the context of the question. Ensure that the corrected text makes sense within the context of the question being answered.
-                 - **Format the answers properly**. If the student has written points or lists, ensure they are formatted using HTML bullet points (<ul>, <li>) or numbered lists (<ol>, <li>). Ensure paragraphs are wrapped in <p> tags where appropriate.
-                 - **Maintain the original intent and meaning** of the answer while making it more readable and structured. For example, if the student has provided an unordered list of points in a plain text form, convert it into a proper HTML list.
+                        Important:
+                        - ONLY return the extracted result as a valid JSON in the exact structure below.
+                        - Do NOT include any explanation, extra text, or formatting outside of the JSON.
+                        - Use double quotes for all JSON keys and string values.
+                        - Ensure all special characters in HTML (like quotes) are escaped properly.
+                        - Wrap HTML content and question text in double square brackets [[ ... ]] to prevent breaking the JSON format.
 
-                JSON Response Format:
-                [
-                  {
-                    "section_id": "<section_id>",
-                    "section_name": "<section_name>",
-                    "question_wise_ans_extracted": [
-                      {
-                        "question_id": "<question_id>",
-                        "question_order": <order>,
-                        "question_text": "<text>",
-                        "answer_html": "<html>",
-                        "status": "ATTEMPTED" or "NOT_ATTEMPTED"
-                      }
-                    ]
-                  }
-                ]
+                        Additional Instructions for Answer Formatting:
+                         - **Correct any spelling errors** in the student's answers based on the context of the question. Ensure that the corrected text makes sense within the context of the question being answered.
+                         - **Format the answers properly**. If the student has written points or lists, ensure they are formatted using HTML bullet points (<ul>, <li>) or numbered lists (<ol>, <li>). Ensure paragraphs are wrapped in <p> tags where appropriate.
+                         - **Maintain the original intent and meaning** of the answer while making it more readable and structured. For example, if the student has provided an unordered list of points in a plain text form, convert it into a proper HTML list.
 
-                Below is the assessment metadata (questions grouped by sections):
-                """);
+                        JSON Response Format:
+                        [
+                          {
+                            "section_id": "<section_id>",
+                            "section_name": "<section_name>",
+                            "question_wise_ans_extracted": [
+                              {
+                                "question_id": "<question_id>",
+                                "question_order": <order>,
+                                "question_text": "<text>",
+                                "answer_html": "<html>",
+                                "status": "ATTEMPTED" or "NOT_ATTEMPTED"
+                              }
+                            ]
+                          }
+                        ]
+
+                        Below is the assessment metadata (questions grouped by sections):
+                        """);
 
         for (AiEvaluationSectionDTO section : sections) {
             prompt.append("Section Name: ").append(section.getName()).append("\n");
@@ -412,67 +436,70 @@ public class AiAnswerEvaluationService {
         return prompt.toString();
     }
 
-    public String generatePromptToEvaluateAnswer(List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> sectionWiseAnsExtracted, AiEvaluationMetadata metadata) {
+    public String generatePromptToEvaluateAnswer(
+            List<EvaluationResultFromDeepSeek.SectionWiseAnsExtracted> sectionWiseAnsExtracted,
+            AiEvaluationMetadata metadata) {
         StringBuilder prompt = new StringBuilder();
 
-        prompt.append("""
-                You are an AI assistant tasked with evaluating the student's answers using the provided metadata and answer sheet.
+        prompt.append(
+                """
+                        You are an AI assistant tasked with evaluating the student's answers using the provided metadata and answer sheet.
 
-                Instructions:
-                - For each question:
-                  - If the student answered, evaluate the answer based on the evaluation criteria provided in the AI evaluation question metadata. Each criterion has a name and a weight, which determines the marks for the answer.
-                  - For each criterion:
-                    - Assign marks based on the student's response.
-                    - The weight of the criterion determines how much the answer contributes to the total marks.
-                  - If the student skipped, mark as "NOT_ATTEMPTED" and assign 0 marks.
-                  - ⚠️ If no evaluation criteria (marking JSON) is provided for a question (i.e., the criteria list is empty or null):
-                    - In the feedback, clearly mention: "No evaluation criteria provided."
-                    - Assign 0 marks for such questions by default.
+                        Instructions:
+                        - For each question:
+                          - If the student answered, evaluate the answer based on the evaluation criteria provided in the AI evaluation question metadata. Each criterion has a name and a weight, which determines the marks for the answer.
+                          - For each criterion:
+                            - Assign marks based on the student's response.
+                            - The weight of the criterion determines how much the answer contributes to the total marks.
+                          - If the student skipped, mark as "NOT_ATTEMPTED" and assign 0 marks.
+                          - ⚠️ If no evaluation criteria (marking JSON) is provided for a question (i.e., the criteria list is empty or null):
+                            - In the feedback, clearly mention: "No evaluation criteria provided."
+                            - Assign 0 marks for such questions by default.
 
-                - For each question, provide:
-                  - Marks obtained
-                  - Total marks (based on all available criteria)
-                  - Feedback (short and clear)
-                  - Description (brief reasoning on why marks were awarded or deducted based on the evaluation criteria)
-                  - Verdict (e.g., "Correct", "Partially Correct", "Incorrect", "Not Attempted")
+                        - For each question, provide:
+                          - Marks obtained
+                          - Total marks (based on all available criteria)
+                          - Feedback (short and clear)
+                          - Description (brief reasoning on why marks were awarded or deducted based on the evaluation criteria)
+                          - Verdict (e.g., "Correct", "Partially Correct", "Incorrect", "Not Attempted")
 
-                ⚠️ Important:
-                - ONLY return a valid **JSON** response in the exact format described below.
-                - Do NOT include any explanation, summary, or formatting outside the JSON.
-                - Use double quotes for all JSON keys and string values.
-                - Escape any special characters properly if needed.
+                        ⚠️ Important:
+                        - ONLY return a valid **JSON** response in the exact format described below.
+                        - Do NOT include any explanation, summary, or formatting outside the JSON.
+                        - Use double quotes for all JSON keys and string values.
+                        - Escape any special characters properly if needed.
 
-                JSON Response Format:
-                {
-                  "total_marks_obtained": <double>,
-                  "total_marks": <double>,
-                  "overall_verdict": "<verdict>",
-                  "overall_description": "<short summary>",
-                  "section_wise_results": [
-                    {
-                      "section_id": "<section_id>",
-                      "section_name": "<section_name>",
-                      "marks_obtained": <double>,
-                      "total_marks": <double>,
-                      "verdict": "<section_verdict>",
-                      "question_wise_results": [
+                        JSON Response Format:
                         {
-                          "question_id": "<question_id>",
-                          "question_order": <int>,
-                          "question_text": "<text>",
-                          "marks_obtained": <double>,
+                          "total_marks_obtained": <double>,
                           "total_marks": <double>,
-                          "feedback": "<short comment>",
-                          "description": "<detailed reasoning based on evaluation criteria>",
-                          "verdict": "<Correct/Incorrect/Partially Correct/Not Attempted>"
+                          "overall_verdict": "<verdict>",
+                          "overall_description": "<short summary>",
+                          "section_wise_results": [
+                            {
+                              "section_id": "<section_id>",
+                              "section_name": "<section_name>",
+                              "marks_obtained": <double>,
+                              "total_marks": <double>,
+                              "verdict": "<section_verdict>",
+                              "question_wise_results": [
+                                {
+                                  "question_id": "<question_id>",
+                                  "question_order": <int>,
+                                  "question_text": "<text>",
+                                  "marks_obtained": <double>,
+                                  "total_marks": <double>,
+                                  "feedback": "<short comment>",
+                                  "description": "<detailed reasoning based on evaluation criteria>",
+                                  "verdict": "<Correct/Incorrect/Partially Correct/Not Attempted>"
+                                }
+                              ]
+                            }
+                          ]
                         }
-                      ]
-                    }
-                  ]
-                }
 
-                Below is the metadata and student answers for evaluation:
-                """);
+                        Below is the metadata and student answers for evaluation:
+                        """);
 
         try {
             prompt.append("\nMetadata:\n").append(objectMapper.writeValueAsString(metadata));
@@ -483,6 +510,5 @@ public class AiAnswerEvaluationService {
 
         return prompt.toString();
     }
-
 
 }

@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
+import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
+import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
+import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentAnalysisData;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentReportData;
 import vacademy.io.admin_core_service.features.student_analysis.entity.UserLinkedData;
@@ -18,6 +21,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Service to generate student analysis reports using LLM
@@ -41,11 +45,16 @@ public class StudentReportLLMService {
         private final WebClient webClient;
         private final ObjectMapper objectMapper;
         private final UserLinkedDataRepository userLinkedDataRepository;
+        private final AiTokenUsageService aiTokenUsageService;
 
-        public StudentReportLLMService(@Value("${openrouter.api.key}") String apiKey, ObjectMapper objectMapper,
-                        UserLinkedDataRepository userLinkedDataRepository) {
+        public StudentReportLLMService(
+                        @Value("${openrouter.api.key}") String apiKey,
+                        ObjectMapper objectMapper,
+                        UserLinkedDataRepository userLinkedDataRepository,
+                        AiTokenUsageService aiTokenUsageService) {
                 this.objectMapper = objectMapper;
                 this.userLinkedDataRepository = userLinkedDataRepository;
+                this.aiTokenUsageService = aiTokenUsageService;
 
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
@@ -125,7 +134,45 @@ public class StudentReportLLMService {
                                 .retrieve()
                                 .bodyToMono(String.class)
                                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
+                                .doOnNext(response -> logTokenUsage(response, model, userId))
                                 .flatMap(response -> parseResponse(response, model, userId));
+        }
+
+        /**
+         * Log token usage from API response
+         */
+        private void logTokenUsage(String responseBody, String model, String userId) {
+                try {
+                        JsonNode root = objectMapper.readTree(responseBody);
+                        JsonNode usage = root.get("usage");
+
+                        if (usage != null) {
+                                int promptTokens = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asInt() : 0;
+                                int completionTokens = usage.has("completion_tokens")
+                                                ? usage.get("completion_tokens").asInt()
+                                                : 0;
+
+                                UUID userUuid = null;
+                                try {
+                                        if (userId != null) {
+                                                userUuid = UUID.fromString(userId);
+                                        }
+                                } catch (IllegalArgumentException e) {
+                                        // userId is not a valid UUID, leave as null
+                                }
+
+                                aiTokenUsageService.recordUsageAsync(
+                                                ApiProvider.OPENAI,
+                                                RequestType.ANALYTICS,
+                                                model,
+                                                promptTokens,
+                                                completionTokens,
+                                                null, // No institute ID in this context
+                                                userUuid);
+                        }
+                } catch (Exception e) {
+                        log.warn("[Student-Report-LLM] Failed to log token usage: {}", e.getMessage());
+                }
         }
 
         private String createStudentReportPrompt(StudentAnalysisData data, List<UserLinkedData> existingData) {

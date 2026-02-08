@@ -24,6 +24,8 @@ class TokenUsageRecord(BaseModel):
     request_type: str
     request_id: Optional[str] = None
     request_metadata: Optional[str] = None
+    tts_provider: Optional[str] = None
+    character_count: Optional[int] = None
     created_at: str
 
 

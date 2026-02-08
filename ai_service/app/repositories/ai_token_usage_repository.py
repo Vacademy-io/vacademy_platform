@@ -36,6 +36,8 @@ class AiTokenUsageRepository:
         input_token_price: Optional[float] = None,
         output_token_price: Optional[float] = None,
         total_price: Optional[float] = None,
+        tts_provider: Optional[str] = None,
+        character_count: Optional[int] = None,
     ) -> AiTokenUsage:
         """
         Create a new token usage record.
@@ -45,7 +47,7 @@ class AiTokenUsageRepository:
             prompt_tokens: Number of prompt tokens used
             completion_tokens: Number of completion tokens used
             total_tokens: Total tokens used
-            request_type: Type of request (OUTLINE, IMAGE, CONTENT, VIDEO)
+            request_type: Type of request (OUTLINE, IMAGE, CONTENT, VIDEO, TTS, etc.)
             institute_id: Optional institute UUID
             user_id: Optional user UUID
             model: Optional model name
@@ -54,6 +56,8 @@ class AiTokenUsageRepository:
             input_token_price: Optional price per input token
             output_token_price: Optional price per output token
             total_price: Optional total price (calculated or provided)
+            tts_provider: Optional TTS provider (google, edge, elevenlabs) for TTS requests
+            character_count: Optional character count for TTS requests
         
         Returns:
             Created AiTokenUsage object
@@ -88,6 +92,8 @@ class AiTokenUsageRepository:
             input_token_price=input_token_price,
             output_token_price=output_token_price,
             total_price=total_price,
+            tts_provider=tts_provider,
+            character_count=character_count,
         )
         try:
             self._session.add(usage)

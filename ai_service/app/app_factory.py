@@ -18,6 +18,9 @@ from .routers.institute_settings import router as institute_settings_router
 from .routers.utils import router as utils_router
 from .routers.institute_api_keys import router as institute_api_keys_router
 from .routers.external_video_generation import router as external_video_generation_router
+from .routers.auth_test import router as auth_test_router
+from .routers.credits import router as credits_router
+from .routers.ai_models import router as ai_models_router
 
 
 
@@ -76,6 +79,9 @@ def create_app() -> FastAPI:
     app.include_router(utils_router, prefix=settings.api_base_path)
     app.include_router(institute_api_keys_router, prefix=settings.api_base_path)
     app.include_router(external_video_generation_router, prefix=settings.api_base_path)
+    app.include_router(auth_test_router, prefix=settings.api_base_path)
+    app.include_router(credits_router, prefix=settings.api_base_path)
+    app.include_router(ai_models_router, prefix=settings.api_base_path)
 
 
 

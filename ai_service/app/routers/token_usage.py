@@ -411,6 +411,118 @@ async def get_institute_activity_log_by_user(
     )
 
 
-__all__ = ["router"]
+# ============================================================================
+# Internal Recording Endpoint (No Auth - for inter-service communication)
+# ============================================================================
 
+from pydantic import BaseModel, Field
+from typing import Any, Dict
+from ..models.ai_token_usage import ApiProvider
+
+
+class RecordUsageRequest(BaseModel):
+    """Request model for recording token usage from external services."""
+    api_provider: str = Field(..., description="API provider: openai, gemini")
+    model: Optional[str] = Field(None, description="Model name (e.g., google/gemini-2.5-flash)")
+    prompt_tokens: int = Field(0, description="Number of input/prompt tokens")
+    completion_tokens: int = Field(0, description="Number of output/completion tokens")
+    total_tokens: int = Field(0, description="Total tokens (if 0, will be calculated)")
+    request_type: str = Field(..., description="Request type: outline, image, content, video, tts, embedding, etc.")
+    institute_id: Optional[str] = Field(None, description="Institute UUID")
+    user_id: Optional[str] = Field(None, description="User UUID")
+    request_id: Optional[str] = Field(None, description="Optional request correlation ID")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    tts_provider: Optional[str] = Field(None, description="TTS provider: google, edge, elevenlabs")
+    character_count: Optional[int] = Field(None, description="Character count for TTS requests")
+
+
+class RecordUsageResponse(BaseModel):
+    """Response model for recording token usage."""
+    success: bool
+    message: str
+    record_id: Optional[str] = None
+
+
+@router.post(
+    "/v1/record",
+    response_model=RecordUsageResponse,
+    summary="Record token usage (Internal API - No Auth)",
+    description="Internal endpoint for external services to record AI token usage. No authentication required.",
+)
+async def record_token_usage(
+    request: RecordUsageRequest,
+    db: Session = Depends(db_dependency),
+) -> RecordUsageResponse:
+    """
+    Record token usage from external services.
+    
+    This endpoint is designed for inter-service communication (e.g., media_service calling ai_service).
+    No authentication is required as it's meant for internal use within the cluster.
+    
+    Args:
+        request: Token usage data to record
+    
+    Returns:
+        Success response with the created record ID
+    """
+    try:
+        # Validate and convert api_provider
+        try:
+            api_provider_enum = ApiProvider(request.api_provider.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid api_provider. Must be one of: {', '.join([p.value for p in ApiProvider])}"
+            )
+        
+        # Validate and convert request_type
+        try:
+            request_type_enum = RequestType(request.request_type.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid request_type. Must be one of: {', '.join([rt.value for rt in RequestType])}"
+            )
+        
+        # Calculate total_tokens if not provided
+        total_tokens = request.total_tokens
+        if total_tokens == 0:
+            total_tokens = request.prompt_tokens + request.completion_tokens
+        
+        service = TokenUsageService(db)
+        record = service.record_usage(
+            api_provider=api_provider_enum,
+            prompt_tokens=request.prompt_tokens,
+            completion_tokens=request.completion_tokens,
+            total_tokens=total_tokens,
+            request_type=request_type_enum,
+            institute_id=request.institute_id,
+            user_id=request.user_id,
+            model=request.model,
+            request_id=request.request_id,
+            metadata=request.metadata,
+            tts_provider=request.tts_provider,
+            character_count=request.character_count,
+        )
+        
+        return RecordUsageResponse(
+            success=True,
+            message="Token usage recorded successfully",
+            record_id=str(record.id),
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Log the error but don't fail - usage logging should not break the caller
+        import logging
+        logging.getLogger(__name__).error(f"Failed to record token usage: {e}")
+        return RecordUsageResponse(
+            success=False,
+            message=f"Failed to record usage: {str(e)}",
+            record_id=None,
+        )
+
+
+__all__ = ["router"]
 

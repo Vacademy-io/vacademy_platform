@@ -24,6 +24,7 @@ import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.module.InstituteSubModule;
 import vacademy.io.common.institute.entity.module.Submodule;
 import vacademy.io.common.institute.repository.SubModuleRepository;
+import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,6 +53,8 @@ public class UserInstituteService {
     private InstituteSettingService instituteSettingService;
     @Autowired
     private InstituteDefaultUserSubscriptionService instituteDefaultUserSubscriptionService;
+    @Autowired
+    private CreditClient creditClient;
 
     public static InstituteInfoDTO getInstituteDetails(Institute institute) {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
@@ -124,6 +127,10 @@ public class UserInstituteService {
                 instituteSettingService.createDefaultSettingsForInstitute(savedInstitute);
                 createInstituteSubModulesMapping(allSubModules, savedInstitute);
                 instituteDefaultUserSubscriptionService.createDefaultPaymentOption(institute.getId());
+
+                // Initialize credits for the new institute (200 initial credits)
+                creditClient.initializeCreditsAsync(savedInstitute.getId());
+
                 return new InstituteIdAndNameDTO(savedInstitute.getId(), savedInstitute.getInstituteName());
             }
 

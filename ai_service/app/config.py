@@ -106,6 +106,17 @@ class Settings(BaseSettings):
 
     # YouTube API Configuration
     youtube_api_key: Optional[str] = None
+    
+    # Internal Auth Configuration
+    client_name: str = os.getenv("CLIENT_NAME", "ai_service")
+    client_secret: Optional[str] = os.getenv("CLIENT_SECRET")
+    auth_service_base_url: str = os.getenv("AUTH_SERVICE_BASE_URL", "http://auth-service:8071")
+    
+    # JWT Configuration (Shared with Java services)
+    # Default value works for dev/stage if matching common_service
+    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "357638792F423F4428472B4B6250655368566D597133743677397A2443264629")
+    jwt_algorithm: str = "HS256"
+    jwt_token_expiry_minutes: int = 43200  # 30 days in minutes (matching Java 2592000000ms)
 
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 

@@ -38,6 +38,8 @@ class TokenUsageService:
         input_token_price: Optional[float] = None,
         output_token_price: Optional[float] = None,
         total_price: Optional[float] = None,
+        tts_provider: Optional[str] = None,
+        character_count: Optional[int] = None,
     ) -> AiTokenUsage:
         """
         Record token usage for an API call.
@@ -47,7 +49,7 @@ class TokenUsageService:
             prompt_tokens: Number of prompt tokens
             completion_tokens: Number of completion tokens
             total_tokens: Total tokens
-            request_type: Type of request (OUTLINE, IMAGE, CONTENT, VIDEO)
+            request_type: Type of request (OUTLINE, IMAGE, CONTENT, VIDEO, TTS, etc.)
             institute_id: Optional institute ID (string UUID)
             user_id: Optional user ID (string UUID)
             model: Optional model name
@@ -56,6 +58,8 @@ class TokenUsageService:
             input_token_price: Optional price per input token
             output_token_price: Optional price per output token
             total_price: Optional total price (if not provided, will be calculated)
+            tts_provider: Optional TTS provider (google, edge, elevenlabs) for TTS requests
+            character_count: Optional character count for TTS requests
         
         Returns:
             Created AiTokenUsage record
@@ -113,6 +117,8 @@ class TokenUsageService:
             input_token_price=final_input_price,
             output_token_price=final_output_price,
             total_price=calculated_total_price,
+            tts_provider=tts_provider,
+            character_count=character_count,
         )
     
     def get_institute_usage(

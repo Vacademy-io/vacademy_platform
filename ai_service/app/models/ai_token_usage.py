@@ -93,10 +93,23 @@ class ApiProvider(str, enum.Enum):
 
 class RequestType(str, enum.Enum):
     """Enum for request types."""
+    # Original types
     OUTLINE = "outline"
     IMAGE = "image"
     CONTENT = "content"
     VIDEO = "video"
+    # New types for comprehensive logging
+    TTS = "tts"                      # Text-to-Speech (Google Cloud TTS)
+    EMBEDDING = "embedding"          # Embedding generation (Gemini)
+    EVALUATION = "evaluation"        # Answer evaluation
+    PRESENTATION = "presentation"    # Presentation generation
+    CONVERSATION = "conversation"    # Chat/conversation
+    LECTURE = "lecture"              # Lecture generation
+    COURSE_CONTENT = "course_content"  # Course content generation
+    PDF_QUESTIONS = "pdf_questions"  # PDF to questions processing
+    AGENT = "agent"                  # AI Agent interactions
+    ANALYTICS = "analytics"          # Student analytics
+    COPILOT = "copilot"              # Instructor copilot
 
 
 class AiTokenUsage(Base):
@@ -143,6 +156,10 @@ class AiTokenUsage(Base):
     # but maps to database column 'metadata' for backward compatibility)
     request_metadata = Column("metadata", String(500), nullable=True, comment="Optional JSON string for additional context")
     
+    # TTS-specific fields
+    tts_provider = Column(String(50), nullable=True, comment="TTS provider: google, edge, elevenlabs")
+    character_count = Column(Integer, nullable=True, comment="Character count for TTS requests (TTS charges by character)")
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True)
     
@@ -167,6 +184,8 @@ class AiTokenUsage(Base):
             "request_type": self.request_type.value if self.request_type else None,
             "request_id": self.request_id,
             "request_metadata": self.request_metadata,
+            "tts_provider": self.tts_provider,
+            "character_count": self.character_count,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

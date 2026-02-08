@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.media_service.service.AiTokenUsageClient;
 import vacademy.io.media_service.service.HtmlImageConverter;
 
 import java.util.List;
@@ -27,6 +28,7 @@ public class GeminiImageGenerationService {
     private final RestTemplate restTemplate;
     private final HtmlImageConverter htmlImageConverter;
     private final ObjectMapper objectMapper;
+    private final AiTokenUsageClient aiTokenUsageClient;
 
     // URL from python service
     private static final String GEMINI_IMAGE_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=%s";
@@ -49,12 +51,36 @@ public class GeminiImageGenerationService {
             // Defaulting to jpeg as Python code does
             String imageUrl = htmlImageConverter.uploadBase64File(base64Image, "jpeg");
 
+            // Log token usage for image generation
+            logTokenUsage(prompt);
+
             log.info("Generated and uploaded image: {}", imageUrl);
             return imageUrl;
 
         } catch (Exception e) {
             log.error("Failed to generate/upload image: {}", e.getMessage(), e);
             return null;
+        }
+    }
+
+    /**
+     * Log token usage for image generation
+     */
+    private void logTokenUsage(String prompt) {
+        try {
+            // Estimate tokens based on prompt length (roughly 4 chars per token)
+            int estimatedPromptTokens = Math.max(1, prompt.length() / 4);
+
+            aiTokenUsageClient.recordUsageAsync(
+                    "gemini",
+                    "gemini-2.5-flash-image",
+                    estimatedPromptTokens,
+                    0, // Image generation doesn't have completion tokens
+                    "image",
+                    null,
+                    null);
+        } catch (Exception e) {
+            log.warn("Failed to log image generation usage: {}", e.getMessage());
         }
     }
 

@@ -13,6 +13,9 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
+import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
+import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
+import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 
 import java.util.*;
 
@@ -32,6 +35,7 @@ public class LLMService {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final AiTokenUsageService aiTokenUsageService;
 
     /**
      * Generate a chat completion with tool calling support
@@ -67,11 +71,47 @@ public class LLMService {
                 throw new RuntimeException("Empty response from OpenRouter");
             }
 
-            return parseResponse(response.getBody());
+            LLMResponse llmResponse = parseResponse(response.getBody());
+
+            // Log token usage asynchronously
+            logTokenUsage(response.getBody(), session);
+
+            return llmResponse;
 
         } catch (Exception e) {
             log.error("[LLMService] Error generating chat completion: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to generate chat completion: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Log token usage from the API response.
+     */
+    private void logTokenUsage(String responseBody, ConversationSession session) {
+        try {
+            JsonNode root = objectMapper.readTree(responseBody);
+            JsonNode usage = root.get("usage");
+
+            if (usage != null) {
+                int promptTokens = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asInt() : 0;
+                int completionTokens = usage.has("completion_tokens") ? usage.get("completion_tokens").asInt() : 0;
+
+                // Convert String IDs to UUIDs
+                UUID instituteId = session.getInstituteId() != null ? UUID.fromString(session.getInstituteId()) : null;
+                UUID userId = session.getUserId() != null ? UUID.fromString(session.getUserId()) : null;
+
+                aiTokenUsageService.recordUsageAsync(
+                        ApiProvider.OPENAI,
+                        RequestType.AGENT,
+                        session.getModel(),
+                        promptTokens,
+                        completionTokens,
+                        instituteId,
+                        userId);
+            }
+        } catch (Exception e) {
+            // Never fail the main request due to usage logging issues
+            log.warn("[LLMService] Failed to log token usage: {}", e.getMessage());
         }
     }
 

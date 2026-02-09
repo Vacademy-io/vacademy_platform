@@ -37,7 +37,7 @@ data:
     server_lifetime = 600
     server_connect_timeout = 15
 
-    auth_type = md5
+    auth_type = scram-sha-256
     auth_file = /etc/pgbouncer/userlist.txt
 
     log_connections = 0
@@ -49,3 +49,6 @@ data:
 
     server_reset_query = DISCARD ALL
     ignore_startup_parameters = extra_float_digits,options
+
+    ; TLS for backend connections (required by Linode managed DB)
+    server_tls_sslmode = require

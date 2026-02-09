@@ -111,6 +111,68 @@ Day 14 → Certificate (for those who completed 11+ challenges)
 └─────────────────────┘
 ```
 
+### Custom Fields Tables
+
+The `custom_fields` and `custom_field_values` tables store dynamic form fields and their values for audience responses.
+
+```
+┌────────────────────────┐
+│    custom_field        │ ←── Dynamic field definitions
+├────────────────────────┤
+│ id                     │
+│ audience_id            │ ←── Links to audience table
+│ institute_id           │
+│ field_name             │ ←── e.g., "parent name", "children name", "child age"
+│ field_type             │ ←── TEXT, NUMBER, DATE, DROPDOWN, etc.
+│ is_required            │
+│ field_order            │ ←── Display order in forms
+│ options                │ ←── For dropdown/radio fields (JSON)
+│ is_active              │
+│ created_at             │
+│ updated_at             │
+└────────────────────────┘
+          │
+          │ 1:N
+          ▼
+┌────────────────────────┐
+│  custom_field_value    │ ←── Actual field values per response
+├────────────────────────┤
+│ id                     │
+│ custom_field_id        │ ←── Links to custom_field
+│ audience_response_id   │ ←── Links to audience_response
+│ field_value            │ ←── The actual value entered by user
+│ created_at             │
+│ updated_at             │
+└────────────────────────┘
+```
+
+**Relationship Flow:**
+```
+audience (1) ──→ (N) custom_field ──→ (N) custom_field_value
+                                              │
+                                              ▼
+                        audience_response (1) ──→ (N) custom_field_value
+```
+
+**Example for Jumpstart:**
+```sql
+-- Custom fields defined for Viman Nagar audience
+custom_field:
+  - id: cf_001, field_name: "parent name", field_type: TEXT
+  - id: cf_002, field_name: "children name", field_type: TEXT
+  - id: cf_003, field_name: "phone", field_type: PHONE
+  - id: cf_004, field_name: "child age", field_type: NUMBER
+  - id: cf_005, field_name: "center name", field_type: TEXT
+
+-- When a parent submits the form (response: resp_001)
+custom_field_value:
+  - custom_field_id: cf_001, audience_response_id: resp_001, field_value: "Priya Sharma"
+  - custom_field_id: cf_002, audience_response_id: resp_001, field_value: "Aarav"
+  - custom_field_id: cf_003, audience_response_id: resp_001, field_value: "919876543210"
+  - custom_field_id: cf_004, audience_response_id: resp_001, field_value: "3"
+  - custom_field_id: cf_005, audience_response_id: resp_001, field_value: "Viman Nagar"
+```
+
 ### Workflow Tables
 
 ```
@@ -208,9 +270,58 @@ public ResponseEntity<String> handleFormWebhook(
 ```
 
 ### Step 3: Response Storage
-The lead data is stored in `audience_response` table with:
-- `workflow_activate_day_at`: Calculated from `created_at` + `offset_day` (from `audience.setting_json`)
+The lead data is stored in multiple tables:
+
+**1. `audience_response` Table:**
+- Creates master record with auto-generated `id`
+- Sets `workflow_activate_day_at`: Calculated from `created_at` + `offset_day` (from `audience.setting_json`)
 - This date is used to determine which day's workflow the lead should receive
+- Stores basic metadata (user_id, audience_id, institute_id)
+
+**2. `custom_field_value` Table:**
+- For each field in the form submission, creates a record linking:
+  - `custom_field_id` (from `custom_field` table for this audience)
+  - `audience_response_id` (the newly created response)
+  - `field_value` (the actual user input)
+
+**Example Data Flow:**
+```sql
+-- Step 3a: Create audience_response
+INSERT INTO audience_response (id, audience_id, user_id, workflow_activate_day_at)
+VALUES ('resp_001', 'audience_viman_nagar', 'user_001', '2026-02-09');
+-- Returns: resp_001
+
+-- Step 3b: Store custom field values
+INSERT INTO custom_field_value (custom_field_id, audience_response_id, field_value)
+VALUES 
+  ('cf_parent_name', 'resp_001', 'Priya Sharma'),
+  ('cf_children_name', 'resp_001', 'Aarav'),
+  ('cf_phone', 'resp_001', '919876543210'),
+  ('cf_child_age', 'resp_001', '3'),
+  ('cf_center_name', 'resp_001', 'Viman Nagar');
+```
+
+**Querying Lead Data:**
+```sql
+-- Get all field values for a response
+SELECT 
+    ar.id as response_id,
+    ar.workflow_activate_day_at,
+    cf.field_name,
+    cfv.field_value
+FROM audience_response ar
+JOIN custom_field_value cfv ON cfv.audience_response_id = ar.id
+JOIN custom_field cf ON cf.id = cfv.custom_field_id
+WHERE ar.id = 'resp_001';
+
+-- Result:
+-- response_id | workflow_activate_day_at | field_name      | field_value
+-- resp_001    | 2026-02-09               | parent name     | Priya Sharma
+-- resp_001    | 2026-02-09               | children name   | Aarav
+-- resp_001    | 2026-02-09               | phone           | 919876543210
+-- resp_001    | 2026-02-09               | child age       | 3
+-- resp_001    | 2026-02-09               | center name     | Viman Nagar
+```
 
 ### Step 4: Workflow Triggering (Referral Only)
 For referral submissions (`audience_id = 938f447a-d0a7-4219-b101-863b25272654`), the `workflow_trigger` table triggers the `day_1_workflow_2` immediately.
@@ -414,6 +525,124 @@ INSERT INTO audience (
 **Setting JSON Options:**
 - `offset_day: 0` → Workflows start same day as registration
 - `offset_day: 1` → Workflows start next day (recommended)
+
+---
+
+#### Step 5: Create Custom Fields (Critical for Jumpstart)
+
+After creating the audience, you **must** create custom field definitions. These define what data can be stored for each lead.
+
+```sql
+-- Insert custom fields for the new audience
+INSERT INTO custom_field (
+    id, 
+    audience_id, 
+    institute_id, 
+    field_name, 
+    field_type, 
+    is_required, 
+    field_order, 
+    is_active
+) VALUES 
+    -- Parent Name Field
+    (
+        gen_random_uuid(),
+        '09f6d308-bed4-454b-8a70-e95a66c0cffd',     -- Viman Nagar audience ID
+        '757d50c5-4e0a-4758-9fc6-ee62479df549',     -- Jumpstart institute ID
+        'parent name',
+        'TEXT',
+        true,
+        1,
+        true
+    ),
+    -- Children Name Field
+    (
+        gen_random_uuid(),
+        '09f6d308-bed4-454b-8a70-e95a66c0cffd',
+        '757d50c5-4e0a-4758-9fc6-ee62479df549',
+        'children name',
+        'TEXT',
+        true,
+        2,
+        true
+    ),
+    -- Phone Field
+    (
+        gen_random_uuid(),
+        '09f6d308-bed4-454b-8a70-e95a66c0cffd',
+        '757d50c5-4e0a-4758-9fc6-ee62479df549',
+        'phone',
+        'PHONE',
+        true,
+        3,
+        true
+    ),
+    -- Child Age Field
+    (
+        gen_random_uuid(),
+        '09f6d308-bed4-454b-8a70-e95a66c0cffd',
+        '757d50c5-4e0a-4758-9fc6-ee62479df549',
+        'child age',
+        'NUMBER',
+        false,
+        4,
+        true
+    ),
+    -- Center Name Field
+    (
+        gen_random_uuid(),
+        '09f6d308-bed4-454b-8a70-e95a66c0cffd',
+        '757d50c5-4e0a-4758-9fc6-ee62479df549',
+        'center name',
+        'TEXT',
+        false,
+        5,
+        true
+    ),
+    -- Email Field (optional)
+    (
+        gen_random_uuid(),
+        '09f6d308-bed4-454b-8a70-e95a66c0cffd',
+        '757d50c5-4e0a-4758-9fc6-ee62479df549',
+        'email',
+        'EMAIL',
+        false,
+        6,
+        true
+    );
+```
+
+**Field Types:**
+- `TEXT` - Plain text (names, addresses)
+- `NUMBER` - Numeric values (age, count)
+- `PHONE` - Phone numbers (auto-formatted)
+- `EMAIL` - Email addresses (validated)
+- `DATE` - Date fields
+- `DROPDOWN` - Dropdown selection (requires `options` JSON)
+- `TEXTAREA` - Long text fields
+
+**Important Notes:**
+1. **field_name must match Zoho form field names exactly** (case-sensitive)
+2. When a form is submitted, the system looks up custom_field by:
+   - `audience_id` (determined from form_webhook_connector)
+   - `field_name` (from the form payload keys)
+3. If no matching custom_field exists, **that field data will be lost**
+4. Values are stored in `custom_field_value` table linking to `audience_response`
+
+**Verification Query:**
+```sql
+-- Check all custom fields for an audience
+SELECT 
+    id,
+    field_name,
+    field_type,
+    is_required,
+    field_order,
+    is_active
+FROM custom_field
+WHERE audience_id = '09f6d308-bed4-454b-8a70-e95a66c0cffd'
+ORDER BY field_order;
+```
 
 ---
 
@@ -950,6 +1179,65 @@ Fetches data from the database using prebuilt queries.
 }
 ```
 
+**How Custom Field Data is Retrieved:**
+
+The `getAudienceResponsesByDayDifference` prebuilt query returns lead data including custom field values:
+
+```sql
+-- Backend SQL executed by QUERY node
+SELECT 
+    ar.id as response_id,
+    ar.user_id,
+    ar.workflow_activate_day_at,
+    -- Custom field values are joined and aggregated
+    jsonb_object_agg(cf.field_name, cfv.field_value) as custom_fields
+FROM audience_response ar
+JOIN custom_field_value cfv ON cfv.audience_response_id = ar.id
+JOIN custom_field cf ON cf.id = cfv.custom_field_id
+WHERE ar.audience_id IN ('center_id_1', 'center_id_2', ...)
+  AND DATE(ar.workflow_activate_day_at) = CURRENT_DATE - INTERVAL '3 days'
+GROUP BY ar.id, ar.user_id, ar.workflow_activate_day_at;
+```
+
+**Result stored in context:**
+```json
+{
+  "leads": [
+    {
+      "response_id": "resp_001",
+      "user_id": "user_001",
+      "workflow_activate_day_at": "2026-02-06",
+      "custom_fields": {
+        "parent name": "Priya Sharma",
+        "children name": "Aarav",
+        "phone": "919876543210",
+        "child age": "3",
+        "center name": "Viman Nagar"
+      }
+    },
+    {
+      "response_id": "resp_002",
+      "user_id": "user_002",
+      "custom_fields": {
+        "parent name": "Rahul Kumar",
+        "children name": "Ananya",
+        "phone": "919988776655",
+        "child age": "5",
+        "center name": "Wakad"
+      }
+    }
+  ]
+}
+```
+
+**Accessing Custom Fields in TRANSFORM Node:**
+```javascript
+// SpEL expression to access custom field values
+#item.custom_fields['parent name']      // Returns: "Priya Sharma"
+#item.custom_fields['children name']    // Returns: "Aarav"
+#item.custom_fields['phone']            // Returns: "919876543210"
+```
+
 ### 2. HTTP_REQUEST Node
 Makes external API calls for filtering users.
 
@@ -1107,10 +1395,25 @@ INSERT INTO form_webhook_connector (
 );
 ```
 
-3. **Add to Workflow Query Nodes**
+3. **Create Custom Fields (CRITICAL - Required for form submissions)**
+```sql
+-- Create custom field definitions for the new audience
+INSERT INTO custom_field (id, audience_id, institute_id, field_name, field_type, is_required, field_order, is_active)
+VALUES 
+  (gen_random_uuid(), 'new-center-uuid', 'jumpstart-institute-id', 'parent name', 'TEXT', true, 1, true),
+  (gen_random_uuid(), 'new-center-uuid', 'jumpstart-institute-id', 'children name', 'TEXT', true, 2, true),
+  (gen_random_uuid(), 'new-center-uuid', 'jumpstart-institute-id', 'phone', 'PHONE', true, 3, true),
+  (gen_random_uuid(), 'new-center-uuid', 'jumpstart-institute-id', 'child age', 'NUMBER', false, 4, true),
+  (gen_random_uuid(), 'new-center-uuid', 'jumpstart-institute-id', 'center name', 'TEXT', false, 5, true),
+  (gen_random_uuid(), 'new-center-uuid', 'jumpstart-institute-id', 'email', 'EMAIL', false, 6, true);
+
+-- IMPORTANT: Field names must match Zoho form field names exactly (case-sensitive)
+```
+
+4. **Add to Workflow Query Nodes**
 Update all relevant `node_template` entries to include the new center's `audience_id` in the comma-separated list.
 
-4. **Create Workflow Trigger (for immediate Day 0)**
+5. **Create Workflow Trigger (for immediate Day 0)**
 ```sql
 INSERT INTO workflow_trigger (
   id, workflow_id, trigger_event_name, institute_id, status, event_id
@@ -1123,6 +1426,8 @@ INSERT INTO workflow_trigger (
   'new-center-uuid'
 );
 ```
+
+**⚠️ Important:** Without step 3 (custom fields), form submissions will create `audience_response` records but **no field values will be stored**. Workflows will fail because they can't access parent_name, phone, etc.
 
 ### Modifying Message Templates
 1. Create/update template in WhatsApp Business Manager
@@ -1199,6 +1504,96 @@ WHERE id = 'schedule_id';
    - Confirm `workflow_schedule.status` is `ACTIVE`
    - Check `last_run_at` and `next_run_at` timestamps
    - Verify CRON expression syntax
+
+5. **Custom field values not storing (CRITICAL)**
+   
+   **Symptoms:**
+   - Form submissions create `audience_response` records
+   - No data in `custom_field_value` table
+   - Workflows fail with "null" values for parent_name, phone, etc.
+   
+   **Diagnosis:**
+   ```sql
+   -- Check if custom fields exist for this audience
+   SELECT 
+       cf.field_name,
+       cf.field_type,
+       cf.is_active
+   FROM custom_field cf
+   WHERE cf.audience_id = '<your_audience_id>'
+   ORDER BY cf.field_order;
+   
+   -- Check if values are being stored
+   SELECT 
+       ar.id,
+       ar.created_at,
+       COUNT(cfv.id) as field_value_count
+   FROM audience_response ar
+   LEFT JOIN custom_field_value cfv ON cfv.audience_response_id = ar.id
+   WHERE ar.audience_id = '<your_audience_id>'
+     AND ar.created_at >= CURRENT_DATE - INTERVAL '7 days'
+   GROUP BY ar.id, ar.created_at
+   ORDER BY ar.created_at DESC;
+   -- If field_value_count = 0, custom fields are missing
+   ```
+   
+   **Solutions:**
+   
+   a) **Missing custom field definitions:**
+   ```sql
+   -- Create missing custom fields
+   INSERT INTO custom_field (id, audience_id, institute_id, field_name, field_type, is_required, field_order, is_active)
+   VALUES 
+     (gen_random_uuid(), '<audience_id>', '<institute_id>', 'parent name', 'TEXT', true, 1, true),
+     (gen_random_uuid(), '<audience_id>', '<institute_id>', 'children name', 'TEXT', true, 2, true),
+     (gen_random_uuid(), '<audience_id>', '<institute_id>', 'phone', 'PHONE', true, 3, true);
+   ```
+   
+   b) **Field name mismatch:**
+   - Zoho form field: `"Parent Name"` (capital letters)
+   - Custom field: `"parent name"` (lowercase)
+   - **Fix:** Update custom field to match Zoho exactly:
+   ```sql
+   UPDATE custom_field
+   SET field_name = 'Parent Name'  -- Match Zoho exactly
+   WHERE audience_id = '<audience_id>'
+     AND field_name = 'parent name';
+   ```
+   
+   c) **Inactive custom fields:**
+   ```sql
+   -- Activate all custom fields
+   UPDATE custom_field
+   SET is_active = true
+   WHERE audience_id = '<audience_id>'
+     AND is_active = false;
+   ```
+
+6. **Workflow fails with "parent name not found" error**
+   
+   **Symptoms:**
+   - Workflow executes but TRANSFORM node fails
+   - Error: "Cannot access property 'parent name' on null"
+   
+   **Diagnosis:**
+   ```sql
+   -- Get recent response with custom field values
+   SELECT 
+       ar.id,
+       cf.field_name,
+       cfv.field_value
+   FROM audience_response ar
+   LEFT JOIN custom_field_value cfv ON cfv.audience_response_id = ar.id
+   LEFT JOIN custom_field cf ON cf.id = cfv.custom_field_id
+   WHERE ar.audience_id = '<audience_id>'
+   ORDER BY ar.created_at DESC
+   LIMIT 20;
+   ```
+   
+   **Solutions:**
+   - If no rows returned: See issue #5 above (custom fields missing)
+   - If `field_value` is NULL: Form submission didn't include that field
+   - If field_name doesn't match workflow expectation: Update workflow SpEL expression or custom field name
 
 ---
 

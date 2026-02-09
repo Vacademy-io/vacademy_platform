@@ -51,7 +51,7 @@ environment:
 pgbouncer:
   dbHost: "REPLACE_WITH_LINODE_DB_HOST"
   dbReadHost: "REPLACE_WITH_LINODE_READ_REPLICA_HOST"
-  dbPort: 5432
+  dbPort: 26754
   dbUsername: "postgres"
   dbPassword: "REPLACE_WITH_LINODE_DB_PASSWORD"
 

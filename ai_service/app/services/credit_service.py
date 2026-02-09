@@ -560,7 +560,7 @@ class CreditService:
         update_query = text("""
             UPDATE credit_alerts
             SET acknowledged = TRUE, acknowledged_by = :by, acknowledged_at = :now
-            WHERE id = :id::uuid
+            WHERE id = :id
         """)
         self.db.execute(update_query, {
             "id": alert_id,

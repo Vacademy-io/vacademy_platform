@@ -35,7 +35,7 @@ jobs:
             ./vacademy_devops/vacademy-services \
             --set pgbouncer.dbHost=${{ secrets.PGBOUNCER_DB_HOST }} \
             --set pgbouncer.dbReadHost=${{ secrets.PGBOUNCER_DB_READ_HOST }} \
-            --set pgbouncer.dbPort=5432 \
+            --set pgbouncer.dbPort=26754 \
             --set pgbouncer.dbUsername=${{ secrets.DB_USERNAME }} \
             --set pgbouncer.dbPassword=${{ secrets.DB_PASSWORD }} \
             --show-only templates/pgbouncer-configmap.yaml \
@@ -45,6 +45,10 @@ jobs:
         run: |
           kubectl apply -f vacademy_devops/vacademy-services/templates/pgbouncer-deployment.yaml
           kubectl apply -f vacademy_devops/vacademy-services/templates/pgbouncer-service.yaml
+
+      - name: Restart PgBouncer to pick up config changes
+        run: |
+          kubectl rollout restart deployment/pgbouncer --namespace default
 
       - name: Wait for PgBouncer rollout
         run: |

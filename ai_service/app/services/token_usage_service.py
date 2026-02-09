@@ -179,6 +179,8 @@ class TokenUsageService:
                 from .credit_service import CreditService
                 from ..schemas.credits import CreditDeductRequest
                 
+                logger.info(f"[TokenUsageService] Attempting to deduct credits for institute_id={institute_id}, request_type={request_type}")
+                
                 credit_service = CreditService(self._session)
                 deduct_request = CreditDeductRequest(
                     institute_id=institute_id,
@@ -189,10 +191,15 @@ class TokenUsageService:
                     character_count=character_count or 0,
                     usage_log_id=str(usage_record.id) if usage_record and hasattr(usage_record, 'id') else None
                 )
+                logger.info(f"[TokenUsageService] CreditDeductRequest created: {deduct_request}")
+                
                 deduct_result = credit_service.deduct_credits(deduct_request)
                 logger.info(f"[TokenUsageService] Deducted {deduct_result.credits_deducted} credits for {request_type}. New balance: {deduct_result.new_balance}")
             except Exception as credit_error:
-                logger.warning(f"[TokenUsageService] Failed to deduct credits: {credit_error}")
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"[TokenUsageService] Failed to deduct credits: {credit_error}")
+                logger.error(f"[TokenUsageService] Traceback: {error_trace}")
                 # Don't fail the usage recording if credit deduction fails
         
         return usage_record

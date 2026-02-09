@@ -490,7 +490,7 @@ async def record_token_usage(
             total_tokens = request.prompt_tokens + request.completion_tokens
         
         service = TokenUsageService(db)
-        record = service.record_usage(
+        record = service.record_usage_and_deduct_credits(
             api_provider=api_provider_enum,
             prompt_tokens=request.prompt_tokens,
             completion_tokens=request.completion_tokens,

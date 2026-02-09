@@ -50,6 +50,8 @@ import vacademy.io.common.exceptions.VacademyException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -1731,12 +1733,15 @@ public class AudienceService {
             return "You have already submitted your response for this campaign";
         }
 
-        // 2. Create audience response
+        // 2. Create audience response with calculated workflowActivateDayAt
+        Timestamp workflowActivateDayAt = calculateWorkflowActivateDayAt(audience);
+
         AudienceResponse response = AudienceResponse.builder()
                 .audienceId(audienceId)
                 .sourceType(formProvider) // ZOHO_FORMS, GOOGLE_FORMS, etc.
                 .sourceId(formProvider + "_WEBHOOK")
                 .userId(userId)
+                .workflowActivateDayAt(workflowActivateDayAt)
                 .build();
 
         AudienceResponse savedResponse = audienceResponseRepository.save(response);
@@ -2430,6 +2435,51 @@ public class AudienceService {
                 .isParent(existing.getIsParent())
                 .linkedParentId(existing.getLinkedParentId())
                 .build();
+    }
+
+    /**
+     * Calculate workflowActivateDayAt based on audience workflow_setting.offset_day.
+     * If offset_day is present, adds/subtracts that many days from current date.
+     * If not present, returns current timestamp.
+     *
+     * @param audience The audience entity containing settingJson
+     * @return Timestamp for workflowActivateDayAt
+     */
+    private Timestamp calculateWorkflowActivateDayAt(Audience audience) {
+        try {
+            String settingJson = audience.getSettingJson();
+            if (!StringUtils.hasText(settingJson)) {
+                logger.debug("No settingJson for audience {}, using current timestamp", audience.getId());
+                return Timestamp.valueOf(LocalDateTime.now());
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode rootNode = mapper.readTree(settingJson);
+            JsonNode workflowSetting = rootNode.path("workflow_setting");
+
+            if (workflowSetting.isMissingNode()) {
+                logger.debug("No workflow_setting for audience {}, using current timestamp", audience.getId());
+                return Timestamp.valueOf(LocalDateTime.now());
+            }
+
+            JsonNode offsetDayNode = workflowSetting.path("offset_day");
+            if (offsetDayNode.isMissingNode() || !offsetDayNode.isNumber()) {
+                logger.debug("No valid offset_day for audience {}, using current timestamp", audience.getId());
+                return Timestamp.valueOf(LocalDateTime.now());
+            }
+
+            int offsetDays = offsetDayNode.asInt();
+            LocalDateTime activateDateTime = LocalDateTime.now().plusDays(offsetDays);
+
+            logger.info("Calculated workflowActivateDayAt for audience {}: offset_day={}, result={}",
+                    audience.getId(), offsetDays, activateDateTime);
+
+            return Timestamp.valueOf(activateDateTime);
+        } catch (Exception e) {
+            logger.warn("Error parsing settingJson for audience {}, using current timestamp: {}",
+                    audience.getId(), e.getMessage());
+            return Timestamp.valueOf(LocalDateTime.now());
+        }
     }
 
 }

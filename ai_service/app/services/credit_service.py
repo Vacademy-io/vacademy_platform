@@ -346,7 +346,7 @@ class CreditService:
         if request.usage_log_id:
             try:
                 update_usage = text("""
-                    UPDATE ai_token_usage SET credits_used = :credits WHERE id = :id::uuid
+                    UPDATE ai_token_usage SET credits_used = :credits WHERE id = :id
                 """)
                 self.db.execute(update_usage, {
                     "credits": credits_to_deduct,

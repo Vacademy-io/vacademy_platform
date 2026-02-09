@@ -54,7 +54,7 @@ import { extractTextFromHTML } from "@/components/common/helper";
 import { SlideCountEntry } from "@/utils/courseTime";
 import { CourseStatsSidebar } from "@/routes/study-library/courses/course-details/-components/course-stats-sidebar";
 import { useCatalogStore } from "@/routes/courses/-store/catalogStore";
-import { formatTotalCourseDuration } from "@/utils/courseTime";
+import { formatTotalCourseDuration, getBackendCourseDuration } from "@/utils/courseTime";
 
 type SlideType = {
     id: string;
@@ -480,6 +480,35 @@ export const CourseDetailsPage = () => {
         }
     }, [sessionOptions, handleSessionChange, selectedSession, selectedLevel, searchParams.packageSessionId, fetchedBatches, form]);
 
+    // Initialize session and level from course-init data when batches are not available (for unauthenticated users)
+    useEffect(() => {
+        // Only run if we don't have a selected session yet and we have course data
+        if (selectedSession || !courseDetailsData?.sessions) return;
+
+        // Get the first session from course-init data
+        const firstSession = courseDetailsData.sessions[0];
+        if (firstSession?.session_dto?.id) {
+            const sessionId = firstSession.session_dto.id;
+            setSelectedSession(sessionId);
+
+            // Get the first level from that session
+            const firstLevel = firstSession.level_with_details?.[0];
+            if (firstLevel?.id) {
+                setSelectedLevel(firstLevel.id);
+
+                // Set the package_session_id from the level
+                if (firstLevel.package_session_id) {
+                    setPackageSessionIdForCurrentLevel(firstLevel.package_session_id);
+                }
+
+                // Set the read_time_in_minutes from the level
+                if (firstLevel.read_time_in_minutes) {
+                    setBackendReadTimeMinutes(firstLevel.read_time_in_minutes);
+                }
+            }
+        }
+    }, [courseDetailsData, selectedSession]);
+
     useEffect(() => {
         const loadCourseData = async () => {
             if (courseDetailsData?.course) {
@@ -804,6 +833,16 @@ export const CourseDetailsPage = () => {
 
                                         {/* Course Stats */}
                                         <div className="space-y-2 sm:space-y-3">
+                                            {/* Author */}
+                                            {getAuthorName() && (
+                                                <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg">
+                                                    <span className="text-xs font-medium text-gray-700">Author</span>
+                                                    <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                        {getAuthorName()}
+                                                    </span>
+                                                </div>
+                                            )}
+
                                             {/* Level Badge */}
                                             {levelOptions.length > 0 &&
                                                 selectedLevel &&
@@ -841,34 +880,45 @@ export const CourseDetailsPage = () => {
                                                 )}
 
                                             {/* Total Duration */}
-                                            {slideCountQuery.isLoading ? (
-                                                <div className="space-y-2">
-                                                    <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50 rounded-lg animate-pulse">
-                                                        <div className="h-3 w-24 bg-gray-200 rounded"></div>
-                                                        <div className="h-3 w-10 bg-gray-200 rounded"></div>
-                                                    </div>
-                                                </div>
-                                            ) : slideCountQuery.error ? (
-                                                <div className="p-2 sm:p-2.5 bg-red-50 border border-red-200 rounded-lg">
-                                                    <p className="text-xs text-red-600 font-medium">
-                                                        Error loading total duration
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg">
-                                                        <span className="text-xs font-medium text-gray-700">Total Duration</span>
-                                                        <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                                                            {formatTotalCourseDuration(slideCountQuery.data as unknown as Array<{ slide_count: number; total_read_time_minutes: number | null; source_type: string }>)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )}
+                                            <div className="flex items-center justify-between p-2 sm:p-2.5 bg-gray-50/80 rounded-lg">
+                                                <span className="text-xs font-medium text-gray-700">Course Time</span>
+                                                <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
+                                                    {(() => {
+                                                        // Priority 1: Backend read_time_in_minutes
+                                                        if (typeof backendReadTimeMinutes === 'number' && !Number.isNaN(backendReadTimeMinutes)) {
+                                                            return getBackendCourseDuration(backendReadTimeMinutes);
+                                                        }
+                                                        // Priority 2: Fallback to slide count calculation
+                                                        return formatTotalCourseDuration(slideCountQuery.data as SlideCountEntry[] || []);
+                                                    })()}
+                                                </span>
+                                            </div>
                                         </div>
+                                        {packageSessionIdForCurrentLevel && (
+                                            <div className="mt-4">
+                                                <CourseDetailsRatingsComponent
+                                                    packageSessionId={packageSessionIdForCurrentLevel}
+                                                    onRatingsLoadingChange={handleRatingsLoadingChange}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Enroll Button */}
                                         <div className="mt-4">
-                                            <CourseDetailsRatingsComponent
-                                                packageSessionId={packageSessionIdForCurrentLevel}
-                                                onRatingsLoadingChange={handleRatingsLoadingChange}
+                                            <AuthModal
+                                                type="courseDetailsPage"
+                                                courseId={searchParams.courseId}
+                                                trigger={
+                                                    <MyButton
+                                                        type="button"
+                                                        scale="large"
+                                                        buttonType="primary"
+                                                        layoutVariant="default"
+                                                        className="!min-w-full !w-full"
+                                                    >
+                                                        Enroll
+                                                    </MyButton>
+                                                }
                                             />
                                         </div>
                                     </div>

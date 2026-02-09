@@ -96,8 +96,8 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }} \
-            ADMIN_CORE_SERVICE_READ_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_READ_DB_URL || secrets.ADMIN_CORE_SERVICE_DB_URL }} \
+            ADMIN_CORE_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/admin_core_service \
+            ADMIN_CORE_SERVICE_READ_DB_URL=jdbc:postgresql://pgbouncer:6432/admin_core_service_read \
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} \

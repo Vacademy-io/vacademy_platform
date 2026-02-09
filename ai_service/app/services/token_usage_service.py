@@ -121,6 +121,82 @@ class TokenUsageService:
             character_count=character_count,
         )
     
+    def record_usage_and_deduct_credits(
+        self,
+        api_provider: ApiProvider,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+        request_type: RequestType,
+        institute_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        model: Optional[str] = None,
+        request_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        input_token_price: Optional[float] = None,
+        output_token_price: Optional[float] = None,
+        total_price: Optional[float] = None,
+        tts_provider: Optional[str] = None,
+        character_count: Optional[int] = None,
+    ) -> AiTokenUsage:
+        """
+        Record token usage AND deduct credits from institute balance.
+        
+        This is a convenience method that combines record_usage with credit deduction.
+        Use this for any API calls that should consume institute credits.
+        
+        Args:
+            Same as record_usage()
+        
+        Returns:
+            Created AiTokenUsage record
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # First, record the usage
+        usage_record = self.record_usage(
+            api_provider=api_provider,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            request_type=request_type,
+            institute_id=institute_id,
+            user_id=user_id,
+            model=model,
+            request_id=request_id,
+            metadata=metadata,
+            input_token_price=input_token_price,
+            output_token_price=output_token_price,
+            total_price=total_price,
+            tts_provider=tts_provider,
+            character_count=character_count,
+        )
+        
+        # Then, deduct credits if institute_id is provided
+        if institute_id:
+            try:
+                from .credit_service import CreditService
+                from ..schemas.credits import CreditDeductRequest
+                
+                credit_service = CreditService(self._session)
+                deduct_request = CreditDeductRequest(
+                    institute_id=institute_id,
+                    request_type=request_type.value if hasattr(request_type, 'value') else str(request_type),
+                    model=model or "unknown",
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    character_count=character_count or 0,
+                    usage_log_id=str(usage_record.id) if usage_record and hasattr(usage_record, 'id') else None
+                )
+                deduct_result = credit_service.deduct_credits(deduct_request)
+                logger.info(f"[TokenUsageService] Deducted {deduct_result.credits_deducted} credits for {request_type}. New balance: {deduct_result.new_balance}")
+            except Exception as credit_error:
+                logger.warning(f"[TokenUsageService] Failed to deduct credits: {credit_error}")
+                # Don't fail the usage recording if credit deduction fails
+        
+        return usage_record
+    
     def get_institute_usage(
         self,
         institute_id: str,

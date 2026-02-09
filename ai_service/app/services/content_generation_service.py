@@ -126,7 +126,7 @@ class ContentGenerationService:
                         token_service = TokenUsageService(self._db_session)
                         # Determine provider based on model
                         api_provider = ApiProvider.GEMINI if "gemini" in self._content_model.lower() else ApiProvider.OPENAI
-                        token_service.record_usage(
+                        token_service.record_usage_and_deduct_credits(
                             api_provider=api_provider,
                             prompt_tokens=usage_info.get("prompt_tokens", 0),
                             completion_tokens=usage_info.get("completion_tokens", 0),
@@ -215,7 +215,7 @@ class ContentGenerationService:
                         token_service = TokenUsageService(self._db_session)
                         # Determine provider based on model
                         api_provider = ApiProvider.GEMINI if "gemini" in self._content_model.lower() else ApiProvider.OPENAI
-                        token_service.record_usage(
+                        token_service.record_usage_and_deduct_credits(
                             api_provider=api_provider,
                             prompt_tokens=usage_info.get("prompt_tokens", 0),
                             completion_tokens=usage_info.get("completion_tokens", 0),
@@ -711,7 +711,7 @@ class ContentGenerationService:
                         token_service = TokenUsageService(self._db_session)
                         # Determine provider based on model
                         api_provider = ApiProvider.GEMINI if "gemini" in self._content_model.lower() else ApiProvider.OPENAI
-                        token_service.record_usage(
+                        token_service.record_usage_and_deduct_credits(
                             api_provider=api_provider,
                             prompt_tokens=usage_info.get("prompt_tokens", 0),
                             completion_tokens=usage_info.get("completion_tokens", 0),

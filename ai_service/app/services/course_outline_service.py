@@ -124,7 +124,7 @@ class CourseOutlineGenerationService:
             if self._db_session and usage_info:
                 try:
                     token_service = TokenUsageService(self._db_session)
-                    token_service.record_usage(
+                    token_service.record_usage_and_deduct_credits(
                         api_provider=ApiProvider.OPENAI,
                         prompt_tokens=usage_info.get("prompt_tokens", 0),
                         completion_tokens=usage_info.get("completion_tokens", 0),
@@ -169,7 +169,7 @@ class CourseOutlineGenerationService:
                 if self._db_session and image_usage and image_usage.get("total_tokens", 0) > 0:
                     try:
                         token_service = TokenUsageService(self._db_session)
-                        token_service.record_usage(
+                        token_service.record_usage_and_deduct_credits(
                             api_provider=ApiProvider.GEMINI,
                             prompt_tokens=image_usage.get("prompt_tokens", 0),
                             completion_tokens=image_usage.get("completion_tokens", 0),
@@ -269,7 +269,7 @@ class CourseOutlineGenerationService:
                 if self._db_session and usage_info:
                     try:
                         token_service = TokenUsageService(self._db_session)
-                        token_service.record_usage(
+                        token_service.record_usage_and_deduct_credits(
                             api_provider=ApiProvider.OPENAI,
                             prompt_tokens=usage_info.get("prompt_tokens", 0),
                             completion_tokens=usage_info.get("completion_tokens", 0),
@@ -324,7 +324,7 @@ class CourseOutlineGenerationService:
                     if self._db_session and image_usage and image_usage.get("total_tokens", 0) > 0:
                         try:
                             token_service = TokenUsageService(self._db_session)
-                            token_service.record_usage(
+                            token_service.record_usage_and_deduct_credits(
                                 api_provider=ApiProvider.GEMINI,
                                 prompt_tokens=image_usage.get("prompt_tokens", 0),
                                 completion_tokens=image_usage.get("completion_tokens", 0),

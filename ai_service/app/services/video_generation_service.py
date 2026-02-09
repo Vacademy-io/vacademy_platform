@@ -549,7 +549,7 @@ class VideoGenerationService:
                             provider = ApiProvider.OPENAI
                             if model and "gemini" in model.lower():
                                 provider = ApiProvider.GEMINI
-                            token_service.record_usage(
+                            token_service.record_usage_and_deduct_credits(
                                 api_provider=provider,
                                 prompt_tokens=usage.get("prompt_tokens", 0),
                                 completion_tokens=usage.get("completion_tokens", 0),
@@ -564,29 +564,7 @@ class VideoGenerationService:
                                     "stage": stage_pipeline_name
                                 }
                             )
-                            logger.info(f"[VideoGenService] Recorded usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
-                            
-                            # Deduct credits from institute balance
-                            if institute_id:
-                                try:
-                                    from .credit_service import CreditService
-                                    from ..schemas.credits import CreditDeductRequest
-                                    
-                                    credit_service = CreditService(db_session)
-                                    deduct_request = CreditDeductRequest(
-                                        institute_id=institute_id,
-                                        request_type="VIDEO",
-                                        model=model or "video-gen-pipeline",
-                                        prompt_tokens=usage.get("prompt_tokens", 0),
-                                        completion_tokens=usage.get("completion_tokens", 0),
-                                        character_count=0,
-                                        usage_log_id=None  # Could link to token_usage record if needed
-                                    )
-                                    deduct_result = credit_service.deduct_credits(deduct_request)
-                                    logger.info(f"[VideoGenService] Deducted {deduct_result.credits_deducted} credits for stage {stage_pipeline_name}. New balance: {deduct_result.new_balance}")
-                                except Exception as credit_error:
-                                    logger.warning(f"[VideoGenService] Failed to deduct credits: {credit_error}")
-                                    # Don't fail video generation if credit deduction fails
+                            logger.info(f"[VideoGenService] Recorded usage and deducted credits for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
                     except Exception as e:
                         logger.warning(f"[VideoGenService] Failed to record token usage: {e}")
                 

@@ -320,7 +320,8 @@ public class ExternalAIApiService {
             Prompt prompt = new PromptTemplate(template).create(promptMap);
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion(model, prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion(model, prompt.getContents().trim(), 30000,
+                    "questions", getInstituteUUID(taskStatus), null);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson,
                         "No Response Generate");
@@ -485,7 +486,7 @@ public class ExternalAIApiService {
             Prompt prompt = new PromptTemplate(template).create(promptMap);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash",
-                    prompt.getContents().trim(), 30000);
+                    prompt.getContents().trim(), 30000, "questions", getInstituteUUID(taskStatus), null);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson,
                         "No Response Generate");
@@ -552,7 +553,7 @@ public class ExternalAIApiService {
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash",
-                    prompt.getContents().trim(), 30000);
+                    prompt.getContents().trim(), 30000, "questions", getInstituteUUID(taskStatus), null);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), restoredJson,
                         "No Response Generate");
@@ -643,7 +644,7 @@ public class ExternalAIApiService {
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash",
-                    prompt.getContents().trim(), 30000);
+                    prompt.getContents().trim(), 30000, "questions", getInstituteUUID(taskStatus), null);
 
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldResponse,
@@ -946,7 +947,7 @@ public class ExternalAIApiService {
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
             DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash",
-                    prompt.getContents().trim(), 30000);
+                    prompt.getContents().trim(), 30000, "questions", getInstituteUUID(taskStatus), null);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
                 taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), oldJson,
                         "No Response Generate");
@@ -1042,5 +1043,21 @@ public class ExternalAIApiService {
             }
         }
         return false;
+    }
+
+    /**
+     * Helper method to extract institute UUID from TaskStatus.
+     * Returns null if taskStatus or instituteId is null.
+     */
+    private UUID getInstituteUUID(TaskStatus taskStatus) {
+        if (taskStatus == null || taskStatus.getInstituteId() == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(taskStatus.getInstituteId());
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid institute ID format: {}", taskStatus.getInstituteId());
+            return null;
+        }
     }
 }

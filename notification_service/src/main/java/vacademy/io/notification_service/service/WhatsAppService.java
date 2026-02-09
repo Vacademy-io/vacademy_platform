@@ -86,9 +86,28 @@ public class WhatsAppService {
                 new DateTime(fallbackValue, timestamp));
     }
 
+    /**
+     * Original method signature - maintained for backward compatibility
+     */
     public List<Map<String, Boolean>> sendWhatsappMessages(String templateName,
             List<Map<String, Map<String, String>>> bodyParams,
             Map<String, Map<String, String>> headerParams, String languageCode, String headerType, String instituteId) {
+        // Call the new extended method with null for new COMBOT params
+        return sendWhatsappMessagesExtended(templateName, bodyParams, headerParams, 
+            null, null, null, languageCode, headerType, instituteId);
+    }
+    
+    /**
+     * Extended method with COMBOT-specific parameters for video headers and dynamic URL buttons.
+     * This method is backward compatible - new params can be null.
+     */
+    public List<Map<String, Boolean>> sendWhatsappMessagesExtended(String templateName,
+            List<Map<String, Map<String, String>>> bodyParams,
+            Map<String, Map<String, String>> headerParams,
+            Map<String, String> headerVideoParams,    // NEW: phone -> videoUrl
+            Map<String, String> buttonUrlParams,      // NEW: phone -> buttonUrlParam
+            Map<String, String> buttonIndexParams,    // NEW: phone -> buttonIndex
+            String languageCode, String headerType, String instituteId) {
 
         if (instituteId == null) {
             log.error("Missing instituteId for WhatsApp message sending");
@@ -121,6 +140,11 @@ public class WhatsAppService {
             // Route to appropriate provider
             if ("WATI".equals(provider)) {
                 return sendViaWati(templateName, bodyParams, languageCode, whatsappSetting);
+            } else if ("COMBOT".equals(provider)) {
+                // NEW: Route to COMBOT provider
+                return sendViaCombot(templateName, bodyParams, headerParams, 
+                    headerVideoParams, buttonUrlParams, buttonIndexParams,
+                    languageCode, headerType, whatsappSetting, instituteId);
             } else {
                 return sendViaMeta(templateName, bodyParams, headerParams, languageCode, headerType, whatsappSetting);
             }
@@ -248,6 +272,197 @@ public class WhatsAppService {
                     .map(detail -> Map.of(detail.keySet().iterator().next(), false))
                     .collect(Collectors.toList());
         }
+    }
+
+    /**
+     * Send WhatsApp messages via COMBOT (uses Meta Graph API format).
+     * Transforms generic WhatsappRequest format to Meta API payload with support for:
+     * - Image headers
+     * - Video headers (NEW)
+     * - Dynamic URL buttons (NEW)
+     */
+    private List<Map<String, Boolean>> sendViaCombot(String templateName,
+            List<Map<String, Map<String, String>>> bodyParams,
+            Map<String, Map<String, String>> headerParams,
+            Map<String, String> headerVideoParams,
+            Map<String, String> buttonUrlParams,
+            Map<String, String> buttonIndexParams,
+            String languageCode,
+            String headerType,
+            JsonNode whatsappSetting,
+            String instituteId) {
+        
+        try {
+            // Extract COMBOT config
+            JsonNode combotConfig = whatsappSetting.path(NotificationConstants.COMBOT);
+            
+            if (combotConfig.isMissingNode()) {
+                log.error("COMBOT config not found for institute: {}", instituteId);
+                return bodyParams.stream()
+                        .map(detail -> Map.of(detail.keySet().iterator().next(), false))
+                        .collect(Collectors.toList());
+            }
+            
+            String apiUrl = combotConfig.path(NotificationConstants.API_URL).asText();
+            String apiKey = combotConfig.path(NotificationConstants.API_KEY).asText();
+            String phoneNumberId = combotConfig.path(NotificationConstants.PHONE_NUMBER_ID).asText();
+            
+            if (apiUrl.isBlank() || apiKey.isBlank() || phoneNumberId.isBlank()) {
+                log.error("COMBOT config incomplete for institute: {}", instituteId);
+                return bodyParams.stream()
+                        .map(detail -> Map.of(detail.keySet().iterator().next(), false))
+                        .collect(Collectors.toList());
+            }
+            
+            log.info("Sending WhatsApp messages via COMBOT: template={}, recipients={}", 
+                    templateName, bodyParams.size());
+            
+            List<Map<String, Boolean>> results = new ArrayList<>();
+            
+            // Process each user - build Meta API payload
+            for (Map<String, Map<String, String>> userDetail : bodyParams) {
+                String phoneNumber = userDetail.keySet().iterator().next();
+                Map<String, String> params = userDetail.get(phoneNumber);
+                
+                try {
+                    // Build Meta API payload (same format as CombotNodeHandler)
+                    Map<String, Object> payload = buildCombotPayload(
+                            phoneNumber, templateName, languageCode, params,
+                            headerParams != null ? headerParams.get(phoneNumber) : null,
+                            headerVideoParams != null ? headerVideoParams.get(phoneNumber) : null,
+                            buttonUrlParams != null ? buttonUrlParams.get(phoneNumber) : null,
+                            buttonIndexParams != null ? buttonIndexParams.get(phoneNumber) : "0",
+                            headerType
+                    );
+                    
+                    // Send to COMBOT API
+                    String requestUrl = apiUrl + "/" + phoneNumberId + "/messages";
+                    
+                    HttpHeaders headers = new HttpHeaders();
+                    headers.setContentType(MediaType.APPLICATION_JSON);
+                    headers.set("Authorization", "Bearer " + apiKey);
+                    
+                    HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+                    
+                    ResponseEntity<Map> response = restTemplate.postForEntity(requestUrl, request, Map.class);
+                    
+                    boolean success = response.getStatusCode().is2xxSuccessful();
+                    results.add(Map.of(phoneNumber, success));
+                    
+                    log.info("COMBOT response for {}: status={}", phoneNumber, response.getStatusCode());
+                    
+                    // Small delay to avoid rate limiting
+                    Thread.sleep(100);
+                    
+                } catch (Exception e) {
+                    log.error("Failed to send COMBOT message to {}: {}", phoneNumber, e.getMessage());
+                    results.add(Map.of(phoneNumber, false));
+                }
+            }
+            
+            // Log messages
+            logWhatsAppMessages(templateName, bodyParams, headerParams, languageCode, headerType, "COMBOT", results);
+            
+            return results;
+            
+        } catch (Exception e) {
+            log.error("Error sending via COMBOT: {}", e.getMessage(), e);
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send WhatsApp via COMBOT")
+                    .withTag("notification.type", "WHATSAPP")
+                    .withTag("whatsapp.provider", "COMBOT")
+                    .withTag("template.name", templateName)
+                    .withTag("institute.id", instituteId)
+                    .withTag("user.count", String.valueOf(bodyParams != null ? bodyParams.size() : 0))
+                    .withTag("language.code", languageCode != null ? languageCode : "unknown")
+                    .withTag("operation", "sendViaCombot")
+                    .send();
+            return bodyParams.stream()
+                    .map(detail -> Map.of(detail.keySet().iterator().next(), false))
+                    .collect(Collectors.toList());
+        }
+    }
+    
+    /**
+     * Build COMBOT/Meta API payload from generic WhatsApp request format.
+     * This mirrors the logic in CombotNodeHandler.buildSingleMessagePayload()
+     */
+    private Map<String, Object> buildCombotPayload(String phoneNumber, String templateName, String languageCode,
+            Map<String, String> bodyParams, Map<String, String> headerImageParams, String headerVideoUrl,
+            String buttonUrlParam, String buttonIndex, String headerType) {
+        
+        List<Map<String, Object>> components = new ArrayList<>();
+        
+        // 1. Handle Header (Image OR Video)
+        if (headerImageParams != null && !headerImageParams.isEmpty()) {
+            // Image header
+            Map<String, Object> headerComponent = new HashMap<>();
+            headerComponent.put("type", "header");
+            
+            String imageUrl = headerImageParams.values().iterator().next(); // Get first value
+            Map<String, Object> imageObj = Map.of("link", imageUrl);
+            Map<String, Object> imageParam = Map.of("type", "image", "image", imageObj);
+            
+            headerComponent.put("parameters", Collections.singletonList(imageParam));
+            components.add(headerComponent);
+            
+        } else if (headerVideoUrl != null && !headerVideoUrl.isBlank()) {
+            // Video header (NEW for COMBOT)
+            Map<String, Object> headerComponent = new HashMap<>();
+            headerComponent.put("type", "header");
+            
+            Map<String, Object> videoObj = Map.of("link", headerVideoUrl);
+            Map<String, Object> videoParam = Map.of("type", "video", "video", videoObj);
+            
+            headerComponent.put("parameters", Collections.singletonList(videoParam));
+            components.add(headerComponent);
+        }
+        
+        // 2. Handle Body Text
+        if (bodyParams != null && !bodyParams.isEmpty()) {
+            List<Map<String, String>> parameterComponents = new ArrayList<>();
+            
+            // Sort by key (1, 2, 3...) to maintain order
+            bodyParams.entrySet().stream()
+                    .sorted(Comparator.comparingInt(e -> {
+                        try { return Integer.parseInt(e.getKey()); } 
+                        catch (NumberFormatException ex) { return 999; }
+                    }))
+                    .forEach(e -> parameterComponents.add(Map.of("type", "text", "text", e.getValue())));
+            
+            Map<String, Object> bodyComponent = new HashMap<>();
+            bodyComponent.put("type", "body");
+            bodyComponent.put("parameters", parameterComponents);
+            components.add(bodyComponent);
+        }
+        
+        // 3. Handle Dynamic URL Button (NEW for COMBOT)
+        if (buttonUrlParam != null && !buttonUrlParam.isBlank()) {
+            Map<String, Object> buttonComponent = new HashMap<>();
+            buttonComponent.put("type", "button");
+            buttonComponent.put("sub_type", "url");
+            buttonComponent.put("index", buttonIndex != null ? buttonIndex : "0");
+            
+            Map<String, String> textParam = Map.of("type", "text", "text", buttonUrlParam);
+            buttonComponent.put("parameters", Collections.singletonList(textParam));
+            
+            components.add(buttonComponent);
+        }
+        
+        // Build Template Map
+        Map<String, Object> templateMap = new HashMap<>();
+        templateMap.put("name", templateName);
+        templateMap.put("language", Map.of("code", languageCode != null ? languageCode : "en"));
+        templateMap.put("components", components);
+        
+        // Build Final Payload (Meta API format)
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("messaging_product", "whatsapp");
+        payload.put("to", phoneNumber);
+        payload.put("type", "template");
+        payload.put("template", templateMap);
+        
+        return payload;
     }
 
     /**

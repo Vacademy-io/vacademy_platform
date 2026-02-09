@@ -12,6 +12,9 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from ..repositories.chat_session_repository import ChatSessionRepository
+from ..services.token_usage_service import TokenUsageService
+from ..models.ai_token_usage import ApiProvider, RequestType
+
 from ..repositories.chat_message_repository import ChatMessageRepository
 from ..services.context_resolver_service import ContextResolverService
 from ..services.tool_manager_service import ToolManagerService
@@ -58,6 +61,49 @@ class AiChatAgentService:
         
         # Store active quizzes for evaluation (session_id -> QuizData)
         self._active_quizzes: Dict[str, QuizData] = {}
+    
+    def _record_token_usage(self, response: Dict[str, Any], institute_id: str, user_id: str):
+        """Helper to record token usage and deduct credits."""
+        try:
+            token_service = TokenUsageService(self.db)
+            prompt_tokens = 0
+            completion_tokens = 0
+            total_tokens = 0
+            
+            usage = response.get("usage", {})
+            provider = response.get("provider", "unknown")
+            model = response.get("model", "unknown")
+            
+            if usage:
+                if provider == "openrouter":
+                    prompt_tokens = usage.get("prompt_tokens", 0)
+                    completion_tokens = usage.get("completion_tokens", 0)
+                    total_tokens = usage.get("total_tokens", 0)
+                elif provider == "gemini":
+                    # Gemini usage keys: promptTokenCount, candidatesTokenCount, totalTokenCount
+                    prompt_tokens = usage.get("promptTokenCount", 0)
+                    completion_tokens = usage.get("candidatesTokenCount", 0)
+                    total_tokens = usage.get("totalTokenCount", 0)
+            
+            # Record if we have usage data
+            if total_tokens > 0:
+                api_provider = ApiProvider.OPENAI
+                if provider == "gemini":
+                    api_provider = ApiProvider.GEMINI
+                
+                token_service.record_usage_and_deduct_credits(
+                    api_provider=api_provider,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
+                    request_type=RequestType.AGENT,
+                    institute_id=institute_id,
+                    user_id=user_id,
+                    model=model,
+                )
+                logger.debug(f"Recorded usage for agent chat: {total_tokens} tokens")
+        except Exception as e:
+            logger.warning(f"Failed to record token usage for agent: {e}")
     
     async def create_session(
         self,
@@ -461,6 +507,9 @@ class AiChatAgentService:
                     user_id=user_id,
                 )
                 
+                # Record usage
+                self._record_token_usage(response, institute_id, user_id)
+                
                 greeting_content = response.get("content", "Hi! How can I help you today?")
                 
                 # Save greeting as assistant message
@@ -623,6 +672,10 @@ class AiChatAgentService:
                         institute_id=institute_id,
                         user_id=user_id,
                     )
+                    
+                    # Record usage
+                    self._record_token_usage(response, institute_id, user_id)
+                    
                 except Exception as e:
                     logger.error(f"LLM call failed: {e}")
                     # Yield error message

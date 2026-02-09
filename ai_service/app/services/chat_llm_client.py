@@ -112,7 +112,9 @@ class ChatLLMClient:
             "content": content,
             "tool_calls": None,  # Gemini tool format needs conversion
             "finish_reason": candidate.get("finishReason"),
-            "provider": "gemini"
+            "provider": "gemini",
+            "usage": data.get("usageMetadata"),
+            "model": "gemini-1.5-flash"
         }
     
     async def _call_openrouter(
@@ -155,7 +157,9 @@ class ChatLLMClient:
             "content": message.get("content", ""),
             "tool_calls": message.get("tool_calls"),
             "finish_reason": choice.get("finish_reason"),
-            "provider": "openrouter"
+            "provider": "openrouter",
+            "usage": data.get("usage"),
+            "model": data.get("model", model)
         }
     
     async def close(self):

@@ -106,8 +106,8 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            NOTIFICATION_SERVICE_DB_URL=${{ secrets.NOTIFICATION_SERVICE_DB_URL }} \
-            NOTIFICATION_SERVICE_READ_DB_URL=${{ secrets.NOTIFICATION_SERVICE_READ_DB_URL || secrets.NOTIFICATION_SERVICE_DB_URL }} \
+            NOTIFICATION_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/notification_service \
+            NOTIFICATION_SERVICE_READ_DB_URL=jdbc:postgresql://pgbouncer:6432/notification_service_read \
             MAIL_HOST=${{ secrets.MAIL_HOST }} \
             MAIL_PORT=${{ secrets.MAIL_PORT }} \
             AWS_MAIL_USERNAME=${{ secrets.AWS_MAIL_USERNAME }} \

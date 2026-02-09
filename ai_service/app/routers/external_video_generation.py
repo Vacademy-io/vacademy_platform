@@ -28,10 +28,10 @@ from ..constants.models import VIDEO_GENERATION_DEFAULT_MODEL
 router = APIRouter(prefix="/external/video/v1", tags=["external-ai-video"])
 
 
-def get_video_service() -> VideoGenerationService:
+def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationService:
     """Dependency to get video generation service."""
     return VideoGenerationService(
-        repository=AiVideoRepository(),
+        repository=AiVideoRepository(session=db),
         s3_service=S3Service()
     )
 

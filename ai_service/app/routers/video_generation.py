@@ -27,14 +27,14 @@ from ..schemas.auth import CustomUserDetails
 router = APIRouter(prefix="/video", tags=["ai-video-generation"])
 
 
-def get_video_service() -> VideoGenerationService:
+def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationService:
     """Dependency to get video generation service."""
     import logging
     logger = logging.getLogger(__name__)
     logger.info("[VIDEO_GEN_ROUTER] Creating VideoGenerationService instance")
     try:
         service = VideoGenerationService(
-            repository=AiVideoRepository(),
+            repository=AiVideoRepository(session=db),
             s3_service=S3Service()
         )
         logger.info("[VIDEO_GEN_ROUTER] VideoGenerationService created successfully")

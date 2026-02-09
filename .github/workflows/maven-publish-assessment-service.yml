@@ -93,8 +93,8 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            ASSESSMENT_SERVICE_DB_URL=${{ secrets.ASSESSMENT_SERVICE_DB_URL }} \
-            ASSESSMENT_SERVICE_READ_DB_URL=${{ secrets.ASSESSMENT_SERVICE_READ_DB_URL || secrets.ASSESSMENT_SERVICE_DB_URL }} \
+            ASSESSMENT_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/assessment_service \
+            ASSESSMENT_SERVICE_READ_DB_URL=jdbc:postgresql://pgbouncer:6432/assessment_service_read \
             SCHEDULING_TIME_FRAME=${{ secrets.SCHEDULING_TIME_FRAME }} \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}

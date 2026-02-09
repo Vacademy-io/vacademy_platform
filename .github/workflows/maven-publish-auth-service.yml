@@ -83,8 +83,8 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            AUTH_SERVICE_DB_URL=${{ secrets.AUTH_SERVICE_DB_URL }} \
-            AUTH_SERVICE_READ_DB_URL=${{ secrets.AUTH_SERVICE_READ_DB_URL || secrets.AUTH_SERVICE_DB_URL }} \
+            AUTH_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/auth_service \
+            AUTH_SERVICE_READ_DB_URL=jdbc:postgresql://pgbouncer:6432/auth_service_read \
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
             TEACHER_PORTAL_CLIENT_URL=${{ secrets.TEACHER_PORTAL_CLIENT_URL }} \
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \

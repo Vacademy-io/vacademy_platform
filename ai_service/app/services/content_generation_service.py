@@ -46,7 +46,7 @@ class ContentGenerationService:
         logger.info("[ContentGenService] Creating VideoGenerationService...")
         try:
             self._video_gen_service = video_gen_service or VideoGenerationService(
-                repository=AiVideoRepository(),
+                repository=AiVideoRepository(session=db_session),
                 s3_service=S3Service()
             )
             logger.info("[ContentGenService] VideoGenerationService initialized successfully")

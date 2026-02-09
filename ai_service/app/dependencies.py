@@ -85,14 +85,19 @@ def get_youtube_service() -> YouTubeService:
     return YouTubeService(api_key=settings.youtube_api_key)
 
 
-@lru_cache(maxsize=1)
-def get_content_generation_service() -> ContentGenerationService:
+# Removed lru_cache to ensure per-request instance with correct DB session
+def get_content_generation_service(db: Optional[Session] = None) -> ContentGenerationService:
     """
-    Singleton ContentGenerationService for the application.
+    ContentGenerationService for the application.
+    Created per-request to ensure correct DB session handling.
     """
     llm_client = get_llm_client()
     youtube_service = get_youtube_service()
-    return ContentGenerationService(llm_client=llm_client, youtube_service=youtube_service)
+    return ContentGenerationService(
+        llm_client=llm_client, 
+        youtube_service=youtube_service,
+        db_session=db
+    )
 
 
 def get_course_outline_service(db: Session = Depends(db_dependency)) -> CourseOutlineGenerationService:
@@ -106,7 +111,7 @@ def get_course_outline_service(db: Session = Depends(db_dependency)) -> CourseOu
     prompt_builder = CourseOutlinePromptBuilder(institute_settings_service)
     parser = CourseOutlineParser()
     image_service = get_image_service()
-    content_generation_service = get_content_generation_service()
+    content_generation_service = get_content_generation_service(db)
     return CourseOutlineGenerationService(
         llm_client=llm_client,
         metadata_port=metadata_port,

@@ -67,7 +67,9 @@ jobs:
               LLM_DEFAULT_MODEL=google/gemini-2.5-flash \
               DB_USERNAME=${{ secrets.DB_USERNAME }} \
               DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              ADMIN_CORE_SERVICE_DB_URL=${{ secrets.ADMIN_CORE_SERVICE_DB_URL }} \
+              ADMIN_CORE_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/admin_core_service \
+              DB_HOST=pgbouncer \
+              DB_PORT=6432 \
               GOOGLE_APPLICATION_CREDENTIALS_JSON='${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}'
             kubectl rollout restart deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE"
           else

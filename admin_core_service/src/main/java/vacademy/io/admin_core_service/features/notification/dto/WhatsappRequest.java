@@ -18,4 +18,9 @@ public class WhatsappRequest {
     String languageCode;
     Map<String, Map<String, String>> headerParams;
     String headerType;
+    
+    // NEW fields for COMBOT compatibility (video headers, dynamic URL buttons)
+    Map<String, String> headerVideoParams;   // phone -> videoUrl
+    Map<String, String> buttonUrlParams;     // phone -> buttonUrlParam
+    Map<String, String> buttonIndexParams;   // phone -> buttonIndex (default "0")
 }

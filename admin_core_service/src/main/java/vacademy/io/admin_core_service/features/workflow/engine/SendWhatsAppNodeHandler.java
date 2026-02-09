@@ -123,16 +123,22 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             }
 
             log.info("Processing {} items for WhatsApp sending", items.size());
-            String instituteId = (String) context.get("instituteIdForWhatsapp"); // Use correct context key
+            
+            // BACKWARD COMPATIBLE: Check both context keys for institute ID
+            String instituteIdTemp = (String) context.get("instituteIdForWhatsapp"); // SEND_WHATSAPP format
+            if (!StringUtils.hasText(instituteIdTemp)) {
+                instituteIdTemp = (String) context.get("instituteId"); // COMBOT fallback
+            }
+            final String instituteId = instituteIdTemp; // Make effectively final for lambda usage
 
             if (!StringUtils.hasText(instituteId)) {
-                log.warn("Missing 'instituteIdForWhatsapp' in context");
+                log.warn("Missing 'instituteIdForWhatsapp' or 'instituteId' in context");
                 changes.put("status", "error");
-                changes.put("error", "Missing 'instituteIdForWhatsapp' in context");
+                changes.put("error", "Missing institute ID in context");
 
                 if (logId != null) {
                     executionLogger.completeNodeExecution(logId, ExecutionLogStatus.FAILED, null,
-                            "Missing 'instituteIdForWhatsapp' in context");
+                            "Missing institute ID in context");
                 }
                 return changes;
             }
@@ -145,6 +151,11 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             Map<String, Object> mobileToItemMap = new HashMap<>();
             // Set to deduplicate (mobileNumber::templateName)
             Set<String> sentLog = new HashSet<>();
+            
+            // NEW: Maps for COMBOT-specific features (per-phone)
+            Map<String, Map<String, String>> headerVideoParamsMap = new HashMap<>();  // templateName -> (phone -> videoUrl)
+            Map<String, Map<String, String>> buttonUrlParamsMap = new HashMap<>();    // templateName -> (phone -> buttonParam)
+            Map<String, Map<String, String>> buttonIndexParamsMap = new HashMap<>();  // templateName -> (phone -> buttonIndex)
 
             int index = 0;
             for (Object item : items) {
@@ -156,11 +167,35 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                         nodeDTO.getForEach(), itemContext);
 
                 for (Map<String, Object> messageData : messagesToSend) {
+                    // BACKWARD COMPATIBLE: Accept both "mobileNumber" and "to" (COMBOT format)
                     String mobileNumber = (String) messageData.get("mobileNumber");
+                    if (mobileNumber == null) {
+                        mobileNumber = (String) messageData.get("to"); // COMBOT compatibility
+                    }
+                    
                     String templateName = (String) messageData.get("templateName");
                     String languageCode = (String) messageData.get("languageCode");
                     String userId = (String) messageData.get("userId");
+                    
+                    // BACKWARD COMPATIBLE: Accept both "templateVars" (Map) and "params" (List - COMBOT format)
                     Map<String, String> templateVars = (Map<String, String>) messageData.get("templateVars");
+                    if (templateVars == null) {
+                        // COMBOT format: params is a List<String> - convert to Map
+                        Object paramsObj = messageData.get("params");
+                        if (paramsObj instanceof List) {
+                            List<String> paramsList = (List<String>) paramsObj;
+                            templateVars = new HashMap<>();
+                            for (int i = 0; i < paramsList.size(); i++) {
+                                templateVars.put(String.valueOf(i + 1), paramsList.get(i));
+                            }
+                        }
+                    }
+                    
+                    // NEW: Extract COMBOT-specific fields
+                    String headerImage = (String) messageData.get("headerImage");
+                    String headerVideo = (String) messageData.get("headerVideo");
+                    String buttonUrlParam = (String) messageData.get("buttonUrlParam");
+                    String buttonIndex = (String) messageData.getOrDefault("buttonIndex", "0");
 
                     try {
                         // 1. Validate Mobile Number
@@ -224,16 +259,28 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                             continue;
                         }
 
-                        // 3. Fetch Template (from cache or DB)
-                        String cacheKey = instituteId + ":" + templateName;
-                        Template template = templateCache.computeIfAbsent(cacheKey,
-                                k -> templateRepository
-                                        .findByInstituteIdAndNameAndType(instituteId, templateName, "WHATSAPP")
-                                        .orElseThrow(() -> new VacademyException("Template not found with name: "
-                                                + templateName + " for institute: " + instituteId)));
+                        // DETECT COMBOT FORMAT: If params was originally a List (converted to Map above),
+                        // skip DB template lookup - COMBOT workflows define template directly in config
+                        boolean isCombotFormat = messageData.get("params") instanceof List;
+                        
+                        Map<String, String> finalParamMap;
+                        if (isCombotFormat) {
+                            // COMBOT format: Skip DB lookup, use params directly (already converted to Map)
+                            log.debug("COMBOT format detected - skipping template DB lookup for: {}", templateName);
+                            finalParamMap = templateVars != null ? templateVars : new HashMap<>();
+                        } else {
+                            // SEND_WHATSAPP format: Fetch Template from DB and validate params
+                            String cacheKey = instituteId + ":" + templateName;
+                            Template template = templateCache.computeIfAbsent(cacheKey,
+                                    k -> templateRepository
+                                            .findByInstituteIdAndNameAndType(instituteId, templateName, "WHATSAPP")
+                                            .orElseThrow(() -> new VacademyException("Template not found with name: "
+                                                    + templateName + " for institute: " + instituteId)));
 
-                        // 4. Build User Params
-                        Map<String, String> finalParamMap = buildValidatedParams(template, templateVars, userId);
+                            // Build and validate params against template
+                            finalParamMap = buildValidatedParams(template, templateVars, userId);
+                        }
+                        
                         Map<String, Map<String, String>> singleUser = Map.of(sanitizedMobile, finalParamMap);
 
                         // 5. Add to Batch
@@ -241,12 +288,39 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                             WhatsappRequest newReq = new WhatsappRequest();
                             newReq.setTemplateName(templateName);
                             newReq.setLanguageCode(StringUtils.hasText(languageCode) ? languageCode : "en");
-                            newReq.setHeaderParams(null);
+                            newReq.setHeaderParams(new HashMap<>()); // Initialize for potential image headers
                             newReq.setUserDetails(new ArrayList<>()); // Initialize list
+                            newReq.setHeaderVideoParams(new HashMap<>()); // NEW: Initialize video params
+                            newReq.setButtonUrlParams(new HashMap<>());   // NEW: Initialize button params
+                            newReq.setButtonIndexParams(new HashMap<>()); // NEW: Initialize button index params
                             return newReq;
                         });
 
                         batchRequest.getUserDetails().add(singleUser);
+                        
+                        // NEW: Handle COMBOT-specific features
+                        // Header Image (existing format: headerParams)
+                        if (StringUtils.hasText(headerImage)) {
+                            if (batchRequest.getHeaderParams() == null) {
+                                batchRequest.setHeaderParams(new HashMap<>());
+                            }
+                            batchRequest.getHeaderParams().put(sanitizedMobile, Map.of("1", headerImage));
+                            batchRequest.setHeaderType("image");
+                        }
+                        
+                        // Header Video (NEW for COMBOT)
+                        if (StringUtils.hasText(headerVideo)) {
+                            batchRequest.getHeaderVideoParams().put(sanitizedMobile, headerVideo);
+                            batchRequest.setHeaderType("video");
+                        }
+                        
+                        // Button URL Param (NEW for COMBOT)
+                        if (StringUtils.hasText(buttonUrlParam)) {
+                            batchRequest.getButtonUrlParams().put(sanitizedMobile, buttonUrlParam);
+                            batchRequest.getButtonIndexParams().put(sanitizedMobile, 
+                                StringUtils.hasText(buttonIndex) ? buttonIndex : "0");
+                        }
+                        
                         sentLog.add(dedupeKey); // Mark as processed
                         processedCount++;
 
@@ -390,6 +464,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
     /**
      * Evaluates the 'eval' expression to get the list of messages for a single
      * item.
+     * BACKWARD COMPATIBLE: Accepts both List<Map> and single Map (COMBOT format)
      */
     private List<Map<String, Object>> processForEachOperation(ForEachConfigDTO forEachConfig,
             Map<String, Object> itemContext) {
@@ -408,8 +483,11 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             Object evalResult = spelEvaluator.evaluate(evalExpression, itemContext);
             if (evalResult instanceof List) {
                 return (List<Map<String, Object>>) evalResult;
+            } else if (evalResult instanceof Map) {
+                // COMBOT compatibility: single Map result
+                return List.of((Map<String, Object>) evalResult);
             } else if (evalResult != null) {
-                log.warn("Eval expression did not return a List. Got: {}", evalResult.getClass().getName());
+                log.warn("Eval expression did not return a List or Map. Got: {}", evalResult.getClass().getName());
             }
         } catch (Exception e) {
             log.error("Error processing forEach operation for item: {}", itemContext.get("item"), e);

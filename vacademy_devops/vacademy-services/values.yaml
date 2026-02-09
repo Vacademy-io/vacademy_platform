@@ -45,6 +45,16 @@ environment:
   stage: stage
   prod: prod
 
+# PgBouncer Configuration
+# IMPORTANT: Override dbHost and dbPassword with your actual Linode DB values
+# Use --set or a separate values-secret.yaml that is NOT committed to git
+pgbouncer:
+  dbHost: "REPLACE_WITH_LINODE_DB_HOST"
+  dbReadHost: "REPLACE_WITH_LINODE_READ_REPLICA_HOST"
+  dbPort: 5432
+  dbUsername: "postgres"
+  dbPassword: "REPLACE_WITH_LINODE_DB_PASSWORD"
+
 # Redis Configuration
 redis:
   enabled: true

@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-config
+  namespace: default
+data:
+  pgbouncer.ini: |
+    [databases]
+    ; Primary (read-write)
+    admin_core_service   = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=admin_core_service
+    auth_service         = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=auth_service
+    assessment_service   = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=assessment_service
+    community_service    = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=community_service
+    media_service        = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=media_service
+    notification_service = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=notification_service
+
+    ; Read replicas
+    admin_core_service_read   = host={{ .Values.pgbouncer.dbReadHost }} port={{ .Values.pgbouncer.dbPort }} dbname=admin_core_service
+    auth_service_read         = host={{ .Values.pgbouncer.dbReadHost }} port={{ .Values.pgbouncer.dbPort }} dbname=auth_service
+    assessment_service_read   = host={{ .Values.pgbouncer.dbReadHost }} port={{ .Values.pgbouncer.dbPort }} dbname=assessment_service
+    community_service_read    = host={{ .Values.pgbouncer.dbReadHost }} port={{ .Values.pgbouncer.dbPort }} dbname=community_service
+    media_service_read        = host={{ .Values.pgbouncer.dbReadHost }} port={{ .Values.pgbouncer.dbPort }} dbname=media_service
+    notification_service_read = host={{ .Values.pgbouncer.dbReadHost }} port={{ .Values.pgbouncer.dbPort }} dbname=notification_service
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 6432
+    pool_mode = transaction
+
+    default_pool_size = 5
+    min_pool_size = 1
+    reserve_pool_size = 2
+    max_client_conn = 200
+
+    query_wait_timeout = 30
+    server_idle_timeout = 300
+    server_lifetime = 600
+    server_connect_timeout = 15
+
+    auth_type = md5
+    auth_file = /etc/pgbouncer/userlist.txt
+
+    log_connections = 0
+    log_disconnections = 0
+    log_pooler_errors = 1
+
+    admin_users = postgres
+    stats_users = postgres
+
+    server_reset_query = DISCARD ALL

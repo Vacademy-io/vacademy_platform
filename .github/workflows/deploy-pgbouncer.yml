@@ -1,0 +1,51 @@
+name: Deploy PgBouncer to LKE
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "vacademy_devops/vacademy-services/templates/pgbouncer-*"
+      - ".github/workflows/deploy-pgbouncer.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-pgbouncer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      - name: Connect to LKE kubernetes cluster
+        uses: Azure/k8s-set-context@v4.0.0
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG }}
+
+      - name: Create PgBouncer userlist secret
+        run: |
+          kubectl create secret generic pgbouncer-userlist \
+            --namespace default \
+            --from-literal=userlist.txt="\"${{ secrets.DB_USERNAME }}\" \"${{ secrets.DB_PASSWORD }}\"" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Render and apply PgBouncer ConfigMap
+        run: |
+          helm template vacademy-services \
+            ./vacademy_devops/vacademy-services \
+            --set pgbouncer.dbHost=${{ secrets.PGBOUNCER_DB_HOST }} \
+            --set pgbouncer.dbReadHost=${{ secrets.PGBOUNCER_DB_READ_HOST }} \
+            --set pgbouncer.dbPort=5432 \
+            --set pgbouncer.dbUsername=${{ secrets.DB_USERNAME }} \
+            --set pgbouncer.dbPassword=${{ secrets.DB_PASSWORD }} \
+            --show-only templates/pgbouncer-configmap.yaml \
+            | kubectl apply -f -
+
+      - name: Apply PgBouncer Deployment and Service
+        run: |
+          kubectl apply -f vacademy_devops/vacademy-services/templates/pgbouncer-deployment.yaml
+          kubectl apply -f vacademy_devops/vacademy-services/templates/pgbouncer-service.yaml
+
+      - name: Wait for PgBouncer rollout
+        run: |
+          kubectl rollout status deployment/pgbouncer --namespace default --timeout=120s

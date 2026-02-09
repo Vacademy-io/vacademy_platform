@@ -13,7 +13,7 @@
 -- 1. AI Models Table - Centralized model registry
 -- ================================================================================
 CREATE TABLE IF NOT EXISTS ai_models (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Model identification
     model_id VARCHAR(100) NOT NULL UNIQUE,           -- e.g., "google/gemini-2.5-flash:free"
@@ -79,24 +79,29 @@ CREATE INDEX IF NOT EXISTS idx_ai_models_display_order ON ai_models(display_orde
 INSERT INTO ai_models (model_id, name, provider, category, tier, is_free, credit_multiplier, 
                        recommended_for, quality_score, speed_score, display_order, description, is_default_free)
 VALUES 
+    -- 1. mimo-v2-flash (13 columns)
     ('xiaomi/mimo-v2-flash:free', 'MIMO v2 Flash', 'OpenRouter', 'general', 'free', TRUE, 0.0,
      ARRAY['content', 'outline', 'copilot'], 3, 5, 1, 'Fast free model for general tasks', TRUE),
     
+    -- 2. devstral-2512 (13 columns)
     ('mistralai/devstral-2512:free', 'Devstral 2512', 'OpenRouter', 'coding', 'free', TRUE, 0.0,
-     ARRAY['content', 'copilot'], 3, 4, 2, 'Mistral''s free model, good for coding'),
+     ARRAY['content', 'copilot'], 3, 4, 2, 'Mistral''s free model, good for coding', FALSE),
      
+    -- 3. nemotron-3-nano (13 columns)
     ('nvidia/nemotron-3-nano-30b-a3b:free', 'Nemotron 3 Nano', 'OpenRouter', 'general', 'free', TRUE, 0.0,
-     ARRAY['content', 'outline'], 3, 4, 3, 'NVIDIA''s free model'),
+     ARRAY['content', 'outline'], 3, 4, 3, 'NVIDIA''s free model', FALSE),
      
+    -- 4. gemini-2.0-flash-exp (13 columns)
     ('google/gemini-2.0-flash-exp:free', 'Gemini 2.0 Flash Exp', 'OpenRouter', 'general', 'free', TRUE, 0.0,
-     ARRAY['content', 'video', 'image'], 4, 5, 4, 'Google''s experimental flash model - great for video generation'),
+     ARRAY['content', 'video', 'image'], 4, 5, 4, 'Google''s experimental flash model - great for video generation', FALSE),
      
-    -- New free models from user
+    -- 5. trinity-large-preview (13 columns)
     ('arcee-ai/trinity-large-preview:free', 'Trinity Large Preview', 'OpenRouter', 'general', 'free', TRUE, 0.0,
-     ARRAY['content', 'outline'], 3, 4, 5, 'Arcee AI''s preview model'),
+     ARRAY['content', 'outline'], 3, 4, 5, 'Arcee AI''s preview model', FALSE),
      
+    -- 6. deepseek-r1t2-chimera (13 columns) - Added closing parentheses and comma appropriately
     ('tngtech/deepseek-r1t2-chimera:free', 'DeepSeek R1T2 Chimera', 'OpenRouter', 'reasoning', 'free', TRUE, 0.0,
-     ARRAY['evaluation', 'analytics'], 4, 3, 6, 'DeepSeek reasoning model')
+     ARRAY['evaluation', 'analytics'], 4, 3, 6, 'DeepSeek reasoning model', FALSE)
      
 ON CONFLICT (model_id) DO UPDATE SET
     name = EXCLUDED.name,
@@ -107,31 +112,31 @@ ON CONFLICT (model_id) DO UPDATE SET
 -- Standard tier models
 INSERT INTO ai_models (model_id, name, provider, category, tier, is_free, credit_multiplier,
                        max_tokens, context_window, input_price_per_1m, output_price_per_1m,
-                       recommended_for, quality_score, speed_score, display_order, description)
+                       recommended_for, quality_score, speed_score, display_order, description, is_default_free)
 VALUES 
     ('google/gemini-2.5-flash', 'Gemini 2.5 Flash', 'Google', 'general', 'standard', FALSE, 1.0,
      1048576, 1048576, 0.3, 2.5, ARRAY['content', 'outline', 'copilot', 'video'], 4, 5, 10, 
-     'Fast Gemini model with great price/performance'),
+     'Fast Gemini model with great price/performance', FALSE),
      
     ('google/gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', 'Google', 'general', 'standard', FALSE, 0.8,
      1048576, 1048576, 0.1, 0.4, ARRAY['content', 'copilot'], 3, 5, 11, 
-     'Lightweight Gemini for simple tasks'),
+     'Lightweight Gemini for simple tasks', FALSE),
      
     ('deepseek/deepseek-v3.2', 'DeepSeek V3.2', 'DeepSeek', 'general', 'standard', FALSE, 1.0,
      163840, 163840, 0.25, 0.38, ARRAY['content', 'outline', 'evaluation'], 4, 4, 12, 
-     'Great value model with strong reasoning'),
+     'Great value model with strong reasoning', FALSE),
      
     ('x-ai/grok-code-fast-1', 'Grok Code Fast', 'xAI', 'coding', 'standard', FALSE, 1.0,
      256000, 256000, 0.2, 1.5, ARRAY['copilot', 'content'], 4, 5, 13, 
-     'Fast code-focused model'),
+     'Fast code-focused model', FALSE),
      
     ('openai/gpt-3.5-turbo', 'GPT-3.5 Turbo', 'OpenAI', 'general', 'standard', FALSE, 1.0,
      16384, 16384, 0.5, 1.5, ARRAY['content', 'copilot'], 3, 5, 14, 
-     'Fast and cost-effective OpenAI model'),
+     'Fast and cost-effective OpenAI model', FALSE),
      
     ('openai/gpt-4o-mini', 'GPT-4o Mini', 'OpenAI', 'general', 'standard', FALSE, 1.2,
      16384, 128000, 0.15, 0.6, ARRAY['content', 'outline', 'copilot'], 4, 5, 15, 
-     'Affordable GPT-4o variant')
+     'Affordable GPT-4o variant', FALSE)
      
 ON CONFLICT (model_id) DO UPDATE SET
     name = EXCLUDED.name,
@@ -142,31 +147,31 @@ ON CONFLICT (model_id) DO UPDATE SET
 -- Premium tier models
 INSERT INTO ai_models (model_id, name, provider, category, tier, is_free, credit_multiplier,
                        max_tokens, context_window, input_price_per_1m, output_price_per_1m,
-                       recommended_for, quality_score, speed_score, display_order, description)
+                       recommended_for, quality_score, speed_score, display_order, description, is_default_free)
 VALUES 
     ('google/gemini-2.5-pro', 'Gemini 2.5 Pro', 'Google', 'general', 'premium', FALSE, 2.0,
      8192, 1048576, 1.25, 5.0, ARRAY['evaluation', 'analytics', 'outline'], 5, 4, 20, 
-     'Google''s most capable Gemini model'),
+     'Google''s most capable Gemini model', FALSE),
      
     ('google/gemini-3-flash-preview', 'Gemini 3 Flash Preview', 'Google', 'general', 'premium', FALSE, 2.0,
      1048576, 1048576, 0.5, 3.0, ARRAY['content', 'video', 'evaluation'], 5, 5, 21, 
-     'Gemini 3 preview with excellent quality'),
+     'Gemini 3 preview with excellent quality', FALSE),
      
     ('anthropic/claude-3.5-sonnet', 'Claude 3.5 Sonnet', 'Anthropic', 'general', 'premium', FALSE, 2.0,
      200000, 200000, 3.0, 15.0, ARRAY['evaluation', 'content', 'analytics'], 5, 4, 22, 
-     'Anthropic''s balanced model'),
+     'Anthropic''s balanced model', FALSE),
      
     ('anthropic/claude-sonnet-4.5', 'Claude Sonnet 4.5', 'Anthropic', 'general', 'premium', FALSE, 2.0,
      1000000, 1000000, 3.0, 15.0, ARRAY['evaluation', 'analytics', 'content'], 5, 4, 23, 
-     'Latest Claude Sonnet with 1M context'),
+     'Latest Claude Sonnet with 1M context', FALSE),
      
     ('openai/gpt-4-turbo', 'GPT-4 Turbo', 'OpenAI', 'general', 'premium', FALSE, 2.0,
      128000, 128000, 10.0, 30.0, ARRAY['evaluation', 'analytics'], 5, 4, 24, 
-     'High-performance GPT-4'),
+     'High-performance GPT-4', FALSE),
      
     ('x-ai/grok-4.1-fast', 'Grok 4.1 Fast', 'xAI', 'general', 'premium', FALSE, 2.0,
      2000000, 2000000, 0.2, 0.5, ARRAY['content', 'evaluation'], 4, 5, 25, 
-     'xAI''s fast model with massive context')
+     'xAI''s fast model with massive context', FALSE)
      
 ON CONFLICT (model_id) DO UPDATE SET
     name = EXCLUDED.name,
@@ -177,19 +182,19 @@ ON CONFLICT (model_id) DO UPDATE SET
 -- Ultra tier models
 INSERT INTO ai_models (model_id, name, provider, category, tier, is_free, credit_multiplier,
                        max_tokens, context_window, input_price_per_1m, output_price_per_1m,
-                       recommended_for, quality_score, speed_score, display_order, description)
+                       recommended_for, quality_score, speed_score, display_order, description, is_default_free)
 VALUES 
     ('openai/gpt-4o', 'GPT-4o', 'OpenAI', 'general', 'ultra', FALSE, 4.0,
      128000, 128000, 5.0, 15.0, ARRAY['evaluation', 'analytics'], 5, 4, 30, 
-     'Most capable GPT-4 model'),
+     'Most capable GPT-4 model', FALSE),
      
     ('anthropic/claude-opus-4.5', 'Claude Opus 4.5', 'Anthropic', 'general', 'ultra', FALSE, 4.0,
      200000, 200000, 5.0, 25.0, ARRAY['evaluation', 'analytics', 'content'], 5, 3, 31, 
-     'Most capable Claude model'),
+     'Most capable Claude model', FALSE),
      
     ('google/gemini-3-pro-preview', 'Gemini 3 Pro Preview', 'Google', 'general', 'ultra', FALSE, 4.0,
      1048576, 1048576, 2.0, 12.0, ARRAY['evaluation', 'analytics', 'video'], 5, 4, 32, 
-     'Google''s most capable preview model')
+     'Google''s most capable preview model', FALSE)
      
 ON CONFLICT (model_id) DO UPDATE SET
     name = EXCLUDED.name,
@@ -200,16 +205,16 @@ ON CONFLICT (model_id) DO UPDATE SET
 -- Specialized models (embeddings, image, TTS)
 INSERT INTO ai_models (model_id, name, provider, category, tier, is_free, credit_multiplier,
                        input_price_per_1m, output_price_per_1m,
-                       recommended_for, quality_score, speed_score, display_order, description)
+                       recommended_for, quality_score, speed_score, display_order, description, is_default_free)
 VALUES 
     ('openai/text-embedding-3-large', 'Text Embedding 3 Large', 'OpenAI', 'embedding', 'standard', FALSE, 0.5,
-     0.13, 0, ARRAY['embedding'], 5, 5, 40, 'Best quality embeddings'),
+     0.13, 0, ARRAY['embedding'], 5, 5, 40, 'Best quality embeddings', FALSE),
      
     ('openai/text-embedding-3-small', 'Text Embedding 3 Small', 'OpenAI', 'embedding', 'standard', FALSE, 0.3,
-     0.02, 0, ARRAY['embedding'], 4, 5, 41, 'Cost-effective embeddings'),
+     0.02, 0, ARRAY['embedding'], 4, 5, 41, 'Cost-effective embeddings', FALSE),
      
     ('google/gemini-2.5-flash-image', 'Gemini 2.5 Flash Image', 'Google', 'image', 'standard', FALSE, 1.5,
-     0, 0, ARRAY['image'], 4, 4, 50, 'Image generation with Gemini')
+     0, 0, ARRAY['image'], 4, 4, 50, 'Image generation with Gemini', FALSE)
      
 ON CONFLICT (model_id) DO UPDATE SET
     name = EXCLUDED.name,
@@ -219,7 +224,7 @@ ON CONFLICT (model_id) DO UPDATE SET
 -- 3. Model Use Case Defaults - Which model to use for what
 -- ================================================================================
 CREATE TABLE IF NOT EXISTS ai_model_defaults (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     use_case VARCHAR(50) NOT NULL UNIQUE,             -- content, outline, evaluation, video, image, tts, embedding, copilot, agent, analytics
     default_model_id VARCHAR(100) NOT NULL,           -- References ai_models.model_id
     fallback_model_id VARCHAR(100),                    -- Fallback if default unavailable

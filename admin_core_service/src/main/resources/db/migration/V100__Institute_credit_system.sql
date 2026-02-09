@@ -135,7 +135,7 @@ ALTER TABLE ai_token_usage ADD COLUMN IF NOT EXISTS credits_used DECIMAL(10,4);
 -- ================================================================================
 INSERT INTO institute_credits (institute_id, total_credits, used_credits, current_balance)
 SELECT id, 200, 0, 200
-FROM institute
+FROM institutes
 WHERE id NOT IN (SELECT institute_id FROM institute_credits)
 ON CONFLICT (institute_id) DO NOTHING;
 

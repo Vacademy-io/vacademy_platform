@@ -9,6 +9,9 @@ class ChatContext(BaseModel):
 class ChatRequest(BaseModel):
     prompt: str = Field(..., description="Student's doubt or question")
     context: Optional[ChatContext] = None
+    institute_id: Optional[str] = Field(None, description="Institute ID for credit deduction")
+    user_id: Optional[str] = Field(None, description="User ID for usage tracking")
 
 class ChatResponse(BaseModel):
     content: str = Field(..., description="AI response in MDX format")
+

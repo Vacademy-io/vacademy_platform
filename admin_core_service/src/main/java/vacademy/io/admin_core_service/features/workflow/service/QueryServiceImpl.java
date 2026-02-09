@@ -796,6 +796,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             lead.put("id", ar.getId());
             lead.put("userId", ar.getUserId());
             lead.put("createdAt", ar.getCreatedAt());
+            lead.put("workflowActivateDayAt", ar.getWorkflowActivateDayAt());
 
             // Merge custom fields
             Map<String, String> fields = responseDataMap.getOrDefault(ar.getId(), new HashMap<>());

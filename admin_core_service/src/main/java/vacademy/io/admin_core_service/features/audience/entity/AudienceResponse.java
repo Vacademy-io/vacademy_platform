@@ -55,6 +55,13 @@ public class AudienceResponse {
     @Column(name = "parent_mobile", length = 20)
     private String parentMobile;
 
+    /**
+     * Date used for workflow day-difference filtering.
+     * Can be offset from creation date based on audience workflow_setting.offset_day
+     */
+    @Column(name = "workflow_activate_day_at")
+    private Timestamp workflowActivateDayAt;
+
     @Column(name = "submitted_at", insertable = false, updatable = false)
     private Timestamp submittedAt;
 

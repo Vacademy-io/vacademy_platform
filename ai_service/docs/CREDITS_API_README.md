@@ -9,8 +9,7 @@ The AI service provides endpoints to track credit usage, view transaction histor
 ## Base URL
 
 ```
-Production: https://api.vacademy.io/ai-service
-Staging: https://staging-api.vacademy.io/ai-service
+Production: see url contact file
 Local: http://localhost:8077/ai-service
 ```
 

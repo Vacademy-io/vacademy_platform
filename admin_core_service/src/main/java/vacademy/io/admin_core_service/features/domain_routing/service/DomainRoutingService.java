@@ -29,17 +29,18 @@ public class DomainRoutingService {
         }
 
         InstituteDomainRouting mapping = mappingOpt.get();
-        Optional<Institute> instituteOpt = instituteRepository.findById(mapping.getInstituteId());
-        if (instituteOpt.isEmpty()) {
-            return Optional.empty();
+        Institute institute = null;
+
+        if (StringUtils.hasText(mapping.getInstituteId())) {
+            Optional<Institute> instituteOpt = instituteRepository.findById(mapping.getInstituteId());
+            if (instituteOpt.isEmpty()) {
+                return Optional.empty();
+            }
+            institute = instituteOpt.get();
         }
 
-        Institute institute = instituteOpt.get();
-        DomainRoutingResolveResponse response = DomainRoutingResolveResponse.builder()
-                .instituteId(institute.getId())
-                .instituteName(institute.getInstituteName())
-                .instituteLogoFileId(institute.getLogoFileId())
-                .instituteThemeCode(institute.getInstituteThemeCode())
+        DomainRoutingResolveResponse.DomainRoutingResolveResponseBuilder responseBuilder = DomainRoutingResolveResponse
+                .builder()
                 .role(mapping.getRole())
                 .redirect(mapping.getRedirect())
                 .privacyPolicyUrl(mapping.getPrivacyPolicyUrl())
@@ -60,10 +61,17 @@ public class DomainRoutingService {
                 .appStoreAppLink(mapping.getAppStoreAppLink())
                 .windowsAppLink(mapping.getWindowsAppLink())
                 .macAppLink(mapping.getMacAppLink())
-                .learnerPortalUrl(institute.getLearnerPortalBaseUrl())
-                .instructorPortalUrl(institute.getAdminPortalBaseUrl())
-                .convertUsernamePasswordToLowercase(mapping.isConvertUsernamePasswordToLowercase())
-                .build();
-        return Optional.of(response);
+                .convertUsernamePasswordToLowercase(mapping.isConvertUsernamePasswordToLowercase());
+
+        if (institute != null) {
+            responseBuilder.instituteId(institute.getId())
+                    .instituteName(institute.getInstituteName())
+                    .instituteLogoFileId(institute.getLogoFileId())
+                    .instituteThemeCode(institute.getInstituteThemeCode())
+                    .learnerPortalUrl(institute.getLearnerPortalBaseUrl())
+                    .instructorPortalUrl(institute.getAdminPortalBaseUrl());
+        }
+
+        return Optional.of(responseBuilder.build());
     }
 }

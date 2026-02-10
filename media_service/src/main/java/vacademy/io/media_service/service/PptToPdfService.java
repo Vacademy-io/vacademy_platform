@@ -186,17 +186,35 @@ public class PptToPdfService {
      * Downloads the converted PDF file from the export URL.
      */
     private byte[] downloadFile(String downloadUrl) {
-        ResponseEntity<byte[]> response = restTemplate.exchange(
-                downloadUrl,
-                HttpMethod.GET,
-                null,
-                byte[].class);
+        try {
+            logger.info("Downloading PDF from CloudConvert export URL");
 
-        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-            throw new VacademyException("Failed to download converted PDF");
+            // Use URI directly to prevent RestTemplate from double-encoding query
+            // parameters of the presigned S3 URL
+            java.net.URI uri = java.net.URI.create(downloadUrl);
+
+            // We use a new HttpEntity without headers (no Bearer token) because S3 signed
+            // URLs
+            // will reject the request if the Authorization header is present but not part
+            // of the signature.
+            HttpHeaders headers = new HttpHeaders();
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+
+            ResponseEntity<byte[]> response = restTemplate.exchange(
+                    uri,
+                    HttpMethod.GET,
+                    request,
+                    byte[].class);
+
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                throw new VacademyException("Failed to download PDF. Status: " + response.getStatusCode());
+            }
+
+            return response.getBody();
+        } catch (Exception e) {
+            logger.error("Failed to download PDF from CloudConvert", e);
+            throw new VacademyException("Failed to download converted PDF: " + e.getMessage());
         }
-
-        return response.getBody();
     }
 
     private HttpHeaders createHeaders() {

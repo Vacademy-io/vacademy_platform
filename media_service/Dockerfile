@@ -35,9 +35,6 @@ COPY --from=build /build/target/media_service.jar media_service.jar
 
 RUN apk add --no-cache msttcorefonts-installer fontconfig
 
-# Install LibreOffice for PPT to PDF conversion (headless, no GUI needed)
-RUN apk add --no-cache libreoffice
-
 RUN update-ms-fonts
 
 # Expose the port the application runs on

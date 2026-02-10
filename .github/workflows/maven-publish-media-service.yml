@@ -115,7 +115,8 @@ jobs:
             UNSPLASH_ACCESS_KEY=${{ secrets.UNSPLASH_ACCESS_KEY }} \
             DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} \
+            CLOUD_CONVERT_KEY=${{ secrets.CLOUD_CONVERT_KEY }}
 
       - name: Restart deployment
         id: restart-deployment

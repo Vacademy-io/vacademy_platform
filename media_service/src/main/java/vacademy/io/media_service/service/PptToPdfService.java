@@ -1,120 +1,233 @@
 package vacademy.io.media_service.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
 
 @Service
 public class PptToPdfService {
 
     private static final Logger logger = LoggerFactory.getLogger(PptToPdfService.class);
 
-    // Timeout for LibreOffice conversion (seconds)
-    private static final int CONVERSION_TIMEOUT_SECONDS = 120;
+    private static final String CLOUD_CONVERT_BASE_URL = "https://api.cloudconvert.com/v2";
+    private static final int MAX_POLL_ATTEMPTS = 60;
+    private static final long POLL_INTERVAL_MS = 3000;
+
+    @Value("${CLOUD_CONVERT_KEY:}")
+    private String cloudConvertApiKey;
+
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public byte[] convertPptToPdf(MultipartFile file) {
-        return convertUsingLibreOffice(file);
+        return convertUsingCloudConvert(file);
     }
 
     public byte[] convertPptToPdfHighQuality(MultipartFile file, double scaleFactor) {
-        // LibreOffice always produces full vector PDF – quality parameter not needed
-        return convertUsingLibreOffice(file);
+        return convertUsingCloudConvert(file);
     }
 
-    private byte[] convertUsingLibreOffice(MultipartFile file) {
-        Path tempDir = null;
+    private byte[] convertUsingCloudConvert(MultipartFile file) {
+        if (cloudConvertApiKey == null || cloudConvertApiKey.isBlank()) {
+            throw new VacademyException("CloudConvert API key is not configured");
+        }
+
+        String originalFilename = file.getOriginalFilename();
+        String inputFormat = getInputFormat(originalFilename);
+
+        logger.info("Starting CloudConvert conversion: file={}, format={}, size={} bytes",
+                originalFilename, inputFormat, file.getSize());
+
         try {
-            // Create isolated temp directory for this conversion
-            tempDir = Files.createTempDirectory("ppt-convert-");
+            // Step 1: Create a job with import/upload + convert + export/url tasks
+            JsonNode jobData = createJob(inputFormat);
+            String jobId = jobData.path("id").asText();
 
-            // Determine original extension
-            String originalFilename = file.getOriginalFilename();
-            String extension = ".pptx";
-            if (originalFilename != null && originalFilename.toLowerCase().endsWith(".ppt")) {
-                extension = ".ppt";
-            }
+            // Extract the upload task details
+            JsonNode tasks = jobData.path("tasks");
+            JsonNode uploadTask = findTaskByName(tasks, "import-file");
+            String uploadUrl = uploadTask.path("result").path("form").path("url").asText();
+            JsonNode parameters = uploadTask.path("result").path("form").path("parameters");
 
-            // Write uploaded file to temp dir
-            File inputFile = new File(tempDir.toFile(), "input" + extension);
-            file.transferTo(inputFile);
+            // Step 2: Upload the file
+            uploadFile(uploadUrl, parameters, file);
+            logger.info("File uploaded successfully for job {}", jobId);
 
-            logger.info("Starting LibreOffice conversion: file={}, size={} bytes",
-                    originalFilename, file.getSize());
+            // Step 3: Poll for job completion
+            JsonNode completedJob = pollForCompletion(jobId);
 
-            // Run LibreOffice headless to convert to PDF
-            ProcessBuilder pb = new ProcessBuilder(
-                    "libreoffice",
-                    "--headless",
-                    "--norestore",
-                    "--convert-to", "pdf",
-                    "--outdir", tempDir.toString(),
-                    inputFile.getAbsolutePath());
-            pb.redirectErrorStream(true);
-            pb.environment().put("HOME", tempDir.toString()); // Avoid profile lock conflicts
+            // Step 4: Download the exported PDF
+            JsonNode exportTask = findTaskByName(completedJob.path("tasks"), "export-file");
+            String downloadUrl = exportTask.path("result").path("files").get(0).path("url").asText();
 
-            Process process = pb.start();
-
-            // Read process output for debugging
-            String processOutput = new String(process.getInputStream().readAllBytes());
-
-            boolean finished = process.waitFor(CONVERSION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-
-            if (!finished) {
-                process.destroyForcibly();
-                throw new VacademyException("PPT to PDF conversion timed out after "
-                        + CONVERSION_TIMEOUT_SECONDS + " seconds");
-            }
-
-            int exitCode = process.exitValue();
-            if (exitCode != 0) {
-                logger.error("LibreOffice exit code: {}, output: {}", exitCode, processOutput);
-                throw new VacademyException("PPT to PDF conversion failed (exit code " + exitCode + ")");
-            }
-
-            // Find the output PDF
-            File outputPdf = new File(tempDir.toFile(), "input.pdf");
-            if (!outputPdf.exists()) {
-                logger.error("PDF output not found. LibreOffice output: {}", processOutput);
-                throw new VacademyException("PDF output file not found after conversion");
-            }
-
-            byte[] pdfBytes = Files.readAllBytes(outputPdf.toPath());
+            byte[] pdfBytes = downloadFile(downloadUrl);
             logger.info("PDF conversion complete: {} bytes", pdfBytes.length);
             return pdfBytes;
 
-        } catch (IOException e) {
-            logger.error("Failed to convert PPT to PDF", e);
-            throw new VacademyException("Failed to convert PPT to PDF: " + e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new VacademyException("PPT to PDF conversion was interrupted");
-        } finally {
-            // Clean up temp directory
-            if (tempDir != null) {
-                cleanupTempDir(tempDir);
-            }
+        } catch (VacademyException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("CloudConvert conversion failed", e);
+            throw new VacademyException("PPT to PDF conversion failed: " + e.getMessage());
         }
     }
 
-    private void cleanupTempDir(Path tempDir) {
-        try {
-            Files.walk(tempDir)
-                    .sorted(java.util.Comparator.reverseOrder())
-                    .forEach(path -> {
-                        try {
-                            Files.deleteIfExists(path);
-                        } catch (IOException ignored) {
-                        }
-                    });
-        } catch (IOException ignored) {
+    /**
+     * Creates a CloudConvert job with 3 chained tasks:
+     * 1. import/upload - to upload the file
+     * 2. convert - to convert PPT to PDF
+     * 3. export/url - to get a download URL for the result
+     */
+    private JsonNode createJob(String inputFormat) throws IOException {
+        Map<String, Object> job = Map.of(
+                "tasks", Map.of(
+                        "import-file", Map.of(
+                                "operation", "import/upload"),
+                        "convert-file", Map.of(
+                                "operation", "convert",
+                                "input", "import-file",
+                                "input_format", inputFormat,
+                                "output_format", "pdf",
+                                "optimize_print", true),
+                        "export-file", Map.of(
+                                "operation", "export/url",
+                                "input", "convert-file")));
+
+        HttpHeaders headers = createHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        String requestBody = objectMapper.writeValueAsString(job);
+        HttpEntity<String> request = new HttpEntity<>(requestBody, headers);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                CLOUD_CONVERT_BASE_URL + "/jobs",
+                HttpMethod.POST,
+                request,
+                String.class);
+
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new VacademyException("Failed to create CloudConvert job: " + response.getBody());
         }
+
+        return objectMapper.readTree(response.getBody()).path("data");
+    }
+
+    /**
+     * Uploads the file to the CloudConvert import task using multipart form upload.
+     */
+    private void uploadFile(String uploadUrl, JsonNode parameters, MultipartFile file) throws IOException {
+        org.springframework.util.LinkedMultiValueMap<String, Object> body = new org.springframework.util.LinkedMultiValueMap<>();
+
+        // Add all form parameters from the upload task
+        parameters.fields().forEachRemaining(entry -> body.add(entry.getKey(), entry.getValue().asText()));
+
+        // Add the file
+        org.springframework.core.io.ByteArrayResource fileResource = new org.springframework.core.io.ByteArrayResource(
+                file.getBytes()) {
+            @Override
+            public String getFilename() {
+                return file.getOriginalFilename();
+            }
+        };
+        body.add("file", fileResource);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        HttpEntity<org.springframework.util.LinkedMultiValueMap<String, Object>> request = new HttpEntity<>(body,
+                headers);
+
+        restTemplate.exchange(uploadUrl, HttpMethod.POST, request, String.class);
+    }
+
+    /**
+     * Polls the job status until it completes or fails.
+     */
+    private JsonNode pollForCompletion(String jobId) throws IOException, InterruptedException {
+        for (int attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+            Thread.sleep(POLL_INTERVAL_MS);
+
+            HttpEntity<Void> request = new HttpEntity<>(createHeaders());
+            ResponseEntity<String> response = restTemplate.exchange(
+                    CLOUD_CONVERT_BASE_URL + "/jobs/" + jobId,
+                    HttpMethod.GET,
+                    request,
+                    String.class);
+
+            JsonNode jobData = objectMapper.readTree(response.getBody()).path("data");
+            String status = jobData.path("status").asText();
+
+            logger.debug("Job {} status: {} (attempt {}/{})", jobId, status, attempt + 1, MAX_POLL_ATTEMPTS);
+
+            if ("finished".equals(status)) {
+                return jobData;
+            } else if ("error".equals(status)) {
+                String errorMessage = jobData.path("tasks").toString();
+                throw new VacademyException("CloudConvert conversion error: " + errorMessage);
+            }
+            // status is "processing" or "waiting" — continue polling
+        }
+
+        throw new VacademyException("CloudConvert conversion timed out after "
+                + (MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS / 1000) + " seconds");
+    }
+
+    /**
+     * Downloads the converted PDF file from the export URL.
+     */
+    private byte[] downloadFile(String downloadUrl) {
+        ResponseEntity<byte[]> response = restTemplate.exchange(
+                downloadUrl,
+                HttpMethod.GET,
+                null,
+                byte[].class);
+
+        if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+            throw new VacademyException("Failed to download converted PDF");
+        }
+
+        return response.getBody();
+    }
+
+    private HttpHeaders createHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(cloudConvertApiKey);
+        return headers;
+    }
+
+    private String getInputFormat(String filename) {
+        if (filename == null)
+            return "pptx";
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".ppt"))
+            return "ppt";
+        if (lower.endsWith(".pptx"))
+            return "pptx";
+        if (lower.endsWith(".odp"))
+            return "odp";
+        if (lower.endsWith(".key"))
+            return "key";
+        return "pptx";
+    }
+
+    private JsonNode findTaskByName(JsonNode tasks, String taskName) {
+        if (tasks.isArray()) {
+            for (JsonNode task : tasks) {
+                if (taskName.equals(task.path("name").asText())) {
+                    return task;
+                }
+            }
+        }
+        throw new VacademyException("Task '" + taskName + "' not found in CloudConvert response");
     }
 }

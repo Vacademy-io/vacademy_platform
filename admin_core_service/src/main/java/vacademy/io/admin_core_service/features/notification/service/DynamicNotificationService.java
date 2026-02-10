@@ -50,7 +50,7 @@ public class DynamicNotificationService {
         try {
             // 1. Fetch package entity from package_session_id
             PackageEntity packageEntity = getPackageFromSessionId(packageSessionId);
-            
+
             // 2. Get package session details
             PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                     .orElseThrow(() -> new VacademyException("Package session not found"));
@@ -61,7 +61,7 @@ public class DynamicNotificationService {
 
             // 4. If no configurations found, return early
             if (configs.isEmpty()) {
-                log.info("No notification configurations found for event: {} and package session: {}", 
+                log.info("No notification configurations found for event: {} and package session: {}",
                         eventName, packageSessionId);
                 return;
             }
@@ -75,15 +75,14 @@ public class DynamicNotificationService {
                     enrollInvite,
                     packageSessionId,
                     packageSession.getLevel() != null ? packageSession.getLevel().getLevelName() : "",
-                    packageSession.getSession() != null ? packageSession.getSession().getSessionName() : ""
-            );
+                    packageSession.getSession() != null ? packageSession.getSession().getSessionName() : "");
             // 6. Process each configuration
             for (NotificationEventConfig config : configs) {
                 sendNotificationByType(config, instituteId, user, templateVars, enrollInvite);
             }
 
         } catch (Exception e) {
-            log.error("Error sending dynamic notification for event: {} and package session: {}", 
+            log.error("Error sending dynamic notification for event: {} and package session: {}",
                     eventName, packageSessionId, e);
             throw new VacademyException("Failed to send notification: " + e.getMessage());
         }
@@ -95,15 +94,14 @@ public class DynamicNotificationService {
     private PackageEntity getPackageFromSessionId(String packageSessionId) {
         PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                 .orElseThrow(() -> new VacademyException("Package session not found with ID: " + packageSessionId));
-        
+
         PackageEntity packageEntity = packageSession.getPackageEntity();
         if (packageEntity == null) {
             throw new VacademyException("Package not found for package session ID: " + packageSessionId);
         }
-        
+
         return packageEntity;
     }
-
 
     /**
      * Send notification based on template type
@@ -120,13 +118,15 @@ public class DynamicNotificationService {
                 case EMAIL:
                     sendUniqueLinkService.sendUniqueLinkByEmailByEnrollInvite(
                             instituteId, user, config.getTemplateId(), enrollInvite, templateVars);
-                    log.info("Sent email notification using template: {} with dynamic variables", config.getTemplateId());
+                    log.info("Sent email notification using template: {} with dynamic variables",
+                            config.getTemplateId());
                     break;
 
                 case WHATSAPP:
                     sendUniqueLinkService.sendUniqueLinkByWhatsApp(
                             instituteId, user, config.getTemplateId(), templateVars);
-                    log.info("Sent WhatsApp notification using template: {} with dynamic variables", config.getTemplateId());
+                    log.info("Sent WhatsApp notification using template: {} with dynamic variables",
+                            config.getTemplateId());
                     break;
 
                 case SMS:
@@ -143,7 +143,7 @@ public class DynamicNotificationService {
                     log.warn("Unknown template type: {}", config.getTemplateType());
             }
         } catch (Exception e) {
-            log.error("Error sending {} notification with template: {}", 
+            log.error("Error sending {} notification with template: {}",
                     config.getTemplateType(), config.getTemplateId(), e);
         }
     }
@@ -165,18 +165,18 @@ public class DynamicNotificationService {
     }
 
     private String getThemeColorFromInstitute(Institute institute) {
-        if (institute == null || institute.getInstituteThemeCode() == null || 
-            institute.getInstituteThemeCode().trim().isEmpty()) {
+        if (institute == null || institute.getInstituteThemeCode() == null ||
+                institute.getInstituteThemeCode().trim().isEmpty()) {
             return "#FF9800"; // Default orange color
         }
-        
+
         String themeCode = institute.getInstituteThemeCode().trim();
-        
+
         // If theme code is already a hex color, return it
         if (themeCode.startsWith("#") && themeCode.length() == 7) {
             return themeCode;
         }
-        
+
         // If theme code is a hex color without #, add it
         if (themeCode.matches("^[0-9A-Fa-f]{6}$")) {
             return "#" + themeCode;
@@ -193,8 +193,8 @@ public class DynamicNotificationService {
         try {
             // Find notification configurations for REFERRAL_INVITATION event
             List<NotificationEventConfig> configs = configRepository.findByEventAndSource(
-                    NotificationEventType.REFERRAL_INVITATION, 
-                    NotificationSourceType.INSTITUTE, 
+                    NotificationEventType.REFERRAL_INVITATION,
+                    NotificationSourceType.INSTITUTE,
                     instituteId);
 
             // If no institute-specific config found then return
@@ -205,14 +205,14 @@ public class DynamicNotificationService {
 
             // Get institute details
             Institute institute = getInstituteFromId(instituteId);
-            
+
             // Generate learner invitation response link
             String invitationLink = learnerInvitationLinkService
                     .generateLearnerInvitationResponseLink(instituteId, enrollInvite, user.getId());
-            
+
             // Get theme color from institute (default to orange if not set)
             String themeColor = getThemeColorFromInstitute(institute);
-            
+
             // Create template variables for referral invitation
             NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
                     // User details
@@ -221,19 +221,20 @@ public class DynamicNotificationService {
                     .userMobile(user.getMobileNumber())
                     .userFullName(user.getFullName())
                     .refCode(learnerInvitationLinkService.getRefFromUserCoupon(user.getId()))
-                    
+
                     // Institute details
                     .instituteName(institute.getInstituteName())
                     .instituteId(institute.getId())
-                    
+
                     // Enroll invite details
                     .enrollInviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "")
-                    .enrollInviteExpiryDate(enrollInvite != null && enrollInvite.getEndDate() != null ?
-                            enrollInvite.getEndDate().toString() : "")
-                    
+                    .enrollInviteExpiryDate(enrollInvite != null && enrollInvite.getEndDate() != null
+                            ? enrollInvite.getEndDate().toString()
+                            : "")
+
                     // Learner invitation response link
                     .learnerInvitationResponseLink(invitationLink)
-                    
+
                     // Referral template variables
                     .name(user.getFullName() != null ? user.getFullName() : user.getUsername())
                     .referralLink(invitationLink)
@@ -250,7 +251,7 @@ public class DynamicNotificationService {
             }
 
         } catch (Exception e) {
-            log.error("Error sending referral invitation notification for institute: {}", 
+            log.error("Error sending referral invitation notification for institute: {}",
                     instituteId, e);
             throw new VacademyException("Failed to send referral invitation notification: " + e.getMessage());
         }
@@ -263,18 +264,18 @@ public class DynamicNotificationService {
         try {
             // Extract WATI configuration from institute settings
             WatiConfig watiConfig = watiContactAttributeService.extractWatiConfig(institute);
-            
+
             if (watiConfig == null) {
-                log.debug("No WATI configuration found for institute: {}, skipping contact attribute update", 
+                log.debug("No WATI configuration found for institute: {}, skipping contact attribute update",
                         institute.getId());
                 return;
             }
 
             // Get user's referral code
             String referralCode = learnerInvitationLinkService.getRefFromUserCoupon(user.getId());
-            
+
             if (referralCode == null || referralCode.isEmpty()) {
-                log.warn("No referral code found for user: {}, skipping WATI contact attribute update", 
+                log.warn("No referral code found for user: {}, skipping WATI contact attribute update",
                         user.getId());
                 return;
             }
@@ -292,14 +293,13 @@ public class DynamicNotificationService {
 
             // Update contact attributes in WATI
             watiContactAttributeService.updateContactAttributes(
-                    watiConfig, 
-                    user.getMobileNumber(), 
-                    templateVarsMap
-            );
+                    watiConfig,
+                    user.getMobileNumber(),
+                    templateVarsMap);
 
         } catch (Exception e) {
             // Log error but don't fail the entire notification process
-            log.error("Error updating WATI contact attributes for user: {} in institute: {}", 
+            log.error("Error updating WATI contact attributes for user: {} in institute: {}",
                     user.getId(), institute.getId(), e);
         }
     }
@@ -317,13 +317,72 @@ public class DynamicNotificationService {
         try {
             NotificationEventConfig config = new NotificationEventConfig(
                     eventName, sourceType, sourceId, templateType, templateId);
-            
+
             configRepository.save(config);
-            log.info("Created notification config for event: {} with template: {}", 
+            log.info("Created notification config for event: {} with template: {}",
                     eventName, templateId);
         } catch (Exception e) {
             log.error("Error creating notification config", e);
             throw new VacademyException("Failed to create notification config: " + e.getMessage());
+        }
+    }
+
+    public void sendApplicationPaymentNotification(
+            String instituteId,
+            UserDTO user,
+            String paymentLink,
+            String childName,
+            String applicationId,
+            String className,
+            String paymentAmount) {
+
+        try {
+            // Find notification configurations for APPLICATION_PAYMENT_PENDING event
+            List<NotificationEventConfig> configs = configRepository.findByEventAndSource(
+                    NotificationEventType.APPLICATION_PAYMENT_PENDING,
+                    NotificationSourceType.INSTITUTE,
+                    instituteId);
+
+            if (configs.isEmpty()) {
+                log.info("No payment notification configurations found for institute: {}", instituteId);
+                return;
+            }
+
+            Institute institute = getInstituteFromId(instituteId);
+
+            NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
+                    .userName(user.getFullName())
+                    .userEmail(user.getEmail())
+                    .userMobile(user.getMobileNumber())
+                    .userFullName(user.getFullName())
+                    .paymentLink(paymentLink)
+                    .paymentAmount(paymentAmount)
+                    .instituteName(institute.getInstituteName())
+                    .instituteId(institute.getId())
+                    .packageSessionId(applicationId) // Using applicationId as packageSessionId for context if needed
+                    .sessionName(className)
+                    // Set new family details
+                    .parentName(user.getFullName())
+                    .childName(childName)
+                    .applicantId(applicationId)
+                    .build();
+
+            // Populate custom fields as backup and for additional flexibility
+            templateVars.setCustomFields(new java.util.HashMap<>());
+            templateVars.getCustomFields().put("child_name", childName);
+            templateVars.getCustomFields().put("applicant_id", applicationId); // Ensure custom field match
+            templateVars.getCustomFields().put("application_id", applicationId);
+            templateVars.getCustomFields().put("payment_link", paymentLink);
+            templateVars.getCustomFields().put("class_name", className);
+            templateVars.getCustomFields().put("payment_amount", paymentAmount);
+            templateVars.getCustomFields().put("parent_name", user.getFullName());
+
+            for (NotificationEventConfig config : configs) {
+                sendNotificationByType(config, instituteId, user, templateVars, null);
+            }
+
+        } catch (Exception e) {
+            log.error("Error sending payment notification for applicant: {}", applicationId, e);
         }
     }
 }

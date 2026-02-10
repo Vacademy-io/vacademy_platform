@@ -156,7 +156,7 @@ public class AiTokenUsageClient {
             String ttsProvider,
             Integer characterCount) {
         try {
-            String url = aiServiceUrl + "/token-usage/v1/record";
+            String url = aiServiceUrl + "/ai-service/token-usage/v1/record";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);

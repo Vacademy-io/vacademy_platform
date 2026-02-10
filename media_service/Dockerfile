@@ -35,10 +35,13 @@ COPY --from=build /build/target/media_service.jar media_service.jar
 
 RUN apk add --no-cache msttcorefonts-installer fontconfig
 
+# Install LibreOffice for PPT to PDF conversion (headless, no GUI needed)
+RUN apk add --no-cache libreoffice
+
 RUN update-ms-fonts
 
 # Expose the port the application runs on
 EXPOSE 8075
 
-# Define the command to run the application with adequate heap for PPT conversion
-CMD ["java", "-Xmx1g", "-Xms512m", "-jar", "-Dspring.profiles.active=stage", "media_service.jar"]
+# Define the command to run the application
+CMD ["java", "-jar", "-Dspring.profiles.active=stage", "media_service.jar"]

@@ -1,143 +1,120 @@
 package vacademy.io.media_service.service;
 
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
-import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
-import org.apache.poi.sl.usermodel.Slide;
-import org.apache.poi.sl.usermodel.SlideShow;
-import org.apache.poi.sl.usermodel.SlideShowFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.awt.*;
-import java.awt.geom.Rectangle2D;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class PptToPdfService {
 
     private static final Logger logger = LoggerFactory.getLogger(PptToPdfService.class);
 
-    // Conservative scale to prevent OOM - 1.0 = native resolution
-    private static final double STANDARD_SCALE = 1.0;
-    private static final double HIGH_SCALE = 2;
-
-    // JPEG quality (0.0-1.0)
-    private static final float JPEG_QUALITY = 0.95f;
+    // Timeout for LibreOffice conversion (seconds)
+    private static final int CONVERSION_TIMEOUT_SECONDS = 120;
 
     public byte[] convertPptToPdf(MultipartFile file) {
-        return convertPptToPdfWithScale(file, STANDARD_SCALE);
+        return convertUsingLibreOffice(file);
     }
 
     public byte[] convertPptToPdfHighQuality(MultipartFile file, double scaleFactor) {
-        // Cap scale factor to prevent OOM
-        double safeScale = Math.min(scaleFactor, HIGH_SCALE);
-        return convertPptToPdfWithScale(file, safeScale);
+        // LibreOffice always produces full vector PDF – quality parameter not needed
+        return convertUsingLibreOffice(file);
     }
 
-    private byte[] convertPptToPdfWithScale(MultipartFile file, double scaleFactor) {
-        PDDocument pdfDocument = null;
-        SlideShow<?, ?> ppt = null;
-
+    private byte[] convertUsingLibreOffice(MultipartFile file) {
+        Path tempDir = null;
         try {
-            ppt = SlideShowFactory.create(file.getInputStream());
-            pdfDocument = new PDDocument();
+            // Create isolated temp directory for this conversion
+            tempDir = Files.createTempDirectory("ppt-convert-");
 
-            Dimension pgsize = ppt.getPageSize();
-            int scaledWidth = (int) (pgsize.width * scaleFactor);
-            int scaledHeight = (int) (pgsize.height * scaleFactor);
-
-            int slideCount = 0;
-            for (Slide<?, ?> ignored : ppt.getSlides()) {
-                slideCount++;
+            // Determine original extension
+            String originalFilename = file.getOriginalFilename();
+            String extension = ".pptx";
+            if (originalFilename != null && originalFilename.toLowerCase().endsWith(".ppt")) {
+                extension = ".ppt";
             }
 
-            logger.info("Converting PPT to PDF: {} slides, scale={}, image size={}x{}",
-                    slideCount, scaleFactor, scaledWidth, scaledHeight);
+            // Write uploaded file to temp dir
+            File inputFile = new File(tempDir.toFile(), "input" + extension);
+            file.transferTo(inputFile);
 
-            int slideIndex = 0;
-            for (Slide<?, ?> slide : ppt.getSlides()) {
-                slideIndex++;
+            logger.info("Starting LibreOffice conversion: file={}, size={} bytes",
+                    originalFilename, file.getSize());
 
-                // Create and render image for this slide
-                BufferedImage img = null;
-                try {
-                    img = renderSlideToImage(slide, scaledWidth, scaledHeight, scaleFactor);
+            // Run LibreOffice headless to convert to PDF
+            ProcessBuilder pb = new ProcessBuilder(
+                    "libreoffice",
+                    "--headless",
+                    "--norestore",
+                    "--convert-to", "pdf",
+                    "--outdir", tempDir.toString(),
+                    inputFile.getAbsolutePath());
+            pb.redirectErrorStream(true);
+            pb.environment().put("HOME", tempDir.toString()); // Avoid profile lock conflicts
 
-                    // Create PDF page
-                    PDPage pdfPage = new PDPage(new PDRectangle(pgsize.width, pgsize.height));
-                    pdfDocument.addPage(pdfPage);
+            Process process = pb.start();
 
-                    // Embed image into PDF
-                    PDImageXObject pdImage = JPEGFactory.createFromImage(pdfDocument, img, JPEG_QUALITY);
+            // Read process output for debugging
+            String processOutput = new String(process.getInputStream().readAllBytes());
 
-                    try (PDPageContentStream contentStream = new PDPageContentStream(pdfDocument, pdfPage)) {
-                        contentStream.drawImage(pdImage, 0, 0, pgsize.width, pgsize.height);
-                    }
-                } finally {
-                    // Aggressively clean up memory after each slide
-                    if (img != null) {
-                        img.flush();
-                        img = null;
-                    }
-                }
+            boolean finished = process.waitFor(CONVERSION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-                // Force GC every 3 slides
-                if (slideIndex % 3 == 0) {
-                    System.gc();
-                }
+            if (!finished) {
+                process.destroyForcibly();
+                throw new VacademyException("PPT to PDF conversion timed out after "
+                        + CONVERSION_TIMEOUT_SECONDS + " seconds");
             }
 
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            pdfDocument.save(out);
-            logger.info("PDF conversion complete: {} bytes", out.size());
-            return out.toByteArray();
+            int exitCode = process.exitValue();
+            if (exitCode != 0) {
+                logger.error("LibreOffice exit code: {}, output: {}", exitCode, processOutput);
+                throw new VacademyException("PPT to PDF conversion failed (exit code " + exitCode + ")");
+            }
+
+            // Find the output PDF
+            File outputPdf = new File(tempDir.toFile(), "input.pdf");
+            if (!outputPdf.exists()) {
+                logger.error("PDF output not found. LibreOffice output: {}", processOutput);
+                throw new VacademyException("PDF output file not found after conversion");
+            }
+
+            byte[] pdfBytes = Files.readAllBytes(outputPdf.toPath());
+            logger.info("PDF conversion complete: {} bytes", pdfBytes.length);
+            return pdfBytes;
 
         } catch (IOException e) {
             logger.error("Failed to convert PPT to PDF", e);
             throw new VacademyException("Failed to convert PPT to PDF: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new VacademyException("PPT to PDF conversion was interrupted");
         } finally {
-            // Ensure resources are closed
-            try {
-                if (pdfDocument != null)
-                    pdfDocument.close();
-                if (ppt != null)
-                    ppt.close();
-            } catch (IOException ignored) {
+            // Clean up temp directory
+            if (tempDir != null) {
+                cleanupTempDir(tempDir);
             }
-            System.gc();
         }
     }
 
-    private BufferedImage renderSlideToImage(Slide<?, ?> slide, int width, int height, double scale) {
-        // Use TYPE_3BYTE_BGR - more memory efficient
-        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
-        Graphics2D graphics = img.createGraphics();
-
+    private void cleanupTempDir(Path tempDir) {
         try {
-            // Basic rendering hints - avoid expensive ones
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
-            // White background
-            graphics.setPaint(Color.WHITE);
-            graphics.fill(new Rectangle2D.Float(0, 0, width, height));
-
-            // Scale and render
-            graphics.scale(scale, scale);
-            slide.draw(graphics);
-        } finally {
-            graphics.dispose();
+            Files.walk(tempDir)
+                    .sorted(java.util.Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException ignored) {
+                        }
+                    });
+        } catch (IOException ignored) {
         }
-
-        return img;
     }
 }

@@ -28,10 +28,10 @@ public class PptToPdfService {
 
     // Conservative scale to prevent OOM - 1.0 = native resolution
     private static final double STANDARD_SCALE = 1.0;
-    private static final double HIGH_SCALE = 1.5;
+    private static final double HIGH_SCALE = 2;
 
     // JPEG quality (0.0-1.0)
-    private static final float JPEG_QUALITY = 0.85f;
+    private static final float JPEG_QUALITY = 0.95f;
 
     public byte[] convertPptToPdf(MultipartFile file) {
         return convertPptToPdfWithScale(file, STANDARD_SCALE);

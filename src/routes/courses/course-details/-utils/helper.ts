@@ -49,6 +49,8 @@ interface CourseWithSessionsType {
       id: string;
       name: string;
       duration_in_days: number;
+      package_session_id?: string;
+      read_time_in_minutes?: number;
       subjects: SubjectType[];
     }>;
     session_dto: {
@@ -215,6 +217,7 @@ export const transformApiDataToCourseData = async (
             id: level.id,
             name: level.name,
             duration_in_days: level.duration_in_days,
+            package_session_id: level.package_session_id,
             subjects: subjects.map((subject) => ({
               id: subject.id,
               subject_name: subject.subject_name,

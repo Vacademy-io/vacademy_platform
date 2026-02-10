@@ -37,6 +37,7 @@ const levelDetailsSchema = z.object({
         .number()
         .int()
         .min(0, { message: "Duration must be a non-negative integer." }),
+    package_session_id: z.string().optional(),
     subjects: z
         .array(
             z.object({

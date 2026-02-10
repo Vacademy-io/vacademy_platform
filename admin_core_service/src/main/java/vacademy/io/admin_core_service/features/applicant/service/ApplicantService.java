@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.applicant.dto.*;
 import vacademy.io.admin_core_service.features.applicant.entity.Applicant;
 import vacademy.io.admin_core_service.features.applicant.entity.ApplicantStage;
 import vacademy.io.admin_core_service.features.applicant.entity.ApplicationStage;
+import vacademy.io.admin_core_service.features.applicant.enums.ApplicantStageType;
 import vacademy.io.admin_core_service.features.applicant.repository.ApplicantRepository;
 import vacademy.io.admin_core_service.features.applicant.repository.ApplicantStageRepository;
 import vacademy.io.admin_core_service.features.applicant.repository.ApplicationStageRepository;
@@ -42,6 +43,11 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.ParentWithChildDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
+
+import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
+import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 
 import java.util.*;
 
@@ -92,6 +98,12 @@ public class ApplicantService {
 
         @Autowired
         private UserPlanRepository userPlanRepository;
+
+        @Autowired
+        private InstituteDomainRoutingRepository instituteDomainRoutingRepository;
+
+        @Autowired
+        private DynamicNotificationService dynamicNotificationService;
 
         // Correct Imports for Payment DTOs
         // using fully qualified names in method signature to avoid ambiguity if needed
@@ -779,11 +791,16 @@ public class ApplicantService {
                 }
                 audienceResponseRepository.save(audienceResponse);
 
+                // Trigger Email if Payment Stage
+                if (ApplicantStageType.PAYMENT.equals(firstStage.getType())) {
+                        sendApplicationPaymentEmail(savedApplicant.getId().toString(), firstStage);
+                }
+
                 return ApplyResponseDTO.builder()
                                 .applicantId(savedApplicant.getId().toString())
-                                .trackingId(trackingId)
+                                .trackingId(savedApplicant.getTrackingId())
                                 .currentStage(firstStage.getStageName())
-                                .status("INITIATED")
+                                .status(savedApplicant.getOverallStatus())
                                 .message("Application submitted successfully")
                                 .build();
         }
@@ -1244,14 +1261,158 @@ public class ApplicantService {
                                 }
                         }
 
-                        // 4. Auto-Advance (Optional - depending on rules)
-                        // transitionToNextStage(applicant.getId().toString());
+                        // 4. Auto-Advance
+                        completeStageAndMoveNext(applicant.getId().toString());
 
                         logger.info("Successfully handled Payment Success for order: {}", orderId);
 
                 } catch (Exception e) {
                         logger.error("Error handling payment success", e);
-                        throw new VacademyException("Failed to process payment success");
+                }
+        }
+
+        public void completeStageAndMoveNext(String applicantId) {
+                try {
+                        // Get current applicant stage (latest)
+                        Optional<ApplicantStage> currentStageOpt = applicantStageRepository
+                                        .findTopByApplicantIdOrderByCreatedAtDesc(applicantId);
+
+                        if (currentStageOpt.isEmpty())
+                                return;
+
+                        ApplicantStage currentStage = currentStageOpt.get();
+
+                        // Mark current stage as COMPLETED if not already
+                        if (!"COMPLETED".equalsIgnoreCase(currentStage.getStageStatus())) {
+                                currentStage.setStageStatus("COMPLETED");
+                                applicantStageRepository.save(currentStage);
+                        }
+
+                        // Get definition of current stage to find sequence
+                        ApplicationStage currentStageDef = applicationStageRepository
+                                        .findById(UUID.fromString(currentStage.getStageId()))
+                                        .orElseThrow(() -> new VacademyException("Stage definition not found"));
+
+                        // Find next stage (Sequence + 1)
+                        // Assuming sequence is numeric string
+                        int currentSeq = 0;
+                        try {
+                                currentSeq = Integer.parseInt(currentStageDef.getSequence());
+                        } catch (NumberFormatException e) {
+                                logger.error("Invalid sequence format for stage {}", currentStageDef.getId());
+                                return;
+                        }
+
+                        String nextSeq = String.valueOf(currentSeq + 1);
+
+                        Optional<ApplicationStage> nextStageOpt = applicationStageRepository
+                                        .findByInstituteIdAndSourceAndSourceIdAndSequence(
+                                                        currentStageDef.getInstituteId(),
+                                                        currentStageDef.getSource(),
+                                                        currentStageDef.getSourceId(),
+                                                        nextSeq);
+
+                        if (nextStageOpt.isPresent()) {
+                                ApplicationStage nextStage = nextStageOpt.get();
+
+                                // Create Applicant Stage
+                                ApplicantStage newStage = ApplicantStage.builder()
+                                                .applicantId(applicantId)
+                                                .stageId(nextStage.getId().toString())
+                                                .stageStatus("PENDING")
+                                                .build();
+                                applicantStageRepository.save(newStage);
+
+                                // Trigger Email if Payment STAGE
+                                if (ApplicantStageType.PAYMENT.equals(nextStage.getType())) {
+                                        sendApplicationPaymentEmail(applicantId, nextStage);
+                                }
+                        } else {
+                                logger.info("No next stage found for applicant {}. Application process completed.",
+                                                applicantId);
+                        }
+
+                } catch (Exception e) {
+                        logger.error("Error moving to next stage for applicant {}", applicantId, e);
+                }
+        }
+
+        private String resolveLearnerDomain(String instituteId) {
+                return instituteDomainRoutingRepository.findByInstituteIdAndRole(instituteId, "LEARNER")
+                                .map(routing -> {
+                                        if ("*".equals(routing.getSubdomain())) {
+                                                return routing.getDomain();
+                                        }
+                                        return routing.getSubdomain() + "." + routing.getDomain();
+                                })
+                                .orElse("learner.vacademy.io");
+        }
+
+        private void sendApplicationPaymentEmail(String applicantId, ApplicationStage paymentStage) {
+                try {
+                        Applicant applicant = applicantRepository.findById(UUID.fromString(applicantId))
+                                        .orElseThrow(() -> new VacademyException("Applicant not found"));
+
+                        Optional<AudienceResponse> audienceResponseOpt = audienceResponseRepository
+                                        .findByApplicantId(applicantId);
+                        if (audienceResponseOpt.isEmpty())
+                                return;
+                        AudienceResponse audienceResponse = audienceResponseOpt.get();
+
+                        String instituteId = paymentStage.getInstituteId();
+
+                        // Extract paymentOptionId from configJson
+                        String paymentOptionId = null;
+                        if (paymentStage.getConfigJson() != null) {
+                                try {
+                                        java.util.Map<String, Object> config = objectMapper
+                                                        .readValue(paymentStage.getConfigJson(), java.util.Map.class);
+                                        paymentOptionId = (String) config.get("payment_option_id");
+                                } catch (Exception e) {
+                                        logger.error("Error parsing stage config json", e);
+                                }
+                        }
+
+                        if (paymentOptionId == null) {
+                                logger.warn("Payment option id not found for stage {}", paymentStage.getId());
+                                return;
+                        }
+
+                        String domain = resolveLearnerDomain(instituteId);
+                        String paymentLink = "https://" + domain + "/application/payments/" + instituteId + "/"
+                                        + applicantId + "/" + paymentOptionId;
+
+                        // Prepare child name
+                        String childName = "Applicant";
+                        if (audienceResponse.getStudentUserId() != null) {
+                                try {
+                                        List<UserDTO> students = authService.getUsersFromAuthServiceByUserIds(
+                                                        List.of(audienceResponse.getStudentUserId()));
+                                        if (!students.isEmpty() && students.get(0).getFullName() != null) {
+                                                childName = students.get(0).getFullName();
+                                        }
+                                } catch (Exception e) {
+                                        logger.warn("Could not fetch student name for email", e);
+                                }
+                        }
+
+                        UserDTO userDto = new UserDTO();
+                        userDto.setEmail(audienceResponse.getParentEmail());
+                        userDto.setFullName(audienceResponse.getParentName());
+                        userDto.setMobileNumber(audienceResponse.getParentMobile());
+                        userDto.setId(audienceResponse.getUserId());
+
+                        dynamicNotificationService.sendApplicationPaymentNotification(
+                                        instituteId,
+                                        userDto,
+                                        paymentLink,
+                                        childName,
+                                        applicant.getTrackingId(),
+                                        paymentStage.getSourceId(),
+                                        "0");
+
+                } catch (Exception e) {
+                        logger.error("Error sending payment email", e);
                 }
         }
 

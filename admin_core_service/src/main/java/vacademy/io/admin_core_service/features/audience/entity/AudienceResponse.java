@@ -75,8 +75,8 @@ public class AudienceResponse {
     @Column(name = "applicant_id")
     private String applicantId;
 
-    @Column(name = "convertion_status", length = 50)
-    private String convertionStatus;
+    @Column(name = "conversion_status", length = 50)
+    private String conversionStatus;
 
     @Column(name = "overall_status", length = 50)
     private String overallStatus;

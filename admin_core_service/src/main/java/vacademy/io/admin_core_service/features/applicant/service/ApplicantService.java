@@ -702,6 +702,9 @@ public class ApplicantService {
                                         .orElseThrow(() -> new VacademyException(
                                                         "No enquiry found for ID: " + enquiryId));
 
+                        // Update status to APPLICATION
+                        audienceResponse.setOverallStatus("APPLICATION");
+
                         // Check if already applied
                         if (audienceResponse.getApplicantId() != null) {
                                 throw new VacademyException("Application already submitted for this enquiry");
@@ -754,6 +757,7 @@ public class ApplicantService {
                                         .parentName(getFormDataString(request.getFormData(), "parent_name"))
                                         .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
                                         .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
+                                        .overallStatus("APPLICATION")
                                         .build();
                         audienceResponse = audienceResponseRepository.save(audienceResponse);
                 }

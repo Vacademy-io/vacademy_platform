@@ -354,7 +354,7 @@ class GoogleCloudTTSClient:
         language_code: str = "en-US"
     ) -> None:
         try:
-            from google.cloud import texttospeech
+            from google.cloud import texttospeech_v1beta1 as texttospeech
             from google.oauth2 import service_account
         except ImportError:
             raise RuntimeError("google-cloud-texttospeech not installed. Run `pip install google-cloud-texttospeech`.")

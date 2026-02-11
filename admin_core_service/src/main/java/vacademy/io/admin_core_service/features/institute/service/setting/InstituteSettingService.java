@@ -29,6 +29,7 @@ import vacademy.io.admin_core_service.features.institute.dto.settings.certificat
 import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldSettingRequest;
+import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.naming.NameSettingRequest;
 import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
@@ -133,6 +134,33 @@ public class InstituteSettingService {
         } catch (Exception e) {
             log.error("Error Occurred in Creating Default Custom Field Setting: " + e.getMessage());
         }
+
+        try {
+            createDefaultInvoiceSetting(institute);
+        } catch (Exception e) {
+            log.error("Error creating default invoice setting: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Adds INVOICE_SETTING key-value to institute settings if not already present.
+     * Default: sendInvoiceEmail=false, plus tax/currency defaults. Does not overwrite existing.
+     */
+    public void createDefaultInvoiceSetting(Institute institute) {
+        if (getSpecificSetting(institute, "INVOICE_SETTING") != null) {
+            return;
+        }
+        Map<String, Object> defaultData = new HashMap<>();
+        defaultData.put("taxIncluded", false);
+        defaultData.put("taxRate", 0.0);
+        defaultData.put("taxLabel", "Tax");
+        defaultData.put("currency", "INR");
+        defaultData.put("sendInvoiceEmail", false);
+        GenericSettingRequest request = GenericSettingRequest.builder()
+                .settingName("Invoice Setting")
+                .settingData(defaultData)
+                .build();
+        createNewGenericSetting(institute, "INVOICE_SETTING", request);
     }
 
     @Transactional

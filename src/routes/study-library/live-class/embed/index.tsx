@@ -52,12 +52,25 @@ function EmbedComponent() {
     const serverTimestamp = getServerTime(serverTimeData);
     const now = new Date(serverTimestamp);
 
-    // Convert session end time to user timezone
-    const sessionEndInUserTimezone = convertSessionTimeToUserTimezone(
+    // Convert session times to user timezone
+    const sessionStartInUserTimezone = convertSessionTimeToUserTimezone(
+      sessionDetails.meetingDate,
+      sessionDetails.scheduleStartTime,
+      sessionDetails.timezone
+    );
+
+    let sessionEndInUserTimezone = convertSessionTimeToUserTimezone(
       sessionDetails.meetingDate,
       sessionDetails.scheduleLastEntryTime,
       sessionDetails.timezone
     );
+
+    // If session spans midnight (end < start), add 1 day to end time
+    if (sessionEndInUserTimezone < sessionStartInUserTimezone) {
+      sessionEndInUserTimezone = new Date(
+        sessionEndInUserTimezone.getTime() + 24 * 60 * 60 * 1000
+      );
+    }
 
     // Check if class has ended
     if (now > sessionEndInUserTimezone) {

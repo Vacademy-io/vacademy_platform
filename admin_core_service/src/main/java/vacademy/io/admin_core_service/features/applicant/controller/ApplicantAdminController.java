@@ -10,25 +10,23 @@ import vacademy.io.admin_core_service.features.applicant.dto.ApplicantDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplicantFilterDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplicantListRequestDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplicantListResponseDTO;
-import vacademy.io.admin_core_service.features.applicant.dto.ApplyRequestDTO;
-import vacademy.io.admin_core_service.features.applicant.dto.ApplyResponseDTO;
-import vacademy.io.admin_core_service.features.applicant.service.ApplicantService;
 import vacademy.io.admin_core_service.features.applicant.service.ApplicantService;
 import vacademy.io.common.auth.config.PageConstants;
-import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
-import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
+/**
+ * Admin-facing endpoints for applicant management
+ * Handles listing, viewing, and managing applicants
+ */
 @RestController
 @RequestMapping("/admin-core-service/v1/applicant")
-public class ApplicantController {
+public class ApplicantAdminController {
 
-    private static final Logger logger = LoggerFactory.getLogger(ApplicantController.class);
+    private static final Logger logger = LoggerFactory.getLogger(ApplicantAdminController.class);
 
     private final ApplicantService applicantService;
 
     @Autowired
-    public ApplicantController(ApplicantService applicantService) {
+    public ApplicantAdminController(ApplicantService applicantService) {
         this.applicantService = applicantService;
     }
 
@@ -37,18 +35,6 @@ public class ApplicantController {
         logger.info("Request to onboard Applicant for stage: {}", applicantDTO.getApplicationStageId());
         String applicantId = applicantService.onboardApplicant(applicantDTO);
         return ResponseEntity.ok(applicantId);
-    }
-
-    /**
-     * Submit application form - handles both pre-filled (from enquiry) and manual
-     * (direct) submissions
-     */
-    @PostMapping("/apply")
-    public ResponseEntity<ApplyResponseDTO> submitApplication(@RequestBody ApplyRequestDTO request) {
-        logger.info("Request to submit application. InstituteId: {}, Source: {}, SourceId: {}, EnquiryId: {}",
-                request.getInstituteId(), request.getSource(), request.getSourceId(), request.getEnquiryId());
-        ApplyResponseDTO response = applicantService.submitApplication(request);
-        return ResponseEntity.ok(response);
     }
 
     /**
@@ -61,15 +47,16 @@ public class ApplicantController {
             @RequestParam(name = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
             @RequestParam(name = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize) {
 
-        logger.info("Request to list Applicants. Institute: {}, Source: {}, SourceId: {}, Search: {}", 
+        logger.info("Request to list Applicants. Institute: {}, Source: {}, SourceId: {}, Search: {}",
                 request.getInstituteId(), request.getSource(), request.getSourceId(), request.getSearch());
-        
+
         Page<ApplicantListResponseDTO> applicants = applicantService.getApplicantsEnhanced(request, pageNo, pageSize);
         return ResponseEntity.ok(applicants);
     }
 
     /**
      * Legacy list API - kept for backward compatibility
+     * 
      * @deprecated Use POST /list instead
      */
     @Deprecated
@@ -99,22 +86,5 @@ public class ApplicantController {
 
         Page<ApplicantDTO> applicants = applicantService.getApplicants(filterDTO);
         return ResponseEntity.ok(applicants);
-    }
-
-    /**
-     * Initiate Payment for Applicant
-     * Wrapper that calls Payment Service and updates Applicant JSON
-     */
-    @PostMapping("/{applicantId}/payment/initiate")
-    public ResponseEntity<PaymentResponseDTO> initiatePayment(
-            @PathVariable String applicantId,
-            @RequestParam String paymentOptionId,
-            @RequestBody PaymentInitiationRequestDTO requestDTO,
-            @RequestAttribute(name = "user", required = false) CustomUserDetails userDetails) {
-
-        logger.info("Request to initiate payment. Applicant: {}, Option: {}", applicantId, paymentOptionId);
-        PaymentResponseDTO response = applicantService.preparePayment(applicantId, paymentOptionId,
-                requestDTO, userDetails);
-        return ResponseEntity.ok(response);
     }
 }

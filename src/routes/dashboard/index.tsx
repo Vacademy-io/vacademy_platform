@@ -5,7 +5,10 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { fetchStaticData } from "./-lib/utils";
 import { Helmet } from "react-helmet";
 import { useAnalytics } from "@/hooks/useAnalytics";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import {
+  getPackageSessionId,
+  getAllPackageSessionIds,
+} from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { getStudyLibraryQuery } from "@/services/study-library/getStudyLibraryDetails";
 import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
 import { useQuery } from "@tanstack/react-query";
@@ -82,6 +85,7 @@ export function DashboardComponent() {
   const [testAssignedCount, setTestAssignedCount] = useState<number>(0);
   const [homeworkAssignedCount, setHomeworkAssignedCount] = useState<number>(0);
   const [batchId, setBatchId] = useState<string | null>(null);
+  const [allBatchIds, setAllBatchIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { showForInstitutes } = useInstituteFeatureStore();
   const { mutateAsync: markAttendance } = useMarkAttendance();
@@ -102,7 +106,7 @@ export function DashboardComponent() {
     data: liveSessions,
     isLoading: isLoadingLiveSessions,
     refetch: refetchLiveSessions,
-  } = useLiveSessions(batchId || "", { size: 10 });
+  } = useLiveSessions(allBatchIds, { size: 10 });
 
   // Initialize analytics tracking
   const { trackPageView, track, trackLessonStarted } = useAnalytics();
@@ -176,6 +180,9 @@ export function DashboardComponent() {
       try {
         const id = await getPackageSessionId();
         setBatchId(id);
+
+        const ids = await getAllPackageSessionIds();
+        setAllBatchIds(ids);
       } catch (error) {
         console.error("Error fetching IDs:", error);
       }

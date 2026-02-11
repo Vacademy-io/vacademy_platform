@@ -71,21 +71,85 @@ const fetchLiveAndUpcomingSessions = async (
   }
 };
 
+// Fetch sessions for multiple batches and combine results
+const fetchLiveAndUpcomingSessionsForMultipleBatches = async (
+  batchIds: string[],
+  params?: LiveSessionsParams
+): Promise<{
+  live_sessions: SessionDetails[];
+  upcoming_sessions: SessionDetails[];
+  totalReturned: number;
+}> => {
+  try {
+    // If no batch IDs, return empty results
+    if (!batchIds || batchIds.length === 0) {
+      return {
+        live_sessions: [],
+        upcoming_sessions: [],
+        totalReturned: 0,
+      };
+    }
+
+    // Fetch sessions for all batches in parallel
+    const results = await Promise.all(
+      batchIds.map((batchId) => fetchLiveAndUpcomingSessions(batchId, params))
+    );
+
+    // Combine all sessions from all batches
+    const allLiveSessions: SessionDetails[] = [];
+    const allUpcomingSessions: SessionDetails[] = [];
+
+    results.forEach((result) => {
+      allLiveSessions.push(...result.live_sessions);
+      allUpcomingSessions.push(...result.upcoming_sessions);
+    });
+
+    // Deduplicate sessions by schedule_id (in case a session appears in multiple batches)
+    const uniqueLiveSessions = Array.from(
+      new Map(
+        allLiveSessions.map((session) => [session.schedule_id, session])
+      ).values()
+    );
+
+    const uniqueUpcomingSessions = Array.from(
+      new Map(
+        allUpcomingSessions.map((session) => [session.schedule_id, session])
+      ).values()
+    );
+
+    // Sort upcoming sessions by date and time
+    uniqueUpcomingSessions.sort((a, b) => {
+      const dateA = new Date(`${a.meeting_date}T${a.start_time}`);
+      const dateB = new Date(`${b.meeting_date}T${b.start_time}`);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    return {
+      live_sessions: uniqueLiveSessions,
+      upcoming_sessions: uniqueUpcomingSessions,
+      totalReturned: uniqueLiveSessions.length + uniqueUpcomingSessions.length,
+    };
+  } catch (error) {
+    console.error("Error fetching sessions for multiple batches:", error);
+    throw error;
+  }
+};
+
 export const useLiveSessions = (
-  batchId: string | null,
+  batchIds: string[] | null,
   params?: LiveSessionsParams
 ) => {
   return useQuery({
     queryKey: [
       "liveSessions",
-      batchId,
+      batchIds,
       params?.page,
       params?.size,
       params?.startDate,
       params?.endDate,
     ],
-    queryFn: () => fetchLiveAndUpcomingSessions(batchId!, params),
-    // enabled: !!batchId,
+    queryFn: () => fetchLiveAndUpcomingSessionsForMultipleBatches(batchIds!, params),
+    enabled: !!batchIds && batchIds.length > 0,
     refetchInterval: 60000, // Refetch every minute to keep live status updated
   });
 };

@@ -755,6 +755,7 @@ public class AudienceService {
                 .parentName(requestDTO.getParentName())
                 .parentEmail(requestDTO.getParentEmail())
                 .parentMobile(requestDTO.getParentMobile())
+                .overallStatus("ENQUIRY")
                 .build();
 
         AudienceResponse savedResponse = audienceResponseRepository.save(response);
@@ -2438,7 +2439,8 @@ public class AudienceService {
     }
 
     /**
-     * Calculate workflowActivateDayAt based on audience workflow_setting.offset_day.
+     * Calculate workflowActivateDayAt based on audience
+     * workflow_setting.offset_day.
      * If offset_day is present, adds/subtracts that many days from current date.
      * If not present, returns current timestamp.
      *

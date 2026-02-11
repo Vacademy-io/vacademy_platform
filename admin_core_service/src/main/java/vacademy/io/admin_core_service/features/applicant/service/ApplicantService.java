@@ -12,6 +12,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.applicant.dto.*;
+
 import vacademy.io.admin_core_service.features.applicant.entity.Applicant;
 import vacademy.io.admin_core_service.features.applicant.entity.ApplicantStage;
 import vacademy.io.admin_core_service.features.applicant.entity.ApplicationStage;
@@ -1425,5 +1426,65 @@ public class ApplicantService {
                 }
                 Object value = formData.get(key);
                 return value != null ? value.toString() : null;
+        }
+
+        /**
+         * Get Parent with Children Details
+         * Fetches parent info, linked children, and their applications/enrollments
+         */
+        public ParentWithChildrenResponseDTO getParentWithChildren(String parentUserId) {
+
+                // 1. Get Parent User Info from Auth Service
+                UserDTO parentUser = null;
+                try {
+                        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(parentUserId));
+                        if (!users.isEmpty()) {
+                                parentUser = users.get(0);
+                        }
+                } catch (Exception e) {
+                        throw new VacademyException("Failed to fetch parent user details: " + e.getMessage());
+                }
+
+                if (parentUser == null) {
+                        throw new VacademyException("Parent user not found for ID: " + parentUserId);
+                }
+
+                // 2. Get Children from Auth Service
+                List<ParentWithChildDTO> parentWithChildrenList = new ArrayList<>();
+                try {
+                        parentWithChildrenList = authService.getUsersWithChildren(List.of(parentUserId));
+                } catch (Exception e) {
+                        // Log error but continue
+                }
+
+                List<UserDTO> childrenUsers = parentWithChildrenList.stream()
+                                .map(ParentWithChildDTO::getChild)
+                                .filter(Objects::nonNull)
+                                .toList();
+
+                // 3. For each child, get applications and enrollments
+                List<ChildDetailsDTO> childDetailsList = new ArrayList<>();
+
+                for (UserDTO child : childrenUsers) {
+
+                        // Get applications for child (student) or if child was the submitter (user)
+                        List<AudienceResponse> applications = audienceResponseRepository
+                                        .findByUserIdOrStudentUserId(child.getId(), child.getId());
+
+                        // Get enrollments for child
+                        List<Student> enrollments = instituteStudentRepository.findByUserId(child.getId());
+
+                        childDetailsList.add(
+                                        ChildDetailsDTO.builder()
+                                                        .childInfo(child)
+                                                        .applications(applications)
+                                                        .enrollments(enrollments)
+                                                        .build());
+                }
+
+                return ParentWithChildrenResponseDTO.builder()
+                                .parentInfo(parentUser)
+                                .children(childDetailsList)
+                                .build();
         }
 }

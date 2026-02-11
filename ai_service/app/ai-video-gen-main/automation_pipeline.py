@@ -424,15 +424,15 @@ class GoogleCloudTTSClient:
         # Request timepoints for SSML marks
         # Note: Time pointing may not be available in all API versions/voices
         try:
-            # Try using TimepointType enum (newer API versions)
-            response = client.synthesize_speech(
-                request={
-                    "input": input_text,
-                    "voice": voice,
-                    "audio_config": audio_config,
-                    "enable_time_pointing": ["SSML_MARK"]
-                }
+            request = texttospeech.SynthesizeSpeechRequest(
+                input=input_text,
+                voice=voice,
+                audio_config=audio_config,
+                enable_time_pointing=[
+                    texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
+                ]
             )
+            response = client.synthesize_speech(request=request)
         except Exception as tp_error:
             # Fallback: synthesize without timepoints if API doesn't support it
             print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis without SSML marks")

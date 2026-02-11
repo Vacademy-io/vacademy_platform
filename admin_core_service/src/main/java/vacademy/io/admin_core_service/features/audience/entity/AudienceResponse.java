@@ -57,7 +57,8 @@ public class AudienceResponse {
 
     /**
      * Date used for workflow day-difference filtering.
-     * Can be offset from creation date based on audience workflow_setting.offset_day
+     * Can be offset from creation date based on audience
+     * workflow_setting.offset_day
      */
     @Column(name = "workflow_activate_day_at")
     private Timestamp workflowActivateDayAt;
@@ -73,6 +74,12 @@ public class AudienceResponse {
 
     @Column(name = "applicant_id")
     private String applicantId;
+
+    @Column(name = "conversion_status", length = 50)
+    private String conversionStatus;
+
+    @Column(name = "overall_status", length = 50)
+    private String overallStatus;
 
     /**
      * Constructor from DTO

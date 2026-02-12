@@ -8,7 +8,7 @@ import { SessionDetails } from "./-types/types";
 
 import { useNavigate } from "@tanstack/react-router";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { getAllPackageSessionIds } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { useMarkAttendance } from "./-hooks/useMarkAttendance";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -53,7 +53,7 @@ function RouteComponent() {
 
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
-  const [batchId, setBatchId] = useState<string>("");
+  const [batchIds, setBatchIds] = useState<string[]>([]);
   const [selectedView, setSelectedView] = useState<string>("list");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [dayModalOpen, setDayModalOpen] = useState<boolean>(false);
@@ -67,6 +67,8 @@ function RouteComponent() {
   const [startDateFilter, setStartDateFilter] = useState<string>("");
   const [endDateFilter, setEndDateFilter] = useState<string>("");
   const [apiPage, setApiPage] = useState<number>(0);
+  const [upcomingPage, setUpcomingPage] = useState<number>(0); // Client-side pagination for upcoming sessions
+  const SESSIONS_PER_PAGE = 5;
 
   const clearFilters = () => {
     setStartDateFilter("");
@@ -87,11 +89,12 @@ function RouteComponent() {
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
   useEffect(() => {
-    const fetchBatchId = async () => {
-      const id = await getPackageSessionId();
-      setBatchId(id);
+    const fetchBatchIds = async () => {
+      const ids = await getAllPackageSessionIds();
+      console.log('Fetched batch IDs:', ids);
+      setBatchIds(ids);
     };
-    fetchBatchId();
+    fetchBatchIds();
   }, []);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -102,7 +105,7 @@ function RouteComponent() {
     isLoading,
     isFetching,
     error,
-  } = useLiveSessions(batchId, {
+  } = useLiveSessions(batchIds, {
     startDate:
       selectedView === "calendar"
         ? formatDateToISO(
@@ -115,7 +118,7 @@ function RouteComponent() {
           new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0)
         )
         : endDateFilter || undefined,
-    size: selectedView === "list" ? 10 : 500,
+    size: 500,
     page: selectedView === "list" ? apiPage : 0,
   });
 
@@ -165,7 +168,7 @@ function RouteComponent() {
     }
     const now = new Date();
 
-    let sessionDate, waitingRoomStart;
+    let sessionDate, sessionEndDate, waitingRoomStart;
 
     if (session.timezone) {
       // Use timezone-aware calculation
@@ -174,6 +177,17 @@ function RouteComponent() {
         session.start_time,
         session.timezone
       );
+      sessionEndDate = convertSessionTimeToUserTimezone(
+        session.meeting_date,
+        session.last_entry_time,
+        session.timezone
+      );
+
+      // If end time is before start time, session spans midnight - add 1 day
+      if (sessionEndDate < sessionDate) {
+        sessionEndDate = new Date(sessionEndDate.getTime() + 24 * 60 * 60 * 1000);
+      }
+
       waitingRoomStart = new Date(sessionDate);
       waitingRoomStart.setMinutes(
         waitingRoomStart.getMinutes() - session.waiting_room_time
@@ -181,6 +195,13 @@ function RouteComponent() {
     } else {
       // Fallback to original logic
       sessionDate = new Date(`${session.meeting_date}T${session.start_time}`);
+      sessionEndDate = new Date(`${session.meeting_date}T${session.last_entry_time}`);
+
+      // If end time is before start time, session spans midnight - add 1 day
+      if (sessionEndDate < sessionDate) {
+        sessionEndDate = new Date(sessionEndDate.getTime() + 24 * 60 * 60 * 1000);
+      }
+
       waitingRoomStart = new Date(sessionDate);
       waitingRoomStart.setMinutes(
         waitingRoomStart.getMinutes() - session.waiting_room_time
@@ -191,6 +212,13 @@ function RouteComponent() {
     const isBeforeWaitingRoom = now < waitingRoomStart;
     const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
     const isLiveClassStarted = now >= sessionDate;
+    const hasSessionEnded = now > sessionEndDate;
+
+    // If session has ended, show error
+    if (hasSessionEnded) {
+      toast.error("This class has ended");
+      return;
+    }
 
     // If it's before waiting room time, show error
     if (isBeforeWaitingRoom) {
@@ -340,7 +368,7 @@ function RouteComponent() {
 
     return (
       <div
-        key={session.session_id}
+        key={session.schedule_id}
         className="group p-4 border rounded-xl bg-white dark:bg-neutral-900 hover:bg-primary-50/30 dark:hover:bg-primary-900/20 border-neutral-200 dark:border-neutral-800 hover:border-primary-200/60 dark:hover:border-primary-700/60 hover:shadow-sm transition-all duration-200 w-full"
       >
         <div className="flex justify-between items-start">
@@ -366,15 +394,36 @@ function RouteComponent() {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1 text-sm text-neutral-600 mb-2">
-              <MapPin
-                size={16}
-                className="text-neutral-500 dark:text-neutral-400"
-              />
-              <span className="capitalize dark:text-neutral-300">
-                {session.subject}
-              </span>
-            </div>
+            {/* Subject - Display if not 'none', for both Live and Upcoming */}
+            {session.subject && session.subject.toLowerCase() !== 'none' && (
+              <div className="flex items-center gap-1 text-sm text-neutral-600 mb-2">
+                <MapPin
+                  size={16}
+                  className="text-neutral-500 dark:text-neutral-400"
+                />
+                <span className="capitalize dark:text-neutral-300">
+                  {session.subject}
+                </span>
+              </div>
+            )}
+
+            {/* Date - Display only for Upcoming sessions */}
+            {!isLive && (
+              <div className="flex items-center gap-1 text-sm text-neutral-600 mb-2">
+                <Calendar
+                  size={16}
+                  className="text-neutral-500 dark:text-neutral-400"
+                />
+                <span className="capitalize dark:text-neutral-300">
+                  {new Date(session.meeting_date).toLocaleDateString("en-US", {
+                    weekday: "short",
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
+              </div>
+            )}
           </div>
           {isLive && session.meeting_link && (
             <Button
@@ -542,12 +591,14 @@ function RouteComponent() {
                                   )}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-1">
-                                <MapPin size={14} />
-                                <span className="capitalize dark:text-neutral-300">
-                                  {session.subject}
-                                </span>
-                              </div>
+                              {session.subject && session.subject.toLowerCase() !== "none" && (
+                                <div className="flex items-center gap-1">
+                                  <MapPin size={14} />
+                                  <span className="capitalize dark:text-neutral-300">
+                                    {session.subject}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                           {session.meeting_link && (
@@ -616,12 +667,14 @@ function RouteComponent() {
                                   )}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-1">
-                                <MapPin size={14} />
-                                <span className="capitalize dark:text-neutral-300">
-                                  {session.subject}
-                                </span>
-                              </div>
+                              {session.subject && session.subject.toLowerCase() !== "none" && (
+                                <div className="flex items-center gap-1">
+                                  <MapPin size={14} />
+                                  <span className="capitalize dark:text-neutral-300">
+                                    {session.subject}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1035,17 +1088,45 @@ function RouteComponent() {
                   const filteredUpcomingSessions =
                     filterSessions(upcomingSessions);
 
-
-
+                  // Client-side pagination
+                  const startIndex = upcomingPage * SESSIONS_PER_PAGE;
+                  const endIndex = startIndex + SESSIONS_PER_PAGE;
+                  const paginatedSessions = filteredUpcomingSessions.slice(startIndex, endIndex);
+                  const totalPages = Math.ceil(filteredUpcomingSessions.length / SESSIONS_PER_PAGE);
 
                   return (
                     <>
                       {filteredUpcomingSessions.length > 0 ? (
-                        <div className="space-y-4 w-full">
-                          {filteredUpcomingSessions.map((session) =>
-                            renderSession(session, false)
-                          )}
-                        </div>
+                        <>
+                          <div className="space-y-4 w-full">
+                            {paginatedSessions.map((session) =>
+                              renderSession(session, false)
+                            )}
+                          </div>
+
+                          {/* Client-side pagination for upcoming sessions */}
+                          <div className="mt-6 flex items-center justify-center gap-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setUpcomingPage(p => Math.max(0, p - 1))}
+                              disabled={upcomingPage === 0}
+                            >
+                              Previous
+                            </Button>
+                            <span className="text-sm text-neutral-600 dark:text-neutral-300">
+                              Page {upcomingPage + 1} of {totalPages}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setUpcomingPage(p => Math.min(totalPages - 1, p + 1))}
+                              disabled={upcomingPage >= totalPages - 1}
+                            >
+                              Next
+                            </Button>
+                          </div>
+                        </>
                       ) : (
                         <div className="text-neutral-600 dark:text-neutral-300 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
                           <div className="text-center">
@@ -1072,7 +1153,7 @@ function RouteComponent() {
               </div>
 
               {/* API Pagination - To navigate through the sized results */}
-              {(sessions as any)?.totalReturned >= 10 || apiPage > 0 ? (
+              {(sessions as any)?.totalReturned >= 500 || apiPage > 0 ? (
                 <div className="mt-12 flex flex-col items-center gap-4 border-t pt-8">
                   <div className="text-sm text-neutral-500">
                     Viewing Page {apiPage + 1}

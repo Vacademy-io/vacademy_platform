@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import CoursesPage from "./CoursesPage.tsx";
 import { useCatalogStore } from "../-store/catalogStore.ts";
@@ -11,6 +11,7 @@ import {
 import { getInstituteId } from "@/constants/helper.ts";
 import { getUserId } from "@/constants/getUserId.ts";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance.ts";
+import { toast } from "sonner";
 import HeroSection from "../-component1/HeroSection.tsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IconBooks, IconChartBar, IconCheck } from "@tabler/icons-react";
@@ -23,6 +24,26 @@ import type { StudentAllCoursesTabId } from "@/types/student-display-settings";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
 import { parseDripConditions } from "@/services/getIsDrippingEnable";
 import { getChatbotSettings } from "@/services/chatbot-settings.ts";
+
+/** Merge unique instructors from course list into existing list (by id). Ensures instructors attached to courses appear in the filter. */
+function mergeInstructorsFromCourses(
+  current: { id: string; full_name?: string; username?: string }[],
+  courses: { instructors?: { id: string; full_name?: string; username?: string }[] }[]
+): { id: string; full_name?: string; username?: string }[] {
+  const byId = new Map(current.map((i) => [i.id, i]));
+  for (const course of courses) {
+    for (const inst of course.instructors || []) {
+      if (inst?.id && typeof inst.id === "string" && !byId.has(inst.id)) {
+        byId.set(inst.id, {
+          id: inst.id,
+          full_name: inst.full_name ?? inst.username,
+          username: inst.username,
+        });
+      }
+    }
+  }
+  return Array.from(byId.values());
+}
 
 const CourseCatalougePage: React.FC = () => {
   const [allowLeanersToCreateCourses, setAllowLeanersToCreateCourses] =
@@ -134,17 +155,31 @@ const CourseCatalougePage: React.FC = () => {
         return { createdAt: "DESC" };
       case "Oldest":
         return { createdAt: "ASC" };
-      // case "Popularity":
-      //     return { minPlanActualPrice: "ASC" };
-      // case "Rating":
-      //     return { rating: "DESC" };
       default:
         return { createdAt: "DESC" };
     }
   };
 
+  /** Learner-packages API may expect snake_case in sort_columns; use this for the main request. */
+  const getSortPayloadSnake = (sort: string) => {
+    switch (sort) {
+      case "Oldest":
+        return { created_at: "ASC" };
+      default:
+        return { created_at: "DESC" };
+    }
+  };
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const fetchCoursesForTab = useCallback(
     async (tabType: "ALL" | "PROGRESS" | "COMPLETED") => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       if (import.meta.env.DEV) {
         console.debug("[Catalog] fetch start", {
           tabType,
@@ -159,19 +194,20 @@ const CourseCatalougePage: React.FC = () => {
       setIsLoadingByTab((prev) => ({ ...prev, [tabType]: true }));
       try {
         const instituteId = await getInstituteId();
+        const body = {
+          status: [] as string[],
+          level_ids: selectedLevels ?? [],
+          faculty_ids: selectedInstructors ?? [],
+          search_by_name: debouncedSearch ?? "",
+          tag: selectedTags ?? [],
+          min_percentage_completed: 0,
+          max_percentage_completed: 0,
+          type: tabType,
+          sort_columns: getSortPayloadSnake(sortOption),
+        };
         const response = await authenticatedAxiosInstance.post(
           urlPublicCourseDetails,
-          {
-            status: [],
-            level_ids: selectedLevels,
-            faculty_ids: selectedInstructors,
-            search_by_name: debouncedSearch,
-            tag: selectedTags,
-            min_percentage_completed: 0,
-            max_percentage_completed: 0,
-            type: tabType,
-            sort_columns: getSortPayload(sortOption),
-          },
+          body,
           {
             params: {
               instituteId,
@@ -182,45 +218,65 @@ const CourseCatalougePage: React.FC = () => {
               accept: "*/*",
               "Content-Type": "application/json",
             },
+            signal: controller.signal,
           }
         );
+
+        if (controller.signal.aborted) return;
 
         const data = response.data as CoursePackageResponse;
         if (tabType === "ALL") setAllCourses(data);
         if (tabType === "PROGRESS") setProgressCourses(data);
         if (tabType === "COMPLETED") setCompletedCourses(data);
 
-        // Update drip conditions store for each course in the response
+        if (data.content?.length) {
+          const current = useCatalogStore.getState().instructor;
+          const merged = mergeInstructorsFromCourses(current, data.content);
+          setInstructors(merged);
+        }
+
         if (data.content && Array.isArray(data.content)) {
           data.content.forEach((course) => {
             if (course.id && course.drip_condition_json) {
-              // Clear old condition first to ensure fresh data
               clearDripCondition(course.id);
               setDripCondition(course.id, course.drip_condition_json);
             } else if (course.id && !course.drip_condition_json) {
-              // Clear drip condition if not present in API response
               clearDripCondition(course.id);
             }
           });
         }
-      } catch {
-        // Fallback only for ALL tab (older endpoint) if needed
-        if (tabType === "ALL") {
+      } catch (err) {
+        if (controller.signal.aborted || axios.isCancel(err)) return;
+
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+        const message = axios.isAxiosError(err) ? err.response?.data : err;
+
+        if (import.meta.env.DEV) {
+          console.error("[Catalog] learner-packages search failed", { status, message, tabType });
+        }
+        if (status === 500) {
+          toast.error("Something went wrong while loading courses. Please try again.");
+        }
+
+        if (tabType === "ALL" && status !== 500) {
           try {
             const { urlCourseDetails } = await import("@/constants/urls");
             const instituteId = await getInstituteId();
+            const body = {
+              status: [] as string[],
+              level_ids: selectedLevels ?? [],
+              faculty_ids: selectedInstructors ?? [],
+              created_by_user_id: null as string | null,
+              search_by_name: debouncedSearch ?? "",
+              tag: selectedTags ?? [],
+              min_percentage_completed: 0,
+              max_percentage_completed: 0,
+              type: "ALL" as const,
+              sort_columns: getSortPayload(sortOption),
+            };
             const response = await authenticatedAxiosInstance.post(
               urlCourseDetails,
-              {
-                status: [],
-                level_ids: selectedLevels,
-                faculty_ids: selectedInstructors,
-                search_by_name: debouncedSearch,
-                tag: selectedTags,
-                min_percentage_completed: 0,
-                max_percentage_completed: 0,
-                sort_columns: getSortPayload(sortOption),
-              },
+              body,
               {
                 params: {
                   instituteId,
@@ -231,12 +287,17 @@ const CourseCatalougePage: React.FC = () => {
                   accept: "*/*",
                   "Content-Type": "application/json",
                 },
+                signal: controller.signal,
               }
             );
+            if (controller.signal.aborted) return;
             const fallbackData = response.data as CoursePackageResponse;
             setAllCourses(fallbackData);
-
-            // Update drip conditions store for fallback response as well
+            if (fallbackData.content?.length) {
+              const current = useCatalogStore.getState().instructor;
+              const merged = mergeInstructorsFromCourses(current, fallbackData.content);
+              setInstructors(merged);
+            }
             if (fallbackData.content && Array.isArray(fallbackData.content)) {
               fallbackData.content.forEach((course) => {
                 if (course.id && course.drip_condition_json) {
@@ -248,7 +309,7 @@ const CourseCatalougePage: React.FC = () => {
               });
             }
           } catch {
-            // swallow
+            // swallow fallback errors
           }
         }
       } finally {
@@ -264,6 +325,7 @@ const CourseCatalougePage: React.FC = () => {
       sortOption,
       setDripCondition,
       clearDripCondition,
+      setInstructors,
     ]
   );
 

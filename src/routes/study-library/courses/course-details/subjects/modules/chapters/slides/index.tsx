@@ -923,7 +923,10 @@ function Slides() {
       className="md:my-0 md:mx-3 lg:mx-4"
     >
       <InitStudyLibraryProvider>
-        <ModulesWithChaptersProvider subjectId={subjectId}>
+        <ModulesWithChaptersProvider
+          subjectId={subjectId}
+          packageSessionId={sessionId || undefined}
+        >
           <SidebarProvider defaultOpen={false}>
             {activeItem?.id === "feedback-slide" ? (
               <FeedbackPage />

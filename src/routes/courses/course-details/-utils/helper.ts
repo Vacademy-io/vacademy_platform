@@ -49,6 +49,8 @@ interface CourseWithSessionsType {
       id: string;
       name: string;
       duration_in_days: number;
+      package_session_id?: string;
+      read_time_in_minutes?: number;
       subjects: SubjectType[];
     }>;
     session_dto: {
@@ -75,7 +77,9 @@ const createDefaultSubject = (): SubjectType => ({
 const tryGetPublicUrl = async (
   mediaId: string | null | undefined
 ): Promise<string> => {
-  if (!mediaId) return "";
+  if (!mediaId || String(mediaId).trim() === "") return "";
+  const trimmed = String(mediaId).trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
   try {
     const url = await getPublicUrlWithoutLogin(mediaId);
     return url || "";
@@ -93,6 +97,24 @@ function isJson(str: string): boolean {
   }
 }
 
+/** Extract a direct http(s) URL from a value that may be a URL or JSON-wrapped (e.g. "\"https://...\""). */
+function extractDirectUrl(value: string | null | undefined): string | null {
+  if (!value || typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "string") return null;
+    const unquoted = parsed.replace(/^["']|["']$/g, "").trim();
+    if (/^https?:\/\//i.test(unquoted)) return unquoted;
+  } catch {
+    const unquoted = raw.replace(/^["']|["']$/g, "").trim();
+    if (/^https?:\/\//i.test(unquoted)) return unquoted;
+  }
+  return null;
+}
+
 export const transformApiDataToCourseData = async (
   apiData: CourseWithSessionsType
 ) => {
@@ -103,19 +125,31 @@ export const transformApiDataToCourseData = async (
       ? JSON.parse(apiData.course.course_media_id)
       : apiData.course.course_media_id;
 
-    const [coursePreviewImageMediaId, courseBannerMediaId] = await Promise.all([
-      tryGetPublicUrl(apiData.course.course_preview_image_media_id),
-      tryGetPublicUrl(apiData.course.course_banner_media_id),
-    ]);
+    let coursePreviewImageMediaId = await tryGetPublicUrl(
+      apiData.course.course_preview_image_media_id
+    );
+    let courseBannerMediaId = await tryGetPublicUrl(
+      apiData.course.course_banner_media_id
+    );
+    const course = apiData.course as Record<string, unknown>;
+    const directPreview =
+      (course.course_preview_image_url as string) ??
+      (course.coursePreviewImageUrl as string);
+    const directBanner =
+      (course.course_banner_image_url as string) ??
+      (course.courseBannerImageUrl as string);
+    if (!coursePreviewImageMediaId && directPreview)
+      coursePreviewImageMediaId = directPreview;
+    if (!courseBannerMediaId && directBanner)
+      courseBannerMediaId = directBanner;
 
     let courseMediaPreview = "";
-    // Only try to get media URL if course_media_id is not empty
-    if (
-      apiData.course.course_media_id &&
-      apiData.course.course_media_id.trim() !== ""
-    ) {
-      // Check if it's a direct YouTube URL
-      if (isYouTubeUrl(apiData.course.course_media_id)) {
+    const rawMediaId = apiData.course.course_media_id?.trim() ?? "";
+    if (rawMediaId !== "") {
+      const directMediaUrl = extractDirectUrl(apiData.course.course_media_id);
+      if (directMediaUrl) {
+        courseMediaPreview = directMediaUrl;
+      } else if (isYouTubeUrl(apiData.course.course_media_id)) {
         courseMediaPreview = apiData.course.course_media_id;
       } else if (
         isJson(apiData.course.course_media_id) &&
@@ -126,8 +160,6 @@ export const transformApiDataToCourseData = async (
         const mediaId = isJson(apiData.course.course_media_id)
           ? courseMediaImage.id
           : apiData.course.course_media_id;
-
-        // Only call getPublicUrl if mediaId is not empty
         if (mediaId && mediaId.trim() !== "") {
           courseMediaPreview = await getPublicUrlWithoutLogin(mediaId);
         }
@@ -185,6 +217,7 @@ export const transformApiDataToCourseData = async (
             id: level.id,
             name: level.name,
             duration_in_days: level.duration_in_days,
+            package_session_id: level.package_session_id,
             subjects: subjects.map((subject) => ({
               id: subject.id,
               subject_name: subject.subject_name,
@@ -216,17 +249,23 @@ export function getSubjectDetails(
   currentSessionId: string,
   currentLevelId: string
 ): SubjectType[] {
-  const session = courseData.courseData.sessions.find(
-    (s) => s.sessionDetails.id === currentSessionId
+  const sessions = courseData?.courseData?.sessions;
+  if (!Array.isArray(sessions)) return [];
+
+  const session = sessions.find(
+    (s) => s?.sessionDetails?.id === currentSessionId
   );
 
   if (!session) return [];
 
-  const level = session.levelDetails.find((l) => l.id === currentLevelId);
+  const levelDetails = session.levelDetails;
+  if (!Array.isArray(levelDetails)) return [];
+
+  const level = levelDetails.find((l) => l?.id === currentLevelId);
 
   if (!level || !level?.subjects) return [];
 
-  return level?.subjects?.map(
+  return level.subjects.map(
     (subject, index): SubjectType => ({
       id: subject.id,
       subject_name: subject.subject_name,

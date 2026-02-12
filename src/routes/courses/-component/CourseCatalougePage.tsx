@@ -8,12 +8,33 @@ import {
     urlCourseDetails,
     urlInstructor,
 } from "@/constants/urls.ts";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance.ts";
 import CourseListHeader from "./CourseListHeader.tsx";
 import { getPublicUrl } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/excalidrawUtils.ts";
 import { useTheme } from "@/providers/theme/theme-provider.tsx";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 // Auth modal is controlled within CourseListHeader via URL params
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+
+/** Merge unique instructors from course list into existing list (by id). Ensures instructors attached to courses appear in the filter. */
+function mergeInstructorsFromCourses(
+  current: { id: string; full_name?: string; username?: string }[],
+  courses: { instructors?: { id: string; full_name?: string; username?: string }[] }[]
+): { id: string; full_name?: string; username?: string }[] {
+  const byId = new Map(current.map((i) => [i.id, i]));
+  for (const course of courses) {
+    for (const inst of course.instructors || []) {
+      if (inst?.id && typeof inst.id === "string" && !byId.has(inst.id)) {
+        byId.set(inst.id, {
+          id: inst.id,
+          full_name: inst.full_name ?? inst.username,
+          username: inst.username,
+        });
+      }
+    }
+  }
+  return Array.from(byId.values());
+}
 
 interface CourseCatalougePageProps {
     instituteId: string;
@@ -63,18 +84,21 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
     const fetchPackages = async (search = "") => {
         try {
             console.log("[CourseCatalougePage] Fetching packages for instituteId:", instituteId);
-            const response = await axios.post(
+            const body = {
+                status: [] as string[],
+                level_ids: [] as string[],
+                faculty_ids: [] as string[],
+                created_by_user_id: null as string | null,
+                search_by_name: search,
+                tag: [] as string[],
+                min_percentage_completed: 0,
+                max_percentage_completed: 0,
+                type: "ALL" as const,
+                sort_columns: getSortPayload(sortOption),
+            };
+            const response = await authenticatedAxiosInstance.post(
                 urlCourseDetails,
-                {
-                    status: [],
-                    level_ids: [],
-                    faculty_ids: [],
-                    search_by_name: search,
-                    tag: [],
-                    min_percentage_completed: 0,
-                    max_percentage_completed: 0,
-                    sort_columns: getSortPayload(sortOption),
-                },
+                body,
                 {
                     params: {
                         instituteId: instituteId,
@@ -88,7 +112,13 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                 }
             );
             console.log("[CourseCatalougePage] Successfully fetched packages:", response.data.content?.length || 0);
-            setCourseData(response.data.content);
+            const content = response.data.content || [];
+            setCourseData(content);
+            if (content.length) {
+                const current = useCatalogStore.getState().instructor;
+                const merged = mergeInstructorsFromCourses(current, content);
+                setInstructors(merged);
+            }
         } catch (error) {
             console.error("[CourseCatalougePage] Error fetching packages:", error);
         }
@@ -113,18 +143,21 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
 
     const handleApplyFilters = async () => {
         try {
-            const response = await axios.post(
+            const body = {
+                status: [] as string[],
+                level_ids: selectedLevels ?? [],
+                faculty_ids: [] as string[],
+                created_by_user_id: (selectedInstructors?.length ? selectedInstructors[0] : null) as string | null,
+                search_by_name: searchTerm ?? "",
+                tag: selectedTags ?? [],
+                min_percentage_completed: 0,
+                max_percentage_completed: 0,
+                type: "ALL" as const,
+                sort_columns: getSortPayload(sortOption),
+            };
+            const response = await authenticatedAxiosInstance.post(
                 urlCourseDetails,
-                {
-                    status: [],
-                    level_ids: selectedLevels,
-                    faculty_ids: selectedInstructors,
-                    search_by_name: searchTerm,
-                    tag: selectedTags,
-                    min_percentage_completed: 0,
-                    max_percentage_completed: 0,
-                    sort_columns: getSortPayload(sortOption),
-                },
+                body,
                 {
                     params: {
                         instituteId: instituteId,
@@ -137,7 +170,13 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                     },
                 }
             );
-            setCourseData(response.data.content);
+            const content = response.data.content || [];
+            setCourseData(content);
+            if (content.length) {
+                const current = useCatalogStore.getState().instructor;
+                const merged = mergeInstructorsFromCourses(current, content);
+                setInstructors(merged);
+            }
         } catch (error) {
             console.error("Error applying filters:", error);
         }

@@ -445,10 +445,16 @@ export const Route = createRootRouteWithContext<{
     console.log("[__root] Checking route:", location.pathname);
     console.log("[__root] Is public route:", isPublicRoute(location.pathname));
 
-    // Global Auto-Login Support via URL Tokens
-    const urlParams = new URL(window.location.href).searchParams;
+    // Global Auto-Login Support via URL Tokens (?sso=true&accessToken=...&refreshToken=...&redirect=/dashboard)
+    // Read from both window and router location so params are found on first load
+    const searchString =
+      (typeof window !== "undefined" && window.location.search) ||
+      location.search ||
+      "";
+    const urlParams = new URLSearchParams(searchString);
     const urlAccessToken = urlParams.get("accessToken");
     const urlRefreshToken = urlParams.get("refreshToken");
+    const redirectPath = urlParams.get("redirect");
 
     if (urlAccessToken && urlRefreshToken) {
       console.log("[__root] Detected tokens in URL, performing auto-login...");
@@ -456,14 +462,14 @@ export const Route = createRootRouteWithContext<{
         const { performFullAuthCycle } = await import(
           "@/services/auth-cycle-service"
         );
-        // We'll need the instituteId. We can try to decode it from the token first.
         const { getTokenDecodedData } = await import(
           "@/lib/auth/sessionUtility"
         );
         const decoded = getTokenDecodedData(urlAccessToken);
-        const instituteId = decoded?.authorities
-          ? Object.keys(decoded.authorities)[0]
-          : undefined;
+        // Institute ID is the first key in JWT authorities, or fallback to institute_id claim
+        const instituteId =
+          (decoded?.authorities && Object.keys(decoded.authorities)[0]) ||
+          (decoded as { institute_id?: string })?.institute_id;
 
         if (instituteId) {
           await performFullAuthCycle(
@@ -471,18 +477,23 @@ export const Route = createRootRouteWithContext<{
             instituteId
           );
 
-          // Remove tokens from URL and reload/redirect
-          const newUrl = new URL(window.location.href);
-          newUrl.searchParams.delete("accessToken");
-          newUrl.searchParams.delete("refreshToken");
-          window.history.replaceState({}, document.title, newUrl.toString());
+          // Honor redirect param (e.g. ?redirect=%2Fdashboard -> /dashboard); default to /dashboard
+          const targetPath =
+            redirectPath &&
+            redirectPath.startsWith("/") &&
+            !redirectPath.startsWith("//")
+              ? redirectPath
+              : "/dashboard";
 
-          console.log("[__root] Auto-login complete, reloading route...");
-          // We can't easily "continue" here without a redirect or reload
-          // For now, let's just let the rest of the logic proceed or throw a redirect
-          throw redirect({
-            to: location.pathname as never,
-            search: Object.fromEntries(newUrl.searchParams) as any,
+          console.log("[__root] Auto-login complete, redirecting to:", targetPath);
+          // Full page redirect so the next load sees auth state and no token params in URL
+          const origin = typeof window !== "undefined" ? window.location.origin : "";
+          window.location.replace(`${origin}${targetPath}`);
+          throw redirect({ to: targetPath as never });
+        } else {
+          console.warn("[__root] SSO: could not get instituteId from token", {
+            hasAuthorities: !!decoded?.authorities,
+            authorityKeys: decoded?.authorities ? Object.keys(decoded.authorities) : [],
           });
         }
       } catch (error) {

@@ -5,6 +5,7 @@ import {
   GET_PAYMENT_GATEWAY_DETAILS_URL,
   PEYMENT_LOG_STATUS_URL,
   ENROLLMENT_FORM_SUBMIT,
+  ENROLLMENT_POLICY_URL,
 } from "@/constants/urls";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import axios from "axios";
@@ -379,24 +380,24 @@ export const handleEnrollLearnerForPayment = async ({
   const stripe_request =
     paymentVendor === "STRIPE"
       ? {
-          payment_method_id: paymentMethodId,
-          card_last4: null,
-          customer_id: null,
-          return_url: returnUrl || "",
-        }
+        payment_method_id: paymentMethodId,
+        card_last4: null,
+        customer_id: null,
+        return_url: returnUrl || "",
+      }
       : {};
 
   const eway_request =
     paymentVendor === "EWAY" && ewayPaymentData
       ? {
-          customer_id: null,
-          card_name: ewayPaymentData.cardData.name,
-          expiry_month: ewayPaymentData.cardData.expiryMonth,
-          expiry_year: ewayPaymentData.cardData.expiryYear,
-          card_number: ewayPaymentData.encryptedNumber, // Already has "eCrypted:" prefix
-          cvn: ewayPaymentData.encryptedCVN, // Already has "eCrypted:" prefix
-          country_code: "au",
-        }
+        customer_id: null,
+        card_name: ewayPaymentData.cardData.name,
+        expiry_month: ewayPaymentData.cardData.expiryMonth,
+        expiry_year: ewayPaymentData.cardData.expiryYear,
+        card_number: ewayPaymentData.encryptedNumber, // Already has "eCrypted:" prefix
+        cvn: ewayPaymentData.encryptedCVN, // Already has "eCrypted:" prefix
+        country_code: "au",
+      }
       : {};
 
   // For Razorpay: First call sends empty request to create order,
@@ -405,18 +406,18 @@ export const handleEnrollLearnerForPayment = async ({
     paymentVendor === "RAZORPAY"
       ? razorpayPaymentData
         ? {
-            customer_id: null,
-            contact: phoneNumber,
-            email: email,
-            razorpay_payment_id: razorpayPaymentData.razorpay_payment_id,
-            razorpay_order_id: razorpayPaymentData.razorpay_order_id,
-            razorpay_signature: razorpayPaymentData.razorpay_signature,
-          }
+          customer_id: null,
+          contact: phoneNumber,
+          email: email,
+          razorpay_payment_id: razorpayPaymentData.razorpay_payment_id,
+          razorpay_order_id: razorpayPaymentData.razorpay_order_id,
+          razorpay_signature: razorpayPaymentData.razorpay_signature,
+        }
         : {
-            customer_id: null,
-            contact: phoneNumber,
-            email: email,
-          }
+          customer_id: null,
+          contact: phoneNumber,
+          email: email,
+        }
       : {};
 
   const convertedData = {
@@ -509,6 +510,20 @@ export const handleGetPaymentCompletionStatus = ({
     queryFn: () => getPaymentCompletionStatus({ paymentLogId }),
     staleTime: 60 * 60 * 1000,
   };
+};
+
+// Enrollment Policy API 
+
+export const getEnrollmentPolicy = async ({
+  packageSessionId,
+}: {
+  packageSessionId: string;
+}) => {
+  const response = await axios({
+    method: "GET",
+    url: `${ENROLLMENT_POLICY_URL}/${packageSessionId}`,
+  });
+  return response?.data;
 };
 
 export const getPublicInstituteDetails = async ({

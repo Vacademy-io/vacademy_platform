@@ -9,6 +9,7 @@ import {
   handleGetPublicInstituteDetails,
   ReferRequest,
   submitEnrollmentForm,
+  getEnrollmentPolicy,
 } from "./-services/enroll-invite-services";
 import { handleGetInstituteCustomFields } from "./-services/custom-fields-setup";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -34,7 +35,6 @@ import { toast } from "sonner";
 import { RazorpayCheckoutFormRef } from "./-components/razorpay-checkout-form";
 import { InstituteBrandingComponent } from "@/components/common/institute-branding";
 
-// Import step components
 import {
   RegistrationStep,
   PaymentSelectionStep,
@@ -47,6 +47,9 @@ import {
   FinalCourseData,
   EnrollmentData,
   SelectedPayment,
+  EnrollmentPolicyDialog,
+  EnrollmentPolicyResponse,
+  EnrollmentPolicyDialogType,
 } from "./-components";
 import {
   getPaymentVendor,
@@ -125,10 +128,17 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   const [error, setError] = useState<string | null>(null);
   // Ref to prevent double auto-enrollment for FREE courses
   const hasAutoEnrolledRef = useRef(false);
+  // Ref to track if prefill data has been applied (prevents double reset)
+  const hasPrefillAppliedRef = useRef(false);
   const [activePackageSessionId, setActivePackageSessionId] = useState<
     string | null
   >(null);
   const [submittedUserId, setSubmittedUserId] = useState<string | null>(null);
+
+  // Enrollment Policy Dialog state
+  const [enrollmentPolicyDialogOpen, setEnrollmentPolicyDialogOpen] = useState(false);
+  const [enrollmentPolicyDialogType, setEnrollmentPolicyDialogType] = useState<EnrollmentPolicyDialogType>("success_with_actions");
+  const [enrollmentPolicyResponse, setEnrollmentPolicyResponse] = useState<EnrollmentPolicyResponse | null>(null);
 
   const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
   const [privacyPolicyUrl, setPrivacyPolicyUrl] = useState<string | null>(null);
@@ -157,6 +167,8 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     targetAudience: "",
   });
   const [referRequest, setReferRequest] = useState<ReferRequest | null>(null);
+  // Ref to track the latest referRequest value (to avoid closure issues)
+  const referRequestRef = useRef<ReferRequest | null>(null);
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
     registrationData: {},
     selectedPayment: null,
@@ -169,6 +181,13 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   });
 
   const { instituteId, inviteCode, ref } = Route.useSearch();
+  
+  // Keep ref in sync with state for referRequest (to avoid closure issues)
+  useEffect(() => {
+    referRequestRef.current = referRequest;
+    console.log("[enroll-form] referRequest state updated:", referRequest);
+  }, [referRequest]);
+
   const { data: instituteData, isLoading: isInstituteLoading } =
     useSuspenseQuery(handleGetPublicInstituteDetails({ instituteId }));
 
@@ -305,8 +324,91 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   useEffect(() => {
     if (finalCustomFields && finalCustomFields.length > 0) {
       const newDefaultValues = generateDefaultValues(finalCustomFields);
+      let shouldResetForm = false;
+      let hasPrefillData = false;
 
-      form.reset(newDefaultValues);
+      // Check for prefill data from previous upgrade flow
+      try {
+        const prefillDataStr = localStorage.getItem("enrollment_prefill_data");
+        if (prefillDataStr) {
+          console.log("[Prefill] Found prefill data in LocalStorage");
+          const prefillData = JSON.parse(prefillDataStr);
+          hasPrefillData = true;
+
+          Object.keys(prefillData).forEach((key) => {
+            // value is the string value
+            const val = prefillData[key];
+
+            // 1. Try exact key match
+            if (newDefaultValues[key]) {
+              console.log(`[Prefill] Exact match for ${key}`);
+              newDefaultValues[key].value = val;
+            }
+            // 2. Try Smart Matching for standard fields if not a "smart" key itself
+            else if (!key.startsWith('__smart_')) {
+              // Skip non-matching standard keys
+            }
+          });
+
+          // 3. Apply Smart Keys if exist and target field is empty
+          if (prefillData['__smart_email']) {
+            const emailKey = Object.keys(newDefaultValues).find(k =>
+              k.toLowerCase().includes('email') || k.toLowerCase().includes('mail')
+            );
+            if (emailKey && !newDefaultValues[emailKey].value) {
+              console.log(`[Prefill] Smart match for Email -> ${emailKey}`);
+              newDefaultValues[emailKey].value = prefillData['__smart_email'];
+            }
+          }
+
+          if (prefillData['__smart_phone']) {
+            const phoneKey = Object.keys(newDefaultValues).find(k =>
+              k.toLowerCase().includes('phone') || k.toLowerCase().includes('mobile') || k.toLowerCase().includes('contact')
+            );
+            if (phoneKey && !newDefaultValues[phoneKey].value) {
+              console.log(`[Prefill] Smart match for Phone -> ${phoneKey}`);
+              newDefaultValues[phoneKey].value = prefillData['__smart_phone'];
+            }
+          }
+
+          if (prefillData['__smart_name']) {
+            const nameKey = Object.keys(newDefaultValues).find(k =>
+              k.toLowerCase().includes('name') || k.toLowerCase().includes('full_name')
+            );
+            if (nameKey && !newDefaultValues[nameKey].value) {
+              console.log(`[Prefill] Smart match for Name -> ${nameKey}`);
+              newDefaultValues[nameKey].value = prefillData['__smart_name'];
+            }
+          }
+
+          // Remove from localStorage after reading
+          localStorage.removeItem("enrollment_prefill_data");
+
+          // Mark that prefill has been applied
+          hasPrefillAppliedRef.current = true;
+          shouldResetForm = true;
+        } else {
+          console.log("[Prefill] No prefill data found");
+          // Only reset form with empty values if prefill was never applied before
+          // This prevents React Strict Mode / double-render from clearing prefilled values
+          if (!hasPrefillAppliedRef.current) {
+            shouldResetForm = true;
+          } else {
+            console.log("[Prefill] Skipping form reset to preserve prefilled values");
+          }
+        }
+      } catch (e) {
+        console.error("Error applying prefill data", e);
+        // On error, still allow form reset if no prefill was applied
+        if (!hasPrefillAppliedRef.current) {
+          shouldResetForm = true;
+        }
+      }
+
+      if (shouldResetForm) {
+        console.log("[Prefill] Resetting form with values:", newDefaultValues);
+        form.reset(newDefaultValues);
+      }
     }
   }, [finalCustomFields, form, generateDefaultValues]);
 
@@ -598,11 +700,123 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     }
   };
 
+  // Helper function to fetch enrollment policy and show appropriate dialog
+  // Helper function to fetch enrollment policy and show appropriate dialog
+  const fetchAndHandleEnrollmentPolicy = async (
+    scenario: "success" | "error_already_enrolled" = "success"
+  ) => {
+    try {
+      const packageSessionId =
+        inviteData?.package_session_to_payment_options?.[0]?.package_session_id;
+
+      if (!packageSessionId) {
+        console.log(
+          "[EnrollByInvite] No package session ID available for enrollment policy"
+        );
+        return;
+      }
+
+      const policyResponse = await getEnrollmentPolicy({ packageSessionId });
+      console.log(
+        "[EnrollByInvite] Enrollment policy response:",
+        policyResponse
+      );
+
+      if (policyResponse && Object.keys(policyResponse).length > 0) {
+        setEnrollmentPolicyResponse(policyResponse);
+
+        if (scenario === "success") {
+          // Check if there are frontend actions to show
+          const hasFrontendActions =
+            policyResponse?.workflow?.enabled &&
+            policyResponse?.workflow?.frontendActions &&
+            Object.keys(policyResponse.workflow.frontendActions).length > 0;
+
+          if (hasFrontendActions) {
+            setEnrollmentPolicyDialogType("success_with_actions");
+            setEnrollmentPolicyDialogOpen(true);
+          }
+        } else if (scenario === "error_already_enrolled") {
+          // Determine strictness and type of blockage
+          let dialogType: EnrollmentPolicyDialogType = "already_enrolled";
+
+          // If there are upgrade options, it's likely a re-enrollment block with upsell
+          if (
+            policyResponse?.reenrollmentPolicy?.upgradeOptions?.paid_upgrade
+          ) {
+            dialogType = "reenrollment_blocked";
+          }
+          // If explicitly checking for paid member block (this usually requires specific error code,
+          // but we can fallback to checking if onEnrollment block message exists and looks relevant)
+          // For now, we prioritize reenrollment/already_enrolled for 510 errors.
+
+          setEnrollmentPolicyDialogType(dialogType);
+          setEnrollmentPolicyDialogOpen(true);
+        }
+      }
+    } catch (err) {
+      console.error("[EnrollByInvite] Failed to fetch enrollment policy:", err);
+      // Non-blocking - we don't prevent the enrollment flow if policy fetch fails
+    }
+  };
+
+  const handleUpgrade = (url: string) => {
+    // Save form data to LocalStorage for prefilling the next form
+    const formData = form.getValues();
+    const prefillData: Record<string, string> = {};
+
+    console.log("[Prefill] Saving form data for upgrade:", formData);
+
+    // First, save all form values with their original keys for exact matching
+    Object.keys(formData).forEach((key) => {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      const field = formData[key];
+      const val = field?.value;
+
+      if (val) {
+        prefillData[key] = val;
+      }
+    });
+
+    // Use getUserDetails for reliable extraction of Name, Email, and Phone
+    // This ensures smart keys are set correctly regardless of field key variations
+    const userDetails = getUserDetails();
+
+    if (userDetails.email) {
+      prefillData['__smart_email'] = userDetails.email;
+      console.log("[Prefill] Smart Email:", userDetails.email);
+    }
+    if (userDetails.contact) {
+      prefillData['__smart_phone'] = userDetails.contact;
+      console.log("[Prefill] Smart Phone:", userDetails.contact);
+    }
+    if (userDetails.name) {
+      prefillData['__smart_name'] = userDetails.name;
+      console.log("[Prefill] Smart Name:", userDetails.name);
+    }
+
+    try {
+      localStorage.setItem("enrollment_prefill_data", JSON.stringify(prefillData));
+      console.log("[Prefill] Saved to LocalStorage:", prefillData);
+    } catch (e) {
+      console.error("Failed to save prefill data", e);
+    }
+
+    if (url) {
+      window.open(url, "_blank");
+    }
+  };
+
   const handleSubmitEnrollment = async () => {
     // For FREE payments, skip payment processing and go directly to success
     if (paymentType === "FREE") {
       setLoading(true);
       try {
+        // Use ref to get the latest referRequest value (avoids closure issues)
+        const currentReferRequest = referRequestRef.current;
+        console.log("[FREE Enrollment] Using referRequest:", currentReferRequest);
+        
         const paymentResponse = await handleEnrollLearnerForPayment({
           registrationData: form.getValues(),
           enrollmentData: enrollmentData,
@@ -616,20 +830,23 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               (ps: { package_session_id: string }) => ps?.package_session_id
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
-          referRequest: referRequest,
+          referRequest: currentReferRequest,
           paymentVendor: "STRIPE", // Default for FREE payments
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
           // userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
         setCurrentStep(5); // Go directly to success for FREE payments
-        // handleAutoLogin(paymentResponse);
+
+        // Fetch and handle enrollment policy (shows dialog if needed)
+        await fetchAndHandleEnrollmentPolicy();
       } catch (err) {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
         const errorData = err?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
           toast.error(errorData?.ex || "Enrollment failed");
+          await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
         }
         setError(errorData?.ex);
       } finally {
@@ -671,13 +888,14 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         });
         setOrderId(paymentResponse?.payment_response?.order_id);
         setPaymentCompletionResponse(paymentResponse);
-        setTimeout(() => {
+        setTimeout(async () => {
           if (
             paymentResponse?.payment_response?.response_data?.paymentStatus ===
             "PAID"
           ) {
             setCurrentStep(5);
-            // handleAutoLogin(paymentResponse);
+            // Fetch and handle enrollment policy (shows dialog if needed)
+            await fetchAndHandleEnrollmentPolicy();
           } else setCurrentStep(4);
         }, 100);
       } catch (err) {
@@ -686,6 +904,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         const errorData = err?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
           toast.error(errorData?.ex || "Payment failed");
+          await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
         }
         setError(errorData?.ex);
         console.error(err);
@@ -757,6 +976,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         const errorData = err?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
           toast.error(errorData?.ex || "Failed to initiate payment");
+          await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
         }
         setError(errorData?.ex || "Failed to initiate payment");
         console.error("Razorpay enrollment error:", err);
@@ -809,13 +1029,14 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       });
       setOrderId(paymentResponse?.payment_response?.order_id);
       setPaymentCompletionResponse(paymentResponse);
-      setTimeout(() => {
+      setTimeout(async () => {
         if (
           paymentResponse?.payment_response?.response_data?.paymentStatus ===
           "PAID"
         ) {
           setCurrentStep(5);
-          // handleAutoLogin(paymentResponse);
+          // Fetch and handle enrollment policy (shows dialog if needed)
+          await fetchAndHandleEnrollmentPolicy();
         } else setCurrentStep(4);
       }, 100);
     } catch (err) {
@@ -824,6 +1045,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       const errorData = err?.response?.data;
       if (errorData?.responseCode?.includes("510")) {
         toast.error(errorData?.ex || "Payment failed");
+        await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
       }
       setError(errorData?.ex);
       console.error(err);
@@ -871,13 +1093,14 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           setPaymentCompletionResponse(paymentResponse);
 
           // Check payment status and navigate accordingly
-          setTimeout(() => {
+          setTimeout(async () => {
             if (
               paymentResponse?.payment_response?.response_data
                 ?.paymentStatus === "PAID"
             ) {
               setCurrentStep(5);
-              // handleAutoLogin(paymentResponse);
+              // Fetch and handle enrollment policy (shows dialog if needed)
+              await fetchAndHandleEnrollmentPolicy();
             } else {
               setCurrentStep(4);
             }
@@ -888,6 +1111,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           const errorData = err?.response?.data;
           if (errorData?.responseCode?.includes("510")) {
             toast.error(errorData?.ex || "Failed to complete enrollment");
+            await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
           }
           setError(errorData?.ex || "Failed to complete enrollment");
           console.error("Razorpay completion error:", err);
@@ -1035,13 +1259,21 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   // State to track if there is unapplied referral code text
   const [hasUnappliedReferral, setHasUnappliedReferral] = useState(false);
 
+  // Wrapper function to update both state and ref for referRequest
+  const updateReferRequest = (newReferRequest: ReferRequest | null) => {
+    console.log("[enroll-form] updateReferRequest called with:", newReferRequest);
+    referRequestRef.current = newReferRequest; // Update ref immediately
+    setReferRequest(newReferRequest); // Also update state
+  };
+
   // Handler for when referral is successfully applied - auto-enroll for FREE courses
   const handleReferralApplied = () => {
     // For FREE courses, auto-submit enrollment after referral is applied
     if (paymentType === "FREE" && currentStep === 2 && !hasAutoEnrolledRef.current) {
       hasAutoEnrolledRef.current = true;
-      // Small delay to ensure referRequest state is updated
+      // Small delay to ensure UI has updated
       setTimeout(() => {
+        console.log("[handleReferralApplied] Triggering auto-enrollment, referRequestRef.current:", referRequestRef.current);
         handleSubmitEnrollment();
       }, 500);
     }
@@ -1100,7 +1332,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 inviteData?.package_session_to_payment_options[0]
                   ?.package_session_id
               }
-              setReferRequest={setReferRequest}
+              setReferRequest={updateReferRequest}
               refCode={ref || ""}
               onUnappliedCodeChange={setHasUnappliedReferral}
               onReferralApplied={handleReferralApplied}
@@ -1153,7 +1385,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               inviteData?.package_session_to_payment_options[0]
                 ?.package_session_id
             }
-            setReferRequest={setReferRequest}
+            setReferRequest={updateReferRequest}
             refCode={ref || ""}
             onUnappliedCodeChange={setHasUnappliedReferral}
             onReferralApplied={handleReferralApplied}
@@ -1396,7 +1628,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                   />
                 </div>
               )}
-              
+
               {/* Course Title & Info */}
               <div className="flex-1 min-w-0">
                 <h1 className="text-lg sm:text-xl font-semibold text-gray-900 truncate">
@@ -1601,7 +1833,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                   (() => {
                     const singleSessionId = bundledPackageSessions[0]?.packageSessionId ?? "";
                     if (!singleSessionId) return null;
-                    
+
                     const sessionDetails = getDetailsFromPackageSessionId({
                       packageSessionId: singleSessionId,
                     });
@@ -1706,6 +1938,20 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           </a>
         </div>
       </main>
+
+      {/* Enrollment Policy Dialog */}
+      <EnrollmentPolicyDialog
+        open={enrollmentPolicyDialogOpen}
+        onOpenChange={setEnrollmentPolicyDialogOpen}
+        dialogType={enrollmentPolicyDialogType}
+        policyResponse={enrollmentPolicyResponse}
+        courseName={courseData.course || inviteData?.name || "this course"}
+        onContinue={() => {
+          // Navigate to dashboard after dialog is closed
+          window.location.href = `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+        }}
+        onUpgrade={handleUpgrade}
+      />
     </div>
   );
 };

@@ -28,6 +28,8 @@ export interface PostRegistrationOptions {
   redirectAfterLogin?: boolean;
   showSuccessMessage?: boolean;
   customRedirectRoute?: string;
+  /** When true, lowercase username and password before post-register login (matches login page behavior) */
+  convertUsernamePasswordToLowercase?: boolean;
 }
 
 export interface UseUnifiedRegistrationReturn {
@@ -49,7 +51,7 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
       shouldAutoLogin = true,
       redirectAfterLogin = true,
       showSuccessMessage = true,
-      customRedirectRoute
+      customRedirectRoute,
     } = options;
 
     if (!data.email || !data.full_name || !data.instituteId) {
@@ -313,90 +315,65 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
         toast.success("Account created successfully!");
       }
 
+      // After register, call login with the username the backend actually stored (often same as email).
+      let authResponse: RegisterUserResponse = response;
+      if (shouldAutoLogin && finalPassword) {
+        // Prefer register response username; backend may store email as username so fallback to email
+        const loginUsername = response.user?.username ?? data.email ?? finalUsername ?? '';
+        if (loginUsername) {
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 700));
+            const loginResponse = await loginEnrolledUser(loginUsername, finalPassword, data.instituteId);
+            authResponse = loginResponse;
+          } catch {
+            // Use register response tokens if login fails (e.g. backend returns tokens on register)
+          }
+        }
+      }
+
       // Handle post-registration
-      if (shouldAutoLogin && response.accessToken && response.refreshToken) {
+      if (shouldAutoLogin && authResponse.accessToken && authResponse.refreshToken) {
         // Store tokens using Storage (compatible with existing auth system)
-        await Preferences.set({ key: TokenKey.accessToken, value: response.accessToken });
-        await Preferences.set({ key: TokenKey.refreshToken, value: response.refreshToken });
+        await Preferences.set({ key: TokenKey.accessToken, value: authResponse.accessToken });
+        await Preferences.set({ key: TokenKey.refreshToken, value: authResponse.refreshToken });
         await Preferences.set({ key: "instituteId", value: data.instituteId });
         await Preferences.set({ key: "InstituteId", value: data.instituteId });
 
-        // ✅ IMPLEMENT PROPER LOGIN FLOW AFTER SIGNUP USING EXISTING FUNCTIONS
+        // Root route guard requires Token + StudentDetails + InstituteDetails; fetch and store before redirect.
         if (redirectAfterLogin) {
-          try {
-            // Get userId from token
-            const decodedData = getTokenDecodedData(response.accessToken);
-            const userId = decodedData?.user;
-            
-            if (!userId) {
-              throw new Error('Failed to decode user ID from token');
-            }
-            
-            // Extended delay to ensure tokens are properly stored and accessible
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // Verify tokens are accessible
-            const storedToken = await Preferences.get({ key: TokenKey.accessToken });
-            const storedInstituteId = await Preferences.get({ key: "InstituteId" });
-            
-            if (!storedToken.value) {
-              throw new Error('Access token not found in storage after storing');
-            }
-            
-            // Additional verification: check if token is accessible via getTokenFromStorage
+          const decodedData = getTokenDecodedData(authResponse.accessToken);
+          const userId = decodedData?.user || decodedData?.sub || '';
+
+          if (userId) {
             try {
-              const { getTokenFromStorage } = await import('@/lib/auth/axiosInstance');
-              const verifiedToken = await getTokenFromStorage(TokenKey.accessToken);
-              
-              if (!verifiedToken) {
-                throw new Error('Token not accessible via getTokenFromStorage');
-              }
-              
-            } catch (error) {
-              throw error;
+              await getStudentDisplaySettings(true);
+            } catch {
+              // non-blocking
             }
-            
-            // 1. Fetch student display settings (same as login flow)
             try {
-              const studentSettings = await getStudentDisplaySettings(true);
-            } catch (error) {
-              throw error;
+              await fetchAndStoreInstituteDetails(data.instituteId, userId);
+            } catch {
+              // non-blocking
             }
-            
-            // 2. Fetch and store institute details (same as login flow)
-            try {
-              const instituteDetails = await fetchAndStoreInstituteDetails(data.instituteId, userId);
-            } catch (error) {
-              throw error;
-            }
-            
-            // 3. Fetch and store student details (same as login flow)
             try {
               await fetchAndStoreStudentDetails(data.instituteId, userId);
-            } catch (error) {
-              throw error;
+            } catch {
+              // non-blocking
             }
-            
-            // 4. Fetch user role details (same as login flow)
             try {
-              const userRoleDetails = await fetchUserRolesDetails();
-            } catch (error) {
-              throw error;
+              await fetchUserRolesDetails();
+            } catch {
+              // non-blocking
             }
-
-          } catch (error) {
-            // Don't fail the signup, just log the error
           }
 
-          // Handle redirection
+          // Redirect only after attempting to populate StudentDetails + InstituteDetails (so __root isAuthenticated() passes)
           const backendRedirectRoute = "/study-library/courses";
           const finalRedirectRoute = customRedirectRoute || backendRedirectRoute;
-
-          // Navigate to the determined route
           if (/^https?:\/\//.test(finalRedirectRoute)) {
             window.location.assign(finalRedirectRoute);
           } else {
-            navigate({ to: finalRedirectRoute as never });
+            window.location.href = finalRedirectRoute;
           }
         }
       }

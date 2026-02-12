@@ -226,6 +226,17 @@ export const CourseStructureDetails = ({
     );
 
   useEffect(() => {
+    if (courseData && selectedSession && selectedLevel) {
+      const subjects = getSubjectDetails(
+        courseData,
+        selectedSession,
+        selectedLevel
+      );
+      setStudyLibraryData(subjects);
+    }
+  }, [courseData, selectedSession, selectedLevel]);
+
+  useEffect(() => {
     const loadModules = async () => {
       try {
         setIsLoading(true);

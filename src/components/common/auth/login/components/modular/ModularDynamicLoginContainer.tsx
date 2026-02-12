@@ -3,7 +3,7 @@ import { FcGoogle } from "react-icons/fc";
 import { ArrowRight } from "lucide-react";
 import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
 import { toast } from "sonner";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
 import { Preferences } from "@capacitor/preferences";
@@ -93,6 +93,8 @@ export function ModularDynamicLoginContainer({
 
   // State to track OAuth processing (after popup closes, before redirect)
   const [isOAuthProcessing, setIsOAuthProcessing] = useState(false);
+  // When we open OAuth popup, set this so we only accept results written after open (avoids stale data)
+  const oauthPopupOpenedAtRef = useRef<number>(0);
 
   // Always show at least one provider, even if only one is enabled
   // (selection UI currently always shown via enabled providers list)
@@ -124,48 +126,44 @@ export function ModularDynamicLoginContainer({
         const decodedData = getTokenDecodedData(accessToken);
         const authorities = decodedData?.authorities;
         const userId = decodedData?.user;
-        
-        console.log('[ModularDynamicLoginContainer] 📋 Decoded token:', { userId, authorities });
+        const authorityKeys = authorities ? Object.keys(authorities) : [];
 
-        if (userId && authorities) {
-          const authorityKeys = Object.keys(authorities);
-          
-          if (authorityKeys.length > 0) {
-            // Use the first institute (or the one from sessionStorage if available)
-            let instituteId = authorityKeys[0];
-            
-            // Try to get instituteId from sessionStorage if it was set during OAuth initiation
-            try {
-              const stored = sessionStorage.getItem('modal_oauth_data');
-              if (stored) {
-                const parsed = JSON.parse(stored);
-                if (parsed?.instituteId && authorityKeys.includes(parsed.instituteId)) {
-                  instituteId = parsed.instituteId;
-                }
+        console.log('[ModularDynamicLoginContainer] 📋 Decoded token:', { userId, authorityKeys });
+
+        // Multiple institutes: redirect to institute-selection so user can choose (tokens already stored above)
+        if (userId && authorityKeys.length > 1) {
+          console.log('[ModularDynamicLoginContainer] 🏫 Multiple institutes, redirecting to institute selection');
+          if (onLoginSuccess) onLoginSuccess();
+          setTimeout(() => {
+            window.location.href = '/institute-selection';
+          }, 100);
+          return;
+        }
+
+        if (userId && authorities && authorityKeys.length > 0) {
+          // Single institute: use first (or from sessionStorage)
+          let instituteId = authorityKeys[0];
+          try {
+            const stored = sessionStorage.getItem('modal_oauth_data');
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed?.instituteId && authorityKeys.includes(parsed.instituteId)) {
+                instituteId = parsed.instituteId;
               }
-            } catch (e) { void e; }
-            
-            console.log('[ModularDynamicLoginContainer] 🏫 Fetching details for institute:', instituteId);
-            
-            // Fetch institute details
-            const details = await fetchAndStoreInstituteDetails(instituteId, userId);
-            if (setPrimaryColor) {
-              setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
             }
-            
-            // Fetch student details
-            await fetchAndStoreStudentDetails(instituteId, userId);
-            
-            console.log('[ModularDynamicLoginContainer] ✅ Institute and student details fetched successfully');
-            
-            // Fetch student display settings (for post-login redirect and UI customization)
-            try {
-              const displaySettings = await getStudentDisplaySettings(true);
-              console.log('[ModularDynamicLoginContainer] 🎨 Student display settings loaded:', displaySettings);
-            } catch (e) {
-              console.warn('[ModularDynamicLoginContainer] ⚠️ Failed to load student display settings:', e);
-              // Non-critical, continue with login
-            }
+          } catch (e) { void e; }
+
+          console.log('[ModularDynamicLoginContainer] 🏫 Fetching details for institute:', instituteId);
+          const details = await fetchAndStoreInstituteDetails(instituteId, userId);
+          if (setPrimaryColor) {
+            setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
+          }
+          await fetchAndStoreStudentDetails(instituteId, userId);
+          console.log('[ModularDynamicLoginContainer] ✅ Institute and student details fetched successfully');
+          try {
+            await getStudentDisplaySettings(true);
+          } catch (e) {
+            console.warn('[ModularDynamicLoginContainer] ⚠️ Failed to load student display settings:', e);
           }
         }
 
@@ -180,13 +178,7 @@ export function ModularDynamicLoginContainer({
         } catch (e) { void e; }
 
         console.log('[ModularDynamicLoginContainer] 🚀 Redirecting to:', redirectTo || '/dashboard');
-
-        // Close modal first
-        if (onLoginSuccess) {
-          onLoginSuccess();
-        }
-
-        // Redirect shortly after closing modal
+        if (onLoginSuccess) onLoginSuccess();
         setTimeout(() => {
           const target = redirectTo && typeof redirectTo === 'string' ? redirectTo : '/dashboard';
           if (/^https?:\/\//.test(target)) {
@@ -204,6 +196,24 @@ export function ModularDynamicLoginContainer({
 
     // Ensure we only process once
     let processed = false;
+
+    // When OAuth fails (e.g. GitHub private email / invalid response), show signup with "your email is private" flow
+    const handleOAuthErrorFromPopup = (data?: { message?: string }) => {
+      if (onSwitchToSignup) {
+        try {
+          sessionStorage.setItem(
+            'oauth_signup_data',
+            JSON.stringify({ signupData: { provider: 'github', email: null, name: null } })
+          );
+        } catch (e) {
+          console.error('[OAuth Parent] Failed to store signup data:', e);
+        }
+        onSwitchToSignup('', false);
+        toast.info('Your email may be private. Please provide your email below to continue.');
+      } else {
+        toast.error(data?.message || 'We could not complete sign-in. Please try again or use another method.');
+      }
+    };
 
     // Listen for OAuth completion messages from popup
     const messageHandler = async (event: MessageEvent) => {
@@ -277,7 +287,7 @@ export function ModularDynamicLoginContainer({
           toast.info("Please sign up to continue");
         }
       } else if (data && data.type === 'oauth_error') {
-        toast.error(data?.data?.message || "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.");
+        handleOAuthErrorFromPopup(data?.data);
       }
     };
 
@@ -294,13 +304,13 @@ export function ModularDynamicLoginContainer({
       if (e.key === 'OAUTH_RESULT' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          // Only process if this was a modal login (isModalLogin !== false means it's modal)
-          if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_success' && parsed?.data) {
+          const openedAt = oauthPopupOpenedAtRef.current;
+          const isAfterOpen = !openedAt || (parsed?.ts && parsed.ts >= openedAt - 2000);
+          if (isAfterOpen && parsed?.isModalLogin !== false && parsed?.type === 'oauth_success' && parsed?.data) {
             const { accessToken, refreshToken } = parsed.data || {};
             if (!processed && accessToken && refreshToken) {
               processed = true;
               await finalizeLoginWithTokens(accessToken, refreshToken);
-              // Clean up after processing modal login
               localStorage.removeItem('OAUTH_RESULT');
             }
           } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_signup_needed' && parsed?.data) {
@@ -317,7 +327,7 @@ export function ModularDynamicLoginContainer({
             }
             localStorage.removeItem('OAUTH_RESULT');
           } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
-            toast.error(parsed?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
+            handleOAuthErrorFromPopup(parsed?.data);
             localStorage.removeItem('OAUTH_RESULT');
           }
           // Don't remove localStorage if it's a page-level login - let __root.tsx handle it
@@ -353,7 +363,7 @@ export function ModularDynamicLoginContainer({
               toast.info("Please sign up to continue");
             }
           } else if (msg.isModalLogin !== false && msg.type === 'oauth_error') {
-            toast.error(msg?.data?.message || 'We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.');
+            handleOAuthErrorFromPopup(msg?.data);
           }
         };
       }
@@ -388,7 +398,7 @@ export function ModularDynamicLoginContainer({
             }
             localStorage.removeItem('OAUTH_RESULT');
           } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
-            toast.error(parsed?.data?.message || 'OAuth authentication failed');
+            handleOAuthErrorFromPopup(parsed?.data);
             localStorage.removeItem('OAUTH_RESULT');
           }
           // Don't remove localStorage if it's a page-level login - let __root.tsx handle it
@@ -397,15 +407,15 @@ export function ModularDynamicLoginContainer({
     };
     checkLocalOnce();
 
-    // Short polling loop as a last resort when storage event is missed
-    const pollUntil = Date.now() + 15_000; // 15s
+    // Polling fallback: storage event can be unreliable with COOP/popups, so poll for 90s
+    const pollUntil = Date.now() + 90_000;
     const pollTimer = window.setInterval(() => {
       if (processed || Date.now() > pollUntil) {
         window.clearInterval(pollTimer);
         return;
       }
       checkLocalOnce();
-    }, 400);
+    }, 350);
 
     window.addEventListener('message', messageHandler);
     window.addEventListener('storage', storageHandler);
@@ -458,12 +468,17 @@ export function ModularDynamicLoginContainer({
       
       // Store in sessionStorage
       sessionStorage.setItem('modal_oauth_data', JSON.stringify(modalOAuthData));
+
+      // Clear any stale OAuth result and mark that we're waiting for this popup (so we accept only fresh results)
+      try {
+        localStorage.removeItem('OAUTH_RESULT');
+        oauthPopupOpenedAtRef.current = Date.now();
+      } catch { /* ignore */ }
       
       // Create minimal state object
-      // IMPORTANT: The backend should redirect to /login?accessToken=...&refreshToken=...&popup=1
-      // The &popup=1 parameter is critical for popup detection
+      // Use static oauth-popup-handler.html so backend redirect lands on a simple page that sends tokens to parent and closes popup
       const stateObj: Record<string, unknown> = {
-        from: `${window.location.origin}/login?popup=1`,
+        from: `${window.location.origin}/oauth-popup-handler.html?popup=1`,
         account_type: "login",
         user_type: "learner",
       };

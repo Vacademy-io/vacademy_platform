@@ -10,7 +10,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { SessionLoginForm } from "./components/SessionLoginForm";
 import { SessionSelectionDialog } from "./components/SessionSelectionDialog";
 import { useLiveSessions } from "../-hooks/useLiveSessions";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { getAllPackageSessionIds } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import {
   getActiveSessions,
   SessionStatus,
@@ -33,7 +33,7 @@ function RouteComponent() {
   // Sometimes during SPA navigation, params might be undefined momentarily
   // In that case, fall back to parsing the URL directly
   let username = params.username || '';
-  
+
   if (!username) {
     // Fallback: Parse params from URL directly
     // URL structure: /study-library/live-class/$username
@@ -46,29 +46,29 @@ function RouteComponent() {
   const [authState, setAuthState] = useState<
     "loading" | "authenticated" | "unauthenticated"
   >("loading");
-  const [batchId, setBatchId] = useState<string>("");
+  const [batchIds, setBatchIds] = useState<string[]>([]);
   const [showSessionSelection, setShowSessionSelection] = useState(false);
   const [activeSessions, setActiveSessions] = useState<
     Array<{ session: SessionDetails; status: SessionStatus }>
   >([]);
 
-  // Fetch live sessions data (only when batchId is available)
+  // Fetch live sessions data (only when batchIds are available)
   const { data: sessions, isLoading: isSessionsLoading } = useLiveSessions(
-    batchId || null
+    batchIds.length > 0 ? batchIds : null
   );
 
   // Mark attendance mutation
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
-  // Fetch batch ID
+  // Fetch batch IDs
   useEffect(() => {
-    const fetchBatchId = async () => {
-      const id = await getPackageSessionId();
-      console.log("Fetched batchId:", id);
-      setBatchId(id);
+    const fetchBatchIds = async () => {
+      const ids = await getAllPackageSessionIds();
+      console.log("Fetched batchIds:", ids);
+      setBatchIds(ids);
     };
     if (authState === "authenticated") {
-      fetchBatchId();
+      fetchBatchIds();
     }
   }, [authState]);
 
@@ -136,7 +136,7 @@ function RouteComponent() {
       authState === "authenticated" &&
       sessions &&
       !isSessionsLoading &&
-      batchId
+      batchIds.length > 0
     ) {
       // Combine live and upcoming sessions
       const allSessions = [
@@ -174,7 +174,7 @@ function RouteComponent() {
     authState,
     sessions,
     isSessionsLoading,
-    batchId,
+    batchIds,
     navigate,
     handleNavigateToSession,
   ]);

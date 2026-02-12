@@ -114,9 +114,15 @@ export const isSessionLiveTimezoneAware = (
     const sessionStart = new Date(
       `${session.meeting_date}T${session.start_time}`
     );
-    const sessionEnd = new Date(
+    let sessionEnd = new Date(
       `${session.meeting_date}T${session.last_entry_time}`
     );
+
+    // If end time is before start time, session spans midnight
+    if (sessionEnd < sessionStart) {
+      sessionEnd = new Date(sessionEnd.getTime() + 24 * 60 * 60 * 1000);
+    }
+
     const waitingRoomStart = new Date(
       sessionStart.getTime() - session.waiting_room_time * 60000
     );
@@ -130,11 +136,16 @@ export const isSessionLiveTimezoneAware = (
     session.timezone
   );
 
-  const sessionEnd = convertSessionTimeToUserTimezone(
+  let sessionEnd = convertSessionTimeToUserTimezone(
     session.meeting_date,
     session.last_entry_time,
     session.timezone
   );
+
+  // If end time is before start time, session spans midnight - add 1 day
+  if (sessionEnd < sessionStart) {
+    sessionEnd = new Date(sessionEnd.getTime() + 24 * 60 * 60 * 1000);
+  }
 
   const waitingRoomStart = new Date(
     sessionStart.getTime() - session.waiting_room_time * 60000

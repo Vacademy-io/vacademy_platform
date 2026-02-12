@@ -87,6 +87,8 @@ const tryGetPublicUrl = async (
     mediaId: string | null | undefined
 ): Promise<string> => {
     if (!mediaId || mediaId.trim() === "") return "";
+    // If backend passed a direct URL in a media-id field, use it as-is (avoids file API failure)
+    if (/^https?:\/\//i.test(mediaId.trim())) return mediaId.trim();
     try {
         const url = await getPublicUrl(mediaId);
         return url || "";
@@ -104,6 +106,25 @@ function isJson(str: string): boolean {
     }
 }
 
+/** Extract a direct http(s) URL from a value that may be a URL or JSON-wrapped (e.g. "\"https://...\""). */
+function extractDirectUrl(value: string | null | undefined): string | null {
+    if (!value || typeof value !== "string") return null;
+    const raw = value.trim();
+    if (!raw) return null;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed !== "string") return null;
+        const unquoted = parsed.replace(/^["']|["']$/g, "").trim();
+        if (/^https?:\/\//i.test(unquoted)) return unquoted;
+    } catch {
+        // not JSON; try stripping literal surrounding quotes
+        const unquoted = raw.replace(/^["']|["']$/g, "").trim();
+        if (/^https?:\/\//i.test(unquoted)) return unquoted;
+    }
+    return null;
+}
+
 export const transformApiDataToCourseData = async (
     apiData: any // Use any or the correct type
 ) => {
@@ -113,29 +134,43 @@ export const transformApiDataToCourseData = async (
             ? JSON.parse(apiData.course.course_media_id)
             : apiData.course.course_media_id;
 
-        const [coursePreviewImageMediaId, courseBannerMediaId] =
-            await Promise.all([
-                tryGetPublicUrl(apiData.course.course_preview_image_media_id),
-                tryGetPublicUrl(apiData.course.course_banner_media_id),
-            ]);
+        let coursePreviewImageMediaId = await tryGetPublicUrl(
+            apiData.course.course_preview_image_media_id
+        );
+        let courseBannerMediaId = await tryGetPublicUrl(
+            apiData.course.course_banner_media_id
+        );
+        // Fallback: use direct URLs from course-init when file API fails or returns empty
+        const directPreview =
+            apiData.course.course_preview_image_url ??
+            apiData.course.coursePreviewImageUrl;
+        const directBanner =
+            apiData.course.course_banner_image_url ??
+            apiData.course.courseBannerImageUrl;
+        if (!coursePreviewImageMediaId && directPreview)
+            coursePreviewImageMediaId = directPreview;
+        if (!courseBannerMediaId && directBanner)
+            courseBannerMediaId = directBanner;
 
         let courseMediaPreview = "";
         // Only try to get media URL if course_media_id is not empty
         if (apiData.course.course_media_id && apiData.course.course_media_id.trim() !== "") {
-            // Check if it's a direct YouTube URL
-            if (isYouTubeUrl(apiData.course.course_media_id)) {
-                courseMediaPreview = apiData.course.course_media_id;
+            const rawMediaId = apiData.course.course_media_id;
+            // Direct URL (plain or JSON-wrapped e.g. "\"https://...\"")
+            const directMediaUrl = extractDirectUrl(rawMediaId);
+            if (directMediaUrl) {
+                courseMediaPreview = directMediaUrl;
+            } else if (isYouTubeUrl(rawMediaId)) {
+                courseMediaPreview = rawMediaId;
             } else if (
-                isJson(apiData.course.course_media_id) &&
+                isJson(rawMediaId) &&
                 courseMediaImage.type === "youtube"
             ) {
                 courseMediaPreview = courseMediaImage.id || "";
             } else {
-                const mediaId = isJson(apiData.course.course_media_id)
+                const mediaId = isJson(rawMediaId)
                     ? courseMediaImage.id
-                    : apiData.course.course_media_id;
-                
-                // Only call getPublicUrl if mediaId is not empty
+                    : rawMediaId;
                 if (mediaId && mediaId.trim() !== "") {
                     courseMediaPreview = await getPublicUrl(mediaId);
                 }

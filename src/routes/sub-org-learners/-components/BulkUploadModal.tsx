@@ -35,6 +35,7 @@ export function BulkUploadModal({
   onUploadComplete,
 }: BulkUploadModalProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadResults, setUploadResults] = useState<UploadResult[]>([]);
   const [totalRows, setTotalRows] = useState(0);
@@ -55,54 +56,57 @@ export function BulkUploadModal({
       field => field.custom_field.fieldName !== 'Practice Name'
     );
 
-    // Add standard fields first if they exist in custom fields
-    const fieldOrder = ['First Name', 'Last Name', 'Email', 'Phone'];
-    const orderedFields: InstituteCustomField[] = [];
-    const remainingFields: InstituteCustomField[] = [];
+    // Helper to match field names case-insensitively
+    const matchesFieldName = (fieldName: string, targets: string[]) => {
+      return targets.some(t => fieldName.toLowerCase() === t.toLowerCase());
+    };
 
-    fieldsToInclude.forEach(field => {
-      const index = fieldOrder.indexOf(field.custom_field.fieldName);
-      if (index !== -1) {
-        orderedFields[index] = field;
-      } else {
-        remainingFields.push(field);
-      }
-    });
+    // Helper to capitalize first letter of each word
+    const capitalizeFieldName = (name: string): string => {
+      return name
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    };
 
-    const finalFields = [...orderedFields.filter(Boolean), ...remainingFields];
+    // Sort fields by formOrder
+    const sortedFields = [...fieldsToInclude].sort(
+      (a, b) => (a.custom_field.formOrder || 0) - (b.custom_field.formOrder || 0)
+    );
 
-    finalFields.forEach(field => {
+    sortedFields.forEach(field => {
       const { fieldName, fieldType, isMandatory, config } = field.custom_field;
-      const headerText = isMandatory ? `${fieldName}*` : fieldName;
+      const displayName = capitalizeFieldName(fieldName);
+      const headerText = isMandatory ? `${displayName}*` : displayName;
       headers.push(headerText);
 
-      // Add sample data based on field type
-      switch (fieldName) {
-        case 'First Name':
-          sampleRow.push('John');
-          break;
-        case 'Last Name':
-          sampleRow.push('Doe');
-          break;
-        case 'Email':
-          sampleRow.push('john.doe@example.com');
-          break;
-        case 'Phone':
-          sampleRow.push('+61412345678');
-          break;
-        default:
-          if (fieldType === 'dropdown' && config) {
-            try {
-              const options = JSON.parse(config);
-              sampleRow.push(options[0]?.value || '');
-            } catch {
-              sampleRow.push('');
-            }
-          } else if (fieldType === 'number') {
-            sampleRow.push('123');
-          } else {
-            sampleRow.push('Sample Value');
-          }
+      // Add sample data based on field name/type (case-insensitive)
+      const fieldNameLower = fieldName.toLowerCase();
+      if (matchesFieldName(fieldName, ['first name', 'firstname'])) {
+        sampleRow.push('John');
+      } else if (matchesFieldName(fieldName, ['last name', 'lastname'])) {
+        sampleRow.push('Doe');
+      } else if (matchesFieldName(fieldName, ['name', 'full name', 'fullname'])) {
+        sampleRow.push('John Doe');
+      } else if (matchesFieldName(fieldName, ['email'])) {
+        sampleRow.push('john.doe@example.com');
+      } else if (matchesFieldName(fieldName, ['phone', 'mobile', 'mobile_number'])) {
+        sampleRow.push('+61412345678');
+      } else if (fieldNameLower.includes('moodle username')) {
+        sampleRow.push('johndoe');
+      } else if (fieldNameLower.includes('moodle password')) {
+        sampleRow.push('password123');
+      } else if (fieldType === 'dropdown' && config) {
+        try {
+          const options = JSON.parse(config);
+          sampleRow.push(options[0]?.value || '');
+        } catch {
+          sampleRow.push('');
+        }
+      } else if (fieldType === 'number') {
+        sampleRow.push('123');
+      } else {
+        sampleRow.push('Sample Value');
       }
     });
 
@@ -169,8 +173,43 @@ export function BulkUploadModal({
     const selectedMapping = getSelectedMapping();
     if (!selectedMapping) return null;
 
+    // Helper to match field names case-insensitively
+    const matchesFieldName = (fieldName: string, targets: string[]) => {
+      return targets.some(t => fieldName.toLowerCase() === t.toLowerCase());
+    };
+
+    // Helper to capitalize first letter of each word (for matching capitalized headers)
+    const capitalizeFieldName = (name: string): string => {
+      return name
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    };
+
+    // Helper to find value in row by field name
+    // Checks multiple variations: original, capitalized, with/without * suffix
+    const getRowValue = (fieldName: string): string => {
+      const capitalizedName = capitalizeFieldName(fieldName);
+      const variations = [
+        fieldName,
+        `${fieldName}*`,
+        capitalizedName,
+        `${capitalizedName}*`,
+        fieldName.toLowerCase(),
+        `${fieldName.toLowerCase()}*`,
+      ];
+      
+      for (const variation of variations) {
+        if (row[variation] !== undefined && row[variation] !== '') {
+          return row[variation].toString().trim();
+        }
+      }
+      return '';
+    };
+
     // Map custom field values from the row
     const customFieldValues: Array<{ custom_field_id: string; value: string }> = [];
+    let fullName = '';
     let firstName = '';
     let lastName = '';
     let email = '';
@@ -183,20 +222,22 @@ export function BulkUploadModal({
     );
 
     fieldsToInclude.forEach(field => {
-      const { fieldKey, fieldName, id } = field.custom_field;
+      const { fieldName, id } = field.custom_field;
+      const fieldNameLower = fieldName.toLowerCase();
       
       // Try to find the value in the row (with or without * suffix)
-      let value = row[fieldName] || row[`${fieldName}*`] || '';
-      value = String(value).trim();
+      let value = getRowValue(fieldName);
 
-      // Map to standard fields
-      if (fieldName === 'First Name') {
+      // Map to standard fields based on field name (case-insensitive)
+      if (matchesFieldName(fieldName, ['name', 'full name', 'fullname'])) {
+        fullName = value;
+      } else if (matchesFieldName(fieldName, ['first name', 'firstname'])) {
         firstName = value;
-      } else if (fieldName === 'Last Name') {
+      } else if (matchesFieldName(fieldName, ['last name', 'lastname'])) {
         lastName = value;
-      } else if (fieldName === 'Email') {
+      } else if (matchesFieldName(fieldName, ['email'])) {
         email = value;
-      } else if (fieldName === 'Phone') {
+      } else if (matchesFieldName(fieldName, ['phone', 'mobile', 'mobile_number']) && !fieldNameLower.includes('type')) {
         phone = value;
         // Ensure phone starts with +
         if (phone && !phone.startsWith('+')) {
@@ -213,6 +254,11 @@ export function BulkUploadModal({
       }
     });
 
+    // Build full name from first + last if not provided directly
+    if (!fullName && (firstName || lastName)) {
+      fullName = `${firstName} ${lastName}`.trim();
+    }
+
     // Get organization roles
     orgRoles = (row['Organization Roles'] || row['Organization Roles*'] || 'LEARNER').trim();
 
@@ -226,8 +272,6 @@ export function BulkUploadModal({
         value: selectedMapping.sub_org_details.institute_name,
       });
     }
-
-    const fullName = `${firstName} ${lastName}`.trim();
 
     // Validation
     if (!email || !fullName) {
@@ -266,15 +310,25 @@ export function BulkUploadModal({
 
     const results: UploadResult[] = [];
 
+    // Helper to get value from row with multiple possible header names
+    const getRowValueMultiple = (row: Record<string, string>, names: string[]): string => {
+      for (const name of names) {
+        const val = row[name] || row[`${name}*`];
+        if (val) return val.toString().trim();
+      }
+      return '';
+    };
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const rowNumber = i + 2; // +2 because row 1 is header, and arrays are 0-indexed
 
-      // Extract email and name for result tracking
-      const email = row['Email'] || row['Email*'] || 'Unknown';
-      const firstName = row['First Name'] || row['First Name*'] || '';
-      const lastName = row['Last Name'] || row['Last Name*'] || '';
-      const fullName = `${firstName} ${lastName}`.trim() || 'Unknown';
+      // Extract email and name for result tracking (case-insensitive)
+      const email = getRowValueMultiple(row, ['Email', 'email']) || 'Unknown';
+      const firstName = getRowValueMultiple(row, ['First Name', 'first name', 'FirstName', 'firstname']);
+      const lastName = getRowValueMultiple(row, ['Last Name', 'last name', 'LastName', 'lastname']);
+      const nameField = getRowValueMultiple(row, ['name', 'Name', 'full name', 'Full Name', 'fullname', 'FullName']);
+      const fullName = nameField || `${firstName} ${lastName}`.trim() || 'Unknown';
 
       try {
         const memberData = mapRowToMemberData(row);
@@ -344,6 +398,16 @@ export function BulkUploadModal({
     const file = event.target.files?.[0];
     if (!file) return;
 
+    await processFile(file);
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Shared file processing logic
+  const processFile = async (file: File) => {
     // Validate file type
     const validTypes = [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -369,10 +433,39 @@ export function BulkUploadModal({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to process file');
     }
+  };
 
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isUploading) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (isUploading) return;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      await processFile(file);
     }
   };
 
@@ -423,7 +516,17 @@ export function BulkUploadModal({
           </div>
 
           {/* File Upload */}
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+          <div 
+            className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+              isDragging 
+                ? 'border-primary-500 bg-primary-50' 
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -440,6 +543,13 @@ export function BulkUploadModal({
                   Processing {processedRows} of {totalRows} learners...
                 </p>
                 <Progress value={uploadProgress} className="w-full" />
+              </div>
+            ) : isDragging ? (
+              <div className="py-4">
+                <Upload className="w-10 h-10 text-primary-500 mx-auto mb-2" />
+                <p className="text-primary-600 font-medium">
+                  Drop your file here
+                </p>
               </div>
             ) : (
               <>

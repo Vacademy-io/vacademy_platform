@@ -36,15 +36,19 @@ public class FacultyService {
     private final AuthService authService;
     private final SubjectService subjectService;
 
-    public String addFacultyToSubjectsAndBatches(AddFacultyToSubjectAndBatchDTO addFacultyToSubjectAndBatch, String instituteId, CustomUserDetails userDetails){
+    public String addFacultyToSubjectsAndBatches(AddFacultyToSubjectAndBatchDTO addFacultyToSubjectAndBatch,
+            String instituteId, CustomUserDetails userDetails) {
         UserDTO userDTO = addFacultyToSubjectAndBatch.getUser();
-        if (addFacultyToSubjectAndBatch.isNewUser()){
+        if (addFacultyToSubjectAndBatch.isNewUser()) {
             userDTO = inviteUser(userDTO, instituteId);
         }
         List<FacultySubjectPackageSessionMapping> mappings = new ArrayList<>();
-        for (AddFacultyToSubjectAndBatchDTO.BatchSubjectMapping batchSubjectMapping : addFacultyToSubjectAndBatch.getBatchSubjectMappings()) {
+        for (AddFacultyToSubjectAndBatchDTO.BatchSubjectMapping batchSubjectMapping : addFacultyToSubjectAndBatch
+                .getBatchSubjectMappings()) {
             for (String subjectId : batchSubjectMapping.getSubjectIds()) {
-                FacultySubjectPackageSessionMapping mapping = new FacultySubjectPackageSessionMapping(userDTO.getId(), batchSubjectMapping.getBatchId(), subjectId, addFacultyToSubjectAndBatch.getUser().getFullName(), FacultyStatusEnum.ACTIVE.name());
+                FacultySubjectPackageSessionMapping mapping = new FacultySubjectPackageSessionMapping(userDTO.getId(),
+                        batchSubjectMapping.getBatchId(), subjectId,
+                        addFacultyToSubjectAndBatch.getUser().getFullName(), FacultyStatusEnum.ACTIVE.name());
                 mappings.add(mapping);
             }
         }
@@ -55,11 +59,11 @@ public class FacultyService {
     @Transactional
     public String updateFacultyAssignmentsToSubjects(
             FacultyBatchSubjectDTO updateRequest,
-            CustomUserDetails userDetails
-    ) {
+            CustomUserDetails userDetails) {
         List<FacultySubjectPackageSessionMapping> updatedMappings = new ArrayList<>();
 
-        for (FacultyBatchSubjectDTO.BatchSubjectAssignment batchAssignment : updateRequest.getBatchSubjectAssignments()) {
+        for (FacultyBatchSubjectDTO.BatchSubjectAssignment batchAssignment : updateRequest
+                .getBatchSubjectAssignments()) {
             String batchId = batchAssignment.getBatchId();
 
             for (FacultyBatchSubjectDTO.SubjectAssignment subjectAssignment : batchAssignment.getSubjectAssignments()) {
@@ -71,8 +75,7 @@ public class FacultyService {
                             batchId,
                             subjectId,
                             userDetails.getFullName(),
-                            FacultyStatusEnum.ACTIVE.name()
-                    );
+                            FacultyStatusEnum.ACTIVE.name());
                     updatedMappings.add(newMapping);
                 } else {
                     FacultySubjectPackageSessionMapping existingMapping = facultyRepository
@@ -80,8 +83,8 @@ public class FacultyService {
                                     updateRequest.getFacultyId(),
                                     batchId,
                                     subjectId,
-                                    List.of(FacultyStatusEnum.ACTIVE.name())
-                            ).orElseThrow(() -> new VacademyException("Faculty mapping not found"));
+                                    List.of(FacultyStatusEnum.ACTIVE.name()))
+                            .orElseThrow(() -> new VacademyException("Faculty mapping not found"));
 
                     existingMapping.setStatus(FacultyStatusEnum.DELETED.name());
                     updatedMappings.add(existingMapping);
@@ -93,22 +96,23 @@ public class FacultyService {
         return "success";
     }
 
-
-    public UserDTO inviteUser(UserDTO userDTO,String instituteId) {
+    public UserDTO inviteUser(UserDTO userDTO, String instituteId) {
         return authService.inviteUser(userDTO, instituteId);
     }
 
-    public ResponseEntity<FacultyAllResponse> getAllFaculty(CustomUserDetails userDetails, String instituteId, FacultyRequestFilter filter, int pageNo, int pageSize) {
+    public ResponseEntity<FacultyAllResponse> getAllFaculty(CustomUserDetails userDetails, String instituteId,
+            FacultyRequestFilter filter, int pageNo, int pageSize) {
         Sort sortColumns = ListService.createSortObject(filter.getSortColumns());
-        Pageable pageable = PageRequest.of(pageNo,pageSize,sortColumns);
+        Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
 
-        Page<FacultySubjectPackageSessionMapping> paginatedResponse = facultyRepository.findByFilters(filter.getName(),filter.getSubjects(),filter.getBatches(),filter.getStatus(),pageable);
+        Page<FacultySubjectPackageSessionMapping> paginatedResponse = facultyRepository.findByFilters(filter.getName(),
+                filter.getSubjects(), filter.getBatches(), filter.getStatus(), pageable);
 
         return ResponseEntity.ok(createAllFacultyResponse(paginatedResponse));
     }
 
     private FacultyAllResponse createAllFacultyResponse(Page<FacultySubjectPackageSessionMapping> paginatedData) {
-        if(Objects.isNull(paginatedData)){
+        if (Objects.isNull(paginatedData)) {
             return FacultyAllResponse.builder()
                     .content(new ArrayList<>())
                     .totalPages(0)
@@ -129,13 +133,15 @@ public class FacultyService {
                 .totalElements(paginatedData.getTotalElements()).build();
     }
 
-    private List<FacultyTopLevelResponse> createFacultyTopLevelResponseFromList(List<FacultySubjectPackageSessionMapping> facultyList) {
+    private List<FacultyTopLevelResponse> createFacultyTopLevelResponseFromList(
+            List<FacultySubjectPackageSessionMapping> facultyList) {
         List<FacultyTopLevelResponse> response = new ArrayList<>();
-        facultyList.forEach(faculty->{
+        facultyList.forEach(faculty -> {
             response.add(FacultyTopLevelResponse.builder()
                     .id(faculty.getId())
                     .userId(faculty.getUserId())
-                    .subjects(createSubjectTopLevelFromSubjects(subjectService.getAllSubjectsForFaculty(faculty.getUserId(), faculty.getPackageSessionId())))
+                    .subjects(createSubjectTopLevelFromSubjects(subjectService
+                            .getAllSubjectsForFaculty(faculty.getUserId(), faculty.getPackageSessionId())))
                     .name(faculty.getName()).build());
         });
         return response;
@@ -151,18 +157,15 @@ public class FacultyService {
     }
 
     public FacultyBatchSubjectDTO getAllFacultyBatchSubject(String userId, CustomUserDetails userDetails) {
-        List<FacultyBatchSubjectFlatRow> facultyBatchSubjectFlatRows =
-                facultyRepository.findFacultyBatchSubjectsFiltered(
+        List<FacultyBatchSubjectFlatRow> facultyBatchSubjectFlatRows = facultyRepository
+                .findFacultyBatchSubjectsFiltered(
                         userId,
                         List.of(FacultyStatusEnum.ACTIVE.name()),
                         List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
-                        List.of(SubjectStatusEnum.ACTIVE.name())
-                );
+                        List.of(SubjectStatusEnum.ACTIVE.name()));
 
         return mapToNestedDTO(facultyBatchSubjectFlatRows);
     }
-
-
 
     private FacultyBatchSubjectDTO mapToNestedDTO(List<FacultyBatchSubjectFlatRow> rows) {
         FacultyBatchSubjectDTO dto = new FacultyBatchSubjectDTO();
@@ -192,14 +195,15 @@ public class FacultyService {
         return dto;
     }
 
-    public void addFacultyToBatch(List<AddFacultyToCourseDTO>addFacultyToCourseDTOS,String batchId,String instituteId){
+    public void addFacultyToBatch(List<AddFacultyToCourseDTO> addFacultyToCourseDTOS, String batchId,
+            String instituteId) {
         if (addFacultyToCourseDTOS == null || addFacultyToCourseDTOS.isEmpty()) {
             return;
         }
         List<FacultySubjectPackageSessionMapping> mappings = new ArrayList<>();
         for (AddFacultyToCourseDTO addFacultyToCourseDTO : addFacultyToCourseDTOS) {
             UserDTO teacher = addFacultyToCourseDTO.getUser();
-            if (addFacultyToCourseDTO.isNewUser()){
+            if (addFacultyToCourseDTO.isNewUser()) {
 
                 teacher = inviteUser(teacher, instituteId);
             }
@@ -208,14 +212,15 @@ public class FacultyService {
                     batchId,
                     null,
                     addFacultyToCourseDTO.getUser().getFullName(),
-                    ! StringUtils.hasText(addFacultyToCourseDTO.getStatus()) ? FacultyStatusEnum.ACTIVE.name() : addFacultyToCourseDTO.getStatus()
-            );
+                    !StringUtils.hasText(addFacultyToCourseDTO.getStatus()) ? FacultyStatusEnum.ACTIVE.name()
+                            : addFacultyToCourseDTO.getStatus());
             mappings.add(mapping);
         }
         facultyRepository.saveAll(mappings);
     }
 
-    public void updateFacultyToSubjectPackageSession(List<AddFacultyToCourseDTO> facultyDTOs, String batchId, String instituteId) {
+    public void updateFacultyToSubjectPackageSession(List<AddFacultyToCourseDTO> facultyDTOs, String batchId,
+            String instituteId) {
         if (facultyDTOs == null || facultyDTOs.isEmpty()) {
             return;
         }
@@ -234,11 +239,12 @@ public class FacultyService {
         return dto.isNewUser() ? inviteUser(dto.getUser(), instituteId) : dto.getUser();
     }
 
-    private FacultySubjectPackageSessionMapping resolveMapping(AddFacultyToCourseDTO dto, UserDTO teacher, String batchId) {
+    private FacultySubjectPackageSessionMapping resolveMapping(AddFacultyToCourseDTO dto, UserDTO teacher,
+            String batchId) {
         return facultyRepository.findMappingsByUserIdAndPackageSessionIdAndStatusesWithNoSubject(
-                        teacher.getId(),
-                        batchId,
-                        List.of(FacultyStatusEnum.ACTIVE.name()))
+                teacher.getId(),
+                batchId,
+                List.of(FacultyStatusEnum.ACTIVE.name()))
                 .map(mapping -> {
                     mapping.setStatus(determineStatus(dto));
                     return mapping;
@@ -248,17 +254,43 @@ public class FacultyService {
                         batchId,
                         null,
                         teacher.getFullName(),
-                        determineStatus(dto)
-                ));
+                        determineStatus(dto)));
     }
 
     private String determineStatus(AddFacultyToCourseDTO dto) {
         return StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : FacultyStatusEnum.ACTIVE.name();
     }
 
-    public List<UserDTO>findFacultyByFilters(String instituteId) {
-        Set<String>userIds = facultyRepository.findUserIdsByFilters(instituteId, List.of(StatusEnum.ACTIVE.name()));
+    public List<UserDTO> findFacultyByFilters(String instituteId) {
+        Set<String> userIds = facultyRepository.findUserIdsByFilters(instituteId, List.of(StatusEnum.ACTIVE.name()));
         return authService.getUsersFromAuthServiceByUserIds(userIds.stream().toList());
+    }
+
+    public UserAccessDetailsDTO getUserAccessDetails(String userId, String instituteId) {
+        List<FacultySubjectPackageSessionMapping> mappings = facultyRepository.findByUserId(userId);
+
+        List<UserAccessDetailsDTO.FacultyAccessMappingDTO> accessMappings = mappings.stream()
+                .map(m -> UserAccessDetailsDTO.FacultyAccessMappingDTO.builder()
+                        .id(m.getId())
+                        .userType(m.getUserType())
+                        .typeId(m.getTypeId())
+                        .accessType(m.getAccessType()) // Use getter from Lombok @Data
+                        .accessId(m.getAccessId())
+                        .accessPermission(m.getAccessPermission())
+                        .linkageType(m.getLinkageType())
+                        .suborgId(m.getSuborgId())
+                        .packageSessionId(m.getPackageSessionId())
+                        .subjectId(m.getSubjectId())
+                        .status(m.getStatus())
+                        .name(m.getName())
+                        .build())
+                .collect(Collectors.toList());
+
+        return UserAccessDetailsDTO.builder()
+                .userId(userId)
+                .instituteId(instituteId)
+                .accessMappings(accessMappings)
+                .build();
     }
 
 }

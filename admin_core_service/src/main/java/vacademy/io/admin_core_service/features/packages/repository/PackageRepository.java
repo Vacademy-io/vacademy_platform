@@ -867,6 +867,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                 AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                 AND (
                     :#{#userIds == null || #userIds.isEmpty()} = true
                     OR EXISTS (
@@ -915,6 +917,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                             AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                            AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                             AND (
                                 :#{#userIds == null || #userIds.isEmpty()} = true
                                 OR EXISTS (
@@ -951,6 +955,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("packageIds") List<String> packageIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
             Pageable pageable);
 
     @Query(value = """
@@ -1143,6 +1149,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                    AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true
                         OR EXISTS (
@@ -1190,6 +1198,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                         AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                        AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                        AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                         AND (
                             :#{#facultyIds == null || #facultyIds.isEmpty()} = true
                             OR EXISTS (
@@ -1225,6 +1235,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("packageIds") List<String> packageIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
             Pageable pageable);
 
     @Query(value = """

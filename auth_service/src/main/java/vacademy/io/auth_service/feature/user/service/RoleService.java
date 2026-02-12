@@ -31,7 +31,8 @@ public class RoleService {
     private final UserService userService;
     private final UserOperationService userOperationService;
 
-    public RoleService(RoleRepository roleRepository, UserRepository userRepository, UserRoleRepository userRoleRepository, UserService userService,UserOperationService userOperationService) {
+    public RoleService(RoleRepository roleRepository, UserRepository userRepository,
+            UserRoleRepository userRoleRepository, UserService userService, UserOperationService userOperationService) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
@@ -40,13 +41,15 @@ public class RoleService {
     }
 
     @Transactional
-    public String addRolesToUser(ModifyUserRolesDTO addRolesToUserDTO, Optional<String> roleStatus, CustomUserDetails customUserDetails) {
+    public String addRolesToUser(ModifyUserRolesDTO addRolesToUserDTO, Optional<String> roleStatus,
+            CustomUserDetails customUserDetails) {
         User user = getUserById(addRolesToUserDTO.getUserId());
         List<Role> roles = roleRepository.findByNameIn(addRolesToUserDTO.getRoles());
 
         List<UserRole> userRoles = new ArrayList<>();
         for (Role role : roles) {
-            List<UserRole>userRolesList = userRoleRepository.findByUserAndStatusAndRoleName(user, UserRoleStatus.ACTIVE.name(), role.getName());
+            List<UserRole> userRolesList = userRoleRepository.findByUserAndStatusAndRoleName(user,
+                    UserRoleStatus.ACTIVE.name(), role.getName());
             if (userRolesList.size() > 0) {
                 continue;
             }
@@ -93,7 +96,8 @@ public class RoleService {
     }
 
     public String removeRolesFromUser(ModifyUserRolesDTO modifyUserRolesDTO, CustomUserDetails customUserDetails) {
-        userRoleRepository.deleteUserRolesByUserIdAndRoleNames(modifyUserRolesDTO.getUserId(), modifyUserRolesDTO.getRoles());
+        userRoleRepository.deleteUserRolesByUserIdAndRoleNames(modifyUserRolesDTO.getUserId(),
+                modifyUserRolesDTO.getRoles());
         return "Roles removed successfully";
     }
 
@@ -101,8 +105,10 @@ public class RoleService {
         return userRoleRepository.getUserRoleCountsByInstituteId(instituteId);
     }
 
-    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, UserRoleFilterDTO filterDTO, CustomUserDetails customUserDetails) {
-        return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(), filterDTO.getRoles(), customUserDetails);
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, UserRoleFilterDTO filterDTO,
+            CustomUserDetails customUserDetails) {
+        return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(), filterDTO.getRoles(),
+                customUserDetails);
     }
 
     public PagedUserWithRolesResponse getUsersByInstituteIdAndStatusPaged(String instituteId,

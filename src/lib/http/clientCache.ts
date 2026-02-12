@@ -20,25 +20,31 @@ function getHeaderValue(headers: AxiosRequestHeaders | Record<string, unknown> |
   return "";
 }
 
+const MAX_DEPTH = 10;
+
 function stableStringify(value: unknown): string {
   try {
     if (typeof value === "string") return value;
     if (value === undefined || value === null) return "";
     if (typeof value !== "object") return String(value);
+    
+    // Iterative approach or depth-limited recursion to avoid stack overflow
     const seen = new WeakSet<object>();
-    const normalize = (obj: unknown): unknown => {
+    
+    const normalize = (obj: unknown, depth: number): unknown => {
+      if (depth > MAX_DEPTH) return "[Max Depth Exceeded]";
       if (obj && typeof obj === "object") {
         if (seen.has(obj as object)) return undefined;
         seen.add(obj as object);
-        if (Array.isArray(obj)) return obj.map((v) => normalize(v));
+        if (Array.isArray(obj)) return obj.map((v) => normalize(v, depth + 1));
         const keys = Object.keys(obj as Record<string, unknown>).sort();
         const out: Record<string, unknown> = {};
-        for (const k of keys) out[k] = normalize((obj as Record<string, unknown>)[k]);
+        for (const k of keys) out[k] = normalize((obj as Record<string, unknown>)[k], depth + 1);
         return out;
       }
       return obj;
     };
-    return JSON.stringify(normalize(value));
+    return JSON.stringify(normalize(value, 0));
   } catch {
     try {
       return JSON.stringify(value);
@@ -181,7 +187,13 @@ export function maybeServeFromCache(config: InternalAxiosRequestConfig): Interna
     const defaultsAdapterUnknown = axios.defaults.adapter as unknown;
 
     let selectedAdapter: AxiosAdapter | undefined;
-    if (typeof cfgAdapterUnknown === "function") {
+    
+    // Check if the current adapter is already our wrapper to avoid infinite recursion
+    type WrappedAdapter = AxiosAdapter & { __isClientCacheWrapper?: boolean; __originalAdapter?: AxiosAdapter };
+
+    if (typeof cfgAdapterUnknown === "function" && (cfgAdapterUnknown as WrappedAdapter).__isClientCacheWrapper) {
+      selectedAdapter = (cfgAdapterUnknown as WrappedAdapter).__originalAdapter;
+    } else if (typeof cfgAdapterUnknown === "function") {
       selectedAdapter = cfgAdapterUnknown as AxiosAdapter;
     } else if (Array.isArray(defaultsAdapterUnknown)) {
       selectedAdapter = (defaultsAdapterUnknown.find((a) => typeof a === "function") as AxiosAdapter | undefined);
@@ -190,7 +202,7 @@ export function maybeServeFromCache(config: InternalAxiosRequestConfig): Interna
     }
 
     if (selectedAdapter) {
-      config.adapter = async (cfg) => {
+      const adapterWrapper: WrappedAdapter = async (cfg) => {
         const p = selectedAdapter!(cfg as InternalAxiosRequestConfig);
         inFlightRequests.set(key, p);
         try {
@@ -200,6 +212,11 @@ export function maybeServeFromCache(config: InternalAxiosRequestConfig): Interna
           inFlightRequests.delete(key);
         }
       };
+      // Mark our wrapper so we can identify and unwrap it later
+      adapterWrapper.__isClientCacheWrapper = true;
+      adapterWrapper.__originalAdapter = selectedAdapter;
+      
+      config.adapter = adapterWrapper;
     }
     return config;
   }

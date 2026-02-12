@@ -48,6 +48,15 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
+import vacademy.io.admin_core_service.features.notification.repository.NotificationEventConfigRepository;
+import vacademy.io.admin_core_service.features.notification.entity.NotificationEventConfig;
+import vacademy.io.admin_core_service.features.notification.dto.NotificationTemplateVariables;
+import vacademy.io.common.notification.dto.GenericEmailRequest;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationTemplateType;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 
 import java.util.*;
@@ -105,6 +114,18 @@ public class ApplicantService {
 
         @Autowired
         private DynamicNotificationService dynamicNotificationService;
+
+        @Autowired
+        private NotificationService notificationService;
+
+        @Autowired
+        private SendUniqueLinkService sendUniqueLinkService;
+
+        @Autowired
+        private NotificationEventConfigRepository notificationEventConfigRepository;
+
+        @Autowired
+        private InstituteRepository instituteRepository;
 
         // Correct Imports for Payment DTOs
         // using fully qualified names in method signature to avoid ambiguity if needed
@@ -696,6 +717,11 @@ public class ApplicantService {
                 String trackingId = generateCustomTrackingId(); // Generate NEW independent ID
                 AudienceResponse audienceResponse = null;
 
+                // Define variables for email notification
+                UserDTO parentUser = null;
+                UserDTO childUser = null;
+                PackageSession packageSession = null;
+
                 if (enquiryId != null) {
                         // === Path 1: Pre-filled from Enquiry ===
                         audienceResponse = audienceResponseRepository.findByEnquiryId(enquiryId)
@@ -712,15 +738,34 @@ public class ApplicantService {
 
                         // Sync/Create Student record using existing User ID
                         if (audienceResponse.getUserId() != null) {
-                                // Fetch child user details to populate student
+                                // Fetch users to populate local variables
                                 List<ParentWithChildDTO> users = authService
                                                 .getUsersWithChildren(List.of(audienceResponse.getUserId()));
-                                if (!users.isEmpty() && users.get(0).getChild() != null) {
-                                        UserDTO childUser = users.get(0).getChild();
-                                        createStudentProfile(childUser, request.getFormData(),
-                                                        request.getCustomFieldValues(),
-                                                        request.getInstituteId());
+                                if (!users.isEmpty()) {
+                                        ParentWithChildDTO parentWithChild = users.get(0);
+                                        parentUser = parentWithChild.getParent();
+                                        childUser = parentWithChild.getChild();
+
+                                        if (childUser != null) {
+                                                createStudentProfile(childUser, request.getFormData(),
+                                                                request.getCustomFieldValues(),
+                                                                request.getInstituteId());
+                                        }
                                 }
+                        }
+
+                        // Fetch PackageSession for email
+                        String packageSessionId = request.getDestinationPackageSessionId();
+                        if (packageSessionId == null) {
+                                packageSessionId = audienceResponse.getDestinationPackageSessionId();
+                        }
+                        // Fallback to request session Id if manual override or specific session context
+                        if (packageSessionId == null) {
+                                packageSessionId = request.getSessionId();
+                        }
+
+                        if (packageSessionId != null) {
+                                packageSession = packageSessionRepository.findById(packageSessionId).orElse(null);
                         }
 
                 } else {
@@ -736,9 +781,12 @@ public class ApplicantService {
                                         .orElseThrow(() -> new VacademyException(
                                                         "No audience campaign found for this session. Please contact admin."));
 
+                        // Fetch PackageSession
+                        packageSession = packageSessionRepository.findById(request.getSessionId()).orElse(null);
+
                         // 2. Create Users (Parent & Child)
-                        UserDTO parentUser = createParentUser(request);
-                        UserDTO childUser = createChildUser(request, parentUser.getId());
+                        parentUser = createParentUser(request);
+                        childUser = createChildUser(request, parentUser.getId());
 
                         // 3. Create Student
                         if (childUser != null) {
@@ -795,6 +843,15 @@ public class ApplicantService {
                         audienceResponse.setDestinationPackageSessionId(request.getDestinationPackageSessionId());
                 }
                 audienceResponseRepository.save(audienceResponse);
+
+                // Send application confirmation email with credentials
+                sendApplicationConfirmationEmail(
+                                savedApplicant.getId().toString(),
+                                request.getInstituteId(),
+                                firstStage,
+                                parentUser,
+                                childUser,
+                                packageSession);
 
                 // Trigger Email if Payment Stage
                 if (ApplicantStageType.PAYMENT.equals(firstStage.getType())) {
@@ -1051,7 +1108,8 @@ public class ApplicantService {
 
                 // 2. Initiate Payment via PaymentService
                 // Fix: Fetch Applicant, Institute, and Create UserPlan first
-                Applicant applicant = applicantRepository.findById(UUID.fromString(applicantId))
+                // Get applicant for tracking ID
+                Applicant applicant = applicantRepository.findById(java.util.UUID.fromString(applicantId))
                                 .orElseThrow(() -> new VacademyException("Applicant not found"));
 
                 // CRITICAL FIX: Get child user ID from AudienceResponse
@@ -1490,5 +1548,199 @@ public class ApplicantService {
                                 .parentInfo(parentUser)
                                 .children(childDetailsList)
                                 .build();
+        }
+
+        /**
+         * Send application confirmation email with credentials
+         * Tries to fetch template from notification_event_config, falls back to default
+         * email
+         */
+        private void sendApplicationConfirmationEmail(
+                        String applicantId,
+                        String instituteId,
+                        ApplicationStage firstStage,
+                        UserDTO parentUser,
+                        UserDTO childUser,
+                        PackageSession session) {
+
+                try {
+                        logger.info("Sending application confirmation email for applicant: {}", applicantId);
+
+                        // Get applicant for tracking ID
+                        Applicant applicant = applicantRepository.findById(UUID.fromString(applicantId))
+                                        .orElseThrow(() -> new VacademyException("Applicant not found"));
+
+                        // Get institute for institute name
+                        Institute institute = instituteRepository.findById(instituteId)
+                                        .orElse(null);
+                        String instituteName = institute != null ? institute.getInstituteName() : "Institute";
+
+                        // Get credentials (username and password)
+                        String username = parentUser != null ? parentUser.getEmail() : "";
+                        String password = parentUser != null ? parentUser.getPassword() : ""; // Use getPassword, not
+                                                                                              // getPasswordHash
+
+                        // Build portal URL (hardcoded for now)
+                        String portalUrl = "https://learner-portal.vacademy.io";
+
+                        // Format submission time
+                        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+                        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
+                                        .ofPattern("MMM dd, yyyy hh:mm a z");
+                        String submissionTime = now.format(formatter);
+
+                        String sessionName = (session != null && session.getSession() != null)
+                                        ? session.getSession().getSessionName()
+                                        : "Session";
+
+                        // Try to fetch template from notification_event_config
+                        Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
+                                        .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                                                        NotificationEventType.APPLICATION_FORM_SUBMISSION,
+                                                        NotificationSourceType.APPLICATION_STAGE,
+                                                        firstStage.getId().toString(),
+                                                        NotificationTemplateType.EMAIL);
+
+                        if (configOpt.isPresent()) {
+                                // Send templated email
+                                logger.info("Using custom template for application confirmation email");
+
+                                NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
+                                                .userFullName(parentUser.getFullName())
+                                                .userEmail(parentUser.getEmail())
+                                                .userName(username)
+                                                .userPassword(password)
+                                                .portalUrl(portalUrl)
+                                                .childName(childUser != null ? childUser.getFullName() : "Student")
+                                                .trackingId(applicant.getTrackingId())
+                                                .sessionName(sessionName)
+                                                .submissionTime(submissionTime)
+                                                .instituteName(instituteName)
+                                                .instituteId(instituteId)
+                                                .build();
+
+                                sendUniqueLinkService.sendUniqueLinkByEmailByEnrollInvite(
+                                                instituteId,
+                                                parentUser,
+                                                configOpt.get().getTemplateId(),
+                                                null,
+                                                templateVars);
+
+                                logger.info("Sent templated application confirmation email to: {}",
+                                                parentUser.getEmail());
+                        } else {
+                                // Send default email
+                                logger.info("No custom template found, using default application confirmation email");
+
+                                String defaultEmailBody = buildDefaultApplicationEmailBody(
+                                                parentUser != null ? parentUser.getFullName() : "Parent",
+                                                childUser != null ? childUser.getFullName() : "Student",
+                                                sessionName,
+                                                applicant.getTrackingId(),
+                                                submissionTime,
+                                                username,
+                                                password,
+                                                portalUrl,
+                                                instituteName);
+
+                                GenericEmailRequest emailRequest = new GenericEmailRequest();
+                                emailRequest.setTo(parentUser.getEmail());
+                                emailRequest.setSubject("Application Submitted Successfully - " + sessionName);
+                                emailRequest.setBody(defaultEmailBody);
+
+                                notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+                                logger.info("Sent default application confirmation email to: {}",
+                                                parentUser.getEmail());
+                        }
+
+                } catch (Exception ex) {
+                        // Log error but don't throw - application already saved
+                        logger.error("Failed to send application confirmation email for applicant {}: {}",
+                                        applicantId, ex.getMessage(), ex);
+                }
+        }
+
+        /**
+         * Build default HTML email body for application confirmation
+         */
+        private String buildDefaultApplicationEmailBody(
+                        String parentName,
+                        String childName,
+                        String sessionName,
+                        String trackingId,
+                        String submissionTime,
+                        String username,
+                        String password,
+                        String portalUrl,
+                        String instituteName) {
+
+                return "<!DOCTYPE html>" +
+                                "<html>" +
+                                "<head>" +
+                                "<style>" +
+                                "body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }" +
+                                ".container { max-width: 600px; margin: 0 auto; padding: 20px; }" +
+                                ".header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }"
+                                +
+                                ".content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; }" +
+                                ".detail-section { margin: 20px 0; padding: 15px; background-color: white; border-left: 4px solid #4CAF50; }"
+                                +
+                                ".detail-label { font-weight: bold; color: #555; }" +
+                                ".detail-value { color: #333; margin-left: 10px; }" +
+                                ".credentials-box { background-color: #fff3cd; border: 2px solid #ffc107; padding: 20px; margin: 20px 0; border-radius: 5px; }"
+                                +
+                                ".button { display: inline-block; padding: 12px 30px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 10px 0; }"
+                                +
+                                ".footer { text-align: center; padding: 20px; color: #777; font-size: 12px; }" +
+                                "</style>" +
+                                "</head>" +
+                                "<body>" +
+                                "<div class='container'>" +
+                                "<div class='header'>" +
+                                "<h2>Application Submitted Successfully!</h2>" +
+                                "</div>" +
+                                "<div class='content'>" +
+                                "<p>Dear <strong>" + parentName + "</strong>,</p>" +
+                                "<p>Thank you for submitting the application for <strong>" + childName
+                                + "</strong> to <strong>" + sessionName + "</strong>.</p>" +
+                                "<div class='detail-section'>" +
+                                "<h3>Application Details</h3>" +
+                                "<p><span class='detail-label'>Tracking ID:</span> <span class='detail-value'>"
+                                + trackingId + "</span></p>" +
+                                "<p><span class='detail-label'>Student Name:</span> <span class='detail-value'>"
+                                + childName + "</span></p>" +
+                                "<p><span class='detail-label'>Session/Class:</span> <span class='detail-value'>"
+                                + sessionName + "</span></p>" +
+                                "<p><span class='detail-label'>Submitted On:</span> <span class='detail-value'>"
+                                + submissionTime + "</span></p>" +
+                                "<p><span class='detail-label'>Status:</span> <span class='detail-value'>Under Review</span></p>"
+                                +
+                                "</div>" +
+                                "<div class='credentials-box'>" +
+                                "<h3>🔐 Your Portal Access Credentials</h3>" +
+                                "<p>You can now access your learner portal using the following credentials:</p>" +
+                                "<p><span class='detail-label'>Username:</span> <span class='detail-value'>" + username
+                                + "</span></p>" +
+                                "<p><span class='detail-label'>Password:</span> <span class='detail-value'>" + password
+                                + "</span></p>" +
+                                "<p><span class='detail-label'>Portal URL:</span> <a href='" + portalUrl + "'>"
+                                + portalUrl + "</a></p>" +
+                                "<a href='" + portalUrl + "' class='button'>Access Portal Now</a>" +
+                                "</div>" +
+                                "<div class='detail-section'>" +
+                                "<h3>Next Steps</h3>" +
+                                "<p>We will review your application and contact you shortly with the next steps.</p>" +
+                                "<p>You can track your application status by logging into the portal using the credentials above.</p>"
+                                +
+                                "</div>" +
+                                "<p>If you have any questions, please don't hesitate to contact us.</p>" +
+                                "<p>Best regards,<br><strong>" + instituteName + "</strong></p>" +
+                                "</div>" +
+                                "<div class='footer'>" +
+                                "<p>This is an automated email. Please do not reply to this message.</p>" +
+                                "</div>" +
+                                "</div>" +
+                                "</body>" +
+                                "</html>";
         }
 }

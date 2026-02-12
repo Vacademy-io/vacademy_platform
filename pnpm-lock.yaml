@@ -284,9 +284,6 @@ importers:
       docx-preview:
         specifier: ^0.3.5
         version: 0.3.5
-      echarts-for-react:
-        specifier: ^3.0.2
-        version: 3.0.2(echarts@5.6.0)(react@19.1.0)
       firebase:
         specifier: ^10.7.0
         version: 10.14.1
@@ -4917,15 +4914,6 @@ packages:
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
 
-  echarts-for-react@3.0.2:
-    resolution: {integrity: sha512-DRwIiTzx8JfwPOVgGttDytBqdp5VzCSyMRIxubgU/g2n9y3VLUmF2FK7Icmg/sNVkv4+rktmrLN9w22U2yy3fA==}
-    peerDependencies:
-      echarts: ^3.0.0 || ^4.0.0 || ^5.0.0
-      react: ^15.0.0 || >=16.0.0
-
-  echarts@5.6.0:
-    resolution: {integrity: sha512-oTbVTsXfKuEhxftHqL5xprgLoc0k7uScAwtryCgWF6hPYFLRwOUHiFmHGCBKP5NPFNkDVopOieyUqYGH8Fa3kA==}
-
   electron-is-dev@2.0.0:
     resolution: {integrity: sha512-3X99K852Yoqu9AcW50qz3ibYBWY79/pBhlMCab8ToEWS48R0T9tyxRiQhwylE7zQdXrMnx2JKqUJyMPmt5FBqA==}
 
@@ -7371,9 +7359,6 @@ packages:
   sisteransi@1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
 
-  size-sensor@1.0.2:
-    resolution: {integrity: sha512-2NCmWxY7A9pYKGXNBfteo4hy14gWu47rg5692peVMst6lQLPKrVjhY+UTEsPI5ceFRJSl3gVgMYaUi/hKuaiKw==}
-
   slash@3.0.0:
     resolution: {integrity: sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q==}
     engines: {node: '>=8'}
@@ -7707,9 +7692,6 @@ packages:
         optional: true
       '@swc/wasm':
         optional: true
-
-  tslib@2.3.0:
-    resolution: {integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==}
 
   tslib@2.6.2:
     resolution: {integrity: sha512-AEYxH93jGFPn/a2iVAwW87VuUIkR1FVUKB77NwMF7nBTDkDrrT/Hpt/IrCJ0QXhW27jTBDcf5ZY7w6RiqTMw2Q==}
@@ -8190,9 +8172,6 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
-  zrender@5.6.1:
-    resolution: {integrity: sha512-OFXkDJKcrlx5su2XbzJvj/34Q3m6PvyCZkVPHGYpcCJ52ek4U/ymZyfuV1nKE23AyBJ51E/6Yr0mhZ7xGTO4ag==}
 
   zustand@4.5.7:
     resolution: {integrity: sha512-CHOUy7mu3lbD6o6LJLfllpjkzhHXSBlX8B9+qPddUsIfeF5S/UZ5q0kmCsnRqT1UHFQZchNFDDzMbQsuesHWlw==}
@@ -13279,18 +13258,6 @@ snapshots:
 
   eastasianwidth@0.2.0: {}
 
-  echarts-for-react@3.0.2(echarts@5.6.0)(react@19.1.0):
-    dependencies:
-      echarts: 5.6.0
-      fast-deep-equal: 3.1.3
-      react: 19.1.0
-      size-sensor: 1.0.2
-
-  echarts@5.6.0:
-    dependencies:
-      tslib: 2.3.0
-      zrender: 5.6.1
-
   electron-is-dev@2.0.0: {}
 
   electron-to-chromium@1.5.182: {}
@@ -16210,8 +16177,6 @@ snapshots:
 
   sisteransi@1.0.5: {}
 
-  size-sensor@1.0.2: {}
-
   slash@3.0.0: {}
 
   slice-ansi@4.0.0:
@@ -16574,8 +16539,6 @@ snapshots:
       yn: 3.1.1
     optionalDependencies:
       '@swc/core': 1.12.11
-
-  tslib@2.3.0: {}
 
   tslib@2.6.2: {}
 
@@ -17059,10 +17022,6 @@ snapshots:
       - supports-color
 
   zod@3.25.76: {}
-
-  zrender@5.6.1:
-    dependencies:
-      tslib: 2.3.0
 
   zustand@4.5.7(@types/react@18.3.23)(react@19.1.0):
     dependencies:

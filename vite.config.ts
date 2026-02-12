@@ -40,6 +40,7 @@ export default defineConfig({
             output: {
                 // Conservative chunking strategy - only split truly independent heavy libs
                 manualChunks: (id) => {
+
                     // Firebase - can be safely split as it's dynamically imported
                     if (id.includes('firebase/') || id.includes('@firebase/')) {
                         return 'firebase';
@@ -78,8 +79,6 @@ export default defineConfig({
 
                     // Charts libraries - for dashboard
                     if (id.includes('recharts') ||
-                        id.includes('echarts') ||
-                        id.includes('echarts-for-react') ||
                         id.includes('@nivo/') ||
                         id.includes('@visx/')) {
                         return 'charts';
@@ -97,6 +96,9 @@ export default defineConfig({
                     }
 
                     // Large Data Processing Libraries
+                    if (id.includes('country-state-city')) {
+                        return 'country-state-city';
+                    }
                     if (id.includes('xlsx')) {
                         return 'excel-processor';
                     }

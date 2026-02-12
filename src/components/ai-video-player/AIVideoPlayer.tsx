@@ -145,12 +145,17 @@ const fixHtmlContent = (html: string, includeLibs = true, contentType: ContentTy
                 });
                 
                 // Helper to find a "movable" block (divs, imgs, etc)
+                // Helper to find a "movable" block (divs, imgs, etc)
                 const getMovable = (target) => {
-                    if(!target || target === document.body) return null;
-                    // Move up until we find a block level element or the body
-                    const style = window.getComputedStyle(target);
-                    if (style.display === 'block' || style.display === 'flex' || target.tagName === 'IMG') return target;
-                    return getMovable(target.parentElement);
+                    let current = target;
+                    while (current && current !== document.body) {
+                        const style = window.getComputedStyle(current);
+                        if (style.display === 'block' || style.display === 'flex' || current.tagName === 'IMG') {
+                            return current;
+                        }
+                        current = current.parentElement;
+                    }
+                    return null;
                 }
 
                 // Drag Logic

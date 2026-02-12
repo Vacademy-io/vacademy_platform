@@ -453,20 +453,24 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("slideStatusList") List<String> slideStatusList);
 
     @Query(value = """
-            WITH total_time_spent AS (
-                SELECT
-                    SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60) AS total_minutes_spent
-                FROM activity_log al
-                JOIN student_session_institute_group_mapping ssig
-                    ON al.user_id = ssig.user_id
-                WHERE
-                    ssig.package_session_id = :packageSessionId
-                    AND ssig.status IN :statusList  -- Ensures only students with matching status are considered
-                    AND al.created_at BETWEEN :startDate AND :endDate
-            )
-            SELECT
-                COALESCE(total_minutes_spent, 0) / (DATE(:endDate) - DATE(:startDate) + 1) AS avg_daily_minutes_spent
-            FROM total_time_spent;
+           WITH total_time_spent AS (
+    SELECT
+       
+        SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60) AS total_minutes_spent
+    FROM activity_log al
+    JOIN student_session_institute_group_mapping ssig
+        ON al.user_id = ssig.user_id
+    WHERE
+        ssig.package_session_id = :packageSessionId
+        AND ssig.status IN :statusList
+        AND al.created_at BETWEEN :startDate AND :endDate
+   
+)
+SELECT
+    slide_id,
+    COALESCE(total_minutes_spent, 0)
+      / (DATE(:endDate) - DATE(:startDate) + 1) AS avg_daily_minutes_spent
+FROM total_time_spent;
             """, nativeQuery = true)
     Double findAverageDailyTimeSpentByBatch(
             @Param("startDate") Date startDate,
@@ -792,7 +796,10 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                                 COALESCE(lc.avg_concentration_score, 0.0) AS avg_concentration_score,
                                 COALESCE(CAST(bt.avg_time_spent_by_batch AS TEXT), '0.0') AS avg_time_spent_by_batch,
                                 COALESCE(CAST(bc.avg_concentration_score_by_batch AS TEXT), '0.0') AS avg_concentration_score_by_batch,
-                                TO_CHAR(COALESCE(lt.last_active_date, NOW()), 'HH24:MI DD/MM/YYYY') AS last_active_date
+                                CASE
+                                    WHEN lt.last_active_date IS NULL THEN 'Slide not opened'
+                                    ELSE TO_CHAR(lt.last_active_date, 'HH24:MI DD/MM/YYYY')
+                                END AS last_active_date
 
                             FROM Slides s
                             LEFT JOIN LearnerTimeScore lt ON s.slide_id = lt.slide_id
@@ -1325,16 +1332,16 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     AND s.status IN (:slideStatusList)
                 WHERE csm.status IN (:chapterSlideStatusList)
             ),
-            ActivityLogs AS (
-                SELECT
-                    al.id AS activity_id,
-                    al.slide_id,
-                    al.start_time,
-                    al.end_time,
-                    al.user_id
-                FROM activity_log al
-                JOIN Slides s ON al.slide_id = s.slide_id
-            ),
+    ActivityLogs AS (
+    SELECT 
+        al.id AS activity_id,
+        al.slide_id,
+        al.start_time,
+        al.end_time,
+        al.user_id
+    FROM activity_log al
+    JOIN Slides s ON al.slide_id = s.slide_id
+),
             StudentCount AS (
                 SELECT COUNT(DISTINCT ssigm.user_id) AS distinct_users
                 FROM student_session_institute_group_mapping ssigm
@@ -1344,9 +1351,15 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             AvgTimeSpent AS (
                 SELECT
                     al.slide_id,
-                    (EXTRACT(EPOCH FROM SUM(al.end_time - al.start_time)) / 60) /
-                    NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
-                FROM ActivityLogs al
+                   (EXTRACT(EPOCH FROM SUM(
+  CASE
+    WHEN al.end_time > al.start_time
+     AND al.start_time > TIMESTAMP '2000-01-01'
+    THEN (al.end_time - al.start_time)
+    ELSE INTERVAL '0 seconds'
+  END
+)) / 60) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
+  FROM ActivityLogs al
                 GROUP BY al.slide_id
             ),
             AvgConcentrationScore AS (

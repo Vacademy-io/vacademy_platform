@@ -481,7 +481,7 @@ public class HtmlBuilderService {
                         entry.getRank(),
                         entry.getFullName(),
                         entry.getAvgConcentration(),
-                        formatMinutesToHrMin(entry.getDailyAvgTime()),
+                        formatMinutesToDayHrMin(entry.getDailyAvgTime()),
                         formatMinutesToDayHrMin(entry.getTotalTime())))
                 .collect(Collectors.joining());
 
@@ -628,20 +628,29 @@ public class HtmlBuilderService {
 
 
     public static String formatMinutesToDayHrMin(Double totalMinutes) {
-        if (totalMinutes == null || totalMinutes < 0) return "0m";
 
-        int total = totalMinutes.intValue();
-        int days = total / (24 * 60);
-        int hours = (total % (24 * 60)) / 60;
-        int minutes = total % 60;
-
-        StringBuilder result = new StringBuilder();
-        if (days > 0) result.append(days).append("days ");
-        if (hours > 0) result.append(hours).append("h ");
-        result.append(minutes).append("m");
-
-        return result.toString().trim();
-    }
+      if (totalMinutes == null || totalMinutes <= 0) {
+          return "0m";
+      }
+  
+  
+      int days = (int) (totalMinutes / (24 * 60));
+  
+      int remainingAfterDays = (int) (totalMinutes % (24 * 60));
+  
+      int hours = (int) (remainingAfterDays / 60);
+  
+      int minutes = (int) (remainingAfterDays % 60);
+  
+      StringBuilder result = new StringBuilder();
+  
+      if (days > 0) result.append(days).append("d ");
+      if (hours > 0) result.append(hours).append("h ");
+      if (minutes > 0 || result.length() == 0) result.append(minutes).append("m");
+  
+      return result.toString().trim();
+  }
+  
 
     public static String generateHtmlForLearnerReport(
             ProgressReportDTO learnerProgressReport,
@@ -900,6 +909,70 @@ public class HtmlBuilderService {
         return html.toString();
     }
 
+    public static String getBatchSubjectWiseProgressReportHtml(List<SubjectProgressDTO> subjectWiseProgress,
+                                                               String batchName,
+                                                               String instituteName) {
+        StringBuilder html = new StringBuilder();
+
+        html.append("<div style='font-family: Georgia, serif; background-color: #f8f8f8; padding: 40px; color: #333;'>");
+
+        // Container
+        html.append("<div style='max-width: 800px; margin: auto; background: #fff; padding: 40px 50px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);'>");
+
+        // Heading
+        html.append("<h2 style='text-align: center; font-size: 28px; color: #222; margin-bottom: 30px;'>Batch Subject-wise Progress</h2>");
+
+        // Details (batch + institute only, no learner)
+        html.append("<div style='text-align: center; font-size: 16px; margin-bottom: 30px;'>")
+                .append("<p><strong>Institute:</strong> ").append(escapeHtml(instituteName)).append("</p>")
+                .append("<p><strong>Batch:</strong> ").append(escapeHtml(batchName)).append("</p>")
+                .append("</div>");
+
+        // Section Heading
+        html.append("<h2 style='text-align: center; font-size: 22px; color: #222; margin-top: 40px; margin-bottom: 20px;'>Subject-wise Overview</h2>");
+
+        // Table
+        html.append("<table style='width: 100%; border-collapse: collapse; font-size: 16px; margin-bottom: 30px;'>");
+        html.append("<thead>")
+                .append("<tr style='background-color: #fcedda;'>")
+                .append("<th style='text-align: left; padding: 12px;'>Subject</th>")
+                .append("<th style='text-align: left; padding: 12px;'>Module</th>")
+                .append("<th style='text-align: left; padding: 12px;'>Module Completed</th>")
+                .append("<th style='text-align: left; padding: 12px;'>Time Spent (Avg)</th>")
+                .append("</tr>")
+                .append("</thead><tbody>");
+
+        for (SubjectProgressDTO subject : subjectWiseProgress) {
+            String subjectName = subject.getSubjectName();
+            List<SubjectProgressDTO.ModuleProgressDTO> modules = subject.getModules();
+
+            for (int i = 0; i < modules.size(); i++) {
+                SubjectProgressDTO.ModuleProgressDTO module = modules.get(i);
+                html.append("<tr>")
+                        .append("<td style='padding: 12px; border-bottom: 1px solid #ddd;'>")
+                        .append(i == 0 ? escapeHtml(subjectName) : "")
+                        .append("</td>")
+                        .append("<td style='padding: 12px; border-bottom: 1px solid #ddd;'>")
+                        .append(escapeHtml(module.getModuleName()))
+                        .append("</td>")
+                        .append("<td style='padding: 12px; border-bottom: 1px solid #ddd;'>")
+                        .append(module.getCompletionPercentage() == null
+                                ? "0.00%"
+                                : String.format("%.2f%%", module.getCompletionPercentage()))
+                        .append("</td>")
+                        .append("<td style='padding: 12px; border-bottom: 1px solid #ddd;'>")
+                        .append(module.getAvgTimeSpentMinutes() == null
+                                ? "0 min"
+                                : String.format("%.2f min", module.getAvgTimeSpentMinutes()))
+                        .append("</td>")
+                        .append("</tr>");
+            }
+        }
+
+        html.append("</tbody></table></div></div>");
+        return html.toString();
+    }
+
     public static String getModuleWiseReportHtml(List<LearnerChapterSlideProgressDTO> chapters,
                                                  String learnerName,
                                                  String dateGenerated,
@@ -973,16 +1046,28 @@ public class HtmlBuilderService {
                       <tbody>
                     """);
 
-            for (LearnerChapterSlideProgressDTO.SlideProgressDTO slide : chapter.getSlides()) {
-                chapterTables.append("<tr>");
-                chapterTables.append("<td class='icon'>▶️</td>");
-                chapterTables.append("<td>").append(escapeHtml(slide.getSlideTitle())).append("</td>");
-                chapterTables.append("<td>").append(formatPercentage(slide.getAvgConcentrationScore())).append("</td>");
-                chapterTables.append("<td>").append(formatPercentage(getBatchAvgConcentration(chapter.getChapterName(), slide.getSlideTitle()))).append("</td>");
-                chapterTables.append("<td>").append(formatDuration(slide.getAvgTimeSpent())).append("</td>");
-                chapterTables.append("<td>").append(getLastActiveDate(chapter.getChapterName(), slide.getSlideTitle())).append("</td>");
-                chapterTables.append("</tr>");
-            }
+           // ... inside getModuleWiseReportHtml, in the for (LearnerChapterSlideProgressDTO chapter : chapters) loop ...
+
+        for (LearnerChapterSlideProgressDTO.SlideProgressDTO slide : chapter.getSlides()) {
+          chapterTables.append("<tr>");
+          chapterTables.append("<td class='icon'>▶️</td>");
+          chapterTables.append("<td>").append(escapeHtml(slide.getSlideTitle())).append("</td>");
+          chapterTables.append("<td>").append(formatPercentage(slide.getAvgConcentrationScore())).append("</td>");
+
+          // use batch concentration from DTO instead of hardcoded placeholder
+          chapterTables.append("<td>")
+                  .append(formatBatchConcentration(slide.getAvgConcentrationScoreByBatch()))
+                  .append("</td>");
+
+          chapterTables.append("<td>").append(formatDuration(slide.getAvgTimeSpent())).append("</td>");
+
+          // use last active from DTO instead of hardcoded placeholder
+          chapterTables.append("<td>")
+                  .append(escapeHtml(slide.getLastActiveDate()))
+                  .append("</td>");
+
+          chapterTables.append("</tr>");
+        }
 
             chapterTables.append("</tbody></table>");
         }
@@ -1019,15 +1104,113 @@ public class HtmlBuilderService {
     }
 
     // Placeholder for batch concentration
-    private static Double getBatchAvgConcentration(String chapter, String slide) {
-        // Replace with real logic
-        return 72.16;
-    }
+   // remove or comment out these old placeholders:
+// private static Double getBatchAvgConcentration(String chapter, String slide) {
+//     // Replace with real logic
+//     return 72.16;
+// }
+//
+// private static String getLastActiveDate(String chapter, String slide) {
+//     // Replace with actual date logic
+//     return "13/10/2024, 11:00 AM";
+// }
 
-    // Placeholder for last active date
-    private static String getLastActiveDate(String chapter, String slide) {
-        // Replace with actual date logic
-        return "13/10/2024, 11:00 AM";
+private static String formatBatchConcentration(String value) {
+  if (value == null || value.isBlank()) {
+      return "N/A";
+  }
+  try {
+      double d = Double.parseDouble(value);
+      return String.format("%.2f%%", d);
+  } catch (NumberFormatException ex) {
+      // if DB already returns a formatted string, just escape and return it
+      return escapeHtml(value);
+  }
+}
+
+    public static String getBatchChapterWiseReportHtml(List<ChapterSlideProgressDTO> chapters,
+                                                       String batchName,
+                                                       String instituteName,
+                                                       String moduleName) {
+        StringBuilder body = new StringBuilder();
+
+        // Header section
+        body.append("<h1 style='color:#000000;'>Chapter-wise Batch Report</h1>")
+            .append("<p><strong>Institute:</strong> ").append(escapeHtml(instituteName)).append("<br/>")
+            .append("<strong>Batch:</strong> ").append(escapeHtml(batchName)).append("<br/>")
+            .append("<strong>Module:</strong> ").append(escapeHtml(moduleName)).append("</p>");
+
+        // One table per chapter
+        for (ChapterSlideProgressDTO chapter : chapters) {
+            body.append("<h3 style='margin-top:20px; color:#f57c00;'>Chapter: ")
+                .append(escapeHtml(chapter.getChapterName()))
+                .append("</h3>");
+
+            body.append("""
+                    <table style='width:100%; border-collapse:collapse; margin-bottom:16px; font-size:13px;'>
+                      <thead>
+                        <tr style='background-color:#fde7cc;'>
+                          <th style='border:1px solid #ddd; padding:8px;'>Study Slide</th>
+                          <th style='border:1px solid #ddd; padding:8px;'>Source Type</th>
+                          <th style='border:1px solid #ddd; padding:8px;'>Avg Time Spent (min)</th>
+                          <th style='border:1px solid #ddd; padding:8px;'>Avg Concentration Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                    """);
+
+            if (chapter.getSlides() != null && !chapter.getSlides().isEmpty()) {
+                for (ChapterSlideProgressDTO.SlideProgressDTO slide : chapter.getSlides()) {
+                    body.append("<tr>")
+                        .append("<td style='border:1px solid #ddd; padding:8px;'>")
+                        .append(escapeHtml(slide.getSlideTitle()))
+                        .append("</td>")
+                        .append("<td style='border:1px solid #ddd; padding:8px;'>")
+                        .append(escapeHtml(slide.getSlideSourceType()))
+                        .append("</td>")
+                        .append("<td style='border:1px solid #ddd; padding:8px;'>")
+                        .append(slide.getAvgTimeSpent() == null ? "0.00" : String.format("%.2f", slide.getAvgTimeSpent()))
+                        .append("</td>")
+                        .append("<td style='border:1px solid #ddd; padding:8px;'>")
+                        .append(slide.getAvgConcentrationScore() == null ? "0.00%" : String.format("%.2f%%", slide.getAvgConcentrationScore()))
+                        .append("</td>")
+                        .append("</tr>");
+                }
+            } else {
+                body.append("""
+                        <tr>
+                          <td colspan="4" style='border:1px solid #ddd; padding:8px; text-align:center;'>No slides found</td>
+                        </tr>
+                        """);
+            }
+
+            body.append("</tbody></table>");
+        }
+
+        // Wrap in basic HTML template
+        return """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="UTF-8">
+                  <title>Chapter-wise Batch Report</title>
+                  <style>
+                    body {
+                      font-family: Arial, sans-serif;
+                      margin: 20px;
+                      color: #333;
+                    }
+                    h1, h3 {
+                      margin-bottom: 8px;
+                    }
+                  </style>
+                </head>
+                <body>
+                """ + body + """
+                </body>
+                </html>
+                """;
     }
 
 }
+

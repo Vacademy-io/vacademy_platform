@@ -77,4 +77,19 @@ public class LmsReportExportController {
         return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
     }
 
+    @PostMapping(value = "/chapter-wise-batch-report", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadChapterWiseBatchReport(@RequestBody ReportFilterDTO reportFilterDTO,
+                                                                 @RequestAttribute("user") CustomUserDetails userDetails) {
+        byte[] pdfBytes = lmsReportExportService.generateChapterWiseBatchReport(reportFilterDTO, userDetails);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(ContentDisposition
+                .builder("attachment")
+                .filename("Chapter_Wise_Batch_Report.pdf")
+                .build());
+
+        return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
+    }
+
 }

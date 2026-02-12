@@ -10,7 +10,14 @@ export default defineConfig({
     plugins: [
         TanStackRouterVite(),
         viteReact(),
-        svgr({ include: "**/*.svg" }),
+        svgr({
+            include: "**/*.svg",
+            exclude: [
+                "**/ssdc-logo*.svg",
+                "**/ssdc_logo.svg",
+                "**/registration-logo.svg"
+            ]
+        }),
     ],
     resolve: {
         alias: {

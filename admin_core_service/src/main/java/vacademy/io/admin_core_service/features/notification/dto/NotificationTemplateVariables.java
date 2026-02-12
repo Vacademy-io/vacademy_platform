@@ -67,6 +67,11 @@ public class NotificationTemplateVariables {
         private String childName;
         private String applicantId;
 
+        // Application submission details
+        private String userPassword; // User's password for portal access
+        private String portalUrl; // Portal login URL
+        private String trackingId; // Application tracking ID
+
         /**
          * Factory method to create variables from entities
          */

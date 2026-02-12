@@ -11,16 +11,20 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 public class LearnerPackageFilterDTO {
 
-    private List<String>status;
-    private List<String>levelIds;
-    private List<String>facultyIds;
-    private List<String>packageTypes;
+    private List<String> status;
+    private List<String> levelIds;
+    private List<String> facultyIds;
+    private List<String> packageTypes;
     private String searchByName;
-    private List<String>tag;
+    private List<String> tag;
     /** When set, only packages created by this user are returned. Optional. */
     private String createdByUserId;
     private double minPercentageCompleted;
     private double maxPercentageCompleted;
     private Map<String, String> sortColumns;
     private String type;
+    /** Comma-separated package IDs to filter by. Optional. */
+    private List<String> packageIds;
+    /** Comma-separated package session IDs to filter by. Optional. */
+    private List<String> packageSessionIds;
 }

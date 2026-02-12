@@ -1,11 +1,11 @@
 package vacademy.io.auth_service.feature.user.service;
 
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.auth_service.feature.user.dto.PermissionDTO;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
 import vacademy.io.common.auth.entity.Permissions;
+import java.util.Optional;
 import vacademy.io.common.exceptions.RoleNotFoundException;
 import vacademy.io.common.exceptions.UserNotFoundException;
 
@@ -15,7 +15,6 @@ import java.util.stream.Collectors;
 
 @Service
 public class PermissionService {
-
 
     @Autowired
     PermissionRepository permissionRepository;
@@ -28,8 +27,7 @@ public class PermissionService {
         List<Permissions> permissions = permissionRepository.findPermissionsByUserId(userId);
 
         return permissions.stream()
-                .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()
-                ))
+                .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()))
                 .collect(Collectors.toList());
     }
 
@@ -46,8 +44,7 @@ public class PermissionService {
         List<Permissions> permissions = permissionRepository.findPermissionsByListOfRoleId(roleId);
 
         return permissions.stream()
-                .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()
-                ))
+                .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()))
                 .collect(Collectors.toList());
     }
 
@@ -55,8 +52,7 @@ public class PermissionService {
         List<Permissions> permissions = permissionRepository.findAllPermissionsWithTag();
 
         return permissions.stream()
-                .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()
-                ))
+                .map(permission -> new PermissionDTO(permission.getId(), permission.getName(), permission.getTag()))
                 .collect(Collectors.toList());
     }
 

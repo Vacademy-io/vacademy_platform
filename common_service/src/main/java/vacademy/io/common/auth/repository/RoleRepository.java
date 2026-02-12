@@ -13,4 +13,8 @@ public interface RoleRepository extends CrudRepository<Role, String> {
 
     List<Role> findByNameIn(List<String> names);
 
+    List<Role> findAllByInstituteId(String instituteId);
+
+    Optional<Role> findByNameAndInstituteId(String name, String instituteId);
+
 }

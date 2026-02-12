@@ -60,6 +60,7 @@ export default defineConfig({
                         return 'pdf-viewer';
                     }
 
+
                     // Pyodide - Python runtime, for code execution
                     if (id.includes('pyodide')) {
                         return 'pyodide';
@@ -78,9 +79,35 @@ export default defineConfig({
                     // Charts libraries - for dashboard
                     if (id.includes('recharts') ||
                         id.includes('echarts') ||
+                        id.includes('echarts-for-react') ||
                         id.includes('@nivo/') ||
                         id.includes('@visx/')) {
                         return 'charts';
+                    }
+
+                    // Huge Icon Libraries - Need to be split
+                    if (id.includes('react-icons')) {
+                        return 'react-icons';
+                    }
+                    if (id.includes('@phosphor-icons') || id.includes('phosphor-react')) {
+                        return 'phosphor-icons';
+                    }
+                    if (id.includes('@tabler/icons-react')) {
+                        return 'tabler-icons';
+                    }
+
+                    // Large Data Processing Libraries
+                    if (id.includes('xlsx')) {
+                        return 'excel-processor';
+                    }
+                    if (id.includes('mermaid')) {
+                        return 'mermaid';
+                    }
+                    if (id.includes('lottie-react')) {
+                        return 'lottie';
+                    }
+                    if (id.includes('framer-motion')) {
+                        return 'framer-motion';
                     }
 
                     // Don't split React, Radix, or other core UI libs - keep them together

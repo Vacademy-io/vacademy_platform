@@ -1,4 +1,4 @@
-import { createContext, ReactNode } from "react";
+import { createContext, ReactNode, useMemo } from "react";
 
 /**
  * Eway Context Interface
@@ -45,11 +45,11 @@ export const EwayProvider = ({
 }: EwayProviderProps) => {
   const isConfigured = !!(encryptionKey && publicKey);
 
-  const value: EwayContextType = {
+  const value: EwayContextType = useMemo(() => ({
     encryptionKey,
     publicKey,
     isConfigured,
-  };
+  }), [encryptionKey, publicKey, isConfigured]);
 
   return <EwayContext.Provider value={value}>{children}</EwayContext.Provider>;
 };

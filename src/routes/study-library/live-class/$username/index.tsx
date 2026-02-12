@@ -19,7 +19,7 @@ import { SessionDetails } from "../-types/types";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { toast } from "sonner";
-import * as Sentry from "@sentry/react";
+
 
 export const Route = createFileRoute("/study-library/live-class/$username/")({
   component: RouteComponent,
@@ -149,10 +149,7 @@ function RouteComponent() {
       try {
         if (activeSessionsData.length === 0) {
           // No active sessions, redirect to live-class page
-          Sentry.logger.info(
-            Sentry.logger
-              .fmt`No active live sessions found for user: '${username}'. Redirecting to live-class page.`
-          );
+      
           navigate({ to: "/study-library/live-class" });
         } else if (activeSessionsData.length === 1) {
           // Exactly one active session, auto-navigate
@@ -198,25 +195,15 @@ function RouteComponent() {
         );
 
         if (hasToken && hasStudentDetails && hasInstituteDetails) {
-          Sentry.logger.info(
-            Sentry.logger
-              .fmt`User with username: '${username}' is authenticated.`
-          );
+      
           setAuthState("authenticated");
         } else {
-          Sentry.logger.info(
-            Sentry.logger
-              .fmt`User with username: ${username} is not authenticated.`
-          );
+        
           setAuthState("unauthenticated");
         }
       } catch (error) {
         console.error("Error checking authentication:", error);
-        Sentry.logger.error(
-          Sentry.logger
-            .fmt`User: '${username}' encountered an error during authentication check.`,
-          { error }
-        );
+        
         setAuthState("unauthenticated");
       }
     };

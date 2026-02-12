@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, ReactNode, useMemo } from "react";
 
 interface RazorpayContextType {
   keyId: string | null;
@@ -26,8 +26,10 @@ export const RazorpayProvider = ({
   keyId,
   children,
 }: RazorpayProviderProps) => {
+  const value = useMemo(() => ({ keyId }), [keyId]);
+
   return (
-    <RazorpayContext.Provider value={{ keyId }}>
+    <RazorpayContext.Provider value={value}>
       {children}
     </RazorpayContext.Provider>
   );

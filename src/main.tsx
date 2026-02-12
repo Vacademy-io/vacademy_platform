@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import React, { StrictMode, lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
-import * as Sentry from "@sentry/react";
+
 import RootErrorComponent from "./components/core/deafult-error";
 import RootNotFoundComponent from "./components/core/default-not-found";
 import RootPendingComponent from "./components/core/default-pending";
@@ -13,13 +13,9 @@ import { SidebarProvider } from "./components/ui/sidebar";
 import { routeTree } from "./routeTree.gen";
 import "./i18n";
 import { Toaster } from "./components/ui/sonner";
+import "./lib/debug";
 
 // Initialize Sentry immediately (synchronous import, but deferred init)
-Sentry.init({
-  dsn: "https://a642c065e30cd6f8f486700238323c24@o4510261002043392.ingest.us.sentry.io/4510346395320320",
-  enableLogs: true,
-  integrations: [Sentry.consoleLoggingIntegration({ levels: ["error"] })],
-});
 
 // Lazy load analytics initialization (deferred to after first paint)
 const initAnalytics = async () => {
@@ -109,7 +105,7 @@ if (!rootElement.innerHTML) {
   initializeServices();
 
   root.render(
-    <StrictMode>
+    <>
       <ModeThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
         <ColorThemeProvider>
           <QueryClientProvider client={queryClient}>
@@ -122,6 +118,6 @@ if (!rootElement.innerHTML) {
           </QueryClientProvider>
         </ColorThemeProvider>
       </ModeThemeProvider>
-    </StrictMode>
+    </>
   );
 }

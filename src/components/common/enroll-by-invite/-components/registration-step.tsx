@@ -12,7 +12,7 @@ import { Calendar, CreditCard, Globe } from "@phosphor-icons/react";
 import { getDefaultPlanFromPaymentsData, PaymentPlan } from "../-utils/helper";
 import { SubscriptionPlanSection } from "./subscription-plan-sections";
 import { OneTimePlanSection } from "./onetime-plan-section";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import {
   LIVE_SESSION_REQUEST_OTP,
@@ -31,7 +31,9 @@ import {
   findCountryFieldKey,
 } from "../-utils/country-code-mapping";
 import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
-import { State, City } from "country-state-city";
+// Replace heavy country-state-city with lightweight country-region-data
+// import { State, City } from "country-state-city";
+import { allCountries } from "country-region-data";
 
 // Course data interface
 export interface FinalCourseData {
@@ -169,8 +171,8 @@ const RegistrationStep = ({
 
   // Find the country field key dynamically (memoized)
   const countryFieldKey = useMemo(() => {
-    const formValues = form.getValues();
-    return findCountryFieldKey(formValues);
+    const values = form.getValues();
+    return findCountryFieldKey(values);
   }, [form]);
 
   // Watch all form values to detect country field changes
@@ -188,6 +190,54 @@ const RegistrationStep = ({
     }
     return "gb"; // Default to United Kingdom
   };
+
+  // Memoize state and city options to prevent recalculation on every render
+  // This fixes the "Maximum call stack size exceeded" error on mobile
+  // Extract specific values needed for options calculation
+  // We use formValues from useWatch or fall back to getValues
+  const currentValues = formValues || form.getValues();
+  const currentCountryValue = countryFieldKey ? currentValues[countryFieldKey]?.value : undefined;
+
+  // Memoize state and city options to prevent recalculation on every render
+  // heavily optimized to run ONLY when country or state actually changes
+  // Use state + useEffect for heavy calculations to avoid blocking render stack
+  const [availableStateOptions, setAvailableStateOptions] = useState<{ _id: number; value: string; label: string }[]>([]);
+  const [availableCityOptions, setAvailableCityOptions] = useState<{ _id: number; value: string; label: string }[]>([]);
+
+  useEffect(() => {
+    // If no country, clear options immediately
+    if (!currentCountryValue) {
+      setAvailableStateOptions([]);
+      setAvailableCityOptions([]);
+      return;
+    }
+
+    try {
+      const countryCode = getCountryCode(String(currentCountryValue)).toUpperCase();
+      
+      // Find country in the lightweight dataset
+      // Format: [CountryName, CountrySlug, Regions[]]
+      const countryData = allCountries.find(c => c[1] === countryCode);
+      
+      let stateOptions: { _id: number; value: string; label: string }[] = [];
+
+      if (countryData) {
+        const regions = countryData[2]; // Index 2 is the regions array
+         stateOptions = regions.map((region, index) => ({
+            _id: index,
+            value: region[0], // Index 0 is Region Name
+            label: region[0],
+         }));
+      }
+
+      setAvailableStateOptions(stateOptions);
+      // Clear city options as they are not supported by this library
+      setAvailableCityOptions([]);
+      
+    } catch (error) {
+      console.error("Error calculating location options:", error);
+    }
+  }, [currentCountryValue]);
 
   // Helper function to find the email field dynamically
   const getEmailField = () => {
@@ -480,8 +530,8 @@ const RegistrationStep = ({
 
           <FormProvider {...form}>
             <form className="w-full flex flex-col gap-4">
-              {Object.entries(form.getValues()).map(
-                ([key, value]: [string, FormFieldValue]) => {
+              {Object.entries((formValues || form.getValues()) as Record<string, FormFieldValue>).map(
+                ([key, value]) => {
                   const renderType = value.render_type
                     ? value.render_type
                     : getFieldRenderType(key, value.type || "text");
@@ -540,7 +590,12 @@ const RegistrationStep = ({
                   }
 
                   // Render Dropdown
-                  if (renderType === FieldRenderType.DROPDOWN) {
+                  // Skip City dropdown if we don't have city options (fallback to text input)
+                  if (
+                    renderType === FieldRenderType.DROPDOWN &&
+                    (!key.toLowerCase().includes("city") ||
+                      availableCityOptions.length > 0)
+                  ) {
                     let dropdownOptions = value.comma_separated_options
                       ? value.comma_separated_options
                       : parseDropdownOptions(value.config || "{}");
@@ -597,46 +652,18 @@ const RegistrationStep = ({
                     key.toLowerCase().includes("state") &&
                     !key.toLowerCase().includes("statement");
 
-                  if (isStateField) {
-                    const countryFieldKey = findCountryFieldKey(form.getValues());
-
-                    if (countryFieldKey) {
-                      const countryValue = form.getValues(countryFieldKey)?.value;
-                      if (countryValue) {
-                        const countryCode = getCountryCode(String(countryValue)).toUpperCase();
-                        const states = State.getStatesOfCountry(countryCode);
-
-                        if (states.length > 0) {
-                          const stateOptions = states.map((state, index) => ({
-                            _id: index,
-                            value: state.name,
-                            label: state.name,
-                          }));
-
+                  if (isStateField && availableStateOptions.length > 0) {
                           return (
-                            <FormField
+                            <ComboboxField
                               key={key}
-                              control={form.control}
+                              label={capitalise(value.name)}
                               name={`${key}.value`}
-                              render={() => (
-                                <FormItem>
-                                  <FormControl>
-                                    <ComboboxField
-                                      label={capitalise(value.name)}
-                                      name={`${key}.value`}
-                                      options={stateOptions}
-                                      control={form.control}
-                                      required={value.is_mandatory}
-                                      className="!w-full"
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
+                              options={availableStateOptions}
+                              control={form.control}
+                              required={value.is_mandatory}
+                              className="!w-full"
                             />
                           );
-                        }
-                      }
-                    }
                   }
 
                   // Render City Dropdown
@@ -644,64 +671,20 @@ const RegistrationStep = ({
                     key.toLowerCase().includes("city") &&
                     !key.toLowerCase().includes("ethnicity");
 
-                  if (isCityField) {
-                    const countryFieldKey = findCountryFieldKey(form.getValues());
-                    
-                    // Boundary Condition: Ensure State field exists in the form
-                    const stateFieldKey = Object.keys(form.getValues()).find(
-                      (k) =>
-                        k.toLowerCase().includes("state") &&
-                        !k.toLowerCase().includes("statement")
+                  // If it's a city field and we have options, render combobox
+                  // Otherwise, it falls through to the default text input which is exactly what we want
+                  if (isCityField && availableCityOptions.length > 0) {
+                    return (
+                      <ComboboxField
+                        key={key}
+                        label={capitalise(value.name)}
+                        name={`${key}.value`}
+                        options={availableCityOptions}
+                        control={form.control}
+                        required={value.is_mandatory}
+                        className="!w-full"
+                      />
                     );
-
-                    // Strictly require Country + State fields to be present and have values
-                    if (countryFieldKey && stateFieldKey) {
-                      const countryValue = form.getValues(countryFieldKey)?.value;
-                      const stateValue = form.getValues(stateFieldKey)?.value;
-
-                      if (countryValue && stateValue) {
-                        const countryCode = getCountryCode(String(countryValue)).toUpperCase();
-                        let cities: ReturnType<typeof City.getCitiesOfState> = [];
-
-                        // Attempt to find state code from state name
-                        const states = State.getStatesOfCountry(countryCode);
-                        const selectedState = states.find(s => s.name === stateValue);
-                        
-                        if (selectedState) {
-                          cities = City.getCitiesOfState(countryCode, selectedState.isoCode);
-                        }
-
-                        if (cities.length > 0) {
-                          const cityOptions = cities.map((city, index) => ({
-                            _id: index,
-                            value: city.name,
-                            label: city.name,
-                          }));
-
-                           return (
-                            <FormField
-                              key={key}
-                              control={form.control}
-                              name={`${key}.value`}
-                              render={() => (
-                                <FormItem>
-                                  <FormControl>
-                                    <ComboboxField
-                                      label={capitalise(value.name)}
-                                      name={`${key}.value`}
-                                      options={cityOptions}
-                                      control={form.control}
-                                      required={value.is_mandatory}
-                                      className="!w-full"
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                           );
-                        }
-                      }
-                    }
                   }
 
                   // Render Text Input (default)

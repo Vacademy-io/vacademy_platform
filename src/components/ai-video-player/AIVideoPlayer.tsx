@@ -1,3 +1,4 @@
+"use client";
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -82,187 +83,195 @@ const fixHtmlContent = (html: string, includeLibs = true, contentType: ContentTy
             }
         </style>
         <script>
-            window.addEventListener('load', () => {
-                // Initialize Libraries
-                if(window.gsap && window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
-                if(window.mermaid) mermaid.initialize({startOnLoad:true});
+            try {
+                window.addEventListener('load', () => {
+                    // Initialize Libraries
+                    if(window.gsap && window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
+                    if(window.mermaid) mermaid.initialize({startOnLoad:true});
 
-                // --- Interaction Logic ---
-                const postUpdate = () => {
-                    // Robust serialization to preserve styles (which might move to HEAD) and content
-                    let result = "";
+                    // --- Interaction Logic ---
+                    const postUpdate = () => {
+                        // Robust serialization to preserve styles (which might move to HEAD) and content
+                        let result = "";
 
-                    const isInjection = (node) => {
-                        // Check scripts
-                        if (node.tagName === 'SCRIPT') {
-                            if (node.src && (node.src.includes('gsap') || node.src.includes('mermaid'))) return true;
-                            if (node.innerHTML.includes('Interaction Logic')) return true;
-                            if (node.innerHTML.includes('gsap.registerPlugin(MotionPathPlugin)')) return true; 
+                        const isInjection = (node) => {
+                            // Check scripts
+                            if (node.tagName === 'SCRIPT') {
+                                if (node.src && (node.src.includes('gsap') || node.src.includes('mermaid'))) return true;
+                                if (node.innerHTML.includes('Interaction Logic')) return true;
+                                if (node.innerHTML.includes('gsap.registerPlugin(MotionPathPlugin)')) return true; 
+                            }
+                            // Check interaction style
+                            if (node.tagName === 'STYLE') {
+                                if (node.innerHTML.includes('Visual cues for interactive elements')) return true;
+                            }
+                            return false;
                         }
-                        // Check interaction style
-                        if (node.tagName === 'STYLE') {
-                            if (node.innerHTML.includes('Visual cues for interactive elements')) return true;
+
+                        // 1. Process HEAD (Styles often end up here)
+                        if (document.head) {
+                            Array.from(document.head.childNodes).forEach(node => {
+                                if (!isInjection(node)) {
+                                    result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
+                                }
+                            });
                         }
-                        return false;
+
+                        // 2. Process BODY
+                        // Clone body to clean up interaction markers on elements (classes/attributes)
+                        const bodyClone = document.body.cloneNode(true);
+                        
+                        // Clean attributes
+                        bodyClone.querySelectorAll('*').forEach(el => {
+                            el.classList.remove('hover-target', 'is-dragging');
+                            el.removeAttribute('contenteditable');
+                        });
+                        
+                        Array.from(bodyClone.childNodes).forEach(node => {
+                             if (!isInjection(node)) {
+                                 result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
+                             }
+                        });
+
+
+                        const parent = window.parent || window.top;
+                        if (parent && parent.postMessage) {
+                            parent.postMessage({
+                                type: 'HTML_UPDATE',
+                                html: result 
+                            }, '*');
+                        }
+                    };
+
+                    // Add hover effects to everything reasonable
+                    document.body.addEventListener('mouseover', (e) => {
+                        if (e.target !== document.body && !e.target.classList.contains('hover-target')) {
+                            // e.target.classList.add('hover-target');
+                        }
+                    });
+                    
+                    // Helper to find a "movable" block (divs, imgs, etc)
+                    const getMovable = (target) => {
+                        let current = target;
+                        let depth = 0;
+                        while (current && current !== document.body && depth < 50) {
+                            const style = window.getComputedStyle(current);
+                            if (style.display === 'block' || style.display === 'flex' || current.tagName === 'IMG') {
+                                return current;
+                            }
+                            current = current.parentElement;
+                            depth++;
+                        }
+                        return null;
                     }
 
-                    // 1. Process HEAD (Styles often end up here)
-                    if (document.head) {
-                        Array.from(document.head.childNodes).forEach(node => {
-                            if (!isInjection(node)) {
-                                result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
+                    // Drag Logic
+                    let draggedEl = null;
+                    let startX = 0, startY = 0;
+                    let initialTransform = {x: 0, y: 0};
+                    let hasMoved = false;
+
+                    const getTranslate = (el) => {
+                        const style = window.getComputedStyle(el);
+                        const matrix = new WebKitCSSMatrix(style.transform);
+                        return {x: matrix.m41, y: matrix.m42};
+                    }
+
+                    document.addEventListener('mousedown', (e) => {
+                        if (e.target.isContentEditable) return; // Don't drag if editing text
+                        
+                        const target = getMovable(e.target);
+                        if (!target) return;
+
+                        draggedEl = target;
+                        startX = e.clientX;
+                        startY = e.clientY;
+                        initialTransform = getTranslate(draggedEl);
+                        hasMoved = false;
+                        
+                        // Don't add class yet, wait for move
+                        e.preventDefault(); 
+                    });
+
+                    document.addEventListener('mousemove', (e) => {
+                        if (!draggedEl) return;
+                        e.preventDefault();
+                        
+                        const dx = e.clientX - startX;
+                        const dy = e.clientY - startY;
+                        
+                        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+                             hasMoved = true;
+                             draggedEl.classList.add('is-dragging');
+                        }
+
+                        if (!hasMoved) return;
+                        
+                        // Apply translate
+                        draggedEl.style.transform = \`translate3d(\${initialTransform.x + dx}px, \${initialTransform.y + dy}px, 0)\`;
+                    });
+
+                    document.addEventListener('mouseup', () => {
+                        if (draggedEl) {
+                            draggedEl.classList.remove('is-dragging');
+                            draggedEl = null; 
+                            if (hasMoved) {
+                                postUpdate(); // Only save if actually moved
+                            }
+                        }
+                    });
+
+                    // Text Edit Logic
+                    document.addEventListener('dblclick', (e) => {
+                        const target = e.target;
+                        // Relaxed check: Allow text editing on anything that isn't the root containers
+                        // and has some text content.
+                        if (target !== document.body && target !== document.documentElement) {
+                            e.stopPropagation(); // Only edit the specific clicked element
+                            
+                            target.setAttribute('contenteditable', 'true');
+                            target.focus();
+                            
+                            // Select all text
+                            // Use try-catch as execCommand can be flaky in some contexts
+                            try {
+                                document.execCommand('selectAll', false, null);
+                            } catch(err) {}
+                            
+                            // Prevent drag while editing
+                            const stopProp = (k) => k.stopPropagation();
+                            target.addEventListener('keydown', stopProp);
+                            target.addEventListener('mousedown', stopProp); // Stop drag start
+                            
+                            // Save on blur
+                            target.addEventListener('blur', () => {
+                                target.removeAttribute('contenteditable');
+                                target.removeEventListener('keydown', stopProp);
+                                target.removeEventListener('mousedown', stopProp);
+                                postUpdate();
+                            }, {once: true});
+                        }
+                    });
+
+                    // CONVERSATION content type: Text-to-speech for dialogue bubbles
+                    document.querySelectorAll('.audio-btn').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const text = btn.closest('.message-content')?.querySelector('.speech-text')?.textContent;
+                            if (text && window.speechSynthesis) {
+                                const utterance = new SpeechSynthesisUtterance(text);
+                                utterance.lang = document.documentElement.lang || 'en-US';
+                                speechSynthesis.speak(utterance);
                             }
                         });
-                    }
-
-                    // 2. Process BODY
-                    // Clone body to clean up interaction markers on elements (classes/attributes)
-                    const bodyClone = document.body.cloneNode(true);
-                    
-                    // Clean attributes
-                    bodyClone.querySelectorAll('*').forEach(el => {
-                        el.classList.remove('hover-target', 'is-dragging');
-                        el.removeAttribute('contenteditable');
-                    });
-                    
-                    Array.from(bodyClone.childNodes).forEach(node => {
-                         if (!isInjection(node)) {
-                             result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
-                         }
-                    });
-
-                    window.parent.postMessage({
-                        type: 'HTML_UPDATE',
-                        html: result 
-                    }, '*');
-                };
-
-                // Add hover effects to everything reasonable
-                document.body.addEventListener('mouseover', (e) => {
-                    if (e.target !== document.body && !e.target.classList.contains('hover-target')) {
-                        // e.target.classList.add('hover-target');
-                    }
-                });
-                
-                // Helper to find a "movable" block (divs, imgs, etc)
-                // Helper to find a "movable" block (divs, imgs, etc)
-                const getMovable = (target) => {
-                    let current = target;
-                    while (current && current !== document.body) {
-                        const style = window.getComputedStyle(current);
-                        if (style.display === 'block' || style.display === 'flex' || current.tagName === 'IMG') {
-                            return current;
-                        }
-                        current = current.parentElement;
-                    }
-                    return null;
-                }
-
-                // Drag Logic
-                let draggedEl = null;
-                let startX = 0, startY = 0;
-                let initialTransform = {x: 0, y: 0};
-                let hasMoved = false;
-
-                const getTranslate = (el) => {
-                    const style = window.getComputedStyle(el);
-                    const matrix = new WebKitCSSMatrix(style.transform);
-                    return {x: matrix.m41, y: matrix.m42};
-                }
-
-                document.addEventListener('mousedown', (e) => {
-                    if (e.target.isContentEditable) return; // Don't drag if editing text
-                    
-                    const target = getMovable(e.target);
-                    if (!target) return;
-
-                    draggedEl = target;
-                    startX = e.clientX;
-                    startY = e.clientY;
-                    initialTransform = getTranslate(draggedEl);
-                    hasMoved = false;
-                    
-                    // Don't add class yet, wait for move
-                    e.preventDefault(); 
-                });
-
-                document.addEventListener('mousemove', (e) => {
-                    if (!draggedEl) return;
-                    e.preventDefault();
-                    
-                    const dx = e.clientX - startX;
-                    const dy = e.clientY - startY;
-                    
-                    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-                         hasMoved = true;
-                         draggedEl.classList.add('is-dragging');
-                    }
-
-                    if (!hasMoved) return;
-                    
-                    // Apply translate
-                    draggedEl.style.transform = \`translate3d(\${initialTransform.x + dx}px, \${initialTransform.y + dy}px, 0)\`;
-                });
-
-                document.addEventListener('mouseup', () => {
-                    if (draggedEl) {
-                        draggedEl.classList.remove('is-dragging');
-                        draggedEl = null; 
-                        if (hasMoved) {
-                            postUpdate(); // Only save if actually moved
-                        }
-                    }
-                });
-
-                // Text Edit Logic
-                document.addEventListener('dblclick', (e) => {
-                    const target = e.target;
-                    // Relaxed check: Allow text editing on anything that isn't the root containers
-                    // and has some text content.
-                    if (target !== document.body && target !== document.documentElement) {
-                        e.stopPropagation(); // Only edit the specific clicked element
-                        
-                        target.setAttribute('contenteditable', 'true');
-                        target.focus();
-                        
-                        // Select all text
-                        // Use try-catch as execCommand can be flaky in some contexts
-                        try {
-                            document.execCommand('selectAll', false, null);
-                        } catch(err) {}
-                        
-                        // Prevent drag while editing
-                        const stopProp = (k) => k.stopPropagation();
-                        target.addEventListener('keydown', stopProp);
-                        target.addEventListener('mousedown', stopProp); // Stop drag start
-                        
-                        // Save on blur
-                        target.addEventListener('blur', () => {
-                            target.removeAttribute('contenteditable');
-                            target.removeEventListener('keydown', stopProp);
-                            target.removeEventListener('mousedown', stopProp);
-                            postUpdate();
-                        }, {once: true});
-                    }
-                });
-
-                // CONVERSATION content type: Text-to-speech for dialogue bubbles
-                document.querySelectorAll('.audio-btn').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        const text = btn.closest('.message-content')?.querySelector('.speech-text')?.textContent;
-                        if (text && window.speechSynthesis) {
-                            const utterance = new SpeechSynthesisUtterance(text);
-                            utterance.lang = document.documentElement.lang || 'en-US';
-                            speechSynthesis.speak(utterance);
-                        }
                     });
                 });
-            });
+            } catch(e) { console.error("Error in interactive script", e); }
         </script>
     `;
 
     // Replace absolute file paths with valid Vite src paths and prepend libraries
-    const fixedPathHtml = html.replace(/file:\/\/\/.*\/runs\/dna_gene_editing\/generated_images\//g, '/src/routes/ai-video-studio/runs/dna_gene_editing/generated_images/');
+    // Use non-greedy match to avoid backtracking issues on large strings
+    const fixedPathHtml = html.replace(/file:\/\/\/[^"'\n]*\/runs\/dna_gene_editing\/generated_images\//g, '/src/routes/ai-video-studio/runs/dna_gene_editing/generated_images/');
 
     return (includeLibs ? libs : '') + fixedPathHtml;
 };
@@ -309,6 +318,31 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const navigationRef = useRef<NavigationController | null>(null);
+  const onEntryChangeRef = useRef(onEntryChange);
+  const handlingNavChangeRef = useRef(false);
+
+  // Keep callback ref up to date without causing effect re-runs
+  useEffect(() => {
+    onEntryChangeRef.current = onEntryChange;
+  }, [onEntryChange]);
+
+  // Stable navigation callback with re-entrancy guard
+  const handleNavChange = useCallback((entry: Frame, index: number) => {
+    if (handlingNavChangeRef.current) return;
+    handlingNavChangeRef.current = true;
+    try {
+      setCurrentEntryIndex((prev) => {
+        if (prev === index) return prev;
+        return index;
+      });
+      // Use ref to avoid re-triggering effects if parent's callback changes
+      if (onEntryChangeRef.current) {
+        onEntryChangeRef.current(entry, index);
+      }
+    } finally {
+      handlingNavChangeRef.current = false;
+    }
+  }, []);
 
   // Derived values
   const contentType = meta.content_type || "VIDEO";
@@ -388,14 +422,11 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           (framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0);
         setDuration(videoDuration);
         
-        // Initialize navigation controller
+        // Initialize navigation controller with stable callback
         const nav = createNavigationController(
           timelineMeta,
           framesArray,
-          (entry, index) => {
-            setCurrentEntryIndex(index);
-            onEntryChange?.(entry, index);
-          }
+          handleNavChange,
         );
         navigationRef.current = nav;
 
@@ -418,7 +449,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         navigationRef.current = null;
       }
     };
-  }, [timelineUrl, onEntryChange]);
+  }, [timelineUrl, handleNavChange]); 
 
   // Initialize audio (only for time-driven content or content with audio)
   useEffect(() => {
@@ -539,14 +570,35 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         }
       }
       
-      setActiveFrames(framesToShow);
+      // OPTIMIZATION: Only update state if the frames have actually changed
+      setActiveFrames(prev => {
+        if (prev.length === framesToShow.length && prev.every((f, i) => f.id === framesToShow[i].id)) {
+          return prev;
+        }
+        return framesToShow;
+      });
+
     } else if (isUserDriven) {
       // User-driven: show current entry
       const currentEntry = frames[currentEntryIndex];
-      setActiveFrames(currentEntry ? [currentEntry] : [frames[0]]);
+      const newFrames = currentEntry ? [currentEntry] : [frames[0]];
+      
+      setActiveFrames(prev => {
+         if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
+             return prev;
+         }
+         return newFrames;
+      });
+
     } else if (isSelfContained) {
       // Self-contained: show first (and only) entry
-      setActiveFrames([frames[0]]);
+      const newFrames = [frames[0]];
+      setActiveFrames(prev => {
+          if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
+              return prev;
+          }
+          return newFrames;
+      });
     }
   }, [frames, currentTime, currentEntryIndex, isTimeDriven, isUserDriven, isSelfContained]);
 
@@ -577,7 +629,23 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
     // Use a throttled observer to prevent ResizeObserver loop limit errors
     let frameId: number;
-    const observerCallback = () => {
+    let lastWidth = 0;
+    let lastHeight = 0;
+
+    const observerCallback = (entries: ResizeObserverEntry[]) => {
+      const entry = entries[0];
+      if (!entry) return;
+
+      const { width: newWidth, height: newHeight } = entry.contentRect;
+      
+      // Only trigger if change is significant (> 1px) to avoid sub-pixel layout loops on iOS
+      if (Math.abs(newWidth - lastWidth) < 1 && Math.abs(newHeight - lastHeight) < 1) {
+        return;
+      }
+
+      lastWidth = newWidth;
+      lastHeight = newHeight;
+
       cancelAnimationFrame(frameId);
       frameId = requestAnimationFrame(() => calculateScale());
     };
@@ -604,11 +672,25 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   useEffect(() => {
     if (!iframeRef.current) return;
 
-    const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow?.document;
+    // Check if we need to update at all
+    // If the iframe already has content and the frames are the same, skip
+    // We attach lastRenderedFrames to the iframe element to track this
+    const iframe = iframeRef.current as HTMLIFrameElement & { __lastRenderedIds?: string };
+    const lastRenderedIds = iframe.__lastRenderedIds;
+    const currentIds = activeFrames.map(f => f.id).join(',');
+    
+    if (lastRenderedIds === currentIds && iframe.contentDocument?.body?.innerHTML) {
+        return;
+    }
+
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
     if (!iframeDoc) {
       console.warn("[AIVideoPlayer] Cannot access iframe document");
       return;
     }
+
+    // Mark as rendered
+    iframe.__lastRenderedIds = currentIds;
 
     if (activeFrames.length === 0) {
       iframeDoc.body.innerHTML = "";
@@ -622,9 +704,6 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     });
 
     const sortedFrames = [...activeFrames].sort((a, b) => a.z - b.z);
-
-    // For self-contained content, execute scripts after rendering
-    const shouldExecuteScripts = isSelfContained;
 
     let htmlContent = `
       <!DOCTYPE html>
@@ -688,19 +767,33 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     iframeDoc.open();
     iframeDoc.write(htmlContent);
     iframeDoc.close();
+  }, [activeFrames, width, height, contentType, meta.target_language, isSelfContained]);
 
-    // For self-contained content, re-execute scripts
-    if (shouldExecuteScripts) {
-      const scripts = iframeDoc.querySelectorAll('script');
-      scripts.forEach((oldScript) => {
-        if (!oldScript.src) {
-          const newScript = iframeDoc.createElement('script');
-          newScript.textContent = oldScript.textContent;
-          oldScript.parentNode?.replaceChild(newScript, oldScript);
-        }
-      });
-    }
-  }, [activeFrames, width, height, contentType, isSelfContained, meta.target_language]);
+  // ✅ Separate effect for script re-execution (iOS stability)
+  // Only re-execute scripts for truly self-contained content when frames or iframe change
+  useEffect(() => {
+    if (!isSelfContained || !iframeRef.current || frames.length === 0) return;
+
+    const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow?.document;
+    if (!iframeDoc) return;
+
+    // We only want to do this once when the content is first loaded or significant segments change
+    // Using a ref to track what was last script-executed
+    const iframe = iframeRef.current as HTMLIFrameElement & { __lastScriptIds?: string };
+    const lastScriptIds = iframe.__lastScriptIds;
+    const currentIds = frames.map(f => f.id).join(',');
+    if (lastScriptIds === currentIds) return;
+    iframe.__lastScriptIds = currentIds;
+
+    const scripts = iframeDoc.querySelectorAll('script');
+    scripts.forEach((oldScript) => {
+      if (!oldScript.src) {
+        const newScript = iframeDoc.createElement('script');
+        newScript.textContent = oldScript.textContent;
+        oldScript.parentNode?.replaceChild(newScript, oldScript);
+      }
+    });
+  }, [isSelfContained, frames]);
 
   // Animation loop for time-driven content
   useEffect(() => {

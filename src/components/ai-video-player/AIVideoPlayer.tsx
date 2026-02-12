@@ -1,48 +1,64 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Play, Pause, RotateCcw, Rewind, FastForward, Volume2, VolumeX, Settings } from "lucide-react";
+import { 
+  Play, 
+  Pause, 
+  RotateCcw, 
+  Rewind, 
+  FastForward, 
+  Volume2, 
+  VolumeX, 
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  Printer,
+} from "lucide-react";
+import type { 
+  ContentType, 
+  NavigationType, 
+  TimelineMeta, 
+  TimelineData, 
+  Frame,
+} from "./types";
+import { CONTENT_TYPE_LABELS, DEFAULT_ENTRY_LABELS } from "./types";
+import { getLibraryScriptTags } from "./library-loader";
+import { 
+  createNavigationController, 
+  type NavigationController,
+} from "./navigation-controller";
 
-export interface Frame {
-  inTime: number;
-  exitTime: number;
-  html: string;
-  id: string;
-  z: number;
-  htmlStartX?: number;
-  htmlStartY?: number;
-  htmlEndX?: number;
-  htmlEndY?: number;
-}
-
-export interface TimelineMeta {
-  audio_start_at: number;
-  total_duration: number;
-  intro_duration?: number;
-  outro_duration?: number;
-  content_starts_at?: number;
-  content_ends_at?: number;
-}
-
-interface TimelineData {
-  meta?: TimelineMeta;
-  entries?: Frame[];
-}
+// Re-export types for backward compatibility
+export type { Frame, TimelineMeta, TimelineData, ContentType, NavigationType };
 
 export interface AIVideoPlayerProps {
   timelineUrl: string;
-  audioUrl: string;
+  audioUrl?: string;  // Optional: not required for user_driven and self_contained content
   className?: string;
   width?: number;
   height?: number;
+  onEntryChange?: (entry: Frame, index: number) => void;
+  onContentComplete?: () => void;
 }
 
-const fixHtmlContent = (html: string, includeLibs = true) => {
-    // Inject required libraries (GSAP, MotionPath, Mermaid) + Interaction Script
+// Default meta for backward compatibility
+const DEFAULT_META: TimelineMeta = {
+  content_type: "VIDEO",
+  navigation: "time_driven",
+  entry_label: "segment",
+  audio_start_at: 0,
+  total_duration: null,
+  dimensions: { width: 1920, height: 1080 },
+};
+
+const fixHtmlContent = (html: string, includeLibs = true, contentType: ContentType = "VIDEO") => {
+    // Get libraries for the specific content type
+    const libsScripts = includeLibs ? getLibraryScriptTags(contentType) : "";
+    
+    // Inject required libraries + Interaction Script
     const libs = `
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+        ${libsScripts}
         <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
         <style>
             /* Visual cues for interactive elements */
             .hover-target:hover {
@@ -58,6 +74,11 @@ const fixHtmlContent = (html: string, includeLibs = true) => {
                 outline: 2px solid #22c55e;
                 cursor: text;
                 min-width: 10px;
+            }
+            /* Print styles for WORKSHEET content */
+            @media print {
+                #nav-controls, .no-print { display: none !important; }
+                .worksheet-container { max-width: 100%; padding: 0; }
             }
         </style>
         <script>
@@ -219,6 +240,18 @@ const fixHtmlContent = (html: string, includeLibs = true) => {
                         }, {once: true});
                     }
                 });
+
+                // CONVERSATION content type: Text-to-speech for dialogue bubbles
+                document.querySelectorAll('.audio-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const text = btn.closest('.message-content')?.querySelector('.speech-text')?.textContent;
+                        if (text && window.speechSynthesis) {
+                            const utterance = new SpeechSynthesisUtterance(text);
+                            utterance.lang = document.documentElement.lang || 'en-US';
+                            speechSynthesis.speak(utterance);
+                        }
+                    });
+                });
             });
         </script>
     `;
@@ -233,33 +266,58 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   timelineUrl,
   audioUrl,
   className = "",
-  width = 1920,
-  height = 1080,
+  width: propWidth,
+  height: propHeight,
+  onEntryChange,
+  onContentComplete,
 }) => {
+  // Core state
   const [frames, setFrames] = useState<Frame[]>([]);
-  const [currentTime, setCurrentTime] = useState(0); // This is TIMELINE time (includes intro)
-  const [duration, setDuration] = useState(0); // Total video duration including intro/outro
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [meta, setMeta] = useState<TimelineMeta>(DEFAULT_META);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Use dimensions from meta or props
+  const width = propWidth || meta.dimensions?.width || 1920;
+  const height = propHeight || meta.dimensions?.height || 1080;
+
+  // Time-driven state (for VIDEO content)
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [audioStarted, setAudioStarted] = useState(false);
+  
+  // User-driven state (for QUIZ, STORYBOOK, etc.)
+  const [currentEntryIndex, setCurrentEntryIndex] = useState(0);
+  
+  // Display state
   const [activeFrames, setActiveFrames] = useState<Frame[]>([]);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [showPlaybackSpeedMenu, setShowPlaybackSpeedMenu] = useState(false);
-  
-  // Branding/Timeline meta state
-  const [meta, setMeta] = useState<TimelineMeta>({
-    audio_start_at: 0,
-    total_duration: 0,
-  });
-  const [audioStarted, setAudioStarted] = useState(false);
+  const [scale, setScale] = useState(0.8);
 
+  // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const [scale, setScale] = useState(0.8); // Initialize with 0.8 for immediate zoom out
+  const navigationRef = useRef<NavigationController | null>(null);
+
+  // Derived values
+  const contentType = meta.content_type || "VIDEO";
+  const navigationMode = meta.navigation || "time_driven";
+  const entryLabel = meta.entry_label || DEFAULT_ENTRY_LABELS[contentType] || "segment";
+  const isTimeDriven = navigationMode === "time_driven";
+  const isUserDriven = navigationMode === "user_driven";
+  const isSelfContained = navigationMode === "self_contained";
+
+  // Content type badge
+  const contentTypeBadge = useMemo(() => {
+    const config = CONTENT_TYPE_LABELS[contentType];
+    return config ? `${config.emoji} ${config.label}` : "🎬 Video";
+  }, [contentType]);
 
   // Load timeline data
   useEffect(() => {
@@ -287,24 +345,32 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         let timelineMeta: TimelineMeta;
         
         if (Array.isArray(timelineData)) {
-          // Old format: just an array of frames
+          // Old format: just an array of frames (backward compatibility)
           framesArray = timelineData;
           timelineMeta = { 
+            ...DEFAULT_META,
             audio_start_at: 0, 
             total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0 
           };
         } else {
           // New format: { meta, entries }
           framesArray = timelineData.entries || [];
-          timelineMeta = timelineData.meta || { 
-            audio_start_at: 0, 
-            total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0 
+          timelineMeta = {
+            ...DEFAULT_META,
+            ...timelineData.meta,
           };
+          
+          // Ensure total_duration is set
+          if (!timelineMeta.total_duration && framesArray.length > 0) {
+            timelineMeta.total_duration = framesArray[framesArray.length - 1].exitTime;
+          }
         }
         
         console.log("[AIVideoPlayer] Parsed timeline:", {
           framesCount: framesArray.length,
           meta: timelineMeta,
+          contentType: timelineMeta.content_type,
+          navigation: timelineMeta.navigation,
           firstFrame: framesArray[0],
           lastFrame: framesArray[framesArray.length - 1],
         });
@@ -316,6 +382,18 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         const videoDuration = timelineMeta.total_duration || 
           (framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0);
         setDuration(videoDuration);
+        
+        // Initialize navigation controller
+        const nav = createNavigationController(
+          timelineMeta,
+          framesArray,
+          (entry, index) => {
+            setCurrentEntryIndex(index);
+            onEntryChange?.(entry, index);
+          }
+        );
+        navigationRef.current = nav;
+
         console.log("[AIVideoPlayer] Duration set to:", videoDuration);
       } catch (err) {
         console.error("[AIVideoPlayer] Error loading timeline:", err);
@@ -328,11 +406,24 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     if (timelineUrl) {
       loadTimeline();
     }
-  }, [timelineUrl]);
 
-  // Initialize audio
+    return () => {
+      if (navigationRef.current) {
+        navigationRef.current.dispose();
+        navigationRef.current = null;
+      }
+    };
+  }, [timelineUrl, onEntryChange]);
+
+  // Initialize audio (only for time-driven content or content with audio)
   useEffect(() => {
-    if (!audioUrl) return;
+    // Skip audio initialization if no audio URL or not time-driven
+    if (!audioUrl) {
+      if (isTimeDriven) {
+        console.log("[AIVideoPlayer] No audio URL provided for time-driven content");
+      }
+      return;
+    }
 
     const audio = new Audio();
     audioRef.current = audio;
@@ -348,8 +439,6 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         duration: audio.duration,
         readyState: audio.readyState,
       });
-      // Don't override duration here - we use meta.total_duration from timeline
-      // Audio duration is shorter than video duration (doesn't include intro/outro silence)
     });
 
     audio.addEventListener("canplay", () => {
@@ -361,22 +450,12 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       console.log("[AIVideoPlayer] Audio can play through");
     });
 
-    // Note: timeupdate is still used but timeline time is calculated in animation loop
-    // This serves as a fallback and for other audio state tracking
-    audio.addEventListener("timeupdate", () => {
-      // Audio currentTime + audio_start_at = timeline time
-      // But we update this more smoothly in the animation loop
-    });
-
     // Set initial playback rate and volume
     audio.playbackRate = playbackRate;
     audio.volume = volume;
     audio.muted = isMuted;
 
     audio.addEventListener("ended", () => {
-      // Audio ended - but we don't stop the video yet
-      // The outro may still need to play after audio ends
-      // The animation loop will handle advancing to total_duration and then stopping
       console.log("[AIVideoPlayer] Audio ended, continuing to outro if present");
     });
 
@@ -391,10 +470,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         audioUrl: audioUrl,
       });
       
-      // Provide more specific error messages
       let errorMessage = "Failed to load audio";
       if (audio.error) {
-        // MediaError enum values
         const MEDIA_ERR_ABORTED = 1;
         const MEDIA_ERR_NETWORK = 2;
         const MEDIA_ERR_DECODE = 3;
@@ -418,10 +495,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       setError(errorMessage);
     });
 
-    // Set the audio source after setting up listeners
     audio.src = audioUrl;
     
-    // Try to load the audio (load() is synchronous, errors are handled via error event listener)
     try {
       audio.load();
     } catch (err) {
@@ -434,90 +509,70 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       audioRef.current = null;
       setAudioStarted(false);
     };
-  }, [audioUrl]);
+  }, [audioUrl, isTimeDriven]);
 
-  // Update active frames based on current time
+  // Update active frames based on navigation mode
   useEffect(() => {
-    const active = frames.filter(
-      (frame) => currentTime >= frame.inTime && currentTime <= frame.exitTime
-    );
-    
-    // If no active frames at current time, show the first frame(s) that start at or before current time
-    // This ensures something is always displayed
-    let framesToShow = active;
-    if (framesToShow.length === 0 && frames.length > 0) {
-      // Find frames that should be visible at current time (including those that haven't started yet but are closest)
-      const framesAtOrBefore = frames.filter((frame) => frame.inTime <= currentTime);
-      if (framesAtOrBefore.length > 0) {
-        // Show the most recent frame that started before or at current time
-        framesToShow = [framesAtOrBefore[framesAtOrBefore.length - 1]];
-      } else {
-        // If no frames have started yet, show the first frame
-        framesToShow = [frames[0]];
-      }
+    if (frames.length === 0) {
+      setActiveFrames([]);
+      return;
     }
-    
-    console.log("[AIVideoPlayer] Active frames update:", {
-      currentTime,
-      totalFrames: frames.length,
-      activeCount: active.length,
-      showingCount: framesToShow.length,
-    });
-    
-    setActiveFrames(framesToShow);
-  }, [frames, currentTime]);
+
+    if (isTimeDriven) {
+      // Time-driven: show frames active at current time
+      const active = frames.filter(
+        (frame) => currentTime >= frame.inTime && currentTime <= frame.exitTime
+      );
+      
+      let framesToShow = active;
+      if (framesToShow.length === 0) {
+        const framesAtOrBefore = frames.filter((frame) => frame.inTime <= currentTime);
+        if (framesAtOrBefore.length > 0) {
+          framesToShow = [framesAtOrBefore[framesAtOrBefore.length - 1]];
+        } else {
+          framesToShow = [frames[0]];
+        }
+      }
+      
+      setActiveFrames(framesToShow);
+    } else if (isUserDriven) {
+      // User-driven: show current entry
+      const currentEntry = frames[currentEntryIndex];
+      setActiveFrames(currentEntry ? [currentEntry] : [frames[0]]);
+    } else if (isSelfContained) {
+      // Self-contained: show first (and only) entry
+      setActiveFrames([frames[0]]);
+    }
+  }, [frames, currentTime, currentEntryIndex, isTimeDriven, isUserDriven, isSelfContained]);
 
   // Calculate scale to fit iframe content in container
   useEffect(() => {
     const calculateScale = () => {
       if (!containerRef.current) return;
       
-      // Use getBoundingClientRect for more accurate measurements
       const container = containerRef.current;
       const rect = container.getBoundingClientRect();
       const containerWidth = rect.width;
       const containerHeight = rect.height;
       
-      // Only calculate if we have valid dimensions
       if (containerWidth <= 0 || containerHeight <= 0) {
         console.warn("[AIVideoPlayer] Invalid container dimensions:", { containerWidth, containerHeight });
         return;
       }
       
-      // Calculate scale to fit 1920x1080 content into container
-      // Use Math.min to ensure content fits both dimensions (maintains aspect ratio)
       const scaleX = containerWidth / width;
       const scaleY = containerHeight / height;
       const newScale = Math.min(scaleX, scaleY);
-      
-       // Apply 0.95 multiplier to zoom out (make it 95% of calculated scale)
-       const zoomedOutScale = newScale * 0.95;
-      
-      // Cap at 1 to prevent zooming in beyond 100% (only scale down, never up)
+      const zoomedOutScale = newScale * 0.95;
       const finalScale = Math.min(zoomedOutScale, 1);
       
       setScale(finalScale);
-      console.log("[AIVideoPlayer] Scale calculated:", {
-        containerWidth: containerWidth.toFixed(2),
-        containerHeight: containerHeight.toFixed(2),
-        contentWidth: width,
-        contentHeight: height,
-        scaleX: scaleX.toFixed(4),
-        scaleY: scaleY.toFixed(4),
-        calculatedScale: newScale.toFixed(4),
-        finalScale: finalScale.toFixed(4),
-      });
     };
 
-    // Calculate immediately and also after a delay to ensure layout is complete
     calculateScale();
-    const timeoutId = setTimeout(() => {
-      calculateScale();
-    }, 100);
+    const timeoutId = setTimeout(calculateScale, 100);
     
-    // Recalculate on resize
     const resizeObserver = new ResizeObserver(() => {
-      // Use requestAnimationFrame to ensure DOM has updated
       requestAnimationFrame(() => {
         setTimeout(calculateScale, 50);
       });
@@ -527,7 +582,6 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       resizeObserver.observe(containerRef.current);
     }
 
-    // Also listen to window resize as fallback
     window.addEventListener('resize', calculateScale);
 
     return () => {
@@ -539,9 +593,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
   // Update iframe content with active frames
   useEffect(() => {
-    if (!iframeRef.current) {
-      return;
-    }
+    if (!iframeRef.current) return;
 
     const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow?.document;
     if (!iframeDoc) {
@@ -549,25 +601,25 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       return;
     }
 
-    // If no active frames, show empty/black background
     if (activeFrames.length === 0) {
-      console.log("[AIVideoPlayer] No active frames, clearing iframe");
       iframeDoc.body.innerHTML = "";
       return;
     }
 
     console.log("[AIVideoPlayer] Rendering frames:", {
       count: activeFrames.length,
+      contentType,
       frames: activeFrames.map((f) => ({ id: f.id, inTime: f.inTime, exitTime: f.exitTime })),
     });
 
-    // Sort frames by z-index
     const sortedFrames = [...activeFrames].sort((a, b) => a.z - b.z);
 
-    // Build HTML content
+    // For self-contained content, execute scripts after rendering
+    const shouldExecuteScripts = isSelfContained;
+
     let htmlContent = `
       <!DOCTYPE html>
-      <html>
+      <html lang="${meta.target_language || 'en'}">
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -594,19 +646,27 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           </style>
         </head>
         <body>
-          ${fixHtmlContent("", true)}
+          ${fixHtmlContent("", true, contentType)}
     `;
 
     sortedFrames.forEach((frame) => {
+      const frameStyle = frame.htmlStartX !== undefined ? `
+        left: ${frame.htmlStartX}px;
+        top: ${frame.htmlStartY}px;
+        width: ${(frame.htmlEndX || width) - (frame.htmlStartX || 0)}px;
+        height: ${(frame.htmlEndY || height) - (frame.htmlStartY || 0)}px;
+        z-index: ${frame.z};
+      ` : `
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        z-index: ${frame.z};
+      `;
+
       htmlContent += `
-        <div class="frame" style="
-          left: ${frame.htmlStartX}px;
-          top: ${frame.htmlStartY}px;
-          width: ${frame.htmlEndX - frame.htmlStartX}px;
-          height: ${frame.htmlEndY - frame.htmlStartY}px;
-          z-index: ${frame.z};
-        ">
-          ${fixHtmlContent(frame.html, false)}
+        <div class="frame" style="${frameStyle}">
+          ${fixHtmlContent(frame.html, false, contentType)}
         </div>
       `;
     });
@@ -619,16 +679,29 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     iframeDoc.open();
     iframeDoc.write(htmlContent);
     iframeDoc.close();
-  }, [activeFrames, width, height]);
 
-  // Animation loop for smooth updates with branding sync
+    // For self-contained content, re-execute scripts
+    if (shouldExecuteScripts) {
+      const scripts = iframeDoc.querySelectorAll('script');
+      scripts.forEach((oldScript) => {
+        if (!oldScript.src) {
+          const newScript = iframeDoc.createElement('script');
+          newScript.textContent = oldScript.textContent;
+          oldScript.parentNode?.replaceChild(newScript, oldScript);
+        }
+      });
+    }
+  }, [activeFrames, width, height, contentType, isSelfContained, meta.target_language]);
+
+  // Animation loop for time-driven content
   useEffect(() => {
+    if (!isTimeDriven) return;
+
     let lastTimestamp: number | null = null;
     
     const updateTime = (timestamp: number) => {
       if (!isPlaying) return;
       
-      // Calculate delta time for intro/outro progression
       const deltaTime = lastTimestamp ? (timestamp - lastTimestamp) / 1000 * playbackRate : 0;
       lastTimestamp = timestamp;
       
@@ -637,12 +710,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         const audioStartAt = meta.audio_start_at || 0;
         const totalDuration = meta.total_duration || duration;
         
-        // INTRO PHASE: Timeline is before audio_start_at
+        // INTRO PHASE
         if (prevTime < audioStartAt) {
-          // During intro, advance timeline manually (no audio playing)
           newTime = prevTime + deltaTime;
           
-          // Check if we've reached the point where audio should start
           if (newTime >= audioStartAt && audioRef.current && !audioStarted) {
             console.log("[AIVideoPlayer] Intro complete, starting audio");
             audioRef.current.currentTime = 0;
@@ -650,23 +721,22 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               console.error("[AIVideoPlayer] Error starting audio after intro:", err);
             });
             setAudioStarted(true);
-            newTime = audioStartAt; // Ensure exact sync
+            newTime = audioStartAt;
           }
         }
-        // CONTENT PHASE: Audio is playing
+        // CONTENT PHASE
         else if (audioRef.current && !audioRef.current.ended) {
-          // Timeline time = audio currentTime + audio_start_at
           newTime = audioRef.current.currentTime + audioStartAt;
         }
-        // OUTRO PHASE: Audio has ended, continue timeline to total_duration
+        // OUTRO PHASE
         else if (audioRef.current && audioRef.current.ended) {
           newTime = prevTime + deltaTime;
           
-          // Check if we've reached the end of the video (including outro)
           if (newTime >= totalDuration) {
             console.log("[AIVideoPlayer] Video complete (including outro)");
             setIsPlaying(false);
             setAudioStarted(false);
+            onContentComplete?.();
             return totalDuration;
           }
         }
@@ -687,20 +757,20 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isPlaying, meta, duration, audioStarted, playbackRate]);
+  }, [isPlaying, meta, duration, audioStarted, playbackRate, isTimeDriven, onContentComplete]);
 
+  // Playback controls for time-driven content
   const handlePlayPause = useCallback(() => {
-    if (!audioRef.current) return;
+    if (!isTimeDriven) return;
+    if (!audioRef.current && audioUrl) return;
 
     if (isPlaying) {
-      audioRef.current.pause();
+      audioRef.current?.pause();
       setIsPlaying(false);
     } else {
       const audioStartAt = meta.audio_start_at || 0;
       
-      // If we're past the intro, start audio immediately
-      if (currentTime >= audioStartAt) {
-        // Calculate audio time from timeline time
+      if (currentTime >= audioStartAt && audioRef.current) {
         const audioTime = currentTime - audioStartAt;
         audioRef.current.currentTime = Math.max(0, audioTime);
         audioRef.current.play().catch((err) => {
@@ -711,42 +781,43 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           setAudioStarted(true);
         }
       }
-      // If we're in intro, just start the timeline - audio will start when intro completes
-      // (handled in animation loop)
       
       setIsPlaying(true);
     }
-  }, [isPlaying, meta, currentTime, audioStarted]);
+  }, [isPlaying, meta, currentTime, audioStarted, isTimeDriven, audioUrl]);
 
   const handleReset = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.pause();
+    if (isTimeDriven) {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.pause();
+      }
+      setCurrentTime(0);
+      setIsPlaying(false);
+      setAudioStarted(false);
+    } else {
+      setCurrentEntryIndex(0);
+      navigationRef.current?.goTo(0);
     }
-    setCurrentTime(0);
-    setIsPlaying(false);
-    setAudioStarted(false);
-  }, []);
+  }, [isTimeDriven]);
 
   const handleSeek = useCallback((value: number[]) => {
+    if (!isTimeDriven) return;
+    
     const newTimelineTime = value[0];
     const audioStartAt = meta.audio_start_at || 0;
     
-    // Update timeline position
     setCurrentTime(newTimelineTime);
     
     if (audioRef.current) {
       if (newTimelineTime < audioStartAt) {
-        // Seeking into intro - pause audio and reset audioStarted
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
         setAudioStarted(false);
       } else {
-        // Seeking into content or outro - sync audio position
         const audioTime = newTimelineTime - audioStartAt;
         audioRef.current.currentTime = Math.max(0, audioTime);
         
-        // If we were playing and past intro, keep audio playing
         if (isPlaying && newTimelineTime < (meta.content_ends_at || duration)) {
           if (!audioStarted) {
             setAudioStarted(true);
@@ -757,7 +828,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         }
       }
     }
-  }, [meta, isPlaying, audioStarted, duration]);
+  }, [meta, isPlaying, audioStarted, duration, isTimeDriven]);
 
   const handleBackward = useCallback(() => {
     const newTimelineTime = Math.max(0, currentTime - 10);
@@ -770,6 +841,29 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     handleSeek([newTimelineTime]);
   }, [currentTime, meta, duration, handleSeek]);
 
+  // Navigation controls for user-driven content
+  const handlePrevEntry = useCallback(() => {
+    if (!isUserDriven || !navigationRef.current) return;
+    
+    const entry = navigationRef.current.prev();
+    if (entry) {
+      setCurrentEntryIndex(navigationRef.current.currentIndex);
+    }
+  }, [isUserDriven]);
+
+  const handleNextEntry = useCallback(() => {
+    if (!isUserDriven || !navigationRef.current) return;
+    
+    const entry = navigationRef.current.next();
+    if (entry) {
+      setCurrentEntryIndex(navigationRef.current.currentIndex);
+    } else if (navigationRef.current.currentIndex === frames.length - 1) {
+      // Last entry reached
+      onContentComplete?.();
+    }
+  }, [isUserDriven, frames.length, onContentComplete]);
+
+  // Playback rate and volume controls
   const handlePlaybackRateChange = useCallback((rate: number) => {
     setPlaybackRate(rate);
     if (audioRef.current) {
@@ -800,6 +894,13 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     }
   }, [isMuted]);
 
+  // Print handler for WORKSHEET content
+  const handlePrint = useCallback(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.print();
+    }
+  }, []);
+
   const playbackSpeeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
   // Close playback speed menu when clicking outside
@@ -825,12 +926,23 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  // Get progress display
+  const progressDisplay = useMemo(() => {
+    if (isUserDriven || isSelfContained) {
+      const label = entryLabel.charAt(0).toUpperCase() + entryLabel.slice(1);
+      const current = currentEntryIndex + 1;
+      const total = frames.length;
+      return `${label} ${current} of ${total}`;
+    }
+    return null;
+  }, [isUserDriven, isSelfContained, entryLabel, currentEntryIndex, frames.length]);
+
   if (isLoading) {
     return (
       <div className={`flex items-center justify-center bg-gray-100 rounded-lg ${className}`} style={{ aspectRatio: "16/9" }}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading video...</p>
+          <p className="text-gray-600">Loading {contentTypeBadge}...</p>
         </div>
       </div>
     );
@@ -849,6 +961,27 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
   return (
     <div className={`bg-black rounded-lg overflow-hidden flex flex-col ${className}`} style={{ aspectRatio: "16/9", maxHeight: "calc(100vh - 150px)" }}>
+      {/* Content Type Badge */}
+      <div className="bg-gray-900 px-4 py-2 flex items-center justify-between border-b border-gray-800">
+        <span className="text-white text-sm font-medium">{contentTypeBadge}</span>
+        {progressDisplay && (
+          <span className="text-gray-400 text-sm">{progressDisplay}</span>
+        )}
+        {/* Print button for WORKSHEET */}
+        {contentType === "WORKSHEET" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePrint}
+            className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 px-3"
+            title="Print Worksheet"
+          >
+            <Printer className="h-3 w-3 mr-1" />
+            Print
+          </Button>
+        )}
+      </div>
+
       {/* Video Frame */}
       <div 
         ref={containerRef}
@@ -867,7 +1000,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           <iframe
             ref={iframeRef}
             className="border-0 bg-black"
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts allow-same-origin allow-modals"
             title="AI Video Player"
             style={{
               width: `${width}px`,
@@ -879,130 +1012,200 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         </div>
       </div>
 
-      {/* Controls - Always visible */}
+      {/* Controls - Different layout based on navigation mode */}
       <div className="bg-gray-900 p-4 space-y-3 flex-shrink-0">
-        {/* Progress Slider */}
-        <div className="flex items-center gap-3">
-          <Slider
-            value={[currentTime]}
-            max={duration || 100}
-            step={0.1}
-            onValueChange={handleSeek}
-            className="flex-1"
-          />
-          <span className="text-white text-sm font-mono min-w-[60px] text-right">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
-        </div>
+        {/* Time-Driven Controls (VIDEO) */}
+        {isTimeDriven && (
+          <>
+            {/* Progress Slider */}
+            <div className="flex items-center gap-3">
+              <Slider
+                value={[currentTime]}
+                max={duration || 100}
+                step={0.1}
+                onValueChange={handleSeek}
+                className="flex-1"
+              />
+              <span className="text-white text-sm font-mono min-w-[60px] text-right">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+            </div>
 
-        {/* Control Buttons - Left and Right aligned */}
-        <div className="flex items-center justify-between gap-4">
-          {/* Left Side: Playback Controls */}
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleBackward}
-              className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
-              disabled={!audioRef.current}
-              title="Rewind 10 seconds"
-            >
-              <Rewind className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handlePlayPause}
-              className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
-              disabled={!audioRef.current}
-              title={isPlaying ? "Pause" : "Play"}
-            >
-              {isPlaying ? (
-                <Pause className="h-4 w-4" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleForward}
-              className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
-              disabled={!audioRef.current}
-              title="Forward 10 seconds"
-            >
-              <FastForward className="h-4 w-4" />
-            </Button>
+            {/* Control Buttons */}
+            <div className="flex items-center justify-between gap-4">
+              {/* Left Side: Playback Controls */}
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleBackward}
+                  className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
+                  disabled={!audioRef.current && !!audioUrl}
+                  title="Rewind 10 seconds"
+                >
+                  <Rewind className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handlePlayPause}
+                  className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
+                  disabled={!audioRef.current && !!audioUrl}
+                  title={isPlaying ? "Pause" : "Play"}
+                >
+                  {isPlaying ? (
+                    <Pause className="h-4 w-4" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleForward}
+                  className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
+                  disabled={!audioRef.current && !!audioUrl}
+                  title="Forward 10 seconds"
+                >
+                  <FastForward className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleReset}
+                  className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
+                  disabled={!audioRef.current && !!audioUrl}
+                  title="Reset to beginning"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Right Side: Volume and Speed Controls */}
+              <div className="flex items-center gap-4">
+                {/* Volume Control */}
+                <div className="flex items-center gap-3 min-w-[120px] max-w-[180px]">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleToggleMute}
+                    className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 w-8"
+                    title={isMuted ? "Unmute" : "Mute"}
+                  >
+                    {isMuted || volume === 0 ? (
+                      <VolumeX className="h-4 w-4" />
+                    ) : (
+                      <Volume2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Slider
+                    value={[isMuted ? 0 : volume]}
+                    max={1}
+                    step={0.01}
+                    onValueChange={(value) => handleVolumeChange(value[0])}
+                    className="flex-1"
+                  />
+                </div>
+
+                {/* Playback Speed Control */}
+                <div className="relative playback-speed-menu">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowPlaybackSpeedMenu(!showPlaybackSpeedMenu)}
+                    className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 px-3"
+                    title="Playback speed"
+                  >
+                    <Settings className="h-3 w-3 mr-1" />
+                    {playbackRate}x
+                  </Button>
+                  {showPlaybackSpeedMenu && (
+                    <div className="absolute bottom-full right-0 mb-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[100px]">
+                      {playbackSpeeds.map((speed) => (
+                        <button
+                          key={speed}
+                          onClick={() => handlePlaybackRateChange(speed)}
+                          className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg ${
+                            playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"
+                          }`}
+                        >
+                          {speed}x
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* User-Driven Controls (QUIZ, STORYBOOK, WORKSHEET, etc.) */}
+        {isUserDriven && (
+          <div className="flex items-center justify-between gap-4">
+            {/* Left Side: Navigation */}
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrevEntry}
+                disabled={currentEntryIndex === 0}
+                className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 disabled:opacity-50"
+                title="Previous"
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              
+              <span className="text-white text-sm px-3">
+                {progressDisplay}
+              </span>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleNextEntry}
+                disabled={currentEntryIndex === frames.length - 1}
+                className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 disabled:opacity-50"
+                title="Next"
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+
+            {/* Right Side: Reset */}
             <Button
               variant="outline"
               size="icon"
               onClick={handleReset}
               className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
-              disabled={!audioRef.current}
               title="Reset to beginning"
             >
               <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
+        )}
 
-          {/* Right Side: Volume and Speed Controls */}
-          <div className="flex items-center gap-4">
-            {/* Volume Control */}
-            <div className="flex items-center gap-3 min-w-[120px] max-w-[180px]">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleToggleMute}
-                className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 w-8"
-                title={isMuted ? "Unmute" : "Mute"}
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="h-4 w-4" />
-                ) : (
-                  <Volume2 className="h-4 w-4" />
-                )}
-              </Button>
-              <Slider
-                value={[isMuted ? 0 : volume]}
-                max={1}
-                step={0.01}
-                onValueChange={(value) => handleVolumeChange(value[0])}
-                className="flex-1"
-              />
-            </div>
-
-            {/* Playback Speed Control */}
-            <div className="relative playback-speed-menu">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowPlaybackSpeedMenu(!showPlaybackSpeedMenu)}
-                className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 px-3"
-                title="Playback speed"
-              >
-                <Settings className="h-3 w-3 mr-1" />
-                {playbackRate}x
-              </Button>
-              {showPlaybackSpeedMenu && (
-                <div className="absolute bottom-full right-0 mb-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[100px]">
-                  {playbackSpeeds.map((speed) => (
-                    <button
-                      key={speed}
-                      onClick={() => handlePlaybackRateChange(speed)}
-                      className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg ${
-                        playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"
-                      }`}
-                    >
-                      {speed}x
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+        {/* Self-Contained Controls (INTERACTIVE_GAME, SIMULATION, CODE_PLAYGROUND) */}
+        {isSelfContained && (
+          <div className="flex items-center justify-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
+              title="Reset"
+            >
+              <RotateCcw className="h-4 w-4 mr-1" />
+              Reset
+            </Button>
+            <span className="text-gray-400 text-sm">
+              Interact with the content above
+            </span>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
 };
-

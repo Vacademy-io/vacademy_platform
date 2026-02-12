@@ -1603,33 +1603,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               </div>
             )}
 
-            {/* Right: Step Indicator */}
-            <div className="hidden sm:flex items-center gap-1 text-xs text-gray-500">
-              {paymentType !== "FREE" ? (
-                <>
-                  <span className={`px-2 py-1 rounded ${currentStep === 0 ? "bg-primary text-white" : "bg-gray-100"}`}>
-                    1. Details
-                  </span>
-                  <span className="text-gray-300">→</span>
-                  <span className={`px-2 py-1 rounded ${currentStep === 1 ? "bg-primary text-white" : "bg-gray-100"}`}>
-                    2. Plan
-                  </span>
-                  <span className="text-gray-300">→</span>
-                  <span className={`px-2 py-1 rounded ${currentStep >= 2 && currentStep < 5 ? "bg-primary text-white" : "bg-gray-100"}`}>
-                    3. Pay
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className={`px-2 py-1 rounded ${currentStep === 0 ? "bg-primary text-white" : "bg-gray-100"}`}>
-                    1. Details
-                  </span>
-                  <span className="text-gray-300">→</span>
-                  <span className={`px-2 py-1 rounded ${currentStep >= 2 ? "bg-primary text-white" : "bg-gray-100"}`}>
-                    2. Confirm
-                  </span>
-                </>
-              )}
+            {/* Step count badge - minimal, right-aligned */}
+            <div className="text-xs text-gray-400 sm:hidden">
+              {paymentType !== "FREE"
+                ? `Step ${Math.min(currentStep + 1, 3)} of 3`
+                : `Step ${currentStep === 0 ? 1 : 2} of 2`}
             </div>
           </div>
         </div>
@@ -1677,7 +1655,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 <div className="flex-shrink-0 text-right">
                   <div className="text-lg font-semibold text-gray-900">
                     {enrollmentData.selectedPayment.currency?.toUpperCase()}{" "}
-                    {enrollmentData.selectedPayment.amount}
+                    {enrollmentData.selectedPayment.amount ?? enrollmentData.selectedPayment.actual_price}
                   </div>
                   {enrollmentData.selectedPayment.duration && (
                     <div className="text-xs text-gray-500">
@@ -1700,6 +1678,90 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
 
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+        {/* Progress Steps - Centered above content */}
+        {currentStep < 5 && (
+          <div className="mb-6">
+            {paymentType !== "FREE" ? (
+              <div className="flex items-center justify-center gap-0">
+                {/* Step 1: Details */}
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
+                    currentStep >= 0 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                  }`}>
+                    {currentStep > 0 ? "✓" : "1"}
+                  </div>
+                  <span className={`text-xs sm:text-sm font-medium ${
+                    currentStep === 0 ? "text-primary" : currentStep > 0 ? "text-gray-700" : "text-gray-400"
+                  }`}>
+                    Details
+                  </span>
+                </div>
+                {/* Connector */}
+                <div className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep > 0 ? "bg-primary" : "bg-gray-200"}`} />
+                {/* Step 2: Plan */}
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
+                    currentStep >= 1 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                  }`}>
+                    {currentStep > 1 ? "✓" : "2"}
+                  </div>
+                  <span className={`text-xs sm:text-sm font-medium ${
+                    currentStep === 1 ? "text-primary" : currentStep > 1 ? "text-gray-700" : "text-gray-400"
+                  }`}>
+                    Plan
+                  </span>
+                </div>
+                {/* Connector */}
+                <div className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep > 1 ? "bg-primary" : "bg-gray-200"}`} />
+                {/* Step 3: Pay */}
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
+                    currentStep >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                  }`}>
+                    {currentStep > 4 ? "✓" : "3"}
+                  </div>
+                  <span className={`text-xs sm:text-sm font-medium ${
+                    currentStep >= 2 && currentStep < 5 ? "text-primary" : currentStep >= 5 ? "text-gray-700" : "text-gray-400"
+                  }`}>
+                    Pay
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-0">
+                {/* Step 1: Details */}
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
+                    currentStep >= 0 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                  }`}>
+                    {currentStep > 0 ? "✓" : "1"}
+                  </div>
+                  <span className={`text-xs sm:text-sm font-medium ${
+                    currentStep === 0 ? "text-primary" : currentStep > 0 ? "text-gray-700" : "text-gray-400"
+                  }`}>
+                    Details
+                  </span>
+                </div>
+                {/* Connector */}
+                <div className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep >= 2 ? "bg-primary" : "bg-gray-200"}`} />
+                {/* Step 2: Confirm */}
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
+                    currentStep >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                  }`}>
+                    {currentStep > 2 ? "✓" : "2"}
+                  </div>
+                  <span className={`text-xs sm:text-sm font-medium ${
+                    currentStep >= 2 ? "text-primary" : "text-gray-400"
+                  }`}>
+                    Confirm
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className={`grid grid-cols-1 ${hasRightSectionContent && currentStep === 0 ? "lg:grid-cols-3" : ""} gap-6`}>
           {/* Main Form Area */}
           <div className={`${hasRightSectionContent && currentStep === 0 ? "lg:col-span-2" : "w-full max-w-2xl mx-auto"} space-y-4`}>

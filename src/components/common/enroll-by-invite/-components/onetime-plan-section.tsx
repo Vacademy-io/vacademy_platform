@@ -16,15 +16,25 @@ export const OneTimePlanSection = ({
   selectedPayment: SelectedPayment | null;
   onSelect: (payment: SelectedPayment) => void;
 }) => {
-  const calculateDiscountedPrice = (price: number) => {
-    if (!discount_json) return price;
+  const calculateDiscountedPrice = (
+    originalPrice: number,
+    elevatedPrice?: number
+  ) => {
+    // Use elevated_price as the base when available (it's the pre-discount MRP).
+    // actual_price from the API already reflects the elevated→actual markdown,
+    // so applying discount_json on actual_price would double-count.
+    const basePrice = elevatedPrice && elevatedPrice > originalPrice
+      ? elevatedPrice
+      : originalPrice;
+
+    if (!discount_json) return originalPrice;
 
     if (discount_json.type === "percentage") {
-      return price - (price * discount_json.amount) / 100;
+      return basePrice - (basePrice * discount_json.amount) / 100;
     } else if (discount_json.type === "fixed") {
-      return price - discount_json.amount;
+      return basePrice - discount_json.amount;
     }
-    return price;
+    return originalPrice;
   };
 
   const renderDiscount = () => {
@@ -41,11 +51,14 @@ export const OneTimePlanSection = ({
     <div className="flex w-full flex-wrap gap-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {payment_options.map((payment, idx) => {
+          // Use elevated_price (MRP) as the base for display & discount calc
+          const originalPrice = payment.elevated_price || payment.actual_price;
           const discountedPrice = calculateDiscountedPrice(
-            payment.actual_price
+            payment.actual_price,
+            payment.elevated_price
           );
           const hasDiscount =
-            discount_json && discountedPrice !== payment.actual_price;
+            discount_json && discountedPrice !== originalPrice;
 
           return (
             <Card
@@ -74,10 +87,10 @@ export const OneTimePlanSection = ({
                 <div className="flex flex-col gap-1">
                   {hasDiscount ? (
                     <>
-                      {/* Crossed out original price */}
+                      {/* Crossed out original price (MRP / elevated) */}
                       <div className="text-sm text-gray-500 line-through">
                         {currency}
-                        {payment.actual_price.toFixed(2)}
+                        {originalPrice.toFixed(2)}
                       </div>
                       {/* Discounted price with discount info */}
                       <div className="text-xl font-bold text-primary-500">

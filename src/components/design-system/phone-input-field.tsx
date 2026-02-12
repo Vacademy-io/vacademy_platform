@@ -64,7 +64,7 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
               disabled={disabled}
               value={value || field.value}
               countryCodeEditable={false}
-              enableAreaCodes={true}
+              enableAreaCodes={false}
               disableCountryGuess={false}
               preferredCountries={["us", "gb", "in", "au"]}
             />

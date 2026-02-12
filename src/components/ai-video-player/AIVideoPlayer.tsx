@@ -571,17 +571,21 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       const zoomedOutScale = newScale * 0.95;
       const finalScale = Math.min(zoomedOutScale, 1);
       
-      setScale(finalScale);
+      // Prevent infinite loops by only updating if change is significant (> 0.001)
+      setScale(prev => Math.abs(prev - finalScale) > 0.001 ? finalScale : prev);
     };
 
-    calculateScale();
-    const timeoutId = setTimeout(calculateScale, 100);
+    // Use a throttled observer to prevent ResizeObserver loop limit errors
+    let frameId: number;
+    const observerCallback = () => {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(() => calculateScale());
+    };
     
-    const resizeObserver = new ResizeObserver(() => {
-      requestAnimationFrame(() => {
-        setTimeout(calculateScale, 50);
-      });
-    });
+    const resizeObserver = new ResizeObserver(observerCallback);
+    
+    // Initial calculation
+    calculateScale();
     
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
@@ -590,7 +594,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     window.addEventListener('resize', calculateScale);
 
     return () => {
-      clearTimeout(timeoutId);
+      cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
       window.removeEventListener('resize', calculateScale);
     };

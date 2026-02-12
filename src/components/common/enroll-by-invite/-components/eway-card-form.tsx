@@ -66,6 +66,18 @@ export const EwayCardForm = ({
     Partial<Record<keyof EwayCardData, boolean>>
   >({});
 
+  // Refs for parent callbacks to avoid dependency cycles if parent re-renders frequently
+  const onPaymentReadyRef = useRef(onPaymentReady);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onPaymentReadyRef.current = onPaymentReady;
+  }, [onPaymentReady]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
   // Track whether encryption has been sent to parent to avoid duplicates
   const lastEncryptedRef = useRef<string>("");
   const encryptTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,7 +140,7 @@ export const EwayCardForm = ({
         // Form became invalid — clear any previously sent encrypted data
         if (lastEncryptedRef.current) {
           lastEncryptedRef.current = "";
-          onPaymentReady(null);
+          onPaymentReadyRef.current(null);
         }
         return;
       }
@@ -145,7 +157,7 @@ export const EwayCardForm = ({
 
           lastEncryptedRef.current = fingerprint;
 
-          onPaymentReady({
+          onPaymentReadyRef.current({
             encryptedNumber: encrypted.encryptedNumber,
             encryptedCVN: encrypted.encryptedCVN,
             cardData: {
@@ -156,12 +168,12 @@ export const EwayCardForm = ({
           });
         } catch (error) {
           const errorMsg = formatEncryptionError(error);
-          onError?.(errorMsg);
+          onErrorRef.current?.(errorMsg);
           console.error("Encryption error:", error);
         }
       }, 300);
     },
-    [cryptoSupported, isConfigured, encryptionKey, isFormComplete, onPaymentReady, onError]
+    [cryptoSupported, isConfigured, encryptionKey, isFormComplete]
   );
 
   // Cleanup timeout on unmount

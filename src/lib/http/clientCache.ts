@@ -20,37 +20,12 @@ function getHeaderValue(headers: AxiosRequestHeaders | Record<string, unknown> |
   return "";
 }
 
-const MAX_DEPTH = 5;
-
+// Simplified non-recursive stringify to avoid stack issues
 function stableStringify(value: unknown): string {
   try {
-    if (typeof value === "string") return value;
-    if (value === undefined || value === null) return "";
-    if (typeof value !== "object") return String(value);
-    
-    // Iterative approach or depth-limited recursion to avoid stack overflow
-    const seen = new WeakSet<object>();
-    
-    const normalize = (obj: unknown, depth: number): unknown => {
-      if (depth > MAX_DEPTH) return "[Max Depth Exceeded]";
-      if (obj && typeof obj === "object") {
-        if (seen.has(obj as object)) return undefined;
-        seen.add(obj as object);
-        if (Array.isArray(obj)) return obj.map((v) => normalize(v, depth + 1));
-        const keys = Object.keys(obj as Record<string, unknown>).sort();
-        const out: Record<string, unknown> = {};
-        for (const k of keys) out[k] = normalize((obj as Record<string, unknown>)[k], depth + 1);
-        return out;
-      }
-      return obj;
-    };
-    return JSON.stringify(normalize(value, 0));
+    return JSON.stringify(value);
   } catch {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
+    return String(value);
   }
 }
 
@@ -189,9 +164,17 @@ export function maybeServeFromCache(config: InternalAxiosRequestConfig): Interna
     let selectedAdapter: AxiosAdapter | undefined;
     
     // Check if the current adapter is already our wrapper to avoid infinite recursion
-    type WrappedAdapter = AxiosAdapter & { __isClientCacheWrapper?: boolean; __originalAdapter?: AxiosAdapter };
+    type WrappedAdapter = AxiosAdapter & { 
+      __isClientCacheWrapper?: boolean; 
+      __originalAdapter?: AxiosAdapter;
+      __recursionDepth?: number;
+    };
 
     if (typeof cfgAdapterUnknown === "function" && (cfgAdapterUnknown as WrappedAdapter).__isClientCacheWrapper) {
+      if (((cfgAdapterUnknown as WrappedAdapter).__recursionDepth || 0) > 3) {
+        console.error("[client-cache] Max recursion depth reached in adapter. Bypassing cache to prevent stack overflow.");
+        return config;
+      }
       selectedAdapter = (cfgAdapterUnknown as WrappedAdapter).__originalAdapter;
     } else if (typeof cfgAdapterUnknown === "function") {
       selectedAdapter = cfgAdapterUnknown as AxiosAdapter;
@@ -215,6 +198,7 @@ export function maybeServeFromCache(config: InternalAxiosRequestConfig): Interna
       // Mark our wrapper so we can identify and unwrap it later
       adapterWrapper.__isClientCacheWrapper = true;
       adapterWrapper.__originalAdapter = selectedAdapter;
+      adapterWrapper.__recursionDepth = ((cfgAdapterUnknown as WrappedAdapter)?.__recursionDepth || 0) + 1;
       
       config.adapter = adapterWrapper;
     }

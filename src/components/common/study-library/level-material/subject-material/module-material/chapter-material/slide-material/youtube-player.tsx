@@ -1488,7 +1488,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     return () => clearTimeout(syncTimeout);
   }, [liveClassStartTime, player, playerReady, isLiveStream]);
 
-  const toggleFullscreen = useCallback(async () => {
+  const toggleFullscreen = useCallback(async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+
     if (!playerContainerRef.current) {
       console.error("Player container not available");
       return;
@@ -1516,12 +1518,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         return;
       }
 
-      if (canNativeFullscreen) {
+      // Check for iOS
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+      if (canNativeFullscreen && !isIOS) {
         await elem.requestFullscreen();
         setIsFullscreen(true);
         setShowFullscreenControls(true);
       } else {
-        // Fallback to pseudo fullscreen for iOS Chrome/WebView
+        // Fallback to pseudo fullscreen for iOS Chrome/WebView/Safari
         setIsPseudoFullscreen(true);
         setShowFullscreenControls(true);
       }
@@ -1540,7 +1545,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       setIsPseudoFullscreen((prev) => !prev);
       setShowFullscreenControls(true);
     }
-  }, []);
+  }, [isPseudoFullscreen]);
 
   // Function to change playback speed
   const changePlaybackSpeed = useCallback(
@@ -1855,7 +1860,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       <div
         ref={playerContainerRef}
         className={`aspect-video w-full max-w-[100vw] relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px] lg:h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group ${isPseudoFullscreen
-            ? "fixed inset-0 z-[10000] rounded-none overflow-hidden max-w-[100vw] max-h-[100vh]"
+            ? "!fixed !inset-0 !top-0 !left-0 !right-0 !bottom-0 !z-[99999] !rounded-none !overflow-hidden !w-[100vw] !h-[100dvh] !max-w-none !max-h-none !bg-black"
             : ""
           }`}
         onMouseMove={handleMouseMoveOnVideo}
@@ -1929,13 +1934,22 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         {(isFullscreen || isPseudoFullscreen) && showFullscreenControls && (
           <div className="absolute inset-0 z-[9999] flex flex-col justify-between animate-in fade-in duration-200 pointer-events-none">
             {/* Top controls - Exit fullscreen */}
-            <div className="flex justify-end p-4 pointer-events-auto">
+            <div className="flex justify-end p-4 pointer-events-auto z-[100000]">
               <button
-                onClick={toggleFullscreen}
-                className="p-2.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all hover:scale-105 shadow-lg backdrop-blur-sm border border-white/10"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleFullscreen(e);
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleFullscreen(e as any);
+                }}
+                className="p-3 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all active:scale-95 shadow-lg backdrop-blur-sm border border-white/10"
                 aria-label="Exit fullscreen"
               >
-                <X size={22} weight="bold" />
+                <X size={24} weight="bold" />
               </button>
             </div>
 
@@ -2063,7 +2077,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   {/* Exit Fullscreen (alternative position) */}
                   <button
                     onClick={toggleFullscreen}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm"
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm relative z-[100002]"
                   >
                     <X size={18} weight="fill" />
                   </button>

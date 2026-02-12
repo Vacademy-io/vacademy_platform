@@ -1,8 +1,8 @@
-import SSDC_Logo from "./ssdc_logo.svg";
+// import SSDC_Logo from "./ssdc_logo.svg";
 import DummyProfile from "./dummy_profile_photo.svg";
 import EmptyDashboardImage from "./empty-student-dashboard.svg";
 import EnrollFormUploadImage from "./enroll-form-upload-image.svg";
-import SsdcLogo_Login from "./ssdc_logo.svg";
+// import SsdcLogo_Login from "./ssdc_logo.svg";
 import LoginImage from "./login-image.svg";
 import ImportFileImage from "./import-file.svg";
 import EmptySubjectMaterial from "./empty-subject-material.svg";
@@ -16,11 +16,11 @@ import ModuleDefaultImage from "./module-default-image.svg";
 import SmallDummyProfile from "./small-dummy-profile.svg";
 
 export {
-  SSDC_Logo,
+  // SSDC_Logo,
   DummyProfile,
   EmptyDashboardImage,
   EnrollFormUploadImage,
-  SsdcLogo_Login,
+  // SsdcLogo_Login,
   LoginImage,
   ImportFileImage,
   EmptySubjectMaterial,

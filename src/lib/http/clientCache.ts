@@ -20,7 +20,7 @@ function getHeaderValue(headers: AxiosRequestHeaders | Record<string, unknown> |
   return "";
 }
 
-const MAX_DEPTH = 10;
+const MAX_DEPTH = 5;
 
 function stableStringify(value: unknown): string {
   try {

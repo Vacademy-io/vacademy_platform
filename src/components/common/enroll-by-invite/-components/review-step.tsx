@@ -265,7 +265,7 @@ const PaidPlanReview = ({
 
         <div className="flex flex-col gap-4">
           <div className="flex justify-between">
-            <span className="text-gray-600">Name:</span>
+            <span className="text-gray-600">Plan:</span>
             <div className="font-medium text-gray-900">{plan.name}</div>
           </div>
 
@@ -366,6 +366,13 @@ const PaidPlanReview = ({
             </span>
           </div>
         </div>
+
+        {/* Currency note */}
+        {plan.currency && (
+          <p className="text-xs text-gray-400 mt-3 text-right">
+            All prices in {plan.currency.toUpperCase()}
+          </p>
+        )}
       </div>
 
       {/* Additional Benefits Section - Only show if coupon is verified and there are non-pricing benefits */}
@@ -466,7 +473,7 @@ const FreePlanReview = ({
 
         <div className="flex flex-col gap-4">
           <div className="flex justify-between">
-            <span className="text-gray-600">Name:</span>
+            <span className="text-gray-600">Plan:</span>
             <div className="font-medium text-gray-900">{plan.name}</div>
           </div>
 
@@ -510,6 +517,13 @@ const FreePlanReview = ({
             )}
           </div>
         </div>
+
+        {/* Currency note */}
+        {plan.currency && plan.amount !== 0 && (
+          <p className="text-xs text-gray-400 mt-3 text-right">
+            All prices in {plan.currency.toUpperCase()}
+          </p>
+        )}
       </div>
 
       {/* Additional Benefits Section - Only show if coupon is verified and there are non-pricing benefits */}

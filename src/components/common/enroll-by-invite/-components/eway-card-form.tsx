@@ -1,4 +1,4 @@
-import { useState, ChangeEvent, FormEvent } from "react";
+import { useState, useEffect, useRef, useCallback, ChangeEvent } from "react";
 import { useEway } from "../-hooks/use-eway";
 import {
   validateCardNumber,
@@ -15,7 +15,6 @@ import {
   EwayCardData,
   formatEncryptionError,
 } from "../-utils/eway-encryption";
-import { MyButton } from "@/components/design-system/button";
 import { Input } from "@/components/ui/input";
 
 /**
@@ -31,15 +30,16 @@ interface EwayCardFormProps {
       expiryMonth: string;
       expiryYear: string;
     };
-  }) => void;
+  } | null) => void;
   onError?: (error: string) => void;
 }
 
 /**
  * Eway Card Payment Form Component
  *
- * Collects card details, validates them, and encrypts using Eway's encryption key
- * before passing encrypted data to parent component for processing
+ * Collects card details, validates them, and auto-encrypts using Eway's encryption key
+ * when all fields are valid. No separate "Verify" button needed — the parent's
+ * "Confirm & Pay" button handles submission once encryption is complete.
  */
 export const EwayCardForm = ({
   onPaymentReady,
@@ -66,23 +66,122 @@ export const EwayCardForm = ({
     Partial<Record<keyof EwayCardData, boolean>>
   >({});
 
-  // UI state
-  const [isEncrypting, setIsEncrypting] = useState(false);
+  // Track whether encryption has been sent to parent to avoid duplicates
+  const lastEncryptedRef = useRef<string>("");
+  const encryptTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Check if crypto is supported
   const cryptoSupported = isCryptoSupported();
 
   /**
+   * Validate individual field (returns error string or undefined)
+   */
+  const getFieldError = useCallback(
+    (field: keyof EwayCardData, data: EwayCardData, type: CardType): string | undefined => {
+      switch (field) {
+        case "number": {
+          const v = validateCardNumber(data.number);
+          return v.isValid ? undefined : v.error;
+        }
+        case "expiryMonth":
+        case "expiryYear": {
+          if (data.expiryMonth && data.expiryYear) {
+            const v = validateExpiryDate(data.expiryMonth, data.expiryYear);
+            return v.isValid ? undefined : v.error;
+          }
+          return "Expiry date is required";
+        }
+        case "cvn": {
+          const v = validateCVV(data.cvn, type);
+          return v.isValid ? undefined : v.error;
+        }
+        case "name":
+          return data.name.trim().length < 2 ? "Name is required" : undefined;
+      }
+    },
+    []
+  );
+
+  /**
+   * Check if all fields are valid without setting error state
+   */
+  const isFormComplete = useCallback(
+    (data: EwayCardData, type: CardType): boolean => {
+      const fields: Array<keyof EwayCardData> = ["name", "number", "expiryMonth", "cvn"];
+      return fields.every((f) => !getFieldError(f, data, type));
+    },
+    [getFieldError]
+  );
+
+  /**
+   * Auto-encrypt when all fields become valid.
+   * Debounced to avoid encrypting on every keystroke.
+   */
+  const tryAutoEncrypt = useCallback(
+    (data: EwayCardData, type: CardType) => {
+      // Clear any pending encryption
+      if (encryptTimeoutRef.current) {
+        clearTimeout(encryptTimeoutRef.current);
+      }
+
+      if (!isFormComplete(data, type)) {
+        // Form became invalid — clear any previously sent encrypted data
+        if (lastEncryptedRef.current) {
+          lastEncryptedRef.current = "";
+          onPaymentReady(null);
+        }
+        return;
+      }
+      if (!cryptoSupported || !isConfigured || !encryptionKey) return;
+
+      // Build a fingerprint to avoid re-encrypting identical data
+      const fingerprint = `${data.number}|${data.cvn}|${data.name}|${data.expiryMonth}|${data.expiryYear}`;
+      if (fingerprint === lastEncryptedRef.current) return;
+
+      encryptTimeoutRef.current = setTimeout(async () => {
+        try {
+          const sanitized = sanitizeCardData(data);
+          const encrypted = await encryptCardData(sanitized, encryptionKey);
+
+          lastEncryptedRef.current = fingerprint;
+
+          onPaymentReady({
+            encryptedNumber: encrypted.encryptedNumber,
+            encryptedCVN: encrypted.encryptedCVN,
+            cardData: {
+              name: sanitized.name,
+              expiryMonth: sanitized.expiryMonth,
+              expiryYear: sanitized.expiryYear,
+            },
+          });
+        } catch (error) {
+          const errorMsg = formatEncryptionError(error);
+          onError?.(errorMsg);
+          console.error("Encryption error:", error);
+        }
+      }, 300);
+    },
+    [cryptoSupported, isConfigured, encryptionKey, isFormComplete, onPaymentReady, onError]
+  );
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (encryptTimeoutRef.current) clearTimeout(encryptTimeoutRef.current);
+    };
+  }, []);
+
+  /**
    * Handle card number change with formatting
    */
   const handleCardNumberChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\s/g, ""); // Remove spaces
+    const value = e.target.value.replace(/\s/g, "");
+    const next = { ...cardData, number: value };
+    setCardData(next);
 
-    setCardData((prev) => ({ ...prev, number: value }));
-
-    // Validate on change
     const validation = validateCardNumber(value);
-    setCardType(validation.cardType);
+    const newType = validation.cardType;
+    setCardType(newType);
 
     if (touched.number) {
       setErrors((prev) => ({
@@ -90,58 +189,35 @@ export const EwayCardForm = ({
         number: validation.isValid ? undefined : validation.error,
       }));
     }
+
+    // Reset encryption if card data changes
+    lastEncryptedRef.current = "";
+    tryAutoEncrypt(next, newType);
   };
 
   /**
    * Handle expiry date change with formatting
-   * Stores raw digits and formats for display
    */
   const handleExpiryChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-
-    // Remove all non-digits to get clean input
     const digitsOnly = value.replace(/\D/g, "");
-
-    // Limit to 4 digits max (MMYY)
     const limitedDigits = digitsOnly.slice(0, 4);
 
-    // If empty, clear state
-    if (limitedDigits.length === 0) {
-      setCardData((prev) => ({
-        ...prev,
-        expiryMonth: "",
-        expiryYear: "",
-      }));
-      return;
-    }
-
-    // Parse month and year from digits
     let month = "";
     let year = "";
 
     if (limitedDigits.length >= 1) {
-      // Get month (first 1 or 2 digits)
       month = limitedDigits.slice(0, Math.min(2, limitedDigits.length));
     }
-
     if (limitedDigits.length > 2) {
-      // Get year (digits after the month)
-      const yearDigits = limitedDigits.slice(2);
-      // Store just the 2-digit year for now, will convert to full year when validating
-      year = yearDigits;
+      year = limitedDigits.slice(2);
     }
 
-    // Update state with raw values
-    setCardData((prev) => ({
-      ...prev,
-      expiryMonth: month,
-      expiryYear: year,
-    }));
+    const next = { ...cardData, expiryMonth: month, expiryYear: year };
+    setCardData(next);
 
-    // Validate only if we have complete input (4 digits total)
     if (touched.expiryMonth || touched.expiryYear) {
       if (limitedDigits.length === 4) {
-        // Convert 2-digit year to 4-digit year for validation
         const fullYear = year.length === 2 ? `20${year}` : year;
         const validation = validateExpiryDate(month, fullYear);
         setErrors((prev) => ({
@@ -150,7 +226,6 @@ export const EwayCardForm = ({
           expiryYear: validation.isValid ? undefined : validation.error,
         }));
       } else {
-        // Clear errors while still typing
         setErrors((prev) => ({
           ...prev,
           expiryMonth: undefined,
@@ -158,14 +233,18 @@ export const EwayCardForm = ({
         }));
       }
     }
+
+    lastEncryptedRef.current = "";
+    tryAutoEncrypt(next, cardType);
   };
 
   /**
    * Handle CVV change
    */
   const handleCVVChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, "").slice(0, 4); // Max 4 digits
-    setCardData((prev) => ({ ...prev, cvn: value }));
+    const value = e.target.value.replace(/\D/g, "").slice(0, 4);
+    const next = { ...cardData, cvn: value };
+    setCardData(next);
 
     if (touched.cvn) {
       const validation = validateCVV(value, cardType);
@@ -174,6 +253,9 @@ export const EwayCardForm = ({
         cvn: validation.isValid ? undefined : validation.error,
       }));
     }
+
+    lastEncryptedRef.current = "";
+    tryAutoEncrypt(next, cardType);
   };
 
   /**
@@ -181,7 +263,8 @@ export const EwayCardForm = ({
    */
   const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setCardData((prev) => ({ ...prev, name: value }));
+    const next = { ...cardData, name: value };
+    setCardData(next);
 
     if (touched.name) {
       setErrors((prev) => ({
@@ -189,142 +272,26 @@ export const EwayCardForm = ({
         name: value.trim().length < 2 ? "Name is required" : undefined,
       }));
     }
+
+    lastEncryptedRef.current = "";
+    tryAutoEncrypt(next, cardType);
   };
 
   /**
-   * Mark field as touched
+   * Mark field as touched and validate
    */
   const handleBlur = (field: keyof EwayCardData) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
 
-    // Validate on blur
-    validateField(field);
-  };
-
-  /**
-   * Validate individual field
-   */
-  const validateField = (field: keyof EwayCardData) => {
-    let error: string | undefined;
-
-    switch (field) {
-      case "number": {
-        const cardValidation = validateCardNumber(cardData.number);
-        error = cardValidation.isValid ? undefined : cardValidation.error;
-        break;
-      }
-
-      case "expiryMonth":
-      case "expiryYear": {
-        if (cardData.expiryMonth && cardData.expiryYear) {
-          // validateExpiryDate handles both YY and YYYY formats
-          // Our form stores 2-digit year, which is fine
-          const expiryValidation = validateExpiryDate(
-            cardData.expiryMonth,
-            cardData.expiryYear
-          );
-          error = expiryValidation.isValid ? undefined : expiryValidation.error;
-        } else {
-          error = "Expiry date is required";
-        }
-        break;
-      }
-
-      case "cvn": {
-        const cvvValidation = validateCVV(cardData.cvn, cardType);
-        error = cvvValidation.isValid ? undefined : cvvValidation.error;
-        break;
-      }
-
-      case "name":
-        error =
-          cardData.name.trim().length < 2 ? "Name is required" : undefined;
-        break;
-    }
-
+    const error = getFieldError(field, cardData, cardType);
     setErrors((prev) => ({ ...prev, [field]: error }));
-    return !error;
-  };
 
-  /**
-   * Validate all fields
-   */
-  const validateAllFields = (): boolean => {
-    const fields: Array<keyof EwayCardData> = [
-      "name",
-      "number",
-      "expiryMonth",
-      "cvn",
-    ];
-    const validations = fields.map((field) => validateField(field));
-
-    // Mark all as touched
-    setTouched({
-      name: true,
-      number: true,
-      expiryMonth: true,
-      expiryYear: true,
-      cvn: true,
-    });
-
-    return validations.every((isValid) => isValid);
-  };
-
-  /**
-   * Handle form submission
-   */
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-
-    if (!cryptoSupported) {
-      const errorMsg =
-        "Your browser does not support secure payment encryption. Please use a modern browser.";
-      onError?.(errorMsg);
-      return;
-    }
-
-    if (!isConfigured || !encryptionKey) {
-      const errorMsg =
-        "Payment gateway is not properly configured. Please contact support.";
-      onError?.(errorMsg);
-      return;
-    }
-
-    // Validate all fields
-    if (!validateAllFields()) {
-      onError?.("Please fix the errors in the form");
-      return;
-    }
-
-    try {
-      setIsEncrypting(true);
-
-      // ✅ Sanitize and encrypt card data following Eway specification
-      const sanitized = sanitizeCardData(cardData);
-      const encrypted = await encryptCardData(sanitized, encryptionKey);
-
-      // Pass encrypted data + plain text fields to parent
-      // Per Eway spec: only card number and CVN are encrypted
-      onPaymentReady({
-        encryptedNumber: encrypted.encryptedNumber,
-        encryptedCVN: encrypted.encryptedCVN,
-        cardData: {
-          name: sanitized.name,
-          expiryMonth: sanitized.expiryMonth,
-          expiryYear: sanitized.expiryYear,
-        },
-      });
-    } catch (error) {
-      const errorMsg = formatEncryptionError(error);
-      onError?.(errorMsg);
-      console.error("❌ Encryption error:", error);
-    } finally {
-      setIsEncrypting(false);
-    }
+    // Also try encrypting on blur (user may have tab'd through the last field)
+    tryAutoEncrypt(cardData, cardType);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="space-y-4">
       {/* Card Number */}
       <div>
         <label
@@ -338,11 +305,12 @@ export const EwayCardForm = ({
             id="cardNumber"
             type="text"
             inputMode="numeric"
+            autoComplete="cc-number"
             placeholder="1234 5678 9012 3456"
             value={formatCardNumber(cardData.number)}
             onChange={handleCardNumberChange}
             onBlur={() => handleBlur("number")}
-            disabled={isProcessing || isEncrypting}
+            disabled={isProcessing}
             className={errors.number && touched.number ? "border-red-500" : ""}
           />
           {cardType !== "unknown" && (
@@ -367,11 +335,12 @@ export const EwayCardForm = ({
         <Input
           id="cardName"
           type="text"
+          autoComplete="cc-name"
           placeholder="John Smith"
           value={cardData.name}
           onChange={handleNameChange}
           onBlur={() => handleBlur("name")}
-          disabled={isProcessing || isEncrypting}
+          disabled={isProcessing}
           className={errors.name && touched.name ? "border-red-500" : ""}
         />
         {errors.name && touched.name && (
@@ -393,24 +362,14 @@ export const EwayCardForm = ({
             id="cardExpiry"
             type="text"
             inputMode="numeric"
+            autoComplete="cc-exp"
             placeholder="MM/YY"
             value={(() => {
               const month = cardData.expiryMonth;
               const year = cardData.expiryYear;
-
-              // No input yet
               if (!month) return "";
-
-              // Only month typed, no year yet
-              if (month && !year) {
-                return month;
-              }
-
-              // Both month and year - add slash between them
-              if (month && year) {
-                return `${month}/${year}`;
-              }
-
+              if (month && !year) return month;
+              if (month && year) return `${month}/${year}`;
               return month;
             })()}
             onChange={handleExpiryChange}
@@ -419,7 +378,7 @@ export const EwayCardForm = ({
               handleBlur("expiryYear");
             }}
             maxLength={5}
-            disabled={isProcessing || isEncrypting}
+            disabled={isProcessing}
             className={
               (errors.expiryMonth || errors.expiryYear) &&
               (touched.expiryMonth || touched.expiryYear)
@@ -447,12 +406,13 @@ export const EwayCardForm = ({
             id="cardCVV"
             type="text"
             inputMode="numeric"
+            autoComplete="cc-csc"
             placeholder={cardType === "amex" ? "1234" : "123"}
             value={cardData.cvn}
             onChange={handleCVVChange}
             onBlur={() => handleBlur("cvn")}
             maxLength={cardType === "amex" ? 4 : 3}
-            disabled={isProcessing || isEncrypting}
+            disabled={isProcessing}
             className={errors.cvn && touched.cvn ? "border-red-500" : ""}
           />
           {errors.cvn && touched.cvn && (
@@ -478,20 +438,7 @@ export const EwayCardForm = ({
           </p>
         </div>
       )}
-
-      {/* Submit Button */}
-      <MyButton
-        type="submit"
-        disabled={isProcessing || isEncrypting || !cryptoSupported}
-        className="w-full"
-      >
-        {isEncrypting
-          ? "Encrypting..."
-          : isProcessing
-          ? "Processing..."
-          : "Verify Card"}
-      </MyButton>
-    </form>
+    </div>
   );
 };
 

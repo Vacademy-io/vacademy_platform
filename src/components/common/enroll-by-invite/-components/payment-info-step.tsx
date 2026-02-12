@@ -31,7 +31,7 @@ interface PaymentInfoStepProps {
       expiryMonth: string;
       expiryYear: string;
     };
-  }) => void;
+  } | null) => void;
   onEwayError?: (error: string) => void;
   onStripePaymentReady?: (
     processPayment: () => Promise<{
@@ -76,7 +76,7 @@ const EwayCheckoutForm = ({
       expiryMonth: string;
       expiryYear: string;
     };
-  }) => void;
+  } | null) => void;
   onError?: (error: string) => void;
   isProcessing?: boolean;
 }) => {

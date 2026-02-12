@@ -5,6 +5,7 @@ import { FormProvider, UseFormReturn, useWatch } from "react-hook-form";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import SelectField from "@/components/design-system/select-field";
+import ComboboxField from "@/components/design-system/combobox-field";
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
 import { Calendar, CreditCard, Globe } from "@phosphor-icons/react";
@@ -30,6 +31,7 @@ import {
   findCountryFieldKey,
 } from "../-utils/country-code-mapping";
 import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
+import { State, City } from "country-state-city";
 
 // Course data interface
 export interface FinalCourseData {
@@ -588,6 +590,118 @@ const RegistrationStep = ({
                         )}
                       />
                     );
+                  }
+
+                  // Render State Dropdown if country is selected
+                  const isStateField =
+                    key.toLowerCase().includes("state") &&
+                    !key.toLowerCase().includes("statement");
+
+                  if (isStateField) {
+                    const countryFieldKey = findCountryFieldKey(form.getValues());
+
+                    if (countryFieldKey) {
+                      const countryValue = form.getValues(countryFieldKey)?.value;
+                      if (countryValue) {
+                        const countryCode = getCountryCode(String(countryValue)).toUpperCase();
+                        const states = State.getStatesOfCountry(countryCode);
+
+                        if (states.length > 0) {
+                          const stateOptions = states.map((state, index) => ({
+                            _id: index,
+                            value: state.name,
+                            label: state.name,
+                          }));
+
+                          return (
+                            <FormField
+                              key={key}
+                              control={form.control}
+                              name={`${key}.value`}
+                              render={() => (
+                                <FormItem>
+                                  <FormControl>
+                                    <ComboboxField
+                                      label={capitalise(value.name)}
+                                      name={`${key}.value`}
+                                      options={stateOptions}
+                                      control={form.control}
+                                      required={value.is_mandatory}
+                                      className="!w-full"
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          );
+                        }
+                      }
+                    }
+                  }
+
+                  // Render City Dropdown
+                  const isCityField =
+                    key.toLowerCase().includes("city") &&
+                    !key.toLowerCase().includes("ethnicity");
+
+                  if (isCityField) {
+                    const countryFieldKey = findCountryFieldKey(form.getValues());
+                    
+                    // Boundary Condition: Ensure State field exists in the form
+                    const stateFieldKey = Object.keys(form.getValues()).find(
+                      (k) =>
+                        k.toLowerCase().includes("state") &&
+                        !k.toLowerCase().includes("statement")
+                    );
+
+                    // Strictly require Country + State fields to be present and have values
+                    if (countryFieldKey && stateFieldKey) {
+                      const countryValue = form.getValues(countryFieldKey)?.value;
+                      const stateValue = form.getValues(stateFieldKey)?.value;
+
+                      if (countryValue && stateValue) {
+                        const countryCode = getCountryCode(String(countryValue)).toUpperCase();
+                        let cities: ReturnType<typeof City.getCitiesOfState> = [];
+
+                        // Attempt to find state code from state name
+                        const states = State.getStatesOfCountry(countryCode);
+                        const selectedState = states.find(s => s.name === stateValue);
+                        
+                        if (selectedState) {
+                          cities = City.getCitiesOfState(countryCode, selectedState.isoCode);
+                        }
+
+                        if (cities.length > 0) {
+                          const cityOptions = cities.map((city, index) => ({
+                            _id: index,
+                            value: city.name,
+                            label: city.name,
+                          }));
+
+                           return (
+                            <FormField
+                              key={key}
+                              control={form.control}
+                              name={`${key}.value`}
+                              render={() => (
+                                <FormItem>
+                                  <FormControl>
+                                    <ComboboxField
+                                      label={capitalise(value.name)}
+                                      name={`${key}.value`}
+                                      options={cityOptions}
+                                      control={form.control}
+                                      required={value.is_mandatory}
+                                      className="!w-full"
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                           );
+                        }
+                      }
+                    }
                   }
 
                   // Render Text Input (default)

@@ -23,6 +23,7 @@ import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
+import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
@@ -55,9 +56,10 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Random;
 import java.util.stream.Collectors;
+import vacademy.io.common.exceptions.VacademyException;
 
 /**
- * Service for managing Audience campaigns and lead submissions
+ * Service for Audience Management
  * Follows the same pattern as EnrollInviteService
  */
 @Service
@@ -97,6 +99,9 @@ public class AudienceService {
 
     @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository packageSessionRepository;
 
     @Autowired
     private EnquiryRepository enquiryRepository;
@@ -722,6 +727,11 @@ public class AudienceService {
         Enquiry enquiry = null;
         if (requestDTO.getEnquiry() != null) {
             EnquiryDTO enquiryDTO = requestDTO.getEnquiry();
+            String retrievalTrackingId = enquiryDTO.getEnquiryTrackingId();
+            if (retrievalTrackingId == null || retrievalTrackingId.isEmpty()) {
+                retrievalTrackingId = generateCustomTrackingId();
+            }
+
             enquiry = Enquiry.builder()
                     .checklist(enquiryDTO.getChecklist())
                     .enquiryStatus(enquiryDTO.getEnquiryStatus())
@@ -732,7 +742,7 @@ public class AudienceService {
                     .feeRangeExpectation(enquiryDTO.getFeeRangeExpectation())
                     .transportRequirement(enquiryDTO.getTransportRequirement())
                     .mode(enquiryDTO.getMode())
-                    .enquiryTrackingId(enquiryDTO.getEnquiryTrackingId())
+                    .enquiryTrackingId(retrievalTrackingId)
                     .interestScore(enquiryDTO.getInterestScore())
                     .notes(enquiryDTO.getNotes())
                     .build();
@@ -762,6 +772,26 @@ public class AudienceService {
         logger.info("Saved audience response with ID: {} linked to enquiry: {} with parent user_id: {}",
                 savedResponse.getId(), enquiryId, parentUserId);
 
+        // Send Enquiry Confirmation Email
+        if (audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail()) {
+            try {
+                PackageSession packageSession = null;
+                if (requestDTO.getDestinationPackageSessionId() != null) {
+                    packageSession = packageSessionRepository.findById(requestDTO.getDestinationPackageSessionId())
+                            .orElse(null);
+                }
+
+                sendEnquiryConfirmationEmail(
+                        parentUserDTO,
+                        childUserDTO,
+                        audience,
+                        enquiry,
+                        packageSession);
+            } catch (Exception e) {
+                logger.error("Failed to send enquiry confirmation email", e);
+            }
+        }
+
         // STEP 5: Save custom field values (same as existing submitLead)
         if (!CollectionUtils.isEmpty(requestDTO.getCustomFieldValues())) {
             saveCustomFieldValues(
@@ -775,70 +805,10 @@ public class AudienceService {
         // STEP 6: Build custom field map for email
         Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
 
-        // STEP 7: Send notification to respondent (same logic as submitLead)
+        // STEP 8: Send notifications to additional recipients (toNotify)
         final UserDTO userForNotification = parentUserDTO; // Use parent user for notifications
         final String instituteIdForNotification = instituteId;
-        final String audienceInstituteId = audience.getInstituteId();
 
-        if (audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail()) {
-            logger.info("Sending notification to respondent (parent): {}", userForNotification.getEmail());
-
-            // Fetch notification template
-            Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
-                    .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
-                            NotificationEventType.AUDIENCE_FORM_SUBMISSION,
-                            NotificationSourceType.AUDIENCE,
-                            requestDTO.getAudienceId(),
-                            NotificationTemplateType.EMAIL);
-
-            if (configOpt.isPresent()) {
-                // Send templated email
-                java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
-                java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
-                        .ofPattern("MMM dd, yyyy hh:mm a z");
-                String submissionTime = now.format(formatter);
-
-                NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
-                        .userFullName(userForNotification.getFullName())
-                        .userEmail(userForNotification.getEmail())
-                        .instituteId(audienceInstituteId)
-                        .campaignName(audience.getCampaignName())
-                        .customFields(customFieldsForEmail)
-                        .submissionTime(submissionTime)
-                        .build();
-
-                sendUniqueLinkService.sendUniqueLinkByEmailByEnrollInvite(
-                        instituteIdForNotification,
-                        userForNotification,
-                        configOpt.get().getTemplateId(),
-                        null,
-                        templateVars);
-                logger.info("Sent templated email to respondent: {}", userForNotification.getEmail());
-            } else {
-                // Send default email
-                String defaultEmailBody = buildDefaultEmailBody(
-                        audience.getCampaignName(),
-                        userForNotification.getFullName(),
-                        userForNotification.getEmail(),
-                        customFieldsForEmail);
-
-                GenericEmailRequest emailRequest = new GenericEmailRequest();
-                emailRequest.setTo(userForNotification.getEmail());
-                emailRequest.setSubject(
-                        "Thank You for Submitting Your Response for Campaign - " + audience.getCampaignName());
-                emailRequest.setBody(defaultEmailBody);
-
-                try {
-                    notificationService.sendGenericHtmlMail(emailRequest, instituteIdForNotification);
-                    logger.info("Sent default email to respondent: {}", userForNotification.getEmail());
-                } catch (Exception ex) {
-                    logger.error("Failed to send default email to {}: {}", userForNotification.getEmail(),
-                            ex.getMessage());
-                }
-            }
-        }
-
-        // STEP 8: Send notifications to additional recipients (toNotify)
         if (StringUtils.hasText(audience.getToNotify())) {
             String[] additionalEmails = audience.getToNotify().split(",");
             logger.info("Sending notifications to {} additional recipients", additionalEmails.length);
@@ -2484,4 +2454,163 @@ public class AudienceService {
         }
     }
 
+    private void sendEnquiryConfirmationEmail(UserDTO parentUser, UserDTO childUser, Audience audience, Enquiry enquiry,
+            PackageSession packageSession) {
+
+        String instituteId = audience.getInstituteId();
+
+        // Get credentials (username and password)
+        // Get credentials (username and password)
+        String username = parentUser != null ? parentUser.getEmail() : "";
+        String password = "";
+
+        if (parentUser != null) {
+            try {
+                UserDTO userWithPassword = authService.getUsersFromAuthServiceWithPasswordByUserId(parentUser.getId());
+                if (userWithPassword != null && StringUtils.hasText(userWithPassword.getPassword())) {
+                    password = userWithPassword.getPassword();
+                } else {
+                    password = parentUser.getPassword(); // Fallback
+                }
+            } catch (Exception e) {
+                logger.error("Failed to fetch user password for email", e);
+                password = parentUser.getPassword(); // Fallback
+            }
+        }
+
+        // Build portal URL (hardcoded for now)
+        String portalUrl = "https://learner-portal.vacademy.io";
+
+        // Format submission time
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
+                .ofPattern("MMM dd, yyyy hh:mm a z");
+        String submissionTime = now.format(formatter);
+
+        String sessionName = (packageSession != null && packageSession.getSession() != null)
+                ? packageSession.getSession().getSessionName()
+                : "Session";
+        String trackingId = enquiry != null ? enquiry.getEnquiryTrackingId() : "N/A";
+        String campaignName = audience.getCampaignName();
+        String studentName = childUser != null ? childUser.getFullName() : "Student";
+        String parentName = parentUser != null ? parentUser.getFullName() : "Parent";
+
+        // Try to fetch template from notification_event_config
+        Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
+                .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                        NotificationEventType.ENQUIRY_FORM_SUBMISSION,
+                        NotificationSourceType.AUDIENCE,
+                        audience.getInstituteId(), // Use audience ID as source ID? No, usually Institute or Audience
+                                                   // ID. Let's use Audience ID as per plan.
+                        NotificationTemplateType.EMAIL);
+
+        // Just in case, try searching with source_id = audience_id if institute_id one
+        // failed or vice versa depending on config strategy
+        if (configOpt.isEmpty()) {
+            configOpt = notificationEventConfigRepository
+                    .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                            NotificationEventType.ENQUIRY_FORM_SUBMISSION,
+                            NotificationSourceType.AUDIENCE,
+                            audience.getId(),
+                            NotificationTemplateType.EMAIL);
+        }
+
+        if (configOpt.isPresent()) {
+            logger.info("Found custom email template for enquiry submission: {}", configOpt.get().getTemplateId());
+
+            // Build variables for template
+            NotificationTemplateVariables variables = NotificationTemplateVariables.builder()
+                    .userName(username)
+                    .userPassword(password)
+                    .portalUrl(portalUrl)
+                    .childName(studentName)
+                    .trackingId(trackingId)
+                    .sessionName(sessionName)
+                    .submissionTime(submissionTime)
+                    .instituteId(instituteId)
+                    .campaignName(campaignName)
+                    .build();
+
+            sendUniqueLinkService.sendUniqueLinkByEmailByEnrollInvite(
+                    instituteId,
+                    parentUser,
+                    configOpt.get().getTemplateId(),
+                    null,
+                    variables);
+        } else {
+            // Default Email Fallback
+            logger.info("No custom template found, using default enquiry confirmation email");
+
+            String defaultEmailBody = buildDefaultEnquiryEmailBody(
+                    parentName,
+                    studentName,
+                    sessionName,
+                    trackingId,
+                    submissionTime,
+                    username,
+                    password,
+                    portalUrl,
+                    campaignName);
+
+            GenericEmailRequest emailRequest = new GenericEmailRequest();
+            emailRequest.setTo(parentUser.getEmail());
+            emailRequest.setSubject("Enquiry Submitted Successfully - " + campaignName + " - " + trackingId);
+            emailRequest.setBody(defaultEmailBody);
+
+            notificationService.sendGenericHtmlMail(emailRequest, instituteId);
+        }
+    }
+
+    private String buildDefaultEnquiryEmailBody(String parentName, String studentName, String sessionName,
+            String trackingId, String submissionTime, String username, String password, String portalUrl,
+            String campaignName) {
+
+        StringBuilder credentialSection = new StringBuilder();
+        if (StringUtils.hasText(password)) {
+            credentialSection.append(
+                    "<div style='background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;'>")
+                    .append("<h3 style='margin-top: 0; color: #2c3e50;'>Portal Login Credentials</h3>")
+                    .append("<p style='margin: 5px 0;'><strong>Username:</strong> ").append(username).append("</p>")
+                    .append("<p style='margin: 5px 0;'><strong>Password:</strong> ").append(password).append("</p>")
+                    .append("</div>");
+        }
+
+        return "<html>" +
+                "<body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>" +
+                "<div style='max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;'>"
+                +
+                "<h2 style='color: #2c3e50; text-align: center;'>Enquiry Received Successfully</h2>" +
+                "<p>Dear " + parentName + ",</p>" +
+                "<p>Thank you for your interest in <strong>" + campaignName + "</strong> (" + sessionName
+                + ") for <strong>" + studentName + "</strong>.</p>" +
+                "<p>We have received your enquiry details. Your tracking ID is:</p>" +
+                "<h3 style='text-align: center; background-color: #e8f4f8; padding: 10px; border-radius: 5px;'>"
+                + trackingId + "</h3>" +
+                "<p>We have created an account for you on our learner portal where you can track the status of your enquiry.</p>"
+                +
+                credentialSection.toString() +
+                "<div style='text-align: center; margin-top: 25px;'>" +
+                "<a href='" + portalUrl
+                + "' style='background-color: #3498db; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold;'>Login to Portal</a>"
+                +
+                "</div>" +
+                "<p style='margin-top: 30px; font-size: 12px; color: #777; text-align: center;'>Submitted on: "
+                + submissionTime + "</p>" +
+                "</div>" +
+                "</body>" +
+                "</html>";
+    }
+
+    /**
+     * Generate a 5-character alphanumeric tracking ID
+     */
+    private String generateCustomTrackingId() {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        StringBuilder sb = new StringBuilder();
+        Random random = new Random();
+        for (int i = 0; i < 5; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        return sb.toString();
+    }
 }

@@ -29,11 +29,11 @@ spec:
                 name: myconfigmapv1.0
           resources:
             requests:
-              cpu: "200m"
-              memory: "450Mi"
-            limits:
-              cpu: "250m"
+              cpu: "300m"
               memory: "600Mi"
+            limits:
+              cpu: "500m"
+              memory: "1.5Gi"
           livenessProbe:
             httpGet:
               path: /ai-service/health
@@ -66,5 +66,3 @@ spec:
             successThreshold: 1
           ports:
             - containerPort: {{ .Values.services.ai_service.port }}
-
-

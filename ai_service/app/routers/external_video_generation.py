@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 from uuid import uuid4
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 
 from ..db import db_dependency
 from ..dependencies import get_institute_from_api_key
@@ -92,6 +92,29 @@ async def generate_video_external(
             "X-Content-Type": payload.content_type  # NEW: Include content type in response headers
         }
     )
+
+
+@router.get(
+    "/history",
+    response_model=List[VideoStatusResponse],
+    summary="Get last N content generations for institute (External)"
+)
+async def get_institute_generations_external(
+    limit: int = 10,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key)
+) -> List[VideoStatusResponse]:
+    """
+    Get list of last N content generations for the authenticated institute.
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    if limit > 50:
+        limit = 50 # Cap limit
+    
+    # Get returned dicts and validate with schema
+    generations = service.get_institute_generations(institute_id, limit)
+    return [VideoStatusResponse(**gen) for gen in generations]
 
 
 @router.get(

@@ -269,3 +269,26 @@ class AiVideoRepository:
         """Mark video generation as completed."""
         return self.update_stage(video_id, "COMPLETED", "COMPLETED")
 
+    def get_history_by_institute(
+        self,
+        institute_id: str,
+        limit: int = 10,
+        offset: int = 0
+    ) -> list[AiGenVideo]:
+        """Get history of generations for an institute."""
+        session = self._get_session()
+        try:
+            # Query JSONB metadata field
+            stmt = (
+                select(AiGenVideo)
+                .where(AiGenVideo.extra_metadata['institute_id'].astext == institute_id)
+                .order_by(AiGenVideo.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            result = session.execute(stmt)
+            return result.scalars().all()
+        finally:
+            if not self.session:
+                session.close()
+

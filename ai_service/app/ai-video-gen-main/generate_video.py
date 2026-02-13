@@ -32,215 +32,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     libs = f"file://{Path.cwd()}/assets/libs"
     page.set_viewport_size({"width": width, "height": height})
     # Install updater that creates/removes/positions shadow-root wrapped snippets and scales to fit.
-    page.add_init_script(
-        """
-        window.__activeSnippets = new Map();
-        window.__updateSnippets = async (entries) => {
-          const activeIds = new Set(entries.map(e => e.id));
-          
-          // Remove no longer active snippets
-          for (const [id, host] of Array.from(window.__activeSnippets.entries())) {
-            if (!activeIds.has(id)) {
-              try { host.remove(); } catch (e) {}
-              window.__activeSnippets.delete(id);
-            }
-          }
 
-          const promises = [];
-
-          // Add/update active snippets
-          for (const e of entries) {
-            let host = window.__activeSnippets.get(e.id);
-            if (!host) {
-              host = document.createElement('div');
-              host.id = e.id;
-              host.style.position = 'absolute';
-              host.style.overflow = 'hidden';
-              host.style.pointerEvents = 'none';
-              host.style.background = 'transparent';
-              document.body.appendChild(host);
-
-              // Use Light DOM (direct append) so scripts like GSAP can find elements
-              const root = host; 
-              const wrapper = document.createElement('div');
-                  wrapper.className = 'content-wrapper'; // Use class instead of ID to avoid dupes
-                  wrapper.style.position = 'absolute';
-                  wrapper.style.left = '0px';
-                  wrapper.style.top = '0px';
-                  wrapper.style.transformOrigin = 'top left';
-                  // Force centering
-                  wrapper.style.display = 'flex';
-                  wrapper.style.flexDirection = 'column';
-                  wrapper.style.justifyContent = 'center';
-                  wrapper.style.alignItems = 'center';
-                  wrapper.style.textAlign = 'center';
-
-                  wrapper.innerHTML = e.html; // snippet HTML
-                  root.appendChild(wrapper);
-                  
-                  // Manually activate scripts injected via innerHTML
-                  wrapper.querySelectorAll('script').forEach(oldScript => {
-                    const newScript = document.createElement('script');
-                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-                    oldScript.parentNode.replaceChild(newScript, oldScript);
-                  });
-
-                  // Re-run Prism highlighting for any new code blocks
-                  if (window.Prism) {
-                     window.Prism.highlightAllUnder(wrapper);
-                  }
-
-                  // Render KaTeX math
-                  if (window.renderMathInElement) {
-                      window.renderMathInElement(wrapper, {
-                          delimiters: [
-                              {left: '$$', right: '$$', display: true},
-                              {left: '$', right: '$', display: false}
-                          ]
-                      });
-                  }
-
-                  // Trigger Mermaid (Robust)
-                  if (window.mermaid) {
-                      if (!window.mermaidInitialized) {
-                          window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
-                          window.mermaidInitialized = true;
-                      }
-                      
-                      const nodes = wrapper.querySelectorAll('.mermaid, pre > code.language-mermaid, div.mermaid');
-                      if (nodes.length > 0) {
-                          const p = Promise.all(Array.from(nodes).map(async (el, index) => {
-                              const id = 'mermaid-' + e.id + '-' + index + '-' + Math.round(Math.random() * 10000);
-                              try {
-                                  let graphDefinition = el.textContent.trim();
-                                  if (!graphDefinition) return;
-                                  
-                                  if (el.tagName.toLowerCase() === 'code' && el.parentElement.tagName.toLowerCase() === 'pre') {
-                                      const div = document.createElement('div');
-                                      div.id = id;
-                                      div.className = 'mermaid-diagram';
-                                      div.style.display = 'flex';
-                                      div.style.justifyContent = 'center';
-                                      el.parentElement.replaceWith(div);
-                                  } else {
-                                      el.id = id;
-                                  }
-                                  
-                                  const { svg } = await window.mermaid.render(id, graphDefinition);
-                                  const successContainer = document.getElementById(id);
-                                  if (successContainer) successContainer.innerHTML = svg;
-                              } catch (err) {
-                                  console.error('Mermaid render error for id ' + id, err);
-                                  const errorContainer = document.getElementById(id);
-                                  if (errorContainer) {
-                                    errorContainer.innerHTML = '<div style="color:red;border:1px solid red;padding:5px;font-size:10px;">Mermaid Error: ' + err.message + '</div>';
-                                  }
-                              }
-                          }));
-                          promises.push(p);
-                      }
-                  }
-
-
-                  // Ensure we append to #world-layer
-                  const world = document.getElementById('world-layer') || document.body;
-                  world.appendChild(host);
-                  window.__activeSnippets.set(e.id, host);
-
-              const scaleToFit = () => {
-                const targetW = host.clientWidth;
-                const targetH = host.clientHeight;
-                const rect = wrapper.getBoundingClientRect();
-                const rawW = rect.width || wrapper.scrollWidth || 1;
-                const rawH = rect.height || wrapper.scrollHeight || 1;
-                const scale = Math.min(targetW / rawW, targetH / rawH);
-                wrapper.style.transform = `scale(${scale})`;
-                const scaledW = rawW * scale;
-                const scaledH = rawH * scale;
-                const offsetX = Math.max(0, (targetW - scaledW) / 2);
-                const offsetY = Math.max(0, (targetH - scaledH) / 2);
-                wrapper.style.left = offsetX + 'px';
-                wrapper.style.top = offsetY + 'px';
-              };
-              // Initial scale after layout
-              requestAnimationFrame(scaleToFit);
-              // Recompute when media loads
-              wrapper.querySelectorAll('img,video').forEach((el) => {
-                if (el.complete) {
-                  requestAnimationFrame(scaleToFit);
-                } else {
-                  el.addEventListener('load', () => requestAnimationFrame(scaleToFit), { once: true });
-                }
-              });
-            }
-
-            // Always update geometry (in case dimensions/position change)
-            host.style.left = (e.x | 0) + 'px';
-            host.style.top = (e.y | 0) + 'px';
-            host.style.width = (e.w | 0) + 'px';
-            host.style.height = (e.h | 0) + 'px';
-            if (typeof e.z !== 'undefined') host.style.zIndex = String(e.z);
-          }
-          await Promise.all(promises);
-        };
-        // Caption helper: unique caption host (id: caption)
-        window.__updateCaption = (entryOrNull) => {
-          const id = 'caption';
-          if (!entryOrNull) {
-            const host = window.__activeSnippets.get(id);
-            if (host) { try { host.remove(); } catch (e) {}; window.__activeSnippets.delete(id); }
-            return;
-          }
-          const e = entryOrNull;
-          let host = window.__activeSnippets.get(id);
-          if (!host) {
-            host = document.createElement('div');
-            host.id = id;
-            host.style.position = 'absolute';
-            host.style.overflow = 'hidden';
-            host.style.pointerEvents = 'none';
-            host.style.background = 'transparent';
-            document.body.appendChild(host);
-            const root = host.attachShadow({ mode: 'open' });
-            const wrapper = document.createElement('div');
-            wrapper.id = 'content-wrapper';
-            wrapper.style.position = 'absolute';
-            wrapper.style.left = '0px';
-            wrapper.style.top = '0px';
-            wrapper.style.transformOrigin = 'top left';
-            root.appendChild(wrapper);
-            // Append to UI layer (HUD)
-            const ui = document.getElementById('ui-layer') || document.body;
-            ui.appendChild(host);
-            window.__activeSnippets.set(id, host);
-          }
-          const root = host.shadowRoot;
-          const wrapper = root.getElementById('content-wrapper');
-          wrapper.innerHTML = e.html;
-          // position and scale
-          host.style.left = (e.x | 0) + 'px';
-          host.style.top = (e.y | 0) + 'px';
-          host.style.width = (e.w | 0) + 'px';
-          host.style.height = (e.h | 0) + 'px';
-          requestAnimationFrame(() => {
-            const targetW = host.clientWidth;
-            const targetH = host.clientHeight;
-            const rect = wrapper.getBoundingClientRect();
-            const rawW = rect.width || wrapper.scrollWidth || 1;
-            const rawH = rect.height || wrapper.scrollHeight || 1;
-            const scale = Math.min(targetW / rawW, targetH / rawH);
-            wrapper.style.transform = `scale(${scale})`;
-            const scaledW = rawW * scale;
-            const scaledH = rawH * scale;
-            const offsetX = Math.max(0, (targetW - scaledW) / 2);
-            const offsetY = Math.max(0, (targetH - scaledH) / 2);
-            wrapper.style.left = offsetX + 'px';
-            wrapper.style.top = offsetY + 'px';
-          });
-        };
-        """
-    )
 
     page.add_init_script(
         """
@@ -660,7 +452,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   host = document.createElement('div');
                   host.id = e.id;
                   host.style.position = 'absolute';
-                  host.style.overflow = 'hidden';
+                  host.style.overflow = 'visible'; // Allow annotations to flow outside
                   host.style.pointerEvents = 'none';
                   host.style.background = 'transparent';
                   host.style.pointerEvents = 'none';
@@ -723,38 +515,57 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       const originalCode = oldScript.textContent;
                       const scopedCode = `
                         (function(scope) {
+                            // Helper to resolve selectors in this shadow root
+                            const resolve = (s) => {
+                                const el = (typeof s === 'string' ? scope.querySelector(s) : s);
+                                if (!el && typeof s === 'string') console.warn('Scoped resolve failed for:', s);
+                                return el;
+                            };
+                            const resolveAll = (s) => (typeof s === 'string' ? scope.querySelectorAll(s) : s);
+
+                            // Proxy global helpers to use scoped resolution
+                            const annotate = (target, opts) => {
+                                console.log('Proxy annotate:', target, opts);
+                                try { window.annotate(resolve(target), opts); } catch(e) { console.error('Annotate error:', e); }
+                            };
+                            const typewriter = (target, dur, del) => window.typewriter(resolve(target), dur, del);
+                            const fadeIn = (target, dur, del) => window.fadeIn(resolve(target), dur, del);
+                            const popIn = (target, dur, del) => window.popIn(resolve(target), dur, del);
+                            const slideUp = (target, dur, del) => window.slideUp(resolve(target), dur, del);
+                            const revealLines = (target, stag) => window.revealLines(resolve(target), stag);
+                            const showThenAnnotate = (txt, term, type, col, txtDel, annDel) => {
+                                console.log('Proxy showThenAnnotate:', txt, term);
+                                window.showThenAnnotate(resolve(txt), resolve(term), type, col, txtDel, annDel);
+                            };
+                            const animateSVG = (id, dur, cb) => window.animateSVG(resolve(id) || id, dur, cb);
+
                             // Creator of scoped GSAP instance
                             const createScopedGsap = () => {
                                 const g = { ...window.gsap }; // shallow clone
                                 
-                                const resolve = (target) => {
+                                const resolveGsap = (target) => {
                                     if (typeof target === 'string') {
                                         return Array.from(scope.querySelectorAll(target));
                                     }
                                     return target;
                                 };
 
-                                g.to = (target, vars) => window.gsap.to(resolve(target), vars);
-                                g.from = (target, vars) => window.gsap.from(resolve(target), vars);
-                                g.fromTo = (target, f, t) => window.gsap.fromTo(resolve(target), f, t);
-                                g.set = (target, vars) => window.gsap.set(resolve(target), vars);
+                                g.to = (target, vars) => window.gsap.to(resolveGsap(target), vars);
+                                g.from = (target, vars) => window.gsap.from(resolveGsap(target), vars);
+                                g.fromTo = (target, f, t) => window.gsap.fromTo(resolveGsap(target), f, t);
+                                g.set = (target, vars) => window.gsap.set(resolveGsap(target), vars);
                                 g.timeline = (vars) => {
                                     const tl = window.gsap.timeline(vars);
-                                    // Wrap timeline methods if needed, but usually .to/.from are called on tl
-                                    // For now, let's assume simple usage. 
-                                    // Getting extensive with timeline proxying is complex. 
-                                    // Let's rely on g.from/g.to interactions.
-                                    // Ideally we proxy the timeline object too:
                                     const explicitProxy = (tlInstance) => {
                                         const originalTo = tlInstance.to.bind(tlInstance);
                                         const originalFrom = tlInstance.from.bind(tlInstance);
                                         const originalFromTo = tlInstance.fromTo.bind(tlInstance);
                                         const originalSet = tlInstance.set.bind(tlInstance);
                                         
-                                        tlInstance.to = (t, v, p) => { originalTo(resolve(t), v, p); return tlInstance; };
-                                        tlInstance.from = (t, v, p) => { originalFrom(resolve(t), v, p); return tlInstance; };
-                                        tlInstance.fromTo = (t, f, to, p) => { originalFromTo(resolve(t), f, to, p); return tlInstance; };
-                                        tlInstance.set = (t, v, p) => { originalSet(resolve(t), v, p); return tlInstance; };
+                                        tlInstance.to = (t, v, p) => { originalTo(resolveGsap(t), v, p); return tlInstance; };
+                                        tlInstance.from = (t, v, p) => { originalFrom(resolveGsap(t), v, p); return tlInstance; };
+                                        tlInstance.fromTo = (t, f, to, p) => { originalFromTo(resolveGsap(t), f, to, p); return tlInstance; };
+                                        tlInstance.set = (t, v, p) => { originalSet(resolveGsap(t), v, p); return tlInstance; };
                                         return tlInstance;
                                     };
                                     return explicitProxy(tl);
@@ -763,7 +574,6 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                             };
 
                             const gsap = createScopedGsap();
-                            // Also expose standard ScrollTrigger? Not relevant for video.
                             
                             try {
                                 ${originalCode}

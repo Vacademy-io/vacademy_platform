@@ -1604,6 +1604,16 @@ class VideoGenerationPipeline:
             pages = plan_data.get("pages", [])
             for i, p in enumerate(pages):
                 html = p.get("html", f"<div>Page {i+1}</div>")
+                
+                # Fallback: If LLM forgot the data-img-prompt in HTML but provided it in JSON, inject it
+                if "illustration_prompt" in p and "data-img-prompt" not in html:
+                    # Simple injection into the first <img> tag
+                    if "<img" in html:
+                         # Escape quotes in prompt for HTML attribute
+                         safe_prompt = p["illustration_prompt"].replace('"', '&quot;')
+                         html = html.replace("<img", f'<img data-img-prompt="{safe_prompt}"', 1)
+                         print(f"    🔧 Auto-injected missing data-img-prompt for page {i+1}")
+                
                 segments.append(create_segment(html, i+1, f"page-{p.get('page_number', i+1)}", extra_meta=p))
                 
         elif content_type == "INTERACTIVE_GAME":

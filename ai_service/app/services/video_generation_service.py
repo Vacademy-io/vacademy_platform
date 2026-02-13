@@ -143,11 +143,18 @@ class VideoGenerationService:
                 return
             
             # Create new record
+            gen_metadata = {}
+            if institute_id:
+                gen_metadata["institute_id"] = institute_id
+            if user_id:
+                gen_metadata["user_id"] = user_id
+
             video_record = self.repository.create(
                 video_id=video_id,
                 prompt=prompt,
                 language=language,
-                content_type=content_type
+                content_type=content_type,
+                metadata=gen_metadata
             )
             yield {
                 "type": "progress",
@@ -1237,3 +1244,22 @@ class VideoGenerationService:
                 "updated_frame_index": frame_index,
                 "message": "Frame updated successfully. Player should reflect changes immediately."
             }
+
+
+    def get_institute_generations(self, institute_id: str, limit: int = 10) -> list[Dict[str, Any]]:
+        """
+        Get the last N content generations for an institute.
+        
+        Args:
+            institute_id: Institute identifier
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of video generation records as dictionaries
+        """
+        records = self.repository.get_history_by_institute(
+            institute_id=institute_id, 
+            limit=limit,
+            offset=0
+        )
+        return [record.to_dict() for record in records]

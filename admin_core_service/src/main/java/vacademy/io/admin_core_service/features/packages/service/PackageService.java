@@ -68,6 +68,8 @@ public class PackageService {
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageIds(),
+                    learnerPackageFilterDTO.getPackageSessionIds(),
                     pageable);
         } else {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
@@ -85,6 +87,8 @@ public class PackageService {
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageIds(),
+                    learnerPackageFilterDTO.getPackageSessionIds(),
                     pageable);
         }
 

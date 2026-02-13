@@ -1078,4 +1078,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("packageSessionId") String packageSessionId,
       @Param("subOrgId") String subOrgId);
 
+  /**
+   * Find all student records for a specific user ID
+   */
+  List<Student> findByUserId(String userId);
 }

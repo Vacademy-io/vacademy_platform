@@ -26,6 +26,9 @@ public class Role {
     @Column(name = "role_name")
     private String name;
 
+    @Column(name = "institute_id")
+    private String instituteId;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "role_permission", joinColumns = @JoinColumn(name = "role_id"), inverseJoinColumns = @JoinColumn(name = "permission_id"))
     private Set<Permissions> authorities = new HashSet<>();

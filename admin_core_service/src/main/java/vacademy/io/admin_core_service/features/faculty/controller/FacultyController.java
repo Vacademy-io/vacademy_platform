@@ -35,36 +35,36 @@ public class FacultyController {
 
     @PostMapping("/faculty/get-all")
     public ResponseEntity<FacultyAllResponse> getAllTeachers(@RequestAttribute("user") CustomUserDetails userDetails,
-                                                             @RequestParam String instituteId,
-                                                             @RequestBody FacultyRequestFilter filter,
-                                                             @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
-                                                             @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){
-        return facultyService.getAllFaculty(userDetails,instituteId, filter,pageNo,pageSize);
+            @RequestParam String instituteId,
+            @RequestBody FacultyRequestFilter filter,
+            @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
+            @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize) {
+        return facultyService.getAllFaculty(userDetails, instituteId, filter, pageNo, pageSize);
     }
 
     @PutMapping("/update-assign-subjects-and-batches")
     public ResponseEntity<String> updateAssignFacultyToSubjectsAndBatches(@RequestBody FacultyBatchSubjectDTO request,
-                                                                          @RequestAttribute("user") CustomUserDetails userDetails){
-        return ResponseEntity.ok(facultyService.updateFacultyAssignmentsToSubjects(request,userDetails));
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(facultyService.updateFacultyAssignmentsToSubjects(request, userDetails));
     }
 
     @GetMapping("/batch-subject-assignments")
     public ResponseEntity<FacultyBatchSubjectDTO> getFacultyBatchSubjectAssignments(
             @RequestParam String userId,
-            @RequestAttribute("user") CustomUserDetails userDetails
-    ) {
+            @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(facultyService.getAllFacultyBatchSubject(userId, userDetails));
     }
 
     @GetMapping("/by-institute/only-creator/{instituteId}")
-    public ResponseEntity<List<UserDTO> > getFacultyByInstitute(@PathVariable String instituteId) {
+    public ResponseEntity<List<UserDTO>> getFacultyByInstitute(@PathVariable String instituteId) {
         return ResponseEntity.ok(facultyService.findFacultyByFilters(instituteId));
     }
 
+    @GetMapping("/user-access-details")
+    public ResponseEntity<vacademy.io.admin_core_service.features.faculty.dto.UserAccessDetailsDTO> getUserAccessDetails(
+            @RequestParam String userId,
+            @RequestParam String instituteId) {
+        return ResponseEntity.ok(facultyService.getUserAccessDetails(userId, instituteId));
+    }
+
 }
-
-
-
-
-
-

@@ -43,6 +43,12 @@ public class UserRole {
     @Column(name = "status", nullable = false, columnDefinition = "VARCHAR(255) DEFAULT 'ACTIVE'")
     private String status = "ACTIVE";
 
+    @Column(name = "source_type")
+    private String sourceType;
+
+    @Column(name = "source_id")
+    private String sourceId;
+
     public UserRoleDTO getRoleDto() {
         return new UserRoleDTO(this);
     }

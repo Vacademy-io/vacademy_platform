@@ -580,25 +580,40 @@ public class UserService {
 
         // Fetch all children linked to these parents
         List<User> children = userRepository.findByLinkedParentIdIn(parentUserIds);
-        Map<String, User> childByParentId = children.stream()
+
+        // Group children by parent ID
+        Map<String, List<User>> childrenByParentId = children.stream()
                 .filter(child -> child.getLinkedParentId() != null)
-                .collect(Collectors.toMap(User::getLinkedParentId, child -> child, (a, b) -> a));
+                .collect(Collectors.groupingBy(User::getLinkedParentId));
 
         // Build ParentWithChildDTO for each requested parent ID
         List<ParentWithChildDTO> result = new ArrayList<>();
         for (String parentId : parentUserIds) {
             User parent = parentMap.get(parentId);
             if (parent != null) {
-                User child = childByParentId.get(parentId);
-                ParentWithChildDTO dto = ParentWithChildDTO.builder()
-                        .parent(new UserDTO(parent))
-                        .child(child != null ? new UserDTO(child) : null)
-                        .build();
-                result.add(dto);
+                List<User> linkedChildren = childrenByParentId.get(parentId);
+
+                if (linkedChildren != null && !linkedChildren.isEmpty()) {
+                    // Add an entry for each child
+                    for (User child : linkedChildren) {
+                        ParentWithChildDTO dto = ParentWithChildDTO.builder()
+                                .parent(new UserDTO(parent))
+                                .child(new UserDTO(child))
+                                .build();
+                        result.add(dto);
+                    }
+                } else {
+                    // Parent found but no children linked
+                    ParentWithChildDTO dto = ParentWithChildDTO.builder()
+                            .parent(new UserDTO(parent))
+                            .child(null)
+                            .build();
+                    result.add(dto);
+                }
             }
         }
 
-        log.info("Fetched {} parents with children for {} requested IDs", result.size(), parentUserIds.size());
+        log.info("Fetched {} parent-child entries for {} requested IDs", result.size(), parentUserIds.size());
         return result;
     }
 

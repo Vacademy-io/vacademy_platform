@@ -49,6 +49,7 @@ const PUBLIC_ROUTES = [
   "/live-class-guest",
   "/study-library/live-class/",
   "/learner-invitation-response",
+  "/payment-result",
   "/audience-response",
   "/institute-selection",
   "/delete-user",

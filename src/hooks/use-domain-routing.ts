@@ -358,6 +358,7 @@ export const useDomainRouting = () => {
         "/privacy-policy",
         "/terms-and-conditions",
         "/learner-invitation-response",
+        "/payment-result",
         "/un",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>
@@ -410,6 +411,7 @@ export const useDomainRouting = () => {
         "/privacy-policy",
         "/terms-and-conditions",
         "/learner-invitation-response",
+        "/payment-result",
         "/un",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>

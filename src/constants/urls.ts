@@ -67,7 +67,11 @@ export const ENROLLMENT_FORM_SUBMIT = `${BASE_URL}/admin-core-service/open/v1/en
 export const PEYMENT_LOG_STATUS_URL = `${BASE_URL}/admin-core-service/open/v1/payment-log`;
 export const GET_PAYMENT_GATEWAY_DETAILS_URL = `${BASE_URL}/admin-core-service/open/v1/institute/payment-setting/payment-gateway-details`;
 export const ENROLLMENT_INVITE_URL = `${BASE_URL}/admin-core-service/open/learner/enroll-invite`;
-export const ENROLL_USER_INVITE_PAYMENT_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
+// learner/v1/enroll + Cashfree status – localhost:8072 in dev, BASE_URL in production (override via VITE_ENROLL_API_BASE_URL)
+const ENROLL_API_BASE =
+  import.meta.env.VITE_ENROLL_API_BASE_URL ||
+  (import.meta.env.PROD ? BASE_URL : "http://localhost:8072");
+export const ENROLL_USER_INVITE_PAYMENT_URL = `${ENROLL_API_BASE}/admin-core-service/v1/learner/enroll`;
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
 export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/export/pdf/student-report`;
@@ -168,6 +172,12 @@ export const GET_REFERRAL_BENEFITS = `${BASE_URL}/admin-core-service/v1/referral
 export const GET_POINTS_COUNTS = `${BASE_URL}/admin-core-service/v1/points/counts`;
 
 export const ENROLLMENT_POLICY_URL = `${BASE_URL}/admin-core-service/enrollment-policy/package-session`;
+
+// Cashfree user-plan payment (for learner invitation flow)
+export const USER_PLAN_PAYMENT_URL = `${BASE_URL}/admin-core-service/payments/user-plan/user-plan-payment`;
+
+// Cashfree payment status (no auth required) – uses same base as enroll API (localhost:8072)
+export const CASHFREE_PAYMENT_STATUS_URL = `${ENROLL_API_BASE}/admin-core-service/payments/user-plan/CASHFREE/status`;
 
 // Server time
 export const GET_SERVER_TIME = `${BASE_URL}/auth-service/v1/server-time/utc`;

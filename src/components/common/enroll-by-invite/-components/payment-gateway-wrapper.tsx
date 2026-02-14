@@ -58,6 +58,10 @@ export const PaymentGatewayWrapper = ({
         </RazorpayPaymentWrapper>
       );
 
+    case "CASHFREE":
+      // Cashfree doesn't need gateway keys - uses paymentSessionId from backend
+      return <>{children}</>;
+
     case "PAYPAL":
       // TODO: Implement PayPal wrapper
       console.warn("PayPal integration not yet implemented");

@@ -5,6 +5,7 @@ import {
   RazorpayCheckoutForm,
   RazorpayCheckoutFormRef,
 } from "./razorpay-checkout-form";
+import { CashfreeCheckoutForm } from "./cashfree-checkout-form";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { Route } from "@/routes/learner-invitation-response";
@@ -55,6 +56,14 @@ interface PaymentInfoStepProps {
   courseDescription?: string;
   // Ref to Razorpay component for programmatic control
   razorpayRef?: React.RefObject<RazorpayCheckoutFormRef>;
+  // Cashfree inline card
+  cashfreePaymentSessionId?: string | null;
+  cashfreeReturnUrl?: string;
+  cashfreeOrderId?: string;
+  cashfreeInitLoading?: boolean;
+  cashfreeInstituteId?: string;
+  onCashfreePayClick?: () => void;
+  onCashfreePayError?: () => void;
 }
 
 /**
@@ -134,6 +143,13 @@ const PaymentInfoStep = ({
   courseName,
   courseDescription,
   razorpayRef,
+  cashfreePaymentSessionId,
+  cashfreeReturnUrl,
+  cashfreeOrderId,
+  cashfreeInitLoading,
+  cashfreeInstituteId,
+  onCashfreePayClick,
+  onCashfreePayError,
 }: PaymentInfoStepProps) => {
   const { instituteId } = Route.useSearch();
 
@@ -272,7 +288,25 @@ const PaymentInfoStep = ({
         />
       )}
 
-      {vendor !== "STRIPE" && vendor !== "EWAY" && vendor !== "RAZORPAY" && (
+      {vendor === "CASHFREE" && (
+        <CashfreeCheckoutForm
+          error={error}
+          amount={amount || 0}
+          currency={currency || "INR"}
+          paymentSessionId={cashfreePaymentSessionId}
+          returnUrl={cashfreeReturnUrl}
+          orderId={cashfreeOrderId}
+          instituteId={cashfreeInstituteId}
+          onPayClick={onCashfreePayClick}
+          onPayError={onCashfreePayError}
+          isProcessing={isProcessing || cashfreeInitLoading}
+        />
+      )}
+
+      {vendor !== "STRIPE" &&
+        vendor !== "EWAY" &&
+        vendor !== "RAZORPAY" &&
+        vendor !== "CASHFREE" && (
         <div className="w-full max-w-md mx-auto">
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-6 text-center">
             <h2 className="text-xl font-bold text-yellow-800 mb-2">
@@ -288,5 +322,6 @@ const PaymentInfoStep = ({
     </div>
   );
 };
+
 
 export default PaymentInfoStep;

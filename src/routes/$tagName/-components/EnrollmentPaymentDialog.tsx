@@ -22,6 +22,8 @@ import {
   ENROLL_USER_INVITE_PAYMENT_URL,
   LOGIN_URL,
 } from "@/constants/urls";
+import { CashfreeCheckoutForm } from "@/components/common/enroll-by-invite/-components/cashfree-checkout-form";
+import { getCashfreeReturnUrl } from "@/services/cashfree-payment";
 import { cachedGet } from "@/lib/http/clientCache";
 import { getCurrencySymbol } from "@/utils/currency";
 import axios from "axios";
@@ -310,7 +312,9 @@ export const EnrollmentPaymentDialog: React.FC<
           // Extract vendor and fetch payment gateway details
           const vendor = data.vendor || "STRIPE";
           setVendor(vendor);
-          fetchStripeKey(vendor);
+          if (vendor !== "CASHFREE") {
+            fetchStripeKey(vendor);
+          }
 
           // Set the first available payment plan
           if (
@@ -859,7 +863,22 @@ export const EnrollmentPaymentDialog: React.FC<
                         </div>
                       )}
 
-                      {vendor === "RAZORPAY" ? (
+                      {vendor === "CASHFREE" ? (
+                        <CashfreePaymentForm
+                          amount={selectedPaymentPlan.actual_price}
+                          currency={currency}
+                          email={email}
+                          fullName={fullName}
+                          phone={phone}
+                          instituteId={instituteId}
+                          courseData={courseData}
+                          enrollmentData={enrollmentData}
+                          selectedPaymentPlan={selectedPaymentPlan}
+                          onSuccess={handlePaymentSuccess}
+                          onError={handlePaymentError}
+                          onBack={handleBack}
+                        />
+                      ) : vendor === "RAZORPAY" ? (
                         <PaymentForm
                           amount={selectedPaymentPlan.actual_price}
                           currency={currency}
@@ -950,6 +969,220 @@ export const EnrollmentPaymentDialog: React.FC<
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+  );
+};
+
+// Cashfree Payment Form - same implementation as enroll-by-invite
+interface CashfreePaymentFormProps {
+  amount: number;
+  currency: string;
+  email: string;
+  fullName: string;
+  phone: string;
+  instituteId: string;
+  courseData: {
+    id: string;
+    title: string;
+    price: number;
+    packageSessionId: string;
+    enrollInviteId: string;
+  };
+  enrollmentData: EnrollmentData | null;
+  selectedPaymentPlan: any;
+  onSuccess: (tokens: { accessToken: string; refreshToken: string }) => void;
+  onError: (error: string) => void;
+  onBack: () => void;
+}
+
+const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
+  amount,
+  currency,
+  email,
+  fullName,
+  phone,
+  instituteId,
+  courseData,
+  enrollmentData,
+  selectedPaymentPlan,
+  onSuccess,
+  onError,
+  onBack,
+}) => {
+  const [cashfreeSessionData, setCashfreeSessionData] = useState<{
+    paymentSessionId: string;
+    orderId: string;
+  } | null>(null);
+  const [cashfreeInitLoading, setCashfreeInitLoading] = useState(false);
+  const initAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      !enrollmentData ||
+      !selectedPaymentPlan ||
+      cashfreeSessionData ||
+      cashfreeInitLoading ||
+      initAttemptedRef.current
+    ) {
+      return;
+    }
+
+    initAttemptedRef.current = true;
+    setCashfreeInitLoading(true);
+
+    const init = async () => {
+      try {
+        const finalEnrollInviteId =
+          enrollmentData?.package_session_to_payment_options?.[0]
+            ?.enroll_invite_id ||
+          enrollmentData?.enroll_invite_id ||
+          enrollmentData?.id ||
+          courseData.enrollInviteId;
+
+        const enrollPayload = {
+          user: {
+            email,
+            full_name: fullName,
+            address_line: "",
+            city: "",
+            region: "",
+            pin_code: "",
+            mobile_number: phone,
+            date_of_birth: "",
+            gender: "",
+            password: "",
+            profile_pic_file_id: "",
+            roles: ["STUDENT"],
+            root_user: true,
+          },
+          institute_id: instituteId,
+          subject_id: "",
+          vendor_id: "CASHFREE",
+          learner_package_session_enroll: {
+            package_session_ids: [
+              enrollmentData?.package_session_to_payment_options?.[0]
+                ?.package_session_id || courseData.packageSessionId,
+            ],
+            plan_id: selectedPaymentPlan.id,
+            payment_option_id:
+              enrollmentData?.package_session_to_payment_options?.[0]
+                ?.payment_option?.id || "",
+            enroll_invite_id: finalEnrollInviteId,
+            refer_request: null,
+            payment_initiation_request: {
+              vendor: "CASHFREE",
+              amount,
+              currency: currency || "INR",
+              description: `Enrollment in ${enrollmentData?.name || courseData.title}`,
+              charge_automatically: true,
+              institute_id: instituteId,
+              stripe_request: {},
+              razorpay_request: {},
+              pay_pal_request: {},
+              eway_request: {},
+              cashfree_request: {
+                return_url: getCashfreeReturnUrl(),
+              },
+              include_pending_items: true,
+            },
+            custom_field_values: [],
+          },
+        };
+
+        const response = await axios({
+          method: "POST",
+          url: ENROLL_USER_INVITE_PAYMENT_URL,
+          data: enrollPayload,
+        });
+
+        const paymentResponse = response.data;
+        const responseData = paymentResponse?.payment_response?.response_data;
+        const paymentSessionId =
+          responseData?.paymentSessionId ?? responseData?.payment_session_id;
+        const orderId =
+          responseData?.orderId ??
+          responseData?.order_id ??
+          paymentResponse?.payment_response?.order_id;
+
+        if (!paymentSessionId) {
+          throw new Error("Failed to initialize Cashfree payment.");
+        }
+
+        const ordId = orderId ?? "";
+        setCashfreeSessionData({
+          paymentSessionId,
+          orderId: ordId,
+        });
+
+        const userEmail =
+          paymentResponse?.user?.email ?? paymentResponse?.user?.username;
+        const userPassword = paymentResponse?.user?.password;
+        if (ordId && userEmail && userPassword) {
+          try {
+            sessionStorage.setItem(
+              `enroll_payment_creds_${ordId}`,
+              JSON.stringify({ username: userEmail, password: userPassword })
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch (err: any) {
+        const errorMsg =
+          err?.response?.data?.ex ||
+          err?.response?.data?.message ||
+          (err instanceof Error ? err.message : "Failed to initialize payment");
+        onError(errorMsg);
+      } finally {
+        setCashfreeInitLoading(false);
+      }
+    };
+
+    init();
+  }, [
+    enrollmentData,
+    selectedPaymentPlan,
+    amount,
+    currency,
+    email,
+    fullName,
+    phone,
+    instituteId,
+    courseData,
+    cashfreeSessionData,
+    cashfreeInitLoading,
+  ]);
+
+  if (cashfreeInitLoading || !cashfreeSessionData) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+        <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+        <p className="text-sm text-gray-600">Preparing payment...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <CashfreeCheckoutForm
+        error={null}
+        amount={amount}
+        currency={currency}
+        paymentSessionId={cashfreeSessionData.paymentSessionId}
+        returnUrl={getCashfreeReturnUrl()}
+        orderId={cashfreeSessionData.orderId}
+        instituteId={instituteId}
+        onPayClick={() => {}}
+        onPayError={() => onError("Payment initialization failed.")}
+        isProcessing={false}
+      />
+      <button
+        type="button"
+        className="text-sm font-medium text-gray-600 hover:text-gray-800"
+        onClick={onBack}
+      >
+        Back
+      </button>
+    </div>
   );
 };
 

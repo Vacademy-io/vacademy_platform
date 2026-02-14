@@ -464,6 +464,20 @@ public class PaymentService {
                         return responseMap;
                 }
 
+                if (PaymentGateway.CASHFREE.name().equalsIgnoreCase(vendor)) {
+                        // Cashfree: status is updated by webhook; return from PaymentLog
+                        var logDto = paymentLogService.getPaymentLog(orderId);
+                        String paymentStatus = logDto.getPaymentStatus() != null
+                                        ? logDto.getPaymentStatus()
+                                        : PaymentStatusEnum.PAYMENT_PENDING.name();
+                        Map<String, Object> responseMap = new HashMap<>();
+                        responseMap.put("status", paymentStatus);
+                        responseMap.put("details", Map.of(
+                                        "orderId", orderId,
+                                        "paymentStatus", paymentStatus));
+                        return responseMap;
+                }
+
                 throw new UnsupportedOperationException("Status check not supported for " + vendor);
         }
 

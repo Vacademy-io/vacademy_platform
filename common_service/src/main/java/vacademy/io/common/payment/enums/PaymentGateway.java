@@ -6,7 +6,8 @@ public enum PaymentGateway {
     MANUAL,
     PAYPAL,
     EWAY,
-    PHONEPE;
+    PHONEPE,
+    CASHFREE;
 
     public static PaymentGateway fromString(String gatewayName) {
         if (gatewayName == null || gatewayName.isBlank()) {

@@ -74,6 +74,9 @@ public class EnrollInvite {
     @Column(name = "setting_json", columnDefinition = "TEXT")
     private String settingJson;
 
+    @Column(name = "short_url")
+    private String shortUrl;
+
     public EnrollInvite(EnrollInviteDTO enrollInviteDTO) {
         this.id = enrollInviteDTO.getId();
         this.name = enrollInviteDTO.getName();
@@ -90,6 +93,7 @@ public class EnrollInvite {
         this.webPageMetaDataJson = enrollInviteDTO.getWebPageMetaDataJson();
         this.isBundled = enrollInviteDTO.getIsBundled();
         this.settingJson = enrollInviteDTO.getSettingJson();
+        this.shortUrl = enrollInviteDTO.getShortUrl();
     }
 
     public EnrollInviteDTO toEnrollInviteDTO() {
@@ -109,6 +113,7 @@ public class EnrollInvite {
         enrollInviteDTO.setWebPageMetaDataJson(webPageMetaDataJson);
         enrollInviteDTO.setIsBundled(isBundled);
         enrollInviteDTO.setSettingJson(settingJson);
+        enrollInviteDTO.setShortUrl(shortUrl);
         return enrollInviteDTO;
     }
 }

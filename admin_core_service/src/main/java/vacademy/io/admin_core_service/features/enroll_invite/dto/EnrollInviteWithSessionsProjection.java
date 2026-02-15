@@ -23,9 +23,11 @@ public interface EnrollInviteWithSessionsProjection {
     String getVendorId();
     String getCurrency();
     String getTag();
+
     String getWebPageMetaDataJson();
     Timestamp getCreatedAt();
     Timestamp getUpdatedAt();
+    String getShortUrl();
 
     // This getter receives the raw comma-separated string from the query.
     // The alias in the query MUST match this getter name (packageSessionIdsCsv).

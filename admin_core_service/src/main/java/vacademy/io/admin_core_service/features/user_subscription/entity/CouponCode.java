@@ -59,6 +59,9 @@ public class CouponCode {
     @Column(name = "generation_date")
     private Date generationDate;
 
+    @Column(name = "short_url")
+    private String shortUrl;
+
     @Column(name = "redeem_start_date")
     private Date redeemStartDate;
 
@@ -94,6 +97,7 @@ public class CouponCode {
             .createdAt(this.createdAt)
             .updatedAt(this.updatedAt)
             .canBeAdded(this.canBeAdded)
+            .shortUrl(this.shortUrl)
             .build();
     }
 }

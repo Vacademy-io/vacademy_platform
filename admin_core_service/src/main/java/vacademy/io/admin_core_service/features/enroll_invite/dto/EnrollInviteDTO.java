@@ -28,4 +28,5 @@ public class EnrollInviteDTO {
     private List<InstituteCustomFieldDTO> instituteCustomFields;
     private List<PackageSessionToPaymentOptionDTO> packageSessionToPaymentOptions;
     private String settingJson;
+    private String shortUrl;
 }

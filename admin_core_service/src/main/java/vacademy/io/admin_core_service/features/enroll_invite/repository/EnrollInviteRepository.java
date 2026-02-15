@@ -41,6 +41,7 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
         ei.web_page_meta_data_json AS webPageMetaDataJson,
         ei.created_at AS createdAt,
         ei.updated_at AS updatedAt,
+        ei.short_url AS shortUrl,
         (
             SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT ps.id), NULL)
             FROM package_session_learner_invitation_to_payment_option psl
@@ -93,7 +94,7 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             "ei.id as \"id\", ei.name as \"name\", ei.end_date as \"endDate\", ei.start_date as \"startDate\", ei.invite_code as \"inviteCode\", " +
             "ei.status as \"status\", ei.institute_id as \"instituteId\", ei.vendor as \"vendor\", ei.vendor_id as \"vendorId\", " +
             "ei.currency as \"currency\", ei.tag as \"tag\", ei.web_page_meta_data_json as \"webPageMetaDataJson\", " +
-            "ei.created_at as \"createdAt\", ei.updated_at as \"updatedAt\", " +
+            "ei.created_at as \"createdAt\", ei.updated_at as \"updatedAt\", ei.short_url as \"shortUrl\", " +
             "ARRAY_REMOVE(ARRAY_AGG(DISTINCT ps.id), NULL) as \"packageSessionIds\" " +
             "FROM enroll_invite ei " +
             "LEFT JOIN package_session_learner_invitation_to_payment_option psl ON ei.id = psl.enroll_invite_id " +

@@ -94,6 +94,22 @@ const PaymentSelectionStep = ({
     }
   }, [paymentType]);
 
+  // Auto-select if there's only one plan and nothing is selected yet (must be at top level, not in renderRegularPaymentOptions)
+  useEffect(() => {
+    if (isDonation) return;
+    if (hasAutoSelectedSinglePlan.current) return;
+    const plans = paymentOptions?.payment_options || [];
+    if (plans.length === 1 && !selectedPayment) {
+      const only = plans[0];
+      const upd: SelectedPayment = {
+        ...only,
+        type: paymentOptions?.type,
+      } as unknown as SelectedPayment;
+      onPaymentSelect(upd);
+      hasAutoSelectedSinglePlan.current = true;
+    }
+  }, [isDonation, paymentOptions, selectedPayment, onPaymentSelect]);
+
   // Check if donation amount is valid for enabling next button
   useEffect(() => {
     if (isDonation && donationMetadata) {
@@ -271,21 +287,6 @@ const PaymentSelectionStep = ({
 
   const renderRegularPaymentOptions = () => {
     if (isDonation) return null;
-
-    // Auto-select if there's only one plan and nothing is selected yet
-    useEffect(() => {
-      if (hasAutoSelectedSinglePlan.current) return;
-      const plans = paymentOptions?.payment_options || [];
-      if (plans.length === 1 && !selectedPayment) {
-        const only = plans[0];
-        const upd: SelectedPayment = {
-          ...only,
-          type: paymentOptions?.type,
-        } as unknown as SelectedPayment;
-        onPaymentSelect(upd);
-        hasAutoSelectedSinglePlan.current = true;
-      }
-    }, [paymentOptions, selectedPayment, onPaymentSelect]);
 
     return (
       <>

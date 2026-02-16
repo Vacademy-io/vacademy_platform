@@ -61,7 +61,14 @@ export function LoginForm({
   const [isSSOLoading, setIsSSOLoading] = useState(false);
   const isPublic = urlParams.get("isPublicAssessment");
   const redirect = urlParams.get("redirect");
-  const [isEmailLogin, setIsEmailLogin] = useState(isPublic === "true");
+  const fromPaymentSuccess = urlParams.get("fromPaymentSuccess") === "1";
+  const [postPaymentCreds, setPostPaymentCreds] = useState<{
+    username: string;
+    password: string;
+  } | null>(null);
+  const [isEmailLogin, setIsEmailLogin] = useState(
+    isPublic === "true" && !fromPaymentSuccess
+  );
   const [providerFlags, setProviderFlags] = useState<{
     allowGoogleAuth: boolean;
     allowGithubAuth: boolean;
@@ -135,6 +142,35 @@ export function LoginForm({
     google: providerFlags.allowGoogleAuth,
     github: providerFlags.allowGithubAuth,
   };
+
+  useEffect(() => {
+    if (!fromPaymentSuccess) return;
+    try {
+      const raw = sessionStorage.getItem("post_payment_login_creds");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        username?: string;
+        password?: string;
+        instituteId?: string;
+      };
+      sessionStorage.removeItem("post_payment_login_creds");
+      if (parsed?.username && parsed?.password) {
+        setPostPaymentCreds({
+          username: parsed.username,
+          password: parsed.password,
+        });
+        setIsEmailLogin(false);
+        if (parsed.instituteId) {
+          Preferences.set({
+            key: "InstituteId",
+            value: parsed.instituteId,
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [fromPaymentSuccess]);
 
   useEffect(() => {
     // CRITICAL: Check for popup FIRST, before anything else
@@ -944,6 +980,8 @@ export function LoginForm({
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
+                              initialUsername={postPaymentCreds?.username}
+                              initialPassword={postPaymentCreds?.password}
                             />
                           </motion.div>
                         );
@@ -985,6 +1023,8 @@ export function LoginForm({
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
+                              initialUsername={postPaymentCreds?.username}
+                              initialPassword={postPaymentCreds?.password}
                             />
                           </motion.div>
                         );

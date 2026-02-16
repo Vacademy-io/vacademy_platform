@@ -120,8 +120,8 @@ interface EnrollLearnerForPaymentProps {
     razorpay_order_id: string;
     razorpay_signature: string;
   };
-  // Payment vendor (STRIPE, EWAY, or RAZORPAY)
-  paymentVendor?: "STRIPE" | "EWAY" | "RAZORPAY";
+  // Payment vendor (STRIPE, EWAY, RAZORPAY, or CASHFREE)
+  paymentVendor?: "STRIPE" | "EWAY" | "RAZORPAY" | "CASHFREE";
   // Flag to indicate if using institute custom fields (don't exclude from custom_field_values)
   isUsingInstituteCustomFields?: boolean;
   // Optional User ID from form-submit step
@@ -420,6 +420,14 @@ export const handleEnrollLearnerForPayment = async ({
         }
       : {};
 
+  // For Cashfree: Creates enrollment with payment pending; return_url is set when calling user-plan-payment
+  const cashfree_request =
+    paymentVendor === "CASHFREE"
+      ? {
+        return_url: "", // Set by frontend when calling user-plan-payment API
+      }
+      : {};
+
   const convertedData = {
     user: {
       email: email,
@@ -460,6 +468,7 @@ export const handleEnrollLearnerForPayment = async ({
         institute_id: instituteId,
         stripe_request,
         razorpay_request,
+        cashfree_request,
         pay_pal_request: {},
         eway_request,
         include_pending_items: true,

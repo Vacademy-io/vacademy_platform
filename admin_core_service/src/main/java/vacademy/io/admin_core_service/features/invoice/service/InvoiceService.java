@@ -23,6 +23,11 @@ import vacademy.io.admin_core_service.features.invoice.repository.InvoiceLineIte
 import vacademy.io.admin_core_service.features.invoice.repository.InvoicePaymentLogMappingRepository;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
+import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
+import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
+import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLogLineItem;
@@ -84,14 +89,13 @@ public class InvoiceService {
     @Autowired
     private PackageSessionRepository packageSessionRepository;
 
-    // PaymentNotificatonService can be used for sending invoice emails in the
-    // future
-    // @Autowired
-    // private PaymentNotificatonService paymentNotificatonService;
-
     @Autowired
     private InstituteSettingService instituteSettingService;
 
+    @Autowired
+    private NotificationService notificationService;
+
+    /** Type for institute invoice PDF layout templates (how line items, totals, etc. are shown in the PDF — like default_invoice.html). Not email templates. */
     private static final String INVOICE_TEMPLATE_TYPE = "INVOICE";
     private static final String INVOICE_STATUS_GENERATED = "GENERATED";
     private static final String DEFAULT_INVOICE_PREFIX = "INV";
@@ -145,9 +149,9 @@ public class InvoiceService {
             Invoice invoice = saveInvoiceWithMultiplePaymentLogs(invoiceData, invoiceNumber, pdfFileId,
                     paymentLogs, instituteId);
 
-            // 8. Send email (async - don't fail if email fails)
+            // 8. Send email with PDF attached (don't fail if email fails)
             try {
-                sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId);
+                sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId, pdfBytes);
             } catch (Exception e) {
                 log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.",
                         invoiceNumber, e);
@@ -794,24 +798,31 @@ public class InvoiceService {
     }
 
     /**
-     * Get invoice settings from institute
+     * Get invoice settings from institute.
+     * INVOICE_SETTING is a key-value in institute settings; defaults include sendInvoiceEmail: false.
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> getInvoiceSettings(Institute institute) {
         try {
             Object settingData = instituteSettingService.getSettingData(institute, "INVOICE_SETTING");
             if (settingData instanceof Map) {
-                return (Map<String, Object>) settingData;
+                Map<String, Object> map = (Map<String, Object>) settingData;
+                // Ensure sendInvoiceEmail has a default when key is missing
+                if (!map.containsKey("sendInvoiceEmail")) {
+                    map.put("sendInvoiceEmail", false);
+                }
+                return map;
             }
         } catch (Exception e) {
             log.warn("Could not load invoice settings for institute: {}. Using defaults.", institute.getId(), e);
         }
-        // Return default settings
+        // Return default settings (default for send invoice email is false)
         Map<String, Object> defaults = new HashMap<>();
         defaults.put("taxIncluded", false);
         defaults.put("taxRate", 0.0);
         defaults.put("taxLabel", "Tax");
         defaults.put("currency", "INR");
+        defaults.put("sendInvoiceEmail", false);
         return defaults;
     }
 
@@ -849,31 +860,32 @@ public class InvoiceService {
     }
 
     /**
-     * Load invoice template for institute
+     * Load institute invoice PDF layout template (defines how the invoice PDF looks: line items, totals, placeholders like default_invoice.html).
+     * Uses templates table with type=INVOICE (institute invoice PDF templates), not email templates.
+     * If the institute has one or more INVOICE templates, the last-created one is used; otherwise
+     * resources/templates/invoice/default_invoice.html is used.
      */
     private String loadInvoiceTemplate(String instituteId) {
         try {
-            // Try to get invoice template from Template entity
             var templates = templateService.getTemplatesByInstituteAndType(instituteId, INVOICE_TEMPLATE_TYPE);
             if (!templates.isEmpty()) {
                 String content = templates.get(0).getContent();
                 if (StringUtils.hasText(content)) {
-                    log.debug("Loaded invoice template from Template entity for institute: {}", instituteId);
+                    log.debug("Loaded institute invoice PDF template (last created) for institute: {}", instituteId);
                     return content;
                 }
             }
         } catch (Exception e) {
-            log.warn("Could not load invoice template from Template entity for institute: {}", instituteId, e);
+            log.warn("Could not load institute invoice PDF template from Template entity for institute: {}", instituteId, e);
         }
 
-        // Fallback to default template from resources
-        log.info("Using default invoice template from resources for institute: {}", instituteId);
+        log.info("Using default invoice PDF template from resources (default_invoice.html) for institute: {}", instituteId);
         return loadDefaultInvoiceTemplateFromResources();
     }
 
     /**
-     * Load default invoice template from
-     * resources/templates/invoice/default_invoice.html
+     * Load default invoice PDF layout template from
+     * resources/templates/invoice/default_invoice.html (same style as institute INVOICE templates).
      */
     private String loadDefaultInvoiceTemplateFromResources() {
         try {
@@ -1465,24 +1477,113 @@ public class InvoiceService {
         }
     }
 
-    /**
-     * Send invoice email to user
-     */
+    /** 3-arg overload for callers that do not have PDF bytes (e.g. test endpoints); uses link in body. */
     private void sendInvoiceEmail(Invoice invoice, UserDTO user, String instituteId) {
+        sendInvoiceEmail(invoice, user, instituteId, null);
+    }
+
+    /**
+     * Send invoice email to learner if institute setting sendInvoiceEmail is on.
+     * When pdfBytes is provided, attaches the PDF to the email; otherwise includes a download link in the body.
+     */
+    private void sendInvoiceEmail(Invoice invoice, UserDTO user, String instituteId, byte[] pdfBytes) {
         try {
-            // This will be implemented to send email with invoice PDF attachment
-            // For now, we'll use the existing payment notification service or create a new
-            // method
-            log.info("Invoice email would be sent to: {} for invoice: {}",
-                    user.getEmail(), invoice.getInvoiceNumber());
+            if (user == null || !StringUtils.hasText(user.getEmail())) {
+                log.warn("Cannot send invoice email: user or email is null for invoice: {}", invoice.getInvoiceNumber());
+                return;
+            }
+            Institute institute = instituteRepository.findById(instituteId).orElse(null);
+            if (institute == null) {
+                log.warn("Institute not found for invoice email: {}", instituteId);
+                return;
+            }
+            Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+            Object sendFlag = invoiceSettings.get("sendInvoiceEmail");
+            boolean sendInvoiceEmail = Boolean.TRUE.equals(sendFlag);
+            if (!sendInvoiceEmail) {
+                log.debug("Invoice email disabled by institute setting for institute: {}", instituteId);
+                return;
+            }
 
-            // TODO: Implement email sending with invoice PDF attachment
-            // You can extend PaymentNotificatonService or create a new InvoiceEmailService
+            String subject = "Your Invoice " + invoice.getInvoiceNumber();
+            String body;
+            var emailTemplates = templateService.getTemplatesByInstituteAndType(instituteId, "EMAIL");
+            var invoiceEmailTemplate = emailTemplates.stream()
+                    .filter(t -> "Invoice Email".equals(t.getName()))
+                    .findFirst();
+            boolean attachPdf = pdfBytes != null && pdfBytes.length > 0;
+            if (invoiceEmailTemplate.isPresent()) {
+                subject = invoiceEmailTemplate.get().getSubject() != null ? invoiceEmailTemplate.get().getSubject() : subject;
+                body = invoiceEmailTemplate.get().getContent() != null ? invoiceEmailTemplate.get().getContent() : buildDefaultInvoiceEmailBody(invoice, user, instituteId, attachPdf);
+            } else {
+                body = buildDefaultInvoiceEmailBody(invoice, user, instituteId, attachPdf);
+            }
 
+            String learnerName = user.getFullName() != null ? user.getFullName() : user.getEmail();
+            String pdfLinkOrAttachText = attachPdf ? "Please find your invoice attached to this email." : (StringUtils.hasText(invoice.getPdfFileId()) ? mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId()) : "");
+            body = body.replace("{{invoice_number}}", invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "")
+                    .replace("{{learner_name}}", learnerName)
+                    .replace("{{invoice_pdf_link}}", pdfLinkOrAttachText);
+            subject = subject.replace("{{invoice_number}}", invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "")
+                    .replace("{{learner_name}}", learnerName);
+
+            if (attachPdf) {
+                String attachmentName = "invoice_" + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : invoice.getId()) + ".pdf";
+                AttachmentUsersDTO.AttachmentDTO attachmentDTO = new AttachmentUsersDTO.AttachmentDTO();
+                attachmentDTO.setAttachmentName(attachmentName);
+                attachmentDTO.setAttachment(Base64.getEncoder().encodeToString(pdfBytes));
+
+                AttachmentUsersDTO toUser = new AttachmentUsersDTO();
+                toUser.setChannelId(user.getEmail());
+                toUser.setUserId(user.getId());
+                toUser.setPlaceholders(Map.of("email", user.getEmail()));
+                toUser.setAttachments(List.of(attachmentDTO));
+
+                AttachmentNotificationDTO attachmentDto = AttachmentNotificationDTO.builder()
+                        .body(body)
+                        .subject(subject)
+                        .notificationType("EMAIL")
+                        .source("INVOICE")
+                        .sourceId(invoice.getId())
+                        .users(List.of(toUser))
+                        .build();
+
+                notificationService.sendAttachmentEmail(List.of(attachmentDto), instituteId);
+                log.info("Invoice email sent to learner {} for invoice: {} (PDF attached)", user.getEmail(), invoice.getInvoiceNumber());
+            } else {
+                NotificationDTO notificationDTO = new NotificationDTO();
+                notificationDTO.setBody(body);
+                notificationDTO.setSubject(subject);
+                notificationDTO.setNotificationType("EMAIL");
+                notificationDTO.setSource("INVOICE");
+                notificationDTO.setSourceId(invoice.getId());
+                NotificationToUserDTO toUser = new NotificationToUserDTO();
+                toUser.setChannelId(user.getEmail());
+                toUser.setUserId(user.getId());
+                toUser.setPlaceholders(Map.of("email", user.getEmail()));
+                notificationDTO.setUsers(List.of(toUser));
+                notificationService.sendEmailToUsers(notificationDTO, instituteId);
+                log.info("Invoice email sent to learner {} for invoice: {} (link in body)", user.getEmail(), invoice.getInvoiceNumber());
+            }
         } catch (Exception e) {
             log.error("Error sending invoice email", e);
             // Don't throw - email failure shouldn't fail invoice generation
         }
+    }
+
+    private String buildDefaultInvoiceEmailBody(Invoice invoice, UserDTO user, String instituteId, boolean pdfAttached) {
+        if (pdfAttached) {
+            return "<p>Dear " + (user.getFullName() != null ? user.getFullName() : user.getEmail()) + ",</p>"
+                    + "<p>Please find your invoice " + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "") + " attached to this email.</p>"
+                    + "<p>Thank you.</p>";
+        }
+        String pdfUrl = StringUtils.hasText(invoice.getPdfFileId())
+                ? mediaService.getFilePublicUrlByIdWithoutExpiry(invoice.getPdfFileId())
+                : "";
+        return "<p>Dear " + (user.getFullName() != null ? user.getFullName() : user.getEmail()) + ",</p>"
+                + "<p>Please find your invoice " + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : "") + ".</p>"
+                + (StringUtils.hasText(pdfUrl) ? "<p>Download your invoice: <a href=\"" + pdfUrl + "\">" + pdfUrl + "</a></p>" : "")
+                + "<p>Thank you.</p>";
     }
 
     /**

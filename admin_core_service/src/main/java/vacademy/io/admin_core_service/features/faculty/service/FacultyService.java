@@ -110,6 +110,7 @@ public class FacultyService {
         boolean hasStatus = filter.getStatus() != null && !filter.getStatus().isEmpty();
 
         Page<FacultySubjectPackageSessionMapping> paginatedResponse = facultyRepository.findByFilters(
+                instituteId,
                 filter.getName(),
                 filter.getSubjects() == null ? new ArrayList<>() : filter.getSubjects(),
                 filter.getBatches() == null ? new ArrayList<>() : filter.getBatches(),

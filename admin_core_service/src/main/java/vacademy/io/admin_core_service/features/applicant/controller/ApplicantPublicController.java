@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.applicant.dto.ApplicantStageDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplyRequestDTO;
 import vacademy.io.admin_core_service.features.applicant.dto.ApplyResponseDTO;
 import vacademy.io.admin_core_service.features.applicant.service.ApplicantService;
@@ -12,6 +13,8 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.features.applicant.dto.ParentWithChildrenResponseDTO;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
+
+import java.util.List;
 
 /**
  * Public-facing endpoints for applicant operations
@@ -65,5 +68,15 @@ public class ApplicantPublicController {
         logger.info("Request to fetch parent details with children for parentUserId: {}", parentUserId);
         ParentWithChildrenResponseDTO response = applicantService.getParentWithChildren(parentUserId);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get all stages for an applicant
+     */
+    @GetMapping("/{applicantId}/stages")
+    public ResponseEntity<List<ApplicantStageDTO>> getApplicantStages(@PathVariable String applicantId) {
+        logger.info("Request to fetch stages for applicantId: {}", applicantId);
+        List<ApplicantStageDTO> stages = applicantService.getApplicantStages(applicantId);
+        return ResponseEntity.ok(stages);
     }
 }

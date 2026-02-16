@@ -14,7 +14,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class SubOrgService {
+public class SubOrgManagementService {
 
     private final UserInstituteService userInstituteService;
     private final InstituteSubOrgRepository instituteSubOrgRepository;

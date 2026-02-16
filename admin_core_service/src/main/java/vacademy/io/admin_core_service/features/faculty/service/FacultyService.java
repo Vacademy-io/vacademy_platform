@@ -293,4 +293,28 @@ public class FacultyService {
                 .build();
     }
 
+    public FacultySubjectPackageSessionMapping grantUserAccess(AddUserAccessDTO dto) {
+        if (!StringUtils.hasText(dto.getUserId())) {
+            throw new VacademyException("User ID is required");
+        }
+
+        FacultySubjectPackageSessionMapping mapping = new FacultySubjectPackageSessionMapping();
+        mapping.setUserId(dto.getUserId());
+        mapping.setPackageSessionId(dto.getPackageSessionId());
+        mapping.setSubjectId(dto.getSubjectId());
+        mapping.setStatus(StringUtils.hasText(dto.getStatus()) ? dto.getStatus() : FacultyStatusEnum.ACTIVE.name());
+        mapping.setName(dto.getName());
+
+        // New fields
+        mapping.setUserType(dto.getUserType());
+        mapping.setTypeId(dto.getTypeId());
+        mapping.setAccessType(dto.getAccessType());
+        mapping.setAccessId(dto.getAccessId());
+        mapping.setAccessPermission(dto.getAccessPermission());
+        mapping.setLinkageType(dto.getLinkageType());
+        mapping.setSuborgId(dto.getSuborgId());
+
+        return facultyRepository.save(mapping);
+    }
+
 }

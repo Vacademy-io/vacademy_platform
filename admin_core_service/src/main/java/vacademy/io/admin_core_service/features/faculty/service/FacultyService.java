@@ -105,8 +105,19 @@ public class FacultyService {
         Sort sortColumns = ListService.createSortObject(filter.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
 
-        Page<FacultySubjectPackageSessionMapping> paginatedResponse = facultyRepository.findByFilters(filter.getName(),
-                filter.getSubjects(), filter.getBatches(), filter.getStatus(), pageable);
+        boolean hasSubjects = filter.getSubjects() != null && !filter.getSubjects().isEmpty();
+        boolean hasBatches = filter.getBatches() != null && !filter.getBatches().isEmpty();
+        boolean hasStatus = filter.getStatus() != null && !filter.getStatus().isEmpty();
+
+        Page<FacultySubjectPackageSessionMapping> paginatedResponse = facultyRepository.findByFilters(
+                filter.getName(),
+                filter.getSubjects() == null ? new ArrayList<>() : filter.getSubjects(),
+                filter.getBatches() == null ? new ArrayList<>() : filter.getBatches(),
+                filter.getStatus() == null ? new ArrayList<>() : filter.getStatus(),
+                hasSubjects,
+                hasBatches,
+                hasStatus,
+                pageable);
 
         return ResponseEntity.ok(createAllFacultyResponse(paginatedResponse));
     }

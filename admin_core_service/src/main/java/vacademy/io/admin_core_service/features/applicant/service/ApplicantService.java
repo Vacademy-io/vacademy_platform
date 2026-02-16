@@ -1551,6 +1551,16 @@ public class ApplicantService {
         }
 
         /**
+         * Get all stages for an applicant by applicant ID
+         */
+        public List<ApplicantStageDTO> getApplicantStages(String applicantId) {
+                List<ApplicantStage> stages = applicantStageRepository.findByApplicantId(applicantId);
+                return stages.stream()
+                                .map(ApplicantStageDTO::new)
+                                .toList();
+        }
+
+        /**
          * Send application confirmation email with credentials
          * Tries to fetch template from notification_event_config, falls back to default
          * email

@@ -30,4 +30,5 @@ public class CouponCodeDTO {
     private Timestamp createdAt;
     private Timestamp updatedAt;
     private boolean canBeAdded;
+    private String shortUrl;
 }

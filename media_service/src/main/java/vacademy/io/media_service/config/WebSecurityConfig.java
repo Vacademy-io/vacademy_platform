@@ -36,7 +36,8 @@ public class WebSecurityConfig {
             "/media-service/ai/get-question-audio/**", "/media-service/ai/evaluation-tool/**",
             "/media-service/ai/evaluate-subjective-answer/**", "/media-service/ai/chat-with-pdf/**",
             "/media-service/task-status/**", "/media-service/ai/lecture/**",
-            "/media-service/course/ai/v1/**", "/media-service/health/**", "/media-service/convert/ppt-to-pdf/**" };
+            "/media-service/course/ai/v1/**", "/media-service/health/**", "/media-service/convert/ppt-to-pdf/**",
+            "/s/**" }; // Added /s/** for public short URL redirects
     @Autowired
     private JwtAuthFilter jwtAuthFilter; // Inject JwtAuthFilter dependency
     @Autowired

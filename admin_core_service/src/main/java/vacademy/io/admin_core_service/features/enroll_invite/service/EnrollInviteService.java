@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.enroll_invite.service;
 
+import vacademy.io.admin_core_service.features.shortlink.service.ShortUrlManagementService;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -43,6 +45,8 @@ import java.util.stream.Collectors;
 @Service
 public class EnrollInviteService {
 
+    private static final Logger logger = LoggerFactory.getLogger(EnrollInviteService.class);
+
     @Autowired
     private EnrollInviteRepository repository;
     @Autowired
@@ -59,6 +63,19 @@ public class EnrollInviteService {
     private PaymentPlanService paymentPlanService;
     @Autowired
     private PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionService packageSessionEnrollInvitePaymentOptionPlanToReferralOptionService;
+    @Autowired
+    private vacademy.io.admin_core_service.features.shortlink.service.ShortLinkIntegrationService shortLinkIntegrationService;
+
+    @Autowired
+    private ShortUrlManagementService shortUrlManagementService;
+
+    @org.springframework.beans.factory.annotation.Value("${default.learner.portal.url:https://learner.vacademy.io}")
+    private String learnerBaseUrl;
+
+    @org.springframework.beans.factory.annotation.Value("${default.learner.portal.enroll_invite_path:/learner-invitation-response}")
+    private String learnerInvitePath;
+
+    private static final String SHORT_LINK_SOURCE_ENROLL_INVITE = "ENROLL_INVITE";
 
     @Transactional
     public String createEnrollInvite(EnrollInviteDTO enrollInviteDTO) {
@@ -66,13 +83,29 @@ public class EnrollInviteService {
             throw new VacademyException("EnrollInvite payload cannot be null.");
         }
         enrollInviteDTO.setInviteCode(getInviteCode());
+
         List<PackageSessionToPaymentOptionDTO> mappingDTOs = enrollInviteDTO.getPackageSessionToPaymentOptions();
         if (CollectionUtils.isEmpty(mappingDTOs)) {
             throw new VacademyException("Package session to payment options cannot be empty.");
         }
 
         EnrollInvite enrollInviteToSave = new EnrollInvite(enrollInviteDTO);
-        final EnrollInvite savedEnrollInvite = repository.save(enrollInviteToSave);
+        EnrollInvite initialSavedEnrollInvite = repository.save(enrollInviteToSave);
+
+        // Generate Short URL using centralized service
+        String destinationUrl = learnerBaseUrl + learnerInvitePath + "?instituteId="
+                + initialSavedEnrollInvite.getInstituteId() + "&inviteCode="
+                + initialSavedEnrollInvite.getInviteCode();
+        String shortUrl = shortUrlManagementService.createShortUrl(
+                destinationUrl,
+                SHORT_LINK_SOURCE_ENROLL_INVITE,
+                initialSavedEnrollInvite.getId());
+        if (shortUrl != null) {
+            initialSavedEnrollInvite.setShortUrl(shortUrl);
+            initialSavedEnrollInvite = repository.save(initialSavedEnrollInvite);
+        }
+
+        final EnrollInvite savedEnrollInvite = initialSavedEnrollInvite;
 
         saveInstituteCustomFields(savedEnrollInvite.getId(), enrollInviteDTO.getInstituteId(),
                 enrollInviteDTO.getInstituteCustomFields());
@@ -167,6 +200,17 @@ public class EnrollInviteService {
         packageSessionEnrollInviteToPaymentOptionService
                 .createPackageSessionLearnerInvitationToPaymentOptions(mappingEntities);
         validateSaveOrUpdate(mappingEntities, mappingDTOs);
+
+        // Update Short URL using centralized service
+        String newDestinationUrl = learnerBaseUrl + learnerInvitePath + "?instituteId="
+                + savedEnrollInvite.getInstituteId() + "&inviteCode="
+                + savedEnrollInvite.getInviteCode();
+        shortUrlManagementService.updateShortUrl(
+                newDestinationUrl,
+                SHORT_LINK_SOURCE_ENROLL_INVITE,
+                savedEnrollInvite.getId(),
+                savedEnrollInvite.getShortUrl());
+
         return savedEnrollInvite.getId();
     }
     // Create and other existing methods...
@@ -294,6 +338,12 @@ public class EnrollInviteService {
         List<EnrollInvite> enrollInvites = repository.findAllById(enrollInviteIds);
         for (EnrollInvite enrollInvite : enrollInvites) {
             enrollInvite.setStatus(StatusEnum.DELETED.name());
+
+            // Delete associated short URL using centralized service
+            shortUrlManagementService.deleteShortUrl(
+                    SHORT_LINK_SOURCE_ENROLL_INVITE,
+                    enrollInvite.getId(),
+                    enrollInvite.getShortUrl());
         }
         repository.saveAll(enrollInvites);
         packageSessionEnrollInviteToPaymentOptionService.deleteByEnrollInviteIds(enrollInviteIds);
@@ -700,6 +750,7 @@ public class EnrollInviteService {
         dto.setLearnerAccessDays(enrollInvite.getLearnerAccessDays());
         dto.setWebPageMetaDataJson(enrollInvite.getWebPageMetaDataJson());
         dto.setIsBundled(enrollInvite.getIsBundled());
+        dto.setShortUrl(enrollInvite.getShortUrl());
         return dto;
     }
 

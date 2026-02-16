@@ -19,20 +19,39 @@ public interface FacultySubjectPackageSessionMappingRepository
   @Query(value = """
       SELECT DISTINCT ON (fm.user_id) fm.*
       FROM faculty_subject_package_session_mapping fm
-      WHERE (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
-        AND (CAST(:hasBatchesIds AS boolean) = false OR fm.package_session_id IN (:batchesIds))
+      WHERE (
+          (fm.access_type = 'Package' AND EXISTS (SELECT 1 FROM package_institute pi WHERE pi.package_id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'PackageSession' AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
+          OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PackageSession', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
+      )
+        AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
+        AND (CAST(:hasBatchesIds AS boolean) = false OR (
+            (fm.access_type = 'PackageSession' AND fm.access_id IN (:batchesIds)) OR
+            (fm.package_session_id IN (:batchesIds))
+        ))
         AND (CAST(:hasStatusList AS boolean) = false OR fm.status IN (:statusList))
         AND (:name IS NULL OR CAST(:name AS text) = '' OR LOWER(fm.name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')))
       ORDER BY fm.user_id, fm.updated_at DESC
       """, countQuery = """
       SELECT COUNT(DISTINCT fm.user_id)
       FROM faculty_subject_package_session_mapping fm
-      WHERE (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
-        AND (CAST(:hasBatchesIds AS boolean) = false OR fm.package_session_id IN (:batchesIds))
+      WHERE (
+          (fm.access_type = 'Package' AND EXISTS (SELECT 1 FROM package_institute pi WHERE pi.package_id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'PackageSession' AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
+          OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PackageSession', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
+      )
+        AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
+        AND (CAST(:hasBatchesIds AS boolean) = false OR (
+            (fm.access_type = 'PackageSession' AND fm.access_id IN (:batchesIds)) OR
+            (fm.package_session_id IN (:batchesIds))
+        ))
         AND (CAST(:hasStatusList AS boolean) = false OR fm.status IN (:statusList))
         AND (:name IS NULL OR CAST(:name AS text) = '' OR LOWER(fm.name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')))
       """, nativeQuery = true)
   Page<FacultySubjectPackageSessionMapping> findByFilters(
+      @Param("instituteId") String instituteId,
       @Param("name") String name,
       @Param("subjectIds") List<String> subjects,
       @Param("batchesIds") List<String> batches,

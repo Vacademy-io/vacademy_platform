@@ -25,8 +25,6 @@ import vacademy.io.common.institute.entity.module.InstituteSubModule;
 import vacademy.io.common.institute.entity.module.Submodule;
 import vacademy.io.common.institute.repository.SubModuleRepository;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
-import vacademy.io.admin_core_service.features.institute.entity.InstituteSubOrg;
-import vacademy.io.admin_core_service.features.institute.repository.InstituteSubOrgRepository;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,8 +37,6 @@ public class UserInstituteService {
 
     @Autowired
     InstituteSubModuleRepository instituteSubModuleRepository;
-    @Autowired
-    private InstituteSubOrgRepository instituteSubOrgRepository;
     @Autowired
     SubModuleRepository subModuleRepository;
     @Autowired
@@ -294,27 +290,5 @@ public class UserInstituteService {
         if (institute.isEmpty())
             throw new VacademyException("Institute Not Found");
         return institute.get().getLetterHeadFileId();
-    }
-
-    @Transactional
-    public String createSubOrg(InstituteInfoDTO instituteInfoDTO, String parentInstituteId) {
-        // 1. Create the child institute using existing logic
-        InstituteIdAndNameDTO createdInstitute = saveInstitute(instituteInfoDTO);
-
-        if (createdInstitute == null) {
-            throw new VacademyException("Failed to create sub-organization institute");
-        }
-
-        // 2. Link parent and child in InstituteSubOrg table
-        InstituteSubOrg mapping = new InstituteSubOrg();
-        mapping.setInstituteId(parentInstituteId);
-        mapping.setSuborgId(createdInstitute.getInstituteId());
-        mapping.setStatus("ACTIVE");
-        mapping.setName(instituteInfoDTO.getInstituteName());
-        mapping.setDescription(instituteInfoDTO.getDescription());
-
-        instituteSubOrgRepository.save(mapping);
-
-        return createdInstitute.getInstituteId();
     }
 }

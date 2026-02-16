@@ -177,11 +177,4 @@ public class UserInstituteController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/sub-org")
-    public ResponseEntity<String> createSubOrg(
-            @RequestBody InstituteInfoDTO instituteInfoDTO,
-            @RequestParam String parentInstituteId) {
-        return ResponseEntity.ok(instituteService.createSubOrg(instituteInfoDTO, parentInstituteId));
-    }
-
 }

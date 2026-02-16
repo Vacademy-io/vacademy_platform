@@ -79,11 +79,5 @@ public class FacultyController {
         return ResponseEntity.ok(facultyService.grantUserAccess(dto));
     }
 
-    @PostMapping("/sub-org")
-    public ResponseEntity<String> createSubOrg(
-            @RequestBody InstituteInfoDTO instituteInfoDTO,
-            @RequestParam String parentInstituteId) {
-        return ResponseEntity.ok(userInstituteService.createSubOrg(instituteInfoDTO, parentInstituteId));
-    }
 
 }

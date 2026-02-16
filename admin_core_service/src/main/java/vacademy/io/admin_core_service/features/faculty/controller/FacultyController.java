@@ -4,6 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.faculty.dto.AddFacultyToSubjectAndBatchDTO;
+import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
+import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
+import vacademy.io.admin_core_service.features.faculty.dto.UserAccessDetailsDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyAllResponse;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyBatchSubjectDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyRequestFilter;
@@ -12,8 +15,6 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.features.institute.service.UserInstituteService;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
-import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
-import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 
 import java.util.List;
 
@@ -66,7 +67,7 @@ public class FacultyController {
     }
 
     @GetMapping("/user-access-details")
-    public ResponseEntity<vacademy.io.admin_core_service.features.faculty.dto.UserAccessDetailsDTO> getUserAccessDetails(
+    public ResponseEntity<UserAccessDetailsDTO> getUserAccessDetails(
             @RequestParam String userId,
             @RequestParam String instituteId) {
         return ResponseEntity.ok(facultyService.getUserAccessDetails(userId, instituteId));

@@ -188,11 +188,10 @@ public class FacultyService {
                             .collect(Collectors.toList());
                     bsa.setSubjectAssignments(subjects);
                     return bsa;
-                })
-                .collect(Collectors.toList());
+                }).collect(Collectors.toList());
 
-        dto.setBatchSubjectAssignments(assignments);
-        return dto;
+    dto.setBatchSubjectAssignments(assignments);return dto;
+
     }
 
     public void addFacultyToBatch(List<AddFacultyToCourseDTO> addFacultyToCourseDTOS, String batchId,
@@ -274,7 +273,7 @@ public class FacultyService {
                         .id(m.getId())
                         .userType(m.getUserType())
                         .typeId(m.getTypeId())
-                        .accessType(m.getAccessType()) // Use getter from Lombok @Data
+                        .accessType(m.getAccessType())
                         .accessId(m.getAccessId())
                         .accessPermission(m.getAccessPermission())
                         .linkageType(m.getLinkageType())
@@ -291,7 +290,6 @@ public class FacultyService {
                 .instituteId(instituteId)
                 .accessMappings(accessMappings)
                 .build();
-    }
 
     public FacultySubjectPackageSessionMapping grantUserAccess(AddUserAccessDTO dto) {
         if (!StringUtils.hasText(dto.getUserId())) {
@@ -316,5 +314,4 @@ public class FacultyService {
 
         return facultyRepository.save(mapping);
     }
-
 }

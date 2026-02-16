@@ -77,7 +77,7 @@ public class LmsReportExportController {
         return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
     }
 
-    @PostMapping(value = "/chapter-wise-batch-report", produces = MediaType.APPLICATION_PDF_VALUE)
+    @PostMapping(value = "/chapter-wise-learners-report", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadChapterWiseBatchReport(@RequestBody ReportFilterDTO reportFilterDTO,
                                                                  @RequestAttribute("user") CustomUserDetails userDetails) {
         byte[] pdfBytes = lmsReportExportService.generateChapterWiseBatchReport(reportFilterDTO, userDetails);

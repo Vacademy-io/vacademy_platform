@@ -13,7 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import java.util.List;
 
 @RestController
-@RequestMapping("/auth/institute/{instituteId}/roles")
+@RequestMapping("/auth-service/v1/institute/{instituteId}/roles")
 public class CustomRoleController {
 
     @Autowired

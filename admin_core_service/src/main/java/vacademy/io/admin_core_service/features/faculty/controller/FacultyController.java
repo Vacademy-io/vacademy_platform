@@ -4,12 +4,17 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.faculty.dto.AddFacultyToSubjectAndBatchDTO;
+import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
+import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
+import vacademy.io.admin_core_service.features.faculty.dto.UserAccessDetailsDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyAllResponse;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyBatchSubjectDTO;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyRequestFilter;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.admin_core_service.features.institute.service.UserInstituteService;
+import vacademy.io.common.institute.dto.InstituteInfoDTO;
 
 import java.util.List;
 
@@ -22,6 +27,7 @@ import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_SIZE;
 public class FacultyController {
 
     private final FacultyService facultyService;
+    private final UserInstituteService userInstituteService;
 
     @PostMapping("/assign-subjects-and-batches")
     public ResponseEntity<String> assignFacultyToSubjectsAndBatches(
@@ -61,10 +67,23 @@ public class FacultyController {
     }
 
     @GetMapping("/user-access-details")
-    public ResponseEntity<vacademy.io.admin_core_service.features.faculty.dto.UserAccessDetailsDTO> getUserAccessDetails(
+    public ResponseEntity<UserAccessDetailsDTO> getUserAccessDetails(
             @RequestParam String userId,
             @RequestParam String instituteId) {
         return ResponseEntity.ok(facultyService.getUserAccessDetails(userId, instituteId));
+    }
+
+    @PostMapping("/user-access")
+    public ResponseEntity<FacultySubjectPackageSessionMapping> grantUserAccess(
+            @RequestBody AddUserAccessDTO dto) {
+        return ResponseEntity.ok(facultyService.grantUserAccess(dto));
+    }
+
+    @PostMapping("/sub-org")
+    public ResponseEntity<String> createSubOrg(
+            @RequestBody InstituteInfoDTO instituteInfoDTO,
+            @RequestParam String parentInstituteId) {
+        return ResponseEntity.ok(userInstituteService.createSubOrg(instituteInfoDTO, parentInstituteId));
     }
 
 }

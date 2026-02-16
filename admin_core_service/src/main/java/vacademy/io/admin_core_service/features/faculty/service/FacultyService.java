@@ -190,7 +190,8 @@ public class FacultyService {
                     return bsa;
                 }).collect(Collectors.toList());
 
-    dto.setBatchSubjectAssignments(assignments);return dto;
+        dto.setBatchSubjectAssignments(assignments);
+        return dto;
 
     }
 
@@ -290,6 +291,7 @@ public class FacultyService {
                 .instituteId(instituteId)
                 .accessMappings(accessMappings)
                 .build();
+    }
 
     public FacultySubjectPackageSessionMapping grantUserAccess(AddUserAccessDTO dto) {
         if (!StringUtils.hasText(dto.getUserId())) {

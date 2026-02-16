@@ -308,13 +308,13 @@ public class UserInstituteService {
         // 2. Link parent and child in InstituteSubOrg table
         InstituteSubOrg mapping = new InstituteSubOrg();
         mapping.setInstituteId(parentInstituteId);
-        mapping.setSuborgId(createdInstitute.getId());
+        mapping.setSuborgId(createdInstitute.getInstituteId());
         mapping.setStatus("ACTIVE");
         mapping.setName(instituteInfoDTO.getInstituteName());
         mapping.setDescription(instituteInfoDTO.getDescription());
 
         instituteSubOrgRepository.save(mapping);
 
-        return createdInstitute.getId();
+        return createdInstitute.getInstituteId();
     }
 }

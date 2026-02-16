@@ -21,6 +21,9 @@ public class GetSessionByIdResponseDTO {
     private String subject;
     private String descriptionHtml;
     private String defaultMeetLink;
+    private String defaultClassLink;
+    private String defaultClassLinkType;
+    private LearnerButtonConfigDTO learnerButtonConfig;
     private LocalDateTime startTime;
     private LocalDateTime lastEntryTime;
     private String linkType;
@@ -70,7 +73,7 @@ public class GetSessionByIdResponseDTO {
 
     @Getter
     @Setter
-    public static class Field{
+    public static class Field {
         private String id;
         private String type;
         private String label;
@@ -83,5 +86,15 @@ public class GetSessionByIdResponseDTO {
     static public class NotificationConfigResponse {
         private List<NotificationAction> addedNotificationActions;
         private List<Field> addedFields = new ArrayList<>();
+    }
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class LearnerButtonConfigDTO {
+        private boolean isVisible;
+        private String text;
+        private String url;
+        private String backgroundColor;
+        private String textColor;
     }
 }

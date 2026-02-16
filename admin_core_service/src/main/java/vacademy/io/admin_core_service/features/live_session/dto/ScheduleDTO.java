@@ -21,6 +21,9 @@ public interface ScheduleDTO {
     String getLinkType();
     String getSessionStreamingServiceType();
     String getDefaultMeetLink();
+    String getDefaultClassLink();
+    String getDefaultClassLinkType();
+    String getLearnerButtonConfig();
     String getWaitingRoomLink();
     Integer getWaitingRoomTime();
     String getRegistrationFormLinkForPublicSessions();

@@ -356,6 +356,7 @@ public class Step1Service {
             session.setDefaultMeetLink(request.getDefaultMeetLink());
             session.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
         }
+
         if (request.getStartTime() != null)
             session.setStartTime(request.getStartTime());
         if (request.getLastEntryTime() != null)
@@ -447,6 +448,20 @@ public class Step1Service {
                             : getLinkTypeFromUrl(request.getDefaultMeetLink()));
                     schedule.setCustomWaitingRoomMediaId(null);
 
+                    if (dto.getDefaultClassLink() != null) {
+                        schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                        schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                    }
+
+                    if (dto.getLearnerButtonConfig() != null) {
+                        try {
+                            schedule.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper()
+                                    .writeValueAsString(dto.getLearnerButtonConfig()));
+                        } catch (Exception e) {
+                            System.err.println("Error serializing LearnerButtonConfig: " + e.getMessage());
+                        }
+                    }
+
                     scheduleRepository.save(schedule);
                     current = current.plusWeeks(1);
                 }
@@ -468,6 +483,20 @@ public class Step1Service {
             schedule.setThumbnailFileId(request.getThumbnailFileId());
             schedule.setDailyAttendance(false); // default for single schedule
             schedule.setStatus(LiveSessionStatus.LIVE.name());
+
+            if (request.getDefaultClassLink() != null) {
+                schedule.setDefaultClassLink(request.getDefaultClassLink());
+                schedule.setDefaultClassLinkType(getLinkTypeFromUrl(request.getDefaultClassLink()));
+            }
+
+            if (request.getLearnerButtonConfig() != null) {
+                try {
+                    schedule.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper()
+                            .writeValueAsString(request.getLearnerButtonConfig()));
+                } catch (Exception e) {
+                    System.err.println("Error serializing LearnerButtonConfig: " + e.getMessage());
+                }
+            }
 
             scheduleRepository.save(schedule);
         }
@@ -515,6 +544,20 @@ public class Step1Service {
             schedule.setThumbnailFileId(dto.getThumbnailFileId());
         }
         schedule.setDailyAttendance(dto.isDailyAttendance());
+
+        if (dto.getDefaultClassLink() != null) {
+            schedule.setDefaultClassLink(dto.getDefaultClassLink());
+            schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+        }
+
+        if (dto.getLearnerButtonConfig() != null) {
+            try {
+                schedule.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(dto.getLearnerButtonConfig()));
+            } catch (Exception e) {
+                System.err.println("Error serializing LearnerButtonConfig: " + e.getMessage());
+            }
+        }
 
         scheduleRepository.save(schedule);
     }

@@ -29,5 +29,6 @@ public class LiveSessionListProjectionImpl implements LiveSessionRepository.Live
     private Boolean allowPlayPause;
     private String timezone;
     private String meetingLink;
+    private String learnerButtonConfig;
+    private String defaultClassLink;
 }
-

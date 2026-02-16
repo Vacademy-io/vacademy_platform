@@ -20,6 +20,7 @@ public class LiveSessionStep1RequestDTO {
     private String subject;
     private String descriptionHtml;
     private String defaultMeetLink;
+    private String defaultClassLink;
     private String joinLink;
     private Timestamp startTime;
     private Timestamp lastEntryTime;
@@ -44,6 +45,8 @@ public class LiveSessionStep1RequestDTO {
     private List<ScheduleDTO> updatedSchedules;
     private List<String> deletedScheduleIds;
 
+    private LearnerButtonConfigDTO learnerButtonConfig;
+
     @Data
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class ScheduleDTO {
@@ -56,5 +59,17 @@ public class LiveSessionStep1RequestDTO {
         // new added field
         private String thumbnailFileId;
         private boolean dailyAttendance;
+        private String defaultClassLink;
+        private LearnerButtonConfigDTO learnerButtonConfig;
+    }
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class LearnerButtonConfigDTO {
+        private boolean isVisible;
+        private String text;
+        private String url;
+        private String backgroundColor;
+        private String textColor;
     }
 }

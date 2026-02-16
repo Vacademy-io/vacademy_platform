@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 import java.sql.Time;
 import java.sql.Date;
 
-
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -30,6 +29,8 @@ public class LiveSessionListDTO {
     private String meetingLink;
     private String registrationFormLinkForPublicSessions;
     private String timezone;
+    private LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig;
+    private String defaultClassLink;
 
     // Getters and Setters
 }

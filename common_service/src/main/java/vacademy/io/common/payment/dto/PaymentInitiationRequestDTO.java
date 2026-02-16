@@ -24,5 +24,6 @@ public class PaymentInitiationRequestDTO {
     private ManualPaymentDTO manualRequest;
     private EwayRequestDTO ewayRequest;
     private PhonePeRequestDTO phonePeRequest;
+    private CashfreeRequestDTO cashfreeRequest;
     private PaymentType paymentType;
 }

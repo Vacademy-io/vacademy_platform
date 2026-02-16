@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.service;
 
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,6 +83,10 @@ public class PaymentLogService {
     @Autowired
     @Lazy
     private vacademy.io.admin_core_service.features.applicant.service.ApplicantService applicantService;
+
+    @Autowired
+    @Lazy
+    private PaymentLogService self;
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
             UserPlan userPlan) {
@@ -395,30 +400,21 @@ public class PaymentLogService {
                 }
             }
 
-            // Sync Applicant Stage (if applicable)
+            // Sync Applicant Stage (if applicable) in a separate transaction so failure
+            // (e.g. no applicant stage for learner payments) does not roll back the webhook.
+            String orderIdToSync = paymentLog.getId(); // Default fall back
             try {
-                // Fix: Extract the actual Order ID from the JSON data, as paymentLog.getId() is
-                // the PK
-                String orderIdToSync = paymentLog.getId(); // Default fall back
-                try {
-                    Map<String, Object> pData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
-                    if (pData != null && pData.containsKey("originalRequest")) {
-                        Map<String, Object> originalReq = (Map<String, Object>) pData.get("originalRequest");
-                        if (originalReq != null && originalReq.containsKey("order_id")) {
-                            orderIdToSync = (String) originalReq.get("order_id");
-                        }
+                Map<String, Object> pData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
+                if (pData != null && pData.containsKey("originalRequest")) {
+                    Map<String, Object> originalReq = (Map<String, Object>) pData.get("originalRequest");
+                    if (originalReq != null && originalReq.containsKey("order_id")) {
+                        orderIdToSync = (String) originalReq.get("order_id");
                     }
-                } catch (Exception ex) {
-                    log.error("Failed to extract order_id for applicant sync: {}", ex.getMessage());
                 }
-
-                // Call Applicant Service with correct Order ID
-                applicantService.handlePaymentSuccess(orderIdToSync);
-
-            } catch (Exception e) {
-                // Expected for non-applicant payments
-                log.debug("No applicant stage updated for payment log {}: {}", paymentLog.getId(), e.getMessage());
+            } catch (Exception ex) {
+                log.error("Failed to extract order_id for applicant sync: {}", ex.getMessage());
             }
+            self.syncApplicantStageInNewTransaction(orderIdToSync);
 
             // Parse the paymentSpecificData which now contains both response and original
             // request
@@ -516,6 +512,19 @@ public class PaymentLogService {
             UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
             paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
                     paymentInitiationRequestDTO, userDTO);
+        }
+    }
+
+    /**
+     * Runs applicant sync in a new transaction so that failure (e.g. no applicant stage
+     * for learner payments) does not mark the webhook transaction rollback-only.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void syncApplicantStageInNewTransaction(String orderId) {
+        try {
+            applicantService.handlePaymentSuccess(orderId);
+        } catch (Exception e) {
+            log.debug("No applicant stage updated for order {}: {}", orderId, e.getMessage());
         }
     }
 

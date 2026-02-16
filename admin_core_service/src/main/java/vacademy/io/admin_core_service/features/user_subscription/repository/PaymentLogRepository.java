@@ -20,13 +20,11 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
 
   /**
    * Find all payment logs where the orderId matches within the
-   * originalRequest.order_id JSON path.
-   * This is more specific than findAllByOrderIdInJson and ensures exact matching
-   * of the order_id field.
-   * Note: Using CAST() instead of ::text because JPA interprets : as named
-   * parameter prefix.
+   * originalRequest JSON (order_id snake_case or orderId camelCase).
+   * CASHFREE/PhonePe webhooks send order_id; we store originalRequest with
+   * orderId (camelCase) after order creation, so we match both.
    */
-  @Query(value = "SELECT * FROM payment_log WHERE CAST(payment_specific_data AS TEXT) LIKE CONCAT('%\"order_id\":\"', :orderId, '\"%')", nativeQuery = true)
+  @Query(value = "SELECT * FROM payment_log WHERE CAST(payment_specific_data AS TEXT) LIKE CONCAT('%\"order_id\":\"', :orderId, '\"%') OR CAST(payment_specific_data AS TEXT) LIKE CONCAT('%\"orderId\":\"', :orderId, '\"%')", nativeQuery = true)
   List<PaymentLog> findAllByOrderIdInOriginalRequest(@Param("orderId") String orderId);
 
   @Query("SELECT pl FROM PaymentLog pl WHERE pl.userPlan.id = :userPlanId ORDER BY pl.createdAt DESC")

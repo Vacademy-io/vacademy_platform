@@ -35,6 +35,11 @@ public class PaymentGatewaySpecificPaymentDetailService {
                 }
                 break;
             case PHONEPE:
+                // PhonePe does not use a stored customer id in our flow
+                break;
+            case CASHFREE:
+                // Cashfree hosted checkout does not require a pre-created customer id;
+                // no gateway-specific customer data to attach here.
                 break;
             default:
                 throw new IllegalStateException("Unexpected value: " + vendor);
@@ -66,6 +71,11 @@ public class PaymentGatewaySpecificPaymentDetailService {
                 }
                 break;
             case PHONEPE:
+                // PhonePe does not use a stored customer id in our flow
+                break;
+            case CASHFREE:
+                // Cashfree hosted checkout does not require a pre-created customer id;
+                // no gateway-specific customer data to attach here.
                 break;
 
             default:

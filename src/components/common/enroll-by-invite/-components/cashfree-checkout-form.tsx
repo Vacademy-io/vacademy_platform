@@ -44,9 +44,8 @@ export const CashfreeCheckoutForm = ({
     setCardError(null);
 
     try {
-      const isSandbox =
-        import.meta.env.VITE_CASHFREE_SANDBOX !== "false" &&
-        import.meta.env.MODE !== "production";
+      // For now always use sandbox (incl. production) for testing; set VITE_CASHFREE_SANDBOX=false when ready for prod keys
+      const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX !== "false";
       const cashfree = await loadCashfree({
         mode: isSandbox ? "sandbox" : "production",
       });

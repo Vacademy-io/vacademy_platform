@@ -471,10 +471,15 @@ public class PaymentService {
                                         ? logDto.getPaymentStatus()
                                         : PaymentStatusEnum.PAYMENT_PENDING.name();
                         Map<String, Object> responseMap = new HashMap<>();
+                        // Frontend payment-result expects payment_status, but we keep status too for existing clients.
                         responseMap.put("status", paymentStatus);
+                        responseMap.put("paymentStatus", paymentStatus);
+                        responseMap.put("payment_status", paymentStatus);
                         responseMap.put("details", Map.of(
                                         "orderId", orderId,
-                                        "paymentStatus", paymentStatus));
+                                        "order_id", orderId,
+                                        "paymentStatus", paymentStatus,
+                                        "payment_status", paymentStatus));
                         return responseMap;
                 }
 

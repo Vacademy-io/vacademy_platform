@@ -44,9 +44,7 @@ export const CashfreeCheckoutForm = ({
     setCardError(null);
 
     try {
-      const isSandbox =
-        import.meta.env.VITE_CASHFREE_SANDBOX !== "false" &&
-        import.meta.env.MODE !== "production";
+      const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX === "true";
       const cashfree = await loadCashfree({
         mode: isSandbox ? "sandbox" : "production",
       });

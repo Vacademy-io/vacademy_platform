@@ -1011,9 +1011,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         setPaymentCompletionResponse(paymentResponse);
 
         // Step 3: Launch Cashfree checkout (redirects to return_url on success/failure)
-        const isSandbox =
-          import.meta.env.VITE_CASHFREE_SANDBOX !== "false" &&
-          import.meta.env.MODE !== "production";
+        const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX === "true";
         const cashfree = await loadCashfree({ mode: isSandbox ? "sandbox" : "production" });
 
         if (!cashfree) {

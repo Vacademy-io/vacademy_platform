@@ -713,10 +713,10 @@ public class AudienceService {
             logger.info("Created parent user with ID: {} and child user with ID: {}",
                     parentUserId, childUserId);
 
-            // Duplicate submission guard - check if parent has already submitted
-            if (StringUtils.hasText(parentUserId) &&
-                    audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), parentUserId)) {
-                throw new VacademyException("You have already submitted your response for this campaign");
+            // Duplicate submission guard - check if this child has already been submitted for this campaign
+            if (StringUtils.hasText(childUserId) &&
+                    audienceResponseRepository.existsByAudienceIdAndStudentUserId(requestDTO.getAudienceId(), childUserId)) {
+                throw new VacademyException("You have already submitted a response for this child in this campaign");
             }
         } else {
             throw new VacademyException("Both parent and child user information are required");

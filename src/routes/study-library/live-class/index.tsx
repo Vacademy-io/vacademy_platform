@@ -124,13 +124,13 @@ function RouteComponent() {
         ? formatDateToISO(
           new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
         )
-        : startDateFilter || undefined,
+        : undefined,
     endDate:
       selectedView === "calendar"
         ? formatDateToISO(
           new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0)
         )
-        : endDateFilter || undefined,
+        : undefined,
     size: 500,
     page: selectedView === "list" ? apiPage : 0,
   });
@@ -1139,127 +1139,53 @@ function RouteComponent() {
             </TabsTrigger>
           </TabsList>
           <TabsContent value="list" className="mt-6" key={`list-view-${apiPage}`}>
-            {/* Filters Section */}
-
-            <div className="mb-6 p-4 bg-gradient-to-r from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/60 border border-neutral-200 dark:border-neutral-800 rounded-lg">
-              <div className="flex items-center gap-2 mb-4">
-                <FunnelSimple
-                  size={20}
-                  className="text-neutral-600 dark:text-neutral-300"
-                />
-                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100">
-                  Filters
-                </h3>
-                {(startDateFilter || endDateFilter) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="ml-auto border-red-300 dark:border-red-900 text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 hover:border-red-400 dark:hover:border-red-800"
-                  >
-                    <X size={14} className="mr-1" />
-                    Clear
-                  </Button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-2">
-                    Start Date
-                  </label>
-                  <Input
-                    type="date"
-                    value={startDateFilter}
-                    onChange={(e) => {
-                      setStartDateFilter(e.target.value);
-                      setApiPage(0);
-                    }}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-2">
-                    End Date
-                  </label>
-                  <Input
-                    type="date"
-                    value={endDateFilter}
-                    onChange={(e) => {
-                      setEndDateFilter(e.target.value);
-                      setApiPage(0);
-                    }}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className={`space-y-8 transition-opacity duration-200 ${isFetching && !isLoading ? 'opacity-50' : 'opacity-100'}`} key={`page-${apiPage}`}>
+            <div className={`space-y-6 transition-opacity duration-200 ${isFetching && !isLoading ? 'opacity-50' : 'opacity-100'}`} key={`page-${apiPage}`}>
+              {/* Live Sessions Section */}
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
                     {getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}s - {getUserTimezone()}
                   </h2>
-                  {(() => {
-                    const filteredLiveSessions = filterSessions(liveSessions);
-                    return (
-                      filteredLiveSessions.length > 0 && (
-                        <span className="text-sm text-neutral-600 dark:text-neutral-300">
-                          {filteredLiveSessions.length} session
-                          {filteredLiveSessions.length !== 1 ? "s" : ""} found
-                        </span>
-                      )
-                    );
-                  })()}
+                  {liveSessions.length > 0 && (
+                    <span className="text-sm text-neutral-600 dark:text-neutral-300">
+                      {liveSessions.length} session
+                      {liveSessions.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
                 </div>
-                {(() => {
-                  const filteredLiveSessions = filterSessions(liveSessions);
-
-                  return (
-                    <>
-                      {filteredLiveSessions.length > 0 ? (
-                        <div className="space-y-4 w-full">
-                          {filteredLiveSessions.map((session) =>
-                            renderSession(session, isSessionLive(session))
-                          )}
-                        </div>
-                      ) : (sessions as any)?.defaultDayConfig?.defaultClassLink &&
-                        !startDateFilter &&
-                        !endDateFilter ? (
-                        <div className="w-full">
-                          <DefaultClassCard
-                            defaultClassLink={(sessions as any)?.defaultDayConfig?.defaultClassLink}
-                            learnerButtonConfig={(sessions as any)?.defaultDayConfig?.learnerButtonConfig}
-                            defaultClassName={(sessions as any)?.defaultDayConfig?.defaultClassName}
-                          />
-                        </div>
-                      ) : (
-                        <div className="text-neutral-600 dark:text-neutral-300 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
-                          <div className="text-center">
-                            <Users
-                              size={48}
-                              className="mx-auto text-neutral-400 dark:text-neutral-500 mb-3"
-                            />
-                            <p className="font-medium">
-                              {startDateFilter || endDateFilter
-                                ? `No ${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase()}s match your filters`
-                                : `No ${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase()}s at the moment`}
-                            </p>
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-                              {startDateFilter || endDateFilter
-                                ? "Try adjusting your filters or clear them to see all sessions"
-                                : `Check back later or view upcoming ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}s`}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
+                {liveSessions.length > 0 ? (
+                  <div className="space-y-4 w-full">
+                    {liveSessions.map((session) =>
+                      renderSession(session, isSessionLive(session))
+                    )}
+                  </div>
+                ) : (sessions as any)?.defaultDayConfig?.defaultClassLink ? (
+                  <div className="w-full">
+                    <DefaultClassCard
+                      defaultClassLink={(sessions as any)?.defaultDayConfig?.defaultClassLink}
+                      learnerButtonConfig={(sessions as any)?.defaultDayConfig?.learnerButtonConfig}
+                      defaultClassName={(sessions as any)?.defaultDayConfig?.defaultClassName}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-neutral-600 dark:text-neutral-300 p-4 sm:p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
+                    <div className="text-center">
+                      <Users
+                        size={48}
+                        className="mx-auto text-neutral-400 dark:text-neutral-500 mb-3"
+                      />
+                      <p className="font-medium">
+                        No {getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase()}s at the moment
+                      </p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+                        Check back later or view upcoming {getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}s
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* Upcoming Sessions Section */}
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
@@ -1280,6 +1206,66 @@ function RouteComponent() {
                       )
                     );
                   })()}
+                </div>
+
+                {/* Filters Section - Below Upcoming Sessions title */}
+                <div className="p-2 sm:p-4 bg-gradient-to-r from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/60 border border-neutral-200 dark:border-neutral-800 rounded-lg mb-4">
+                  <div className="flex items-center justify-between gap-2 mb-2 sm:mb-4">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      <FunnelSimple
+                        size={16}
+                        className="text-neutral-600 dark:text-neutral-300 sm:w-[18px] sm:h-[18px]"
+                      />
+                      <h3 className="text-sm sm:text-lg font-semibold text-neutral-800 dark:text-neutral-100">
+                        Filters
+                      </h3>
+                    </div>
+                    {(startDateFilter || endDateFilter) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearFilters}
+                        className="border-red-300 dark:border-red-900 text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 hover:border-red-400 dark:hover:border-red-800 h-7 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
+                      >
+                        <X size={12} className="mr-0.5 sm:mr-1 sm:w-[14px] sm:h-[14px]" />
+                        <span className="hidden xs:inline">Clear </span>Filters
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                    <div>
+                      <label className="block text-[10px] sm:text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-1 sm:mb-2">
+                        Start Date
+                      </label>
+                      <Input
+                        type="date"
+                        value={startDateFilter}
+                        min={formatDateToISO(new Date())}
+                        onChange={(e) => {
+                          setStartDateFilter(e.target.value);
+                          setApiPage(0);
+                        }}
+                        className="w-full text-xs sm:text-sm h-8 sm:h-10"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] sm:text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-1 sm:mb-2">
+                        End Date
+                      </label>
+                      <Input
+                        type="date"
+                        value={endDateFilter}
+                        min={startDateFilter || formatDateToISO(new Date())}
+                        onChange={(e) => {
+                          setEndDateFilter(e.target.value);
+                          setApiPage(0);
+                        }}
+                        className="w-full text-xs sm:text-sm h-8 sm:h-10"
+                      />
+                    </div>
+                  </div>
                 </div>
                 {(() => {
                   const filteredUpcomingSessions =
@@ -1325,7 +1311,7 @@ function RouteComponent() {
                           </div>
                         </>
                       ) : (
-                        <div className="text-neutral-600 dark:text-neutral-300 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
+                        <div className="text-neutral-600 dark:text-neutral-300 p-4 sm:p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
                           <div className="text-center">
                             <Clock
                               size={48}
@@ -1389,11 +1375,11 @@ function RouteComponent() {
           <TabsContent value="calendar" className="mt-6">
             {renderCalendarView()}
           </TabsContent>
-        </Tabs>
+        </Tabs >
 
         {/* Day Details Modal */}
         {renderDayModal()}
-      </div>
-    </LayoutContainer>
+      </div >
+    </LayoutContainer >
   );
 }

@@ -45,6 +45,13 @@ public class PackageSessionLearnerInvitationToPaymentOption {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "cpo_id")
+    private String cpoId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cpo_id", insertable = false, updatable = false)
+    private vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption complexPaymentOption;
+
     public PackageSessionLearnerInvitationToPaymentOption(EnrollInvite enrollInvite, PackageSession packageSession,
             PaymentOption paymentOption, String status) {
         this.enrollInvite = enrollInvite;
@@ -59,7 +66,8 @@ public class PackageSessionLearnerInvitationToPaymentOption {
                 .packageSessionId(this.packageSession.getId())
                 .enrollInviteId(this.enrollInvite.getId())
                 .status(this.status)
-                .paymentOption(this.paymentOption.mapToPaymentOptionDTO())
+                .paymentOption(this.paymentOption != null ? this.paymentOption.mapToPaymentOptionDTO() : null)
+                .cpoId(this.cpoId)
                 .build();
     }
 }

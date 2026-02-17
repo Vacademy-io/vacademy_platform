@@ -18,9 +18,11 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLo
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
@@ -438,6 +440,20 @@ public class PaymentService {
          * @return Map containing payment status and details
          */
         public Map<String, Object> checkPaymentStatus(String vendor, String instituteId, String orderId) {
+                return checkPaymentStatus(vendor, instituteId, orderId, null);
+        }
+
+        /**
+         * Checks payment status for a given order ID.
+         * Accepts an optional PaymentLogDTO to avoid duplicate database queries.
+         * 
+         * @param vendor      Payment gateway vendor
+         * @param instituteId Institute ID
+         * @param orderId     Order ID to check status for
+         * @param paymentLogDto Optional PaymentLogDTO (if already fetched, pass it to avoid duplicate query)
+         * @return Map containing payment status and details
+         */
+        public Map<String, Object> checkPaymentStatus(String vendor, String instituteId, String orderId, PaymentLogDTO paymentLogDto) {
                 Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
                                 .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
                 PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
@@ -466,20 +482,49 @@ public class PaymentService {
 
                 if (PaymentGateway.CASHFREE.name().equalsIgnoreCase(vendor)) {
                         // Cashfree: status is updated by webhook; return from PaymentLog
-                        var logDto = paymentLogService.getPaymentLog(orderId);
+                        // Reuse PaymentLogDTO if provided to avoid duplicate database query
+                        PaymentLogDTO logDto = paymentLogDto != null 
+                                        ? paymentLogDto 
+                                        : paymentLogService.getPaymentLog(orderId);
                         String paymentStatus = logDto.getPaymentStatus() != null
                                         ? logDto.getPaymentStatus()
                                         : PaymentStatusEnum.PAYMENT_PENDING.name();
                         Map<String, Object> responseMap = new HashMap<>();
-                        // Frontend payment-result expects payment_status, but we keep status too for existing clients.
                         responseMap.put("status", paymentStatus);
                         responseMap.put("paymentStatus", paymentStatus);
                         responseMap.put("payment_status", paymentStatus);
-                        responseMap.put("details", Map.of(
-                                        "orderId", orderId,
-                                        "order_id", orderId,
-                                        "paymentStatus", paymentStatus,
-                                        "payment_status", paymentStatus));
+                        Map<String, Object> details = new HashMap<>();
+                        details.put("orderId", orderId);
+                        details.put("order_id", orderId);
+                        details.put("paymentStatus", paymentStatus);
+                        details.put("payment_status", paymentStatus);
+                        responseMap.put("details", details);
+
+                        // When PAID: return tokens for auto-login (catalog / learner-invitation-response without stored password)
+                        if (PaymentStatusEnum.PAID.name().equalsIgnoreCase(paymentStatus)
+                                        && StringUtils.hasText(logDto.getUserId())
+                                        && StringUtils.hasText(instituteId)) {
+                                try {
+                                        UserWithJwtDTO tokens = authService.generateJwtTokensWithUser(logDto.getUserId(), instituteId);
+                                        if (tokens != null) {
+                                                if (StringUtils.hasText(tokens.getAccessToken())) {
+                                                        responseMap.put("accessToken", tokens.getAccessToken());
+                                                        responseMap.put("access_token", tokens.getAccessToken());
+                                                }
+                                                if (StringUtils.hasText(tokens.getRefreshToken())) {
+                                                        responseMap.put("refreshToken", tokens.getRefreshToken());
+                                                        responseMap.put("refresh_token", tokens.getRefreshToken());
+                                                }
+                                                if (tokens.getUser() != null) {
+                                                        responseMap.put("user", tokens.getUser());
+                                                }
+                                                responseMap.put("institute_id", instituteId);
+                                        }
+                                } catch (Exception e) {
+                                        log.warn("Could not generate tokens for payment-result auto-login: orderId={}, userId={}, error={}",
+                                                        orderId, logDto.getUserId(), e.getMessage());
+                                }
+                        }
                         return responseMap;
                 }
 

@@ -37,7 +37,6 @@ import java.util.Map;
 public class CashfreePaymentManager implements PaymentServiceStrategy {
 
     private static final String CASHFREE_PRODUCTION_API_BASE = "https://api.cashfree.com/pg";
-    private static final String CASHFREE_SANDBOX_API_BASE = "https://sandbox.cashfree.com/pg";
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
@@ -52,16 +51,6 @@ public class CashfreePaymentManager implements PaymentServiceStrategy {
 
     @Value("${payment.cashfree.default-return-url:https://vacademy.io}")
     private String defaultReturnUrl;
-
-    /**
-     * Cashfree environment mode for backend API calls.
-     * Must match frontend checkout mode (sandbox vs production) otherwise checkout will fail with:
-     * "payment_session_id is not present or is invalid".
-     *
-     * Allowed values: sandbox, production
-     */
-    @Value("${payment.cashfree.mode:production}")
-    private String cashfreeMode;
 
     public CashfreePaymentManager(WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
         this.webClient = webClientBuilder.build();
@@ -78,12 +67,9 @@ public class CashfreePaymentManager implements PaymentServiceStrategy {
             String appId = (String) paymentGatewaySpecificData.get("clientId");
             String secretKey = (String) paymentGatewaySpecificData.get("clientSecret");
             String baseUrl = (String) paymentGatewaySpecificData.get("baseUrl");
-            // NOTE: Frontend chooses sandbox vs production. Backend must create payment sessions in the same mode.
-            // If institute config does not provide baseUrl, fall back based on payment.cashfree.mode.
+            // For real (production) payments use baseUrl https://api.cashfree.com/pg (then /orders is appended).
             if (!StringUtils.hasText(baseUrl)) {
-                String mode = StringUtils.hasText(cashfreeMode) ? cashfreeMode.trim().toLowerCase() : "production";
-                baseUrl = "sandbox".equals(mode) ? CASHFREE_SANDBOX_API_BASE : CASHFREE_PRODUCTION_API_BASE;
-                log.warn("Cashfree baseUrl missing in institute config; falling back to {} mode baseUrl={}", mode, baseUrl);
+                baseUrl = CASHFREE_PRODUCTION_API_BASE;
             }
 
             if (!StringUtils.hasText(appId) || !StringUtils.hasText(secretKey)) {
@@ -126,16 +112,8 @@ public class CashfreePaymentManager implements PaymentServiceStrategy {
                 throw new VacademyException("Empty or invalid response from Cashfree create order API.");
             }
 
-            // payment_session_id is mandatory for frontend checkout
-            if (!StringUtils.hasText(cfResponse.getPaymentSessionId())) {
-                log.error("Cashfree create order returned empty payment_session_id. apiUrl={}, mode={}, response={}",
-                        url, cashfreeMode, safeToJson(cfResponse));
-                throw new VacademyException("Cashfree API did not return payment_session_id. " +
-                        "Ensure backend Cashfree mode (sandbox/production) matches frontend checkout mode and credentials.");
-            }
-
-            log.info("Cashfree order created successfully. cf_order_id={}, order_id={}, payment_session_id={}, apiUrl={}, mode={}",
-                    cfResponse.getCfOrderId(), cfResponse.getOrderId(), cfResponse.getPaymentSessionId(), url, cashfreeMode);
+            log.info("Cashfree order created successfully. cf_order_id={}, order_id={}",
+                    cfResponse.getCfOrderId(), cfResponse.getOrderId());
 
             return buildPaymentResponse(cfResponse, request);
 
@@ -214,32 +192,19 @@ public class CashfreePaymentManager implements PaymentServiceStrategy {
     private PaymentResponseDTO buildPaymentResponse(CashfreeOrderResponse cfResponse,
                                                     PaymentInitiationRequestDTO request) {
         Map<String, Object> responseData = new HashMap<>();
-        String cfOrderId = cfResponse.getCfOrderId();
-        String orderId = cfResponse.getOrderId();
-        String paymentSessionId = cfResponse.getPaymentSessionId();
-        String orderStatus = cfResponse.getOrderStatus();
-
-        // camelCase keys (used across the backend)
-        responseData.put("cfOrderId", cfOrderId);
-        responseData.put("orderId", orderId);
-        responseData.put("paymentSessionId", paymentSessionId);
-        responseData.put("status", orderStatus);
-
-        // snake_case keys (frontend reads both camelCase and snake_case)
-        responseData.put("cf_order_id", cfOrderId);
-        responseData.put("order_id", orderId);
-        responseData.put("payment_session_id", paymentSessionId);
-        responseData.put("order_status", orderStatus);
+        responseData.put("cfOrderId", cfResponse.getCfOrderId());
+        responseData.put("orderId", cfResponse.getOrderId());
+        responseData.put("paymentSessionId", cfResponse.getPaymentSessionId());
+        responseData.put("status", cfResponse.getOrderStatus());
 
         // Typically, order_status will be "ACTIVE" until payment completes.
         PaymentStatusEnum paymentStatus = PaymentStatusEnum.PAYMENT_PENDING;
-        if ("PAID".equalsIgnoreCase(orderStatus) || "SUCCESS".equalsIgnoreCase(orderStatus)) {
+        if ("PAID".equalsIgnoreCase(cfResponse.getOrderStatus()) || "SUCCESS".equalsIgnoreCase(cfResponse.getOrderStatus())) {
             paymentStatus = PaymentStatusEnum.PAID;
-        } else if ("FAILED".equalsIgnoreCase(orderStatus) || "CANCELLED".equalsIgnoreCase(orderStatus)) {
+        } else if ("FAILED".equalsIgnoreCase(cfResponse.getOrderStatus()) || "CANCELLED".equalsIgnoreCase(cfResponse.getOrderStatus())) {
             paymentStatus = PaymentStatusEnum.FAILED;
         }
         responseData.put("paymentStatus", paymentStatus.name());
-        responseData.put("payment_status", paymentStatus.name());
 
         PaymentResponseDTO dto = new PaymentResponseDTO();
         dto.setOrderId(request.getOrderId());

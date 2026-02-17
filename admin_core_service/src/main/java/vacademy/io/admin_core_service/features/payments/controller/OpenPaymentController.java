@@ -93,12 +93,17 @@ public class OpenPaymentController {
             HttpServletResponse response) {
 
         try {
+            PaymentLogDTO paymentLogDto = null;
+            
             // Fallback for missing instituteId
             if (instituteId == null || instituteId.isEmpty() || "null".equalsIgnoreCase(instituteId)) {
                 log.info("Missing instituteId for orderId: {}, attempting to resolve from PaymentLog", orderId);
                 try {
                     Optional<PaymentLog> logOpt = paymentLogRepository.findById(orderId);
                     if (logOpt.isPresent()) {
+                        // Convert to DTO to reuse later and avoid duplicate query
+                        paymentLogDto = logOpt.get().mapToDTO();
+                        
                         UserPlan plan = logOpt.get().getUserPlan();
                         if (plan != null) {
                             String inviteId = plan.getEnrollInviteId();
@@ -139,7 +144,8 @@ public class OpenPaymentController {
                         .body(java.util.Map.of("error", "instituteId is required and could not be resolved."));
             }
 
-            java.util.Map<String, Object> status = paymentService.checkPaymentStatus(vendor, instituteId, orderId);
+            // Pass PaymentLogDTO if available to avoid duplicate database query
+            java.util.Map<String, Object> status = paymentService.checkPaymentStatus(vendor, instituteId, orderId, paymentLogDto);
 
             return ResponseEntity.ok(status);
         } catch (UnsupportedOperationException e) {

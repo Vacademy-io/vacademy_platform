@@ -153,6 +153,75 @@ public class PaymentLogService {
         paymentLogRepository.save(paymentLog);
 
         log.debug("Payment log updated successfully for ID={}", paymentLogId);
+
+        // When payment is PAID (e.g. synchronous Stripe success), run sync-only post-payment logic:
+        // cleanup + invoice generation (and invoice email if enabled). Do NOT call applicant service
+        // (that is for applicant flow). applyOperationsOnFirstPayment is run by the enroll flow after
+        // handlePayment returns.
+        if (PaymentStatusEnum.PAID.name().equals(paymentStatus)) {
+            String instituteId = resolveInstituteIdForPaymentLog(paymentLog);
+            if (StringUtils.hasText(instituteId)) {
+                try {
+                    handlePostPaymentLogicForSyncPayment(paymentLog, instituteId);
+                } catch (Exception e) {
+                    log.error("Post-payment logic failed for payment log {} (invoice/cleanup may be skipped): {}",
+                            paymentLogId, e.getMessage(), e);
+                    SentryLogger.logError(e, "Post-payment logic failed after 4-arg updatePaymentLog", Map.of(
+                            "payment.log.id", paymentLogId,
+                            "operation", "handlePostPaymentLogicForSyncPayment"));
+                    // Do not rethrow: payment is already recorded as PAID; enrollment flow continues
+                }
+            } else {
+                log.warn("Could not resolve instituteId for payment log {}, skipping post-payment logic (e.g. invoice generation)", paymentLogId);
+            }
+        }
+    }
+
+    /**
+     * Post-payment logic for the 4-arg updatePaymentLog path (synchronous payment, e.g. Stripe same-request success).
+     * Runs only cleanup and invoice generation (and invoice email when institute setting is on).
+     * Does NOT call applicant service (different use case) or applyOperationsOnFirstPayment (done by enroll flow).
+     */
+    private void handlePostPaymentLogicForSyncPayment(PaymentLog paymentLog, String instituteId) {
+        handlePaymentSuccessEntryCleanup(paymentLog, instituteId);
+
+        if (paymentLog.getUserPlan() == null) {
+            log.info("Payment marked as PAID for donation (sync path), sending donation confirmation notification");
+            handleDonationPaymentConfirmation(paymentLog, instituteId);
+            return;
+        }
+
+        if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
+            try {
+                log.info("Generating invoice for payment log ID: {} (sync path)", paymentLog.getId());
+                invoiceService.generateInvoice(
+                        paymentLog.getUserPlan(),
+                        paymentLog,
+                        instituteId);
+                log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
+            } catch (Exception e) {
+                log.error(
+                        "Failed to generate invoice for payment log ID: {}. Payment confirmation will continue without invoice.",
+                        paymentLog.getId(), e);
+            }
+        }
+    }
+
+    /**
+     * Resolve institute ID from payment log's user plan and enroll invite (for post-payment logic).
+     */
+    private String resolveInstituteIdForPaymentLog(PaymentLog paymentLog) {
+        if (paymentLog == null || paymentLog.getUserPlan() == null) {
+            return null;
+        }
+        try {
+            if (paymentLog.getUserPlan().getEnrollInvite() != null) {
+                return paymentLog.getUserPlan().getEnrollInvite().getInstituteId();
+            }
+        } catch (Exception e) {
+            log.debug("Could not get instituteId from payment log {}: {}", paymentLog.getId(), e.getMessage());
+        }
+        return null;
     }
 
     /**
@@ -186,36 +255,39 @@ public class PaymentLogService {
         List<PaymentLog> paymentLogs = new ArrayList<>();
         int maxRetries = 10;
 
-        // --- Retry Loop to find by OrderID in JSON or by PK as fallback ---
-        for (int i = 0; i < maxRetries; i++) {
-            // First check by orderId in originalRequest.order_id JSON path (primary method)
-            paymentLogs = paymentLogRepository.findAllByOrderIdInOriginalRequest(orderId);
+        // --- FAST PATH (preferred): treat webhook orderId as PaymentLog PK ---
+        // In most of our flows (e.g. CASHFREE), the gateway "order_id" is the same UUID we generate for payment_log.id.
+        // Doing a PK lookup avoids expensive JSON LIKE scans on payment_specific_data.
+        Optional<PaymentLog> pkLogOpt = paymentLogRepository.findById(orderId);
+        if (pkLogOpt.isPresent()) {
+            paymentLogs.add(pkLogOpt.get());
+            log.info("Found payment log by PK id={} (skipping JSON order-id scan)", orderId);
+        } else {
+            // --- SLOW PATH (fallback): find by OrderID in JSON ---
+            // Keep retry loop for eventual consistency (some gateways/webhooks may arrive before the payment log write).
+            for (int i = 0; i < maxRetries; i++) {
+                // First check by orderId in originalRequest.order_id JSON path (primary method)
+                paymentLogs = paymentLogRepository.findAllByOrderIdInOriginalRequest(orderId);
 
-            // If not found, try the broader search
-            if (paymentLogs.isEmpty()) {
-                paymentLogs = paymentLogRepository.findAllByOrderIdInJson(orderId);
-            }
+                // If not found, try the broader search
+                if (paymentLogs.isEmpty()) {
+                    paymentLogs = paymentLogRepository.findAllByOrderIdInJson(orderId);
+                }
 
-            // If none found by OrderId, check if the input is actually a PK (legacy/default
-            // way)
-            if (paymentLogs.isEmpty()) {
-                Optional<PaymentLog> logOpt = paymentLogRepository.findById(orderId);
-                logOpt.ifPresent(paymentLogs::add);
-            }
+                if (!paymentLogs.isEmpty()) {
+                    log.info("Found {} payment logs for JSON OrderId {} on attempt {}/{}", paymentLogs.size(), orderId,
+                            i + 1, maxRetries);
+                    break;
+                }
 
-            if (!paymentLogs.isEmpty()) {
-                log.info("Found {} payment logs for ID/Order {} on attempt {}/{}", paymentLogs.size(), orderId, i + 1,
-                        maxRetries);
-                break;
-            }
-
-            if (i < maxRetries - 1) {
-                try {
-                    log.warn("No payment logs found for {}. Retrying in 2 seconds...", orderId);
-                    Thread.sleep(2000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Thread interrupted during payment log retry", e);
+                if (i < maxRetries - 1) {
+                    try {
+                        log.warn("No payment logs found for {}. Retrying in 2 seconds...", orderId);
+                        Thread.sleep(2000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Thread interrupted during payment log retry", e);
+                    }
                 }
             }
         }

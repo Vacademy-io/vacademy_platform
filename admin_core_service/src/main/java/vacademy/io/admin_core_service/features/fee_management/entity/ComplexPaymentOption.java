@@ -35,4 +35,7 @@ public class ComplexPaymentOption {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
+
+    @Column(name = "metadata_json", columnDefinition = "TEXT")
+    private String metadataJson;
 }

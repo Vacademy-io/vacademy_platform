@@ -98,7 +98,19 @@ public class GetSessionByIdService {
             dto.setDefaultMeetLink(first.getDefaultMeetLink());
             dto.setStartTime(first.getSessionStartTime());
             dto.setLastEntryTime(first.getLastEntryTime());
+            dto.setDefaultClassLink(first.getDefaultClassLink());
+            dto.setDefaultClassLinkType(first.getDefaultClassLinkType());
             dto.setLinkType(first.getLinkType());
+
+            if (first.getLearnerButtonConfig() != null) {
+                try {
+                    dto.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                            first.getLearnerButtonConfig(), GetSessionByIdResponseDTO.LearnerButtonConfigDTO.class));
+                } catch (Exception e) {
+                    System.err.println("Error deserializing LearnerButtonConfig: " + e.getMessage());
+                }
+            }
+
             dto.setJoinLink(first.getRegistrationFormLinkForPublicSessions());
             dto.setRecurrenceType(first.getRecurrenceType());
             dto.setAccessType(first.getAccessLevel());
@@ -176,6 +188,9 @@ public class GetSessionByIdService {
                         .linkType(p.getLinkType())
                         .sessionStreamingServiceType(p.getSessionStreamingServiceType())
                         .defaultMeetLink(p.getDefaultMeetLink())
+                        .defaultClassLink(p.getDefaultClassLink())
+                        .defaultClassLinkType(p.getDefaultClassLinkType())
+                        .learnerButtonConfig(deserializeLearnerButtonConfig(p.getLearnerButtonConfig()))
                         .waitingRoomLink(p.getWaitingRoomLink())
                         .waitingRoomTime(p.getWaitingRoomTime())
                         .registrationFormLinkForPublicSessions(p.getRegistrationFormLinkForPublicSessions())
@@ -218,6 +233,9 @@ public class GetSessionByIdService {
                         .linkType(p.getLinkType())
                         .sessionStreamingServiceType(p.getSessionStreamingServiceType())
                         .defaultMeetLink(p.getDefaultMeetLink())
+                        .defaultClassLink(p.getDefaultClassLink())
+                        .defaultClassLinkType(p.getDefaultClassLinkType())
+                        .learnerButtonConfig(deserializeLearnerButtonConfig(p.getLearnerButtonConfig()))
                         .waitingRoomLink(p.getWaitingRoomLink())
                         .waitingRoomTime(p.getWaitingRoomTime())
                         .registrationFormLinkForPublicSessions(p.getRegistrationFormLinkForPublicSessions())
@@ -248,5 +266,17 @@ public class GetSessionByIdService {
 
     public String findEarliestSchedule(String sessionId){
         return scheduleRepository.findEarliestScheduleIdBySessionId(sessionId);
+    }
+
+    private GetSessionByIdResponseDTO.LearnerButtonConfigDTO deserializeLearnerButtonConfig(String json) {
+        if (json == null)
+            return null;
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json,
+                    GetSessionByIdResponseDTO.LearnerButtonConfigDTO.class);
+        } catch (Exception e) {
+            System.err.println("Error deserializing LearnerButtonConfig: " + e.getMessage());
+            return null;
+        }
     }
 }

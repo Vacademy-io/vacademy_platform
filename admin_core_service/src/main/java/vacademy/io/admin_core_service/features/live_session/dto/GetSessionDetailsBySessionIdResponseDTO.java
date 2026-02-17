@@ -1,10 +1,10 @@
 package vacademy.io.admin_core_service.features.live_session.dto;
 
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.admin_core_service.features.live_session.dto.GetSessionByIdResponseDTO.LearnerButtonConfigDTO;
 
 import java.sql.Date;
 import java.sql.Time;
@@ -25,6 +25,9 @@ public class GetSessionDetailsBySessionIdResponseDTO {
     private String linkType;
     private String sessionStreamingServiceType;
     private String defaultMeetLink;
+    private String defaultClassLink;
+    private String defaultClassLinkType;
+    private LearnerButtonConfigDTO learnerButtonConfig;
     private String waitingRoomLink;
     private Integer waitingRoomTime;
     private String registrationFormLinkForPublicSessions;

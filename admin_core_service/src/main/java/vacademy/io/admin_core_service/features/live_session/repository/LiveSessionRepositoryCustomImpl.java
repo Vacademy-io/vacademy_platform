@@ -53,7 +53,9 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
                     CASE
                         WHEN ss.custom_meeting_link IS NOT NULL AND ss.custom_meeting_link <> '' THEN ss.custom_meeting_link
                         ELSE s.default_meet_link
-                    END AS meetingLink
+                    END AS meetingLink,
+                    ss.learner_button_config AS learnerButtonConfig,
+                    ss.default_class_link AS defaultClassLink
                 """;
 
         String baseFrom = """

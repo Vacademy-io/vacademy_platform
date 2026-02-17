@@ -30,7 +30,9 @@ import java.util.Date;
         @ColumnResult(name = "registrationFormLinkForPublicSessions", type = String.class),
         @ColumnResult(name = "allowPlayPause", type = Boolean.class),
         @ColumnResult(name = "timezone", type = String.class),
-        @ColumnResult(name = "meetingLink", type = String.class)
+        @ColumnResult(name = "meetingLink", type = String.class),
+        @ColumnResult(name = "learnerButtonConfig", type = String.class),
+        @ColumnResult(name = "defaultClassLink", type = String.class)
 }))
 public class LiveSession {
 

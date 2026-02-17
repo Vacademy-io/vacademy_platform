@@ -56,7 +56,9 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink()
         )).toList();
     }
 
@@ -80,7 +82,9 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink()
         )).toList();
 
         // Group by date
@@ -96,9 +100,9 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-    public List<GroupedSessionsByDateDTO> getPreviousSession(String instituteId, CustomUserDetails user) {
-        List<LiveSessionRepository.LiveSessionListProjection> projections =
-                sessionRepository.findPreviousSessions(instituteId);
+        public List<GroupedSessionsByDateDTO> getPreviousSession(String instituteId, CustomUserDetails user) {
+                List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
+                                .findPreviousSessions(instituteId);
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
@@ -116,7 +120,9 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink()
         )).toList();
 
         // Group by date
@@ -193,7 +199,9 @@ public class GetLiveSessionService {
                         p.getSubject(),
                         p.getMeetingLink(),
                         p.getRegistrationFormLinkForPublicSessions(),
-                        p.getTimezone()
+                        p.getTimezone(),
+                        deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                        p.getDefaultClassLink() 
                 );
                 uniqueSessions.put(sessionId, dto);
             }
@@ -223,7 +231,9 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink()
         )).toList();
 
         // Group by date
@@ -259,7 +269,9 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink()
         )).toList();
 
         // Group by date
@@ -302,7 +314,9 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink()
         )).toList();
 
         // Group by date
@@ -344,7 +358,9 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink()
             ))
             .collect(Collectors.toList());
         
@@ -426,5 +442,17 @@ public class GetLiveSessionService {
         return type + " is deleted";
     }
 
+        private vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO deserializeLearnerButtonConfig(
+                        String json) {
+                if (json == null)
+                        return null;
+                try {
+                        return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json,
+                                        vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO.class);
+                } catch (Exception e) {
+                        System.err.println("Error deserializing LearnerButtonConfig: " + e.getMessage());
+                        return null;
+                }
+        }
 
 }

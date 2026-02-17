@@ -32,8 +32,37 @@ public class GetLiveSessionService {
     @Autowired
     private LiveSessionNotificationProcessor notificationProcessor;
 
-    @Autowired
-    private ScheduleNotificationRepository scheduleNotificationRepository;
+        @Autowired
+
+        private ScheduleNotificationRepository scheduleNotificationRepository;
+
+        private GroupedSessionsByDateDTO createGroupedSessionsByDateDTO(Date date, List<LiveSessionListDTO> sessions) {
+                vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO config = null;
+                String defaultLink = null;
+
+                // Find first non-null config/link
+                for (LiveSessionListDTO session : sessions) {
+                        if (session.getLearnerButtonConfig() != null && config == null) {
+                                config = session.getLearnerButtonConfig();
+                        }
+                        if (session.getDefaultClassLink() != null && defaultLink == null) {
+                                defaultLink = session.getDefaultClassLink();
+                        }
+                        if (config != null && defaultLink != null)
+                                break;
+                }
+
+                // Clear from sessions to avoid duplication in response
+                for (LiveSessionListDTO session : sessions) {
+                        session.setLearnerButtonConfig(null);
+                        session.setDefaultClassLink(null);
+                }
+
+                GroupedSessionsByDateDTO dto = new GroupedSessionsByDateDTO(date, sessions);
+                dto.setLearnerButtonConfig(config);
+                dto.setDefaultClassLink(defaultLink);
+                return dto;
+        }
 
     public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
 
@@ -319,18 +348,17 @@ public class GetLiveSessionService {
                 p.getDefaultClassLink()
         )).toList();
 
-        // Group by date
-        return flatList.stream()
-                .collect(Collectors.groupingBy(
-                        LiveSessionListDTO::getMeetingDate,
-                        TreeMap::new, // to keep dates sorted
-                        Collectors.toList()
-                ))
-                .entrySet()
-                .stream()
-                .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
-                .toList();
-    }
+                // Group by date
+                return flatList.stream()
+                                .collect(Collectors.groupingBy(
+                                                LiveSessionListDTO::getMeetingDate,
+                                                TreeMap::new, // to keep dates sorted
+                                                Collectors.toList()))
+                                .entrySet()
+                                .stream()
+                                .map(entry -> createGroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
+                                .toList();
+        }
 
     public SessionSearchResponse searchSessions(SessionSearchRequest request, CustomUserDetails user) {
         // Create pageable object

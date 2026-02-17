@@ -13,4 +13,11 @@ import java.util.List;
 public class GroupedSessionsByDateDTO {
     private Date date;
     private List<LiveSessionListDTO> sessions;
+    private LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig;
+    private String defaultClassLink;
+
+    public GroupedSessionsByDateDTO(Date date, List<LiveSessionListDTO> sessions) {
+        this.date = date;
+        this.sessions = sessions;
+    }
 }

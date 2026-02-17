@@ -66,6 +66,17 @@ public class DefaultEnrollInviteService {
     @Autowired
     private InstituteCustomFiledService instituteCustomFiledService;
 
+    @org.springframework.beans.factory.annotation.Value("${default.learner.portal.url:https://learner.vacademy.io}")
+    private String learnerBaseUrl;
+
+    @org.springframework.beans.factory.annotation.Value("${default.learner.portal.enroll_invite_path:/learner-invitation-response}")
+    private String learnerInvitePath;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.shortlink.service.ShortUrlManagementService shortUrlManagementService;
+
+    private static final String SHORT_LINK_SOURCE_ENROLL_INVITE = "ENROLL_INVITE";
+
     public void createDefaultEnrollInvite(PackageSession packageSession, String instituteId) {
         EnrollInvite enrollInvite = new EnrollInvite();
         enrollInvite.setName(getNameForDefaultEnrollInvite(packageSession));
@@ -93,7 +104,20 @@ public class DefaultEnrollInviteService {
                 List.of(StatusEnum.ACTIVE.name()));
 
         if (optionalPaymentOption.isPresent()) {
-            repository.save(enrollInvite);
+            enrollInvite = repository.save(enrollInvite);
+
+            // Generate Short URL using centralized service
+            String destinationUrl = learnerBaseUrl + learnerInvitePath + "?instituteId="
+                    + enrollInvite.getInstituteId() + "&inviteCode="
+                    + enrollInvite.getInviteCode();
+            String shortUrl = shortUrlManagementService.createShortUrl(
+                    destinationUrl,
+                    SHORT_LINK_SOURCE_ENROLL_INVITE,
+                    enrollInvite.getId());
+            if (shortUrl != null) {
+                enrollInvite.setShortUrl(shortUrl);
+                enrollInvite = repository.save(enrollInvite);
+            }
 
             // Automatically copy default custom fields to the new enroll invite
             instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(instituteId, enrollInvite.getId());

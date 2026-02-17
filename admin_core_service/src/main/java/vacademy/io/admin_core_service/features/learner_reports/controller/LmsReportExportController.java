@@ -92,4 +92,26 @@ public class LmsReportExportController {
         return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
     }
 
+    @PostMapping(value = "/chapter-wise-learners-report", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadChapterWiseLearnersReport(@RequestBody ReportFilterDTO reportFilterDTO,
+                                                                    @RequestAttribute("user") CustomUserDetails userDetails) {
+        // Reuse the existing module-wise learner report generator which already builds
+        // the "Module Detail Report" PDF matching the desired layout.
+        byte[] pdfBytes = lmsReportExportService.generateModuleProgressReport(
+                reportFilterDTO.getModuleId(),
+                reportFilterDTO.getUserId(),
+                reportFilterDTO.getPackageSessionId(),
+                userDetails
+        );
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(ContentDisposition
+                .builder("attachment")
+                .filename("Module_Detail_Report.pdf")
+                .build());
+
+        return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
+    }
+
 }

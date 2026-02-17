@@ -1,7 +1,7 @@
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { createFileRoute } from "@tanstack/react-router";
 import { Helmet } from "react-helmet";
-import { useEffect, useState, useLayoutEffect } from "react";
+import { useEffect, useState, useLayoutEffect, useCallback, useMemo } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useLiveSessions } from "./-hooks/useLiveSessions";
 import { SessionDetails } from "./-types/types";
@@ -45,6 +45,9 @@ import {
   getTimezoneDisplayInfo,
 } from "@/utils/timezone";
 import { getUserTimezone } from "@/hooks/use-server-time";
+import { DefaultClassCard } from "./-components/DefaultClassCard";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 export const Route = createFileRoute("/study-library/live-class/")({
   component: RouteComponent,
 });
@@ -87,6 +90,16 @@ function RouteComponent() {
 
 
   const { mutateAsync: markAttendance } = useMarkAttendance();
+
+  // State to trigger re-renders for time-based updates
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 10000); // Check every 10 seconds for smoother transitions
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const fetchBatchIds = async () => {
@@ -310,34 +323,59 @@ function RouteComponent() {
     setApiPage(0);
   }, [startDateFilter, endDateFilter, selectedView]);
 
-  // Helper function to determine if a session is currently live (in waiting room or live)
-  const isSessionLive = (session: SessionDetails) => {
+  // Helper function to determine if a session is currently live (in waiting room or active)
+  const isSessionLive = useCallback((session: SessionDetails) => {
+    // We access currentTime here just to ensure this function (and dependents) updating
+    // But we still use new Date() for the most precise check at moment of execution
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _tick = currentTime;
     const now = new Date();
-    let sessionDate, waitingRoomStart;
+
+    let sessionStart, sessionEnd, waitingRoomStart;
 
     if (session.timezone) {
       // Use timezone-aware calculation
-      sessionDate = convertSessionTimeToUserTimezone(
+      sessionStart = convertSessionTimeToUserTimezone(
         session.meeting_date,
         session.start_time,
         session.timezone
       );
-      waitingRoomStart = new Date(sessionDate);
+      sessionEnd = convertSessionTimeToUserTimezone(
+        session.meeting_date,
+        session.last_entry_time,
+        session.timezone
+      );
+
+      // If end time is before start time, session spans midnight - add 1 day
+      if (sessionEnd < sessionStart) {
+        sessionEnd = new Date(sessionEnd.getTime() + 24 * 60 * 60 * 1000);
+      }
+
+      waitingRoomStart = new Date(sessionStart);
       waitingRoomStart.setMinutes(
         waitingRoomStart.getMinutes() - session.waiting_room_time
       );
     } else {
       // Fallback to original logic
-      sessionDate = new Date(`${session.meeting_date}T${session.start_time}`);
-      waitingRoomStart = new Date(sessionDate);
+      sessionStart = new Date(`${session.meeting_date}T${session.start_time}`);
+      sessionEnd = new Date(`${session.meeting_date}T${session.last_entry_time}`);
+
+      // If end time is before start time, session spans midnight - add 1 day
+      if (sessionEnd < sessionStart) {
+        sessionEnd = new Date(sessionEnd.getTime() + 24 * 60 * 60 * 1000);
+      }
+
+      waitingRoomStart = new Date(sessionStart);
       waitingRoomStart.setMinutes(
         waitingRoomStart.getMinutes() - session.waiting_room_time
       );
     }
 
-    // Session is considered "live" if we're in waiting room period or main session
-    return now >= waitingRoomStart;
-  };
+    // Session is considered "live" if:
+    // 1. Current time is after waiting room start
+    // 2. Current time is before session end
+    return now >= waitingRoomStart && now <= sessionEnd;
+  }, [currentTime]);
 
   const renderSession = (session: SessionDetails, isLive: boolean) => {
     // Calculate session timing for button text and status
@@ -371,15 +409,121 @@ function RouteComponent() {
         key={session.schedule_id}
         className="group p-4 border rounded-xl bg-white dark:bg-neutral-900 hover:bg-primary-50/30 dark:hover:bg-primary-900/20 border-neutral-200 dark:border-neutral-800 hover:border-primary-200/60 dark:hover:border-primary-700/60 hover:shadow-sm transition-all duration-200 w-full"
       >
-        <div className="flex justify-between items-start">
+        {/* Desktop Layout: Button on the right */}
+        <div className="hidden sm:flex justify-between items-start gap-4">
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
               <h3 className="font-semibold text-lg text-neutral-800 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors">
                 {session.title}
               </h3>
               {isLive && (
                 <span
-                  className={`px-2 py-1 text-white text-xs font-medium rounded-full animate-pulse ${isInWaitingRoom
+                  className={`px-2 py-1 text-white text-xs font-medium rounded-full animate-pulse whitespace-nowrap ${isInWaitingRoom
+                    ? "bg-orange-600"
+                    : isLiveClassStarted
+                      ? "bg-danger-600"
+                      : "bg-gray-600"
+                    }`}
+                >
+                  {isInWaitingRoom
+                    ? "WAITING ROOM"
+                    : isLiveClassStarted
+                      ? "LIVE"
+                      : "STARTING SOON"}
+                </span>
+              )}
+            </div>
+            {/* Subject - Display if not 'none', for both Live and Upcoming */}
+            {session.subject && session.subject.toLowerCase() !== 'none' && (
+              <div className="flex items-center gap-1 text-sm text-neutral-600 mb-2">
+                <MapPin
+                  size={16}
+                  className="text-neutral-500 dark:text-neutral-400"
+                />
+                <span className="capitalize dark:text-neutral-300">
+                  {session.subject}
+                </span>
+              </div>
+            )}
+
+            {/* Date - Display only for Upcoming sessions */}
+            {!isLive && (
+              <div className="flex items-center gap-1 text-sm text-neutral-600 mb-2">
+                <Calendar
+                  size={16}
+                  className="text-neutral-500 dark:text-neutral-400"
+                />
+                <span className="capitalize dark:text-neutral-300">
+                  {new Date(session.meeting_date).toLocaleDateString("en-US", {
+                    weekday: "short",
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <Clock
+                  size={16}
+                  className="text-neutral-500 dark:text-neutral-400"
+                />
+                <span className="text-neutral-600 dark:text-neutral-300">
+                  <span className="font-medium">Starts:</span>{" "}
+                  {formatDateTime(
+                    session.meeting_date,
+                    session.start_time,
+                    session.timezone
+                  )}
+                  {session.timezone && (
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+                      ({getTimezoneDisplayInfo(session.timezone).sessionTz})
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users
+                  size={16}
+                  className="text-neutral-500 dark:text-neutral-400"
+                />
+                <span className="text-neutral-600 dark:text-neutral-300">
+                  <span className="font-medium">Duration:</span>{" "}
+                  {calculateDuration(session.start_time, session.last_entry_time)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {isLive && session.meeting_link && (
+            <Button
+              variant="default"
+              size="sm"
+              className="shrink-0 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
+              onClick={() => handleJoinSession(session)}
+            >
+              <ArrowSquareOut size={16} className="mr-1.5" />
+              {isBeforeWaitingRoom
+                ? "Not Started"
+                : isInWaitingRoom
+                  ? "Join Waiting Room"
+                  : "Join Session"}
+            </Button>
+          )}
+        </div>
+
+        {/* Mobile Layout: Button at the bottom */}
+        <div className="flex flex-col gap-3 sm:hidden">
+          <div className="flex-1">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <h3 className="font-semibold text-lg text-neutral-800 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors">
+                {session.title}
+              </h3>
+              {isLive && (
+                <span
+                  className={`px-2 py-1 text-white text-xs font-medium rounded-full animate-pulse whitespace-nowrap ${isInWaitingRoom
                     ? "bg-orange-600"
                     : isLiveClassStarted
                       ? "bg-danger-600"
@@ -425,11 +569,44 @@ function RouteComponent() {
               </div>
             )}
           </div>
+
+          <div className="flex flex-col sm:flex-row gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <Clock
+                size={16}
+                className="text-neutral-500 dark:text-neutral-400"
+              />
+              <span className="text-neutral-600 dark:text-neutral-300">
+                <span className="font-medium">Starts:</span>{" "}
+                {formatDateTime(
+                  session.meeting_date,
+                  session.start_time,
+                  session.timezone
+                )}
+                {session.timezone && (
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+                    ({getTimezoneDisplayInfo(session.timezone).sessionTz})
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Users
+                size={16}
+                className="text-neutral-500 dark:text-neutral-400"
+              />
+              <span className="text-neutral-600 dark:text-neutral-300">
+                <span className="font-medium">Duration:</span>{" "}
+                {calculateDuration(session.start_time, session.last_entry_time)}
+              </span>
+            </div>
+          </div>
+
           {isLive && session.meeting_link && (
             <Button
               variant="default"
               size="sm"
-              className="bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
+              className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
               onClick={() => handleJoinSession(session)}
             >
               <ArrowSquareOut size={16} className="mr-1.5" />
@@ -440,38 +617,6 @@ function RouteComponent() {
                   : "Join Session"}
             </Button>
           )}
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <Clock
-              size={16}
-              className="text-neutral-500 dark:text-neutral-400"
-            />
-            <span className="text-neutral-600 dark:text-neutral-300">
-              <span className="font-medium">Starts:</span>{" "}
-              {formatDateTime(
-                session.meeting_date,
-                session.start_time,
-                session.timezone
-              )}
-              {session.timezone && (
-                <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
-                  ({getTimezoneDisplayInfo(session.timezone).sessionTz})
-                </span>
-              )}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Users
-              size={16}
-              className="text-neutral-500 dark:text-neutral-400"
-            />
-            <span className="text-neutral-600 dark:text-neutral-300">
-              <span className="font-medium">Duration:</span>{" "}
-              {calculateDuration(session.start_time, session.last_entry_time)}
-            </span>
-          </div>
         </div>
       </div>
     );
@@ -889,6 +1034,50 @@ function RouteComponent() {
     );
   };
 
+  // Combine and re-classify sessions dynamically
+  // This ensures that if a session enters waiting room, it moves to "Live" immediately
+  const { derivedLiveSessions, derivedUpcomingSessions } = useMemo(() => {
+    if (!sessions) return { derivedLiveSessions: [], derivedUpcomingSessions: [] };
+
+    // Combine all sessions from backend (since backend categorization might lag behind client time)
+    const allSessions = [
+      ...(sessions.live_sessions || []),
+      ...(sessions.upcoming_sessions || []),
+    ];
+
+    // Deduplicate in case API returns same session in both
+    const uniqueSessionsMap = new Map<string, SessionDetails>();
+    allSessions.forEach(s => uniqueSessionsMap.set(s.schedule_id, s));
+    const uniqueSessions = Array.from(uniqueSessionsMap.values());
+
+    const live: SessionDetails[] = [];
+    const upcoming: SessionDetails[] = [];
+
+    uniqueSessions.forEach(session => {
+      if (isSessionLive(session)) {
+        live.push(session);
+      } else {
+        upcoming.push(session);
+      }
+    });
+
+    // Sort live sessions: earliest start time first
+    live.sort((a, b) => {
+      const startA = new Date(`${a.meeting_date}T${a.start_time}`).getTime();
+      const startB = new Date(`${b.meeting_date}T${b.start_time}`).getTime();
+      return startA - startB;
+    });
+
+    // Sort upcoming sessions: earliest start time first
+    upcoming.sort((a, b) => {
+      const startA = new Date(`${a.meeting_date}T${a.start_time}`).getTime();
+      const startB = new Date(`${b.meeting_date}T${b.start_time}`).getTime();
+      return startA - startB;
+    });
+
+    return { derivedLiveSessions: live, derivedUpcomingSessions: upcoming };
+  }, [sessions, isSessionLive]); // Re-calculate when sessions change or isSessionLive logic changes (which depends on currentTime)
+
   if (isLoading) {
     return (
       <LayoutContainer>
@@ -917,10 +1106,8 @@ function RouteComponent() {
     );
   }
 
-  const liveSessions = selectedView === "list" ? sessions?.live_sessions ?? [] : [];
-
-
-  const upcomingSessions = selectedView === "list" ? sessions?.upcoming_sessions ?? [] : [];
+  const liveSessions = selectedView === "list" ? derivedLiveSessions : [];
+  const upcomingSessions = selectedView === "list" ? derivedUpcomingSessions : [];
   return (
     <LayoutContainer>
       <Helmet>
@@ -1013,7 +1200,7 @@ function RouteComponent() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
-                    Live Sessions - {getUserTimezone()}
+                    {getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}s - {getUserTimezone()}
                   </h2>
                   {(() => {
                     const filteredLiveSessions = filterSessions(liveSessions);
@@ -1038,6 +1225,16 @@ function RouteComponent() {
                             renderSession(session, isSessionLive(session))
                           )}
                         </div>
+                      ) : (sessions as any)?.defaultDayConfig?.defaultClassLink &&
+                        !startDateFilter &&
+                        !endDateFilter ? (
+                        <div className="w-full">
+                          <DefaultClassCard
+                            defaultClassLink={(sessions as any)?.defaultDayConfig?.defaultClassLink}
+                            learnerButtonConfig={(sessions as any)?.defaultDayConfig?.learnerButtonConfig}
+                            defaultClassName={(sessions as any)?.defaultDayConfig?.defaultClassName}
+                          />
+                        </div>
                       ) : (
                         <div className="text-neutral-600 dark:text-neutral-300 p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
                           <div className="text-center">
@@ -1047,13 +1244,13 @@ function RouteComponent() {
                             />
                             <p className="font-medium">
                               {startDateFilter || endDateFilter
-                                ? "No live sessions match your filters"
-                                : "No live sessions at the moment"}
+                                ? `No ${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase()}s match your filters`
+                                : `No ${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase()}s at the moment`}
                             </p>
                             <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
                               {startDateFilter || endDateFilter
                                 ? "Try adjusting your filters or clear them to see all sessions"
-                                : "Check back later or view upcoming sessions"}
+                                : `Check back later or view upcoming ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}s`}
                             </p>
                           </div>
                         </div>
@@ -1066,7 +1263,7 @@ function RouteComponent() {
               <div>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
-                    Upcoming Sessions
+                    Upcoming {getTerminology(ContentTerms.Session, SystemTerms.Session)}s
                   </h2>
                   {(() => {
                     const filteredUpcomingSessions =
@@ -1136,13 +1333,13 @@ function RouteComponent() {
                             />
                             <p className="font-medium">
                               {startDateFilter || endDateFilter
-                                ? "No upcoming sessions match your filters"
-                                : "No upcoming sessions scheduled"}
+                                ? `No upcoming ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}s match your filters`
+                                : `No upcoming ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}s scheduled`}
                             </p>
                             <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
                               {startDateFilter || endDateFilter
                                 ? "Try adjusting your filters or clear them to see all sessions"
-                                : "New sessions will appear here when scheduled"}
+                                : `New ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}s will appear here when scheduled`}
                             </p>
                           </div>
                         </div>

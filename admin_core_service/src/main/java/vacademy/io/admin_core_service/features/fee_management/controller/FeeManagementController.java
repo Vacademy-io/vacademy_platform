@@ -1,0 +1,51 @@
+package vacademy.io.admin_core_service.features.fee_management.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.fee_management.dto.ComplexPaymentOptionDTO;
+import vacademy.io.admin_core_service.features.fee_management.service.FeeManagementService;
+import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/admin-core-service/v1/fee-management")
+public class FeeManagementController {
+
+    @Autowired
+    private FeeManagementService feeManagementService;
+
+    /**
+     * API #1: Create a full CPO with nested fee types, assigned values, and installments.
+     * POST /admin-core-service/v1/fee-management/cpo
+     */
+    @PostMapping("/cpo")
+    public ResponseEntity<ComplexPaymentOptionDTO> createCpo(
+            @RequestBody ComplexPaymentOptionDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(feeManagementService.createCpo(request));
+    }
+
+    /**
+     * API #2: List all CPOs for an institute (lightweight).
+     * GET /admin-core-service/v1/fee-management/cpo/{instituteId}
+     */
+    @GetMapping("/cpo/{instituteId}")
+    public ResponseEntity<List<ComplexPaymentOptionDTO>> listCposByInstitute(
+            @PathVariable String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(feeManagementService.listCposByInstitute(instituteId));
+    }
+
+    /**
+     * API #3: Get full CPO with all nested children.
+     * GET /admin-core-service/v1/fee-management/cpo/{cpoId}/full
+     */
+    @GetMapping("/cpo/{cpoId}/full")
+    public ResponseEntity<ComplexPaymentOptionDTO> getFullCpo(
+            @PathVariable String cpoId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(feeManagementService.getFullCpo(cpoId));
+    }
+}

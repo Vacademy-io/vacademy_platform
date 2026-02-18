@@ -56,9 +56,6 @@ public class SessionSchedule {
     @Column(name="default_class_link_type")
     private String defaultClassLinkType;
 
-    @Column(name="learner_button_config", columnDefinition = "text")
-    private String learnerButtonConfig;
-
     // Getters, Setters, etc.
 }
 

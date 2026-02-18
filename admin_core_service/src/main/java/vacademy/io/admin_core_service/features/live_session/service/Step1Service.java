@@ -393,6 +393,35 @@ public class Step1Service {
             session.setTimezone(request.getTimeZone());
 
         session.setCreatedByUserId(user.getUserId());
+
+        Object learnerButtonConfig = request.getLearnerButtonConfig();
+
+        if (learnerButtonConfig == null && request.getAddedSchedules() != null) {
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
+                if (dto.getLearnerButtonConfig() != null) {
+                    learnerButtonConfig = dto.getLearnerButtonConfig();
+                    break;
+                }
+            }
+        }
+
+        if (learnerButtonConfig == null && request.getUpdatedSchedules() != null) {
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getUpdatedSchedules()) {
+                if (dto.getLearnerButtonConfig() != null) {
+                    learnerButtonConfig = dto.getLearnerButtonConfig();
+                    break;
+                }
+            }
+        }
+
+        if (learnerButtonConfig != null) {
+            try {
+                session.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(learnerButtonConfig));
+            } catch (Exception e) {
+                System.err.println("Error serializing LearnerButtonConfig: " + e.getMessage());
+            }
+        }
     }
 
     private void handleDeletedSchedules(LiveSessionStep1RequestDTO request) {
@@ -454,15 +483,6 @@ public class Step1Service {
                         schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
                     }
 
-                    if (dto.getLearnerButtonConfig() != null) {
-                        try {
-                            schedule.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper()
-                                    .writeValueAsString(dto.getLearnerButtonConfig()));
-                        } catch (Exception e) {
-                            System.err.println("Error serializing LearnerButtonConfig: " + e.getMessage());
-                        }
-                    }
-
                     scheduleRepository.save(schedule);
                     current = current.plusWeeks(1);
                 }
@@ -489,15 +509,6 @@ public class Step1Service {
                 schedule.setDefaultClassLink(request.getDefaultClassLink());
                 schedule.setDefaultClassName(request.getDefaultClassName());
                 schedule.setDefaultClassLinkType(getLinkTypeFromUrl(request.getDefaultClassLink()));
-            }
-
-            if (request.getLearnerButtonConfig() != null) {
-                try {
-                    schedule.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper()
-                            .writeValueAsString(request.getLearnerButtonConfig()));
-                } catch (Exception e) {
-                    System.err.println("Error serializing LearnerButtonConfig: " + e.getMessage());
-                }
             }
 
             scheduleRepository.save(schedule);
@@ -551,15 +562,6 @@ public class Step1Service {
             schedule.setDefaultClassLink(dto.getDefaultClassLink());
             schedule.setDefaultClassName(dto.getDefaultClassName());
             schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
-        }
-
-        if (dto.getLearnerButtonConfig() != null) {
-            try {
-                schedule.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper()
-                        .writeValueAsString(dto.getLearnerButtonConfig()));
-            } catch (Exception e) {
-                System.err.println("Error serializing LearnerButtonConfig: " + e.getMessage());
-            }
         }
 
         scheduleRepository.save(schedule);

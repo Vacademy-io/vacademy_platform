@@ -34,7 +34,8 @@ public class FeeManagementService {
     private AftInstallmentRepository aftInstallmentRepository;
 
     /**
-     * API #1: Create a full CPO with nested fee types, assigned values, and installments.
+     * API #1: Create a full CPO with nested fee types, assigned values, and
+     * installments.
      */
     @Transactional
     public ComplexPaymentOptionDTO createCpo(ComplexPaymentOptionDTO request) {
@@ -107,7 +108,8 @@ public class FeeManagementService {
     }
 
     /**
-     * API #3: Get full CPO with all nested children (fee types → assigned values → installments).
+     * API #3: Get full CPO with all nested children (fee types → assigned values →
+     * installments).
      */
     public ComplexPaymentOptionDTO getFullCpo(String cpoId) {
         ComplexPaymentOption cpo = cpoRepository.findById(cpoId)
@@ -169,5 +171,102 @@ public class FeeManagementService {
                 .status(cpo.getStatus())
                 .feeTypes(feeTypeDTOs)
                 .build();
+    }
+
+    /**
+     * API #4: Update CPO Metadata (Name, Institute, etc.)
+     */
+    @Transactional
+    public ComplexPaymentOptionDTO updateCpo(String cpoId, ComplexPaymentOptionDTO request) {
+        ComplexPaymentOption cpo = cpoRepository.findById(cpoId)
+                .orElseThrow(() -> new VacademyException("Complex Payment Option not found: " + cpoId));
+
+        if (request.getName() != null)
+            cpo.setName(request.getName());
+        if (request.getInstituteId() != null)
+            cpo.setInstituteId(request.getInstituteId());
+        if (request.getDefaultPaymentOptionId() != null)
+            cpo.setDefaultPaymentOptionId(request.getDefaultPaymentOptionId());
+        if (request.getStatus() != null)
+            cpo.setStatus(request.getStatus());
+
+        cpoRepository.save(cpo);
+        return getFullCpo(cpoId);
+    }
+
+    /**
+     * API #5: Update Fee Type & Commercials (Cascade Update)
+     */
+    @Transactional
+    public ComplexPaymentOptionDTO.FeeTypeDTO updateFeeType(String feeTypeId,
+            ComplexPaymentOptionDTO.FeeTypeDTO request) {
+        // 1. Update FeeType
+        FeeType feeType = feeTypeRepository.findById(feeTypeId)
+                .orElseThrow(() -> new VacademyException("Fee Type not found: " + feeTypeId));
+
+        if (request.getName() != null)
+            feeType.setName(request.getName());
+        if (request.getCode() != null)
+            feeType.setCode(request.getCode());
+        if (request.getDescription() != null)
+            feeType.setDescription(request.getDescription());
+        if (request.getStatus() != null)
+            feeType.setStatus(request.getStatus());
+        feeTypeRepository.save(feeType);
+
+        // 2. Update AssignedFeeValue
+        if (request.getAssignedFeeValue() != null) {
+            ComplexPaymentOptionDTO.AssignedFeeValueDTO afvDTO = request.getAssignedFeeValue();
+
+            // Check if exists, else create (though usually should exist for an update)
+            List<AssignedFeeValue> existingAfvs = assignedFeeValueRepository.findByFeeTypeId(feeTypeId);
+            AssignedFeeValue afv;
+
+            if (existingAfvs.isEmpty()) {
+                afv = new AssignedFeeValue();
+                afv.setFeeTypeId(feeTypeId);
+                afv.setStatus("ACTIVE");
+            } else {
+                afv = existingAfvs.get(0);
+            }
+
+            if (afvDTO.getAmount() != null)
+                afv.setAmount(afvDTO.getAmount());
+            if (afvDTO.getNoOfInstallments() != null)
+                afv.setNoOfInstallments(afvDTO.getNoOfInstallments());
+            if (afvDTO.getHasInstallment() != null)
+                afv.setHasInstallment(afvDTO.getHasInstallment());
+            if (afvDTO.getIsRefundable() != null)
+                afv.setIsRefundable(afvDTO.getIsRefundable());
+            if (afvDTO.getHasPenalty() != null)
+                afv.setHasPenalty(afvDTO.getHasPenalty());
+            if (afvDTO.getPenaltyPercentage() != null)
+                afv.setPenaltyPercentage(afvDTO.getPenaltyPercentage());
+            if (afvDTO.getStatus() != null)
+                afv.setStatus(afvDTO.getStatus());
+
+            AssignedFeeValue savedAfv = assignedFeeValueRepository.save(afv);
+
+            // 3. Update Installments (Delete & Recreate)
+            if (afvDTO.getInstallments() != null) {
+                // Delete existing
+                List<AftInstallment> existingInstallments = aftInstallmentRepository
+                        .findByAssignedFeeValueIdOrderByInstallmentNumberAsc(savedAfv.getId());
+                aftInstallmentRepository.deleteAll(existingInstallments);
+
+                // Create new
+                for (ComplexPaymentOptionDTO.AftInstallmentDTO instDTO : afvDTO.getInstallments()) {
+                    AftInstallment inst = new AftInstallment();
+                    inst.setInstallmentNumber(instDTO.getInstallmentNumber());
+                    inst.setAmount(instDTO.getAmount());
+                    inst.setDueDate(instDTO.getDueDate());
+                    inst.setStatus(instDTO.getStatus() != null ? instDTO.getStatus() : "PENDING");
+                    inst.setAssignedFeeValueId(savedAfv.getId());
+                    aftInstallmentRepository.save(inst);
+                }
+            }
+        }
+
+        return request;
     }
 }

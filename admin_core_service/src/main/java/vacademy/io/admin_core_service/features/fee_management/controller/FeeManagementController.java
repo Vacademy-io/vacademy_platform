@@ -17,7 +17,8 @@ public class FeeManagementController {
     private FeeManagementService feeManagementService;
 
     /**
-     * API #1: Create a full CPO with nested fee types, assigned values, and installments.
+     * API #1: Create a full CPO with nested fee types, assigned values, and
+     * installments.
      * POST /admin-core-service/v1/fee-management/cpo
      */
     @PostMapping("/cpo")
@@ -47,5 +48,29 @@ public class FeeManagementController {
             @PathVariable String cpoId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(feeManagementService.getFullCpo(cpoId));
+    }
+
+    /**
+     * API #4: Update CPO Metadata.
+     * PUT /admin-core-service/v1/fee-management/cpo/{cpoId}
+     */
+    @PutMapping("/cpo/{cpoId}")
+    public ResponseEntity<ComplexPaymentOptionDTO> updateCpo(
+            @PathVariable String cpoId,
+            @RequestBody ComplexPaymentOptionDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(feeManagementService.updateCpo(cpoId, request));
+    }
+
+    /**
+     * API #5: Update Fee Type & Commercials.
+     * PUT /admin-core-service/v1/fee-management/fee-type/{feeTypeId}
+     */
+    @PutMapping("/fee-type/{feeTypeId}")
+    public ResponseEntity<ComplexPaymentOptionDTO.FeeTypeDTO> updateFeeType(
+            @PathVariable String feeTypeId,
+            @RequestBody ComplexPaymentOptionDTO.FeeTypeDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(feeManagementService.updateFeeType(feeTypeId, request));
     }
 }

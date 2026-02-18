@@ -31,6 +31,7 @@ public class LiveSessionListDTO {
     private String timezone;
     private LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig;
     private String defaultClassLink;
+    private String defaultClassName;
 
     // Getters and Setters
 }

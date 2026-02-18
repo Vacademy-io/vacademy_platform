@@ -75,6 +75,7 @@ public class GetSessionByIdService {
                 item.setDuration(String.valueOf(durationMinutes)); // or durationMinutes if preferred
                 item.setLink(schedule.getCustomMeetingLink());
                 item.setDefaultClassLink(schedule.getDefaultClassLink());
+                item.setDefaultClassName(schedule.getDefaultClassName());
                 item.setMeetingDate(schedule.getMeetingDate());
                 item.setTimezone(schedule.getTimezone());
                 addedSchedules.add(item);
@@ -100,6 +101,7 @@ public class GetSessionByIdService {
             dto.setStartTime(first.getSessionStartTime());
             dto.setLastEntryTime(first.getLastEntryTime());
             dto.setDefaultClassLink(first.getDefaultClassLink());
+            dto.setDefaultClassName(first.getDefaultClassName());
             dto.setDefaultClassLinkType(first.getDefaultClassLinkType());
             dto.setLinkType(first.getLinkType());
 

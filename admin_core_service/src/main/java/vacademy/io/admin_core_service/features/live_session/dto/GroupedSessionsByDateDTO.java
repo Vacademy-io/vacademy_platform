@@ -15,6 +15,7 @@ public class GroupedSessionsByDateDTO {
     private List<LiveSessionListDTO> sessions;
     private LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig;
     private String defaultClassLink;
+    private String defaultClassName;
 
     public GroupedSessionsByDateDTO(Date date, List<LiveSessionListDTO> sessions) {
         this.date = date;

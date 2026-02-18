@@ -450,6 +450,7 @@ public class Step1Service {
 
                     if (dto.getDefaultClassLink() != null) {
                         schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                        schedule.setDefaultClassName(dto.getDefaultClassName());
                         schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
                     }
 
@@ -486,6 +487,7 @@ public class Step1Service {
 
             if (request.getDefaultClassLink() != null) {
                 schedule.setDefaultClassLink(request.getDefaultClassLink());
+                schedule.setDefaultClassName(request.getDefaultClassName());
                 schedule.setDefaultClassLinkType(getLinkTypeFromUrl(request.getDefaultClassLink()));
             }
 
@@ -547,6 +549,7 @@ public class Step1Service {
 
         if (dto.getDefaultClassLink() != null) {
             schedule.setDefaultClassLink(dto.getDefaultClassLink());
+            schedule.setDefaultClassName(dto.getDefaultClassName());
             schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
         }
 

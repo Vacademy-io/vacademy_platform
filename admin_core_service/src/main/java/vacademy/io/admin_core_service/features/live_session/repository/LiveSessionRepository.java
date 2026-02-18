@@ -32,6 +32,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         String getTimezone();
         String getLearnerButtonConfig();
         String getDefaultClassLink();
+        String getDefaultClassName();
     }
 
     public interface ScheduledSessionProjection {
@@ -64,7 +65,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
         s.allow_play_pause AS allowPlayPause,
         COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
-        ss.default_class_link AS defaultClassLink
+        ss.default_class_link AS defaultClassLink,
+        ss.default_class_name AS defaultClassName
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
@@ -91,7 +93,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.allow_play_pause AS allowPlayPause,
         COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
         ss.learner_button_config AS learnerButtonConfig,
-        ss.default_class_link AS defaultClassLink
+        ss.default_class_link AS defaultClassLink,
+        ss.default_class_name AS defaultClassName
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'LIVE'
@@ -122,6 +125,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.allow_play_pause AS allowPlayPause,
         COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
         ss.default_class_link AS defaultClassLink,
+        ss.default_class_name AS defaultClassName,
         ss.learner_button_config AS learnerButtonConfig
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
@@ -152,7 +156,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
         s.allow_play_pause AS allowPlayPause,
         COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
-        ss.default_class_link AS defaultClassLink
+        ss.default_class_link AS defaultClassLink,
+        ss.default_class_name AS defaultClassName
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'DRAFT'
@@ -184,7 +189,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
                 ELSE s.default_meet_link
             END AS meetingLink,
             ss.learner_button_config AS learnerButtonConfig,
-            ss.default_class_link AS defaultClassLink
+            ss.default_class_link AS defaultClassLink,
+            ss.default_class_name AS defaultClassName
         FROM session_schedules ss
         JOIN live_session s ON ss.session_id = s.id
         JOIN live_session_participants lsp ON lsp.session_id = s.id
@@ -220,7 +226,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
                 ELSE s.default_meet_link
             END AS meetingLink,
             ss.learner_button_config AS learnerButtonConfig,
-            ss.default_class_link AS defaultClassLink
+            ss.default_class_link AS defaultClassLink,
+            ss.default_class_name AS defaultClassName
         FROM session_schedules ss
         JOIN live_session s ON ss.session_id = s.id
         JOIN live_session_participants lsp ON lsp.session_id = s.id
@@ -256,7 +263,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
                 ELSE s.default_meet_link
             END AS meetingLink,
             ss.learner_button_config AS learnerButtonConfig,
-            ss.default_class_link AS defaultClassLink
+            ss.default_class_link AS defaultClassLink,
+            ss.default_class_name AS defaultClassName
         FROM session_schedules ss
         JOIN live_session s ON ss.session_id = s.id
         JOIN live_session_participants lsp ON lsp.session_id = s.id
@@ -298,7 +306,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
                 ELSE s.default_meet_link
             END AS meetingLink,
             ss.learner_button_config AS learnerButtonConfig,
-            ss.default_class_link AS defaultClassLink
+            ss.default_class_link AS defaultClassLink,
+            ss.default_class_name AS defaultClassName
         FROM session_schedules ss
         JOIN live_session s ON ss.session_id = s.id
         JOIN live_session_participants lsp ON lsp.session_id = s.id

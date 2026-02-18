@@ -55,7 +55,8 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
                         ELSE s.default_meet_link
                     END AS meetingLink,
                     ss.learner_button_config AS learnerButtonConfig,
-                    ss.default_class_link AS defaultClassLink
+                    ss.default_class_link AS defaultClassLink,
+                    ss.default_class_name AS defaultClassName
                 """;
 
         String baseFrom = """

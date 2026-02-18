@@ -23,6 +23,7 @@ public interface ScheduleDTO {
     String getDefaultMeetLink();
     String getDefaultClassLink();
     String getDefaultClassLinkType();
+    String getDefaultClassName();
     String getLearnerButtonConfig();
     String getWaitingRoomLink();
     Integer getWaitingRoomTime();

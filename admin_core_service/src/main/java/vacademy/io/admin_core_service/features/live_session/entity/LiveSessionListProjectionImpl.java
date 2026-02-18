@@ -31,4 +31,5 @@ public class LiveSessionListProjectionImpl implements LiveSessionRepository.Live
     private String meetingLink;
     private String learnerButtonConfig;
     private String defaultClassLink;
+    private String defaultClassName;
 }

@@ -65,6 +65,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
         s.allow_play_pause AS allowPlayPause,
         COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+        s.learner_button_config AS learnerButtonConfig,
         ss.default_class_link AS defaultClassLink,
         ss.default_class_name AS defaultClassName
     FROM live_session s
@@ -157,7 +158,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         s.allow_play_pause AS allowPlayPause,
         COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
         ss.default_class_link AS defaultClassLink,
-        ss.default_class_name AS defaultClassName
+        ss.default_class_name AS defaultClassName,
+        s.learner_button_config AS learnerButtonConfig,
     FROM live_session s
     JOIN session_schedules ss ON s.id = ss.session_id
     WHERE s.status = 'DRAFT'

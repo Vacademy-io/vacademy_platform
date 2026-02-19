@@ -1355,18 +1355,20 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         });
         setOrderId(ordId);
         setPaymentCompletionResponse(paymentResponse);
-        const userEmail =
-          paymentResponse?.user?.email ??
+        // Store username and password from enrollment response for post-payment login
+        // Prefer user.username (required by login API), fallback to user.email or form data
+        const username =
           paymentResponse?.user?.username ??
+          paymentResponse?.user?.email ??
           getUserDetails().email;
         const userPassword =
           paymentResponse?.user?.password ??
           getPasswordField(form.getValues());
-        if (ordId && userEmail && userPassword) {
+        if (ordId && username && userPassword) {
           try {
             sessionStorage.setItem(
               `enroll_payment_creds_${ordId}`,
-              JSON.stringify({ username: userEmail, password: userPassword })
+              JSON.stringify({ username, password: userPassword })
             );
           } catch {
             /* ignore */

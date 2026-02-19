@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getPaymentCompletionStatus } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { getCashfreePaymentStatus } from "@/services/cashfree-payment";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
-import { loginByUsernameTrusted, loginEnrolledUser } from "@/services/signup-api";
+import { loginEnrolledUser } from "@/services/signup-api";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 
@@ -112,8 +112,6 @@ function PaymentResultPage() {
     };
 
     const data = paymentStatus as {
-      use_login_api?: boolean;
-      login_username?: string;
       accessToken?: string;
       access_token?: string;
       refreshToken?: string;
@@ -128,15 +126,12 @@ function PaymentResultPage() {
       };
       institute_id?: string;
     };
-    const useLoginApi = data?.use_login_api === true;
-    const loginUsername =
-      data?.login_username ?? data?.user?.username ?? data?.user?.email;
     const instituteIdFromApi =
       data?.institute_id ?? data?.response_data?.institute_id;
     const effectiveInstituteId =
       validInstituteId ?? (typeof instituteIdFromApi === "string" && instituteIdFromApi ? instituteIdFromApi : undefined);
 
-    // Tokens from status API (legacy – learner-invitation may still return them)
+    // Tokens from status API (legacy fallback – if backend still returns them)
     const accessToken =
       data?.accessToken ??
       data?.access_token ??
@@ -152,6 +147,7 @@ function PaymentResultPage() {
 
     const runLoginAndRedirect = async () => {
       try {
+        // Get stored credentials from enrollment (catalog or learner-invitation)
         const credsFromStorage = orderId
           ? (() => {
               try {
@@ -171,31 +167,11 @@ function PaymentResultPage() {
             })()
           : null;
 
-        const username = credsFromStorage?.username ?? userEmail ?? loginUsername ?? "";
+        // Prefer stored credentials (from enrollment API), fallback to status response
+        const username = credsFromStorage?.username ?? userEmail ?? "";
         const password = credsFromStorage?.password ?? userPassword ?? "";
 
-        // 1. Catalog post-payment: use_login_api + login_username – call login-by-username-trusted
-        if (useLoginApi && loginUsername && effectiveInstituteId) {
-          const loginResponse = await loginByUsernameTrusted(
-            loginUsername,
-            effectiveInstituteId
-          );
-          await performFullAuthCycle(loginResponse, effectiveInstituteId);
-          doRedirect("/study-library/courses");
-          return;
-        }
-
-        // 2. Legacy: tokens in status response (if backend still returns them)
-        if (effectiveInstituteId && accessToken && refreshToken) {
-          await performFullAuthCycle(
-            { accessToken, refreshToken },
-            effectiveInstituteId
-          );
-          doRedirect("/study-library/courses");
-          return;
-        }
-
-        // 3. Learner-invitation: stored creds + standard login API
+        // 1. Primary flow: Use stored credentials + standard login API (catalog & learner-invitation)
         if (username && password && effectiveInstituteId) {
           const loginResponse = await loginEnrolledUser(
             username,
@@ -203,6 +179,16 @@ function PaymentResultPage() {
             effectiveInstituteId
           );
           await performFullAuthCycle(loginResponse, effectiveInstituteId);
+          doRedirect("/study-library/courses");
+          return;
+        }
+
+        // 2. Legacy fallback: tokens in status response (if backend still returns them)
+        if (effectiveInstituteId && accessToken && refreshToken) {
+          await performFullAuthCycle(
+            { accessToken, refreshToken },
+            effectiveInstituteId
+          );
           doRedirect("/study-library/courses");
           return;
         }

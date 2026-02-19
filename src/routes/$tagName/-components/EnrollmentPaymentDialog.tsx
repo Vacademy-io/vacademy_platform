@@ -1115,14 +1115,16 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
           orderId: ordId,
         });
 
-        const userEmail =
-          paymentResponse?.user?.email ?? paymentResponse?.user?.username;
+        // Store username and password from enrollment response for post-payment login
+        // Prefer user.username (required by login API), fallback to user.email
+        const username =
+          paymentResponse?.user?.username ?? paymentResponse?.user?.email;
         const userPassword = paymentResponse?.user?.password;
-        if (ordId && userEmail && userPassword) {
+        if (ordId && username && userPassword) {
           try {
             sessionStorage.setItem(
               `enroll_payment_creds_${ordId}`,
-              JSON.stringify({ username: userEmail, password: userPassword })
+              JSON.stringify({ username, password: userPassword })
             );
           } catch {
             /* ignore */

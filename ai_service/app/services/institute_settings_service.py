@@ -112,8 +112,8 @@ class InstituteSettingsService:
             Formatted string for system prompt
         """
         role = ai_settings.get("role", "Tutor")
-        assistant_name = ai_settings.get("assistant_name", "AI Tutor")
-        institute_name = ai_settings.get("institute_name", "Academy")
+        assistant_name = ai_settings.get("assistant_name", "TutorBot")
+        institute_name = ai_settings.get("institute_name", "Vacademy")
         core_instruction = ai_settings.get("core_instruction", "You are a helpful tutor.")
         hard_rules = ai_settings.get("hard_rules", [])
         adherence_level = ai_settings.get("adherence_settings", {}).get("level", "strict")

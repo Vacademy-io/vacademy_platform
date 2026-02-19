@@ -75,9 +75,17 @@ class ContextResolverService:
             result = self.db.execute(query, {"user_id": user_id}).fetchone()
             
             if result:
+                email = result.email or None
+                if getattr(result, "full_name", None) and str(result.full_name).strip():
+                    name = result.full_name
+                elif email and "@" in email:
+                    name = email.split("@", 1)[0]
+                else:
+                    name = "Student"
+
                 return {
-                    "name": result.full_name or "Student",
-                    "email": result.email or None
+                    "name": name,
+                    "email": email
                 }
             else:
                 logger.warning(f"No student record found for user_id {user_id}")

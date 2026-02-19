@@ -37,40 +37,35 @@ public class GetLiveSessionService {
         private ScheduleNotificationRepository scheduleNotificationRepository;
 
         private GroupedSessionsByDateDTO createGroupedSessionsByDateDTO(Date date, List<LiveSessionListDTO> sessions) {
-                vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO config = null;
                 String defaultLink = null;
                 String defaultName = null;
 
-                // Find first non-null config/link
+                // Find first non-null config/link and clear default link/name from sessions
                 for (LiveSessionListDTO session : sessions) {
-                        if (session.getLearnerButtonConfig() != null && config == null) {
-                                config = session.getLearnerButtonConfig();
-                        }
-                        if (session.getDefaultClassLink() != null && defaultLink == null) {
-                                defaultLink = session.getDefaultClassLink();
-                        }
-                        if (session.getDefaultClassName() != null && defaultName == null) {
-                                defaultName = session.getDefaultClassName();
-                        }
+                        // LearnerButtonConfig should remain in session and NOT be moved to group level.
 
-                        if (config != null && defaultLink != null && defaultName != null)
-                                break;
+                        if (session.getDefaultClassLink() != null) {
+                                if (defaultLink == null) {
+                                        defaultLink = session.getDefaultClassLink();
+                                }
+                                session.setDefaultClassLink(null);
+                        }
+                        if (session.getDefaultClassName() != null) {
+                                if (defaultName == null) {
+                                        defaultName = session.getDefaultClassName();
+                                }
+                                session.setDefaultClassName(null);
+                        }
                 }
 
-                // Clear from sessions to avoid duplication in response
-                for (LiveSessionListDTO session : sessions) {
-                        session.setLearnerButtonConfig(null);
-                        session.setDefaultClassLink(null);
-                        session.setDefaultClassName(null);
-                }
-
-                return new GroupedSessionsByDateDTO(date, sessions, config, defaultLink, defaultName);
+                // Pass null for learnerButtonConfig so it is excluded from group level response
+                return new GroupedSessionsByDateDTO(date, sessions, null, defaultLink, defaultName);
         }
 
-    public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
+        public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
 
-        List<LiveSessionRepository.LiveSessionListProjection> projections =
-                sessionRepository.findCurrentlyLiveSessions(instituteId);
+                List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
+                                .findCurrentlyLiveSessions(instituteId);
 
         return projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),

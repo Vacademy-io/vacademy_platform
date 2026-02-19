@@ -85,6 +85,9 @@ public class PaymentLogService {
     private vacademy.io.admin_core_service.features.applicant.service.ApplicantService applicantService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository audienceResponseRepository;
+
+    @Autowired
     @Lazy
     private PaymentLogService self;
 
@@ -400,21 +403,33 @@ public class PaymentLogService {
                 }
             }
 
-            // Sync Applicant Stage (if applicable) in a separate transaction so failure
-            // (e.g. no applicant stage for learner payments) does not roll back the webhook.
-            String orderIdToSync = paymentLog.getId(); // Default fall back
-            try {
-                Map<String, Object> pData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
-                if (pData != null && pData.containsKey("originalRequest")) {
-                    Map<String, Object> originalReq = (Map<String, Object>) pData.get("originalRequest");
-                    if (originalReq != null && originalReq.containsKey("order_id")) {
-                        orderIdToSync = (String) originalReq.get("order_id");
-                    }
+            // Applicant sync: only when paying user is an applicant (audience_response.student_user_id + applicant_id).
+            // Avoids expensive applicant_stage JSON query on every payment.
+            String payingUserId = paymentLog.getUserId();
+            boolean isApplicantPayment = false;
+            if (StringUtils.hasText(payingUserId)) {
+                try {
+                    isApplicantPayment = audienceResponseRepository
+                            .findFirstByStudentUserIdAndApplicantIdIsNotNull(payingUserId).isPresent();
+                } catch (Exception ex) {
+                    log.debug("Applicant gate check failed for userId={}: {}", payingUserId, ex.getMessage());
                 }
-            } catch (Exception ex) {
-                log.error("Failed to extract order_id for applicant sync: {}", ex.getMessage());
             }
-            self.syncApplicantStageInNewTransaction(orderIdToSync);
+            if (isApplicantPayment) {
+                String orderIdToSync = paymentLog.getId();
+                try {
+                    Map<String, Object> pData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
+                    if (pData != null && pData.containsKey("originalRequest")) {
+                        Map<String, Object> originalReq = (Map<String, Object>) pData.get("originalRequest");
+                        if (originalReq != null && originalReq.containsKey("order_id")) {
+                            orderIdToSync = (String) originalReq.get("order_id");
+                        }
+                    }
+                } catch (Exception ex) {
+                    log.debug("Failed to extract order_id for applicant sync: {}", ex.getMessage());
+                }
+                self.syncApplicantStageInNewTransaction(orderIdToSync);
+            }
 
             // Parse the paymentSpecificData which now contains both response and original
             // request

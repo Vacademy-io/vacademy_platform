@@ -409,10 +409,6 @@ class GoogleCloudTTSClient:
 
         client = texttospeech.TextToSpeechClient(credentials=credentials)
 
-        # Create SSML with marks for each word to get precise timestamps
-        ssml_input, word_list = self._create_ssml_with_marks(text)
-        
-        input_text = texttospeech.SynthesisInput(ssml=ssml_input)
         voice = texttospeech.VoiceSelectionParams(
             language_code=language_code,
             name=voice_name
@@ -421,26 +417,39 @@ class GoogleCloudTTSClient:
             audio_encoding=texttospeech.AudioEncoding.MP3
         )
 
-        # Request timepoints for SSML marks
-        # Note: Time pointing may not be available in all API versions/voices
-        try:
-            request = texttospeech.SynthesizeSpeechRequest(
-                input=input_text,
-                voice=voice,
-                audio_config=audio_config,
-                enable_time_pointing=[
-                    texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
-                ]
-            )
-            response = client.synthesize_speech(request=request)
-        except Exception as tp_error:
-            # Fallback: synthesize without timepoints if API doesn't support it
-            print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis without SSML marks")
-            # Create simple input from plain text to avoid <mark> tag issues
+        # Voices that do NOT support SSML <mark> tags / timepoints
+        # Journey, Studio, and Polyglot voices return 400 with SSML marks
+        unsupported_mark_prefixes = ("Journey", "Studio", "Polyglot")
+        voice_short = voice_name.split("-")[-1] if voice_name else ""
+        supports_marks = not any(voice_short.startswith(p) for p in unsupported_mark_prefixes)
+
+        response = None
+        word_list = []
+
+        if supports_marks:
+            # Create SSML with marks for each word to get precise timestamps
+            ssml_input, word_list = self._create_ssml_with_marks(text)
+            input_text = texttospeech.SynthesisInput(ssml=ssml_input)
+            try:
+                request = texttospeech.SynthesizeSpeechRequest(
+                    input=input_text,
+                    voice=voice,
+                    audio_config=audio_config,
+                    enable_time_pointing=[
+                        texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
+                    ]
+                )
+                response = client.synthesize_speech(request=request)
+            except Exception as tp_error:
+                print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis")
+                response = None
+
+        if response is None:
+            # Plain text synthesis (for unsupported voices or after timepoint failure)
             simple_input = texttospeech.SynthesisInput(text=text)
             response = client.synthesize_speech(
-                input=simple_input, 
-                voice=voice, 
+                input=simple_input,
+                voice=voice,
                 audio_config=audio_config
             )
 

@@ -16,6 +16,8 @@ import org.w3c.dom.NodeList;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -42,14 +44,23 @@ public class ScormService {
 
             // 4. Upload all files to Media Service (mimicking S3 folder structure)
             String rootFolder = "scorm/" + UUID.randomUUID().toString();
-            uploadDirectory(tempDir, rootFolder);
+            Map<String, String> uploadedFileIds = new HashMap<>();
+            uploadDirectory(tempDir, rootFolder, uploadedFileIds);
 
-            // 5. Create ScormSlide entity
+            // 5. Find the metadata UUID of the launch file
+            String launchFileKey = rootFolder + "/" + launchPath;
+            String launchFileMetadataId = uploadedFileIds.get(launchFileKey);
+            if (launchFileMetadataId == null) {
+                log.warn("Could not find metadata ID for launch file: {}", launchFileKey);
+            }
+
+            // 6. Create ScormSlide entity
             ScormSlide slide = new ScormSlide();
             slide.setId(UUID.randomUUID().toString());
             slide.setOriginalFileId(rootFolder); // storing the root folder path as ID/Ref
             slide.setLaunchPath(launchPath);
             slide.setScormVersion(detectScormVersion(tempDir));
+            slide.setLaunchUrl(launchFileMetadataId); // media file metadata UUID for the launch file
 
             slide = scormSlideRepository.save(slide);
 
@@ -155,18 +166,22 @@ public class ScormService {
         return "1.2"; // Default
     }
 
-    private void uploadDirectory(File dir, String rootKey) throws IOException {
+    private void uploadDirectory(File dir, String rootKey, Map<String, String> uploadedFileIds) throws IOException {
         if (dir.isDirectory()) {
             File[] files = dir.listFiles();
             if (files != null) {
                 for (File file : files) {
                     if (file.isDirectory()) {
-                        uploadDirectory(file, rootKey + "/" + file.getName());
+                        uploadDirectory(file, rootKey + "/" + file.getName(), uploadedFileIds);
                     } else {
                         String relativePath = rootKey + "/" + file.getName();
                         log.info("Uploading {} to {}", file.getName(), relativePath);
                         MultipartFile multipartFile = new CustomMultipartFile(file);
-                        mediaService.uploadFileToKey(multipartFile, relativePath);
+                        vacademy.io.common.media.dto.FileDetailsDTO result = mediaService.uploadFileToKey(multipartFile,
+                                relativePath);
+                        if (result != null && result.getId() != null) {
+                            uploadedFileIds.put(relativePath, result.getId());
+                        }
                     }
                 }
             }

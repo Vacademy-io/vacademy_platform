@@ -79,8 +79,8 @@ class ContentGenerationService:
             
             title = todo.title or todo.name or ""
             title_lower = title.lower()
-            is_homework_questions = "homework questions" in title_lower
-            is_homework_solutions = "homework solutions" in title_lower
+            is_homework_questions = "homework questions" in title_lower or "assignment -" in title_lower
+            is_homework_solutions = "homework solutions" in title_lower or "assignment solutions" in title_lower
 
             if is_homework_questions:
                 logger.info(f"Using homework (coding/task-focused) prompt for slide: {todo.path}")

@@ -195,6 +195,53 @@ public class FeeManagementService {
     }
 
     /**
+     * API #6: Soft delete CPO and all related records by status update.
+     * Marks status as "DELETED" for:
+     * - ComplexPaymentOption
+     * - FeeType (linked via cpoId)
+     * - AssignedFeeValue (linked via feeTypeId)
+     * - AftInstallment (linked via assignedFeeValueId)
+     * Only records currently in "ACTIVE" or "PENDING" status are updated.
+     */
+    @Transactional
+    public ComplexPaymentOptionDTO softDeleteCpoById(String cpoId) {
+        ComplexPaymentOption cpo = cpoRepository.findById(cpoId)
+                .orElseThrow(() -> new VacademyException("Complex Payment Option not found: " + cpoId));
+
+        if ("ACTIVE".equalsIgnoreCase(cpo.getStatus()) || "PENDING".equalsIgnoreCase(cpo.getStatus())) {
+            cpo.setStatus("DELETED");
+            cpoRepository.save(cpo);
+        }
+
+        List<FeeType> feeTypes = feeTypeRepository.findByCpoId(cpoId);
+        for (FeeType feeType : feeTypes) {
+            if ("ACTIVE".equalsIgnoreCase(feeType.getStatus()) || "PENDING".equalsIgnoreCase(feeType.getStatus())) {
+                feeType.setStatus("DELETED");
+                feeTypeRepository.save(feeType);
+            }
+
+            List<AssignedFeeValue> assignedFeeValues = assignedFeeValueRepository.findByFeeTypeId(feeType.getId());
+            for (AssignedFeeValue afv : assignedFeeValues) {
+                if ("ACTIVE".equalsIgnoreCase(afv.getStatus()) || "PENDING".equalsIgnoreCase(afv.getStatus())) {
+                    afv.setStatus("DELETED");
+                    assignedFeeValueRepository.save(afv);
+                }
+
+                List<AftInstallment> installments = aftInstallmentRepository
+                        .findByAssignedFeeValueIdOrderByInstallmentNumberAsc(afv.getId());
+                for (AftInstallment inst : installments) {
+                    if ("ACTIVE".equalsIgnoreCase(inst.getStatus()) || "PENDING".equalsIgnoreCase(inst.getStatus())) {
+                        inst.setStatus("DELETED");
+                        aftInstallmentRepository.save(inst);
+                    }
+                }
+            }
+        }
+
+        return getFullCpo(cpoId);
+    }
+
+    /**
      * API #5: Update Fee Type & Commercials (Cascade Update)
      */
     @Transactional

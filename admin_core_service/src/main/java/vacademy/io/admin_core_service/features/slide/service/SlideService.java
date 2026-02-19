@@ -802,6 +802,7 @@ public class SlideService {
             newSlide.setId(UUID.randomUUID().toString());
             newSlide.setOriginalFileId(scormSlide.getOriginalFileId());
             newSlide.setLaunchPath(scormSlide.getLaunchPath());
+            newSlide.setLaunchUrl(scormSlide.getLaunchUrl());
             newSlide.setScormVersion(scormSlide.getScormVersion());
             newSlide = scormSlideRepository.save(newSlide);
             return newSlide.getId();

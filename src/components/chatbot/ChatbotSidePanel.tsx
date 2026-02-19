@@ -49,7 +49,7 @@ import { MessageIntent } from "@/services/chatbot-api";
 
 // Context-aware quick action suggestions
 const getQuickActions = (
-  pathname: string
+  pathname: string,
 ): {
   label: string;
   icon: React.ElementType;
@@ -81,10 +81,7 @@ const getQuickActions = (
   }
 
   // Course details page
-  if (
-    pathname.includes("/courses/") ||
-    pathname.includes("/course-details")
-  ) {
+  if (pathname.includes("/courses/") || pathname.includes("/course-details")) {
     return [
       {
         label: "Course overview",
@@ -172,26 +169,27 @@ export const ChatbotSidePanel: React.FC = () => {
     shouldShowChatbot,
   } = useChatbotContext();
 
-  const { panelWidth, setPanelWidth, setIsOpen: setStorePanelOpen } =
-    useChatbotPanelStore();
+  const {
+    panelWidth,
+    setPanelWidth,
+    setIsOpen: setStorePanelOpen,
+  } = useChatbotPanelStore();
 
   // Get context-aware quick actions
   const quickActions = getQuickActions(location.pathname);
 
   const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
   const [isResizing, setIsResizing] = useState(false);
-  const [selectedIntent, setSelectedIntent] = useState<MessageIntent>("general");
+  const [selectedIntent, setSelectedIntent] =
+    useState<MessageIntent>("general");
   const resizeRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Handle resize
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      setIsResizing(true);
-    },
-    []
-  );
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
 
   const handleResizeMove = useCallback(
     (e: MouseEvent) => {
@@ -199,7 +197,7 @@ export const ChatbotSidePanel: React.FC = () => {
       const newWidth = window.innerWidth - e.clientX;
       setPanelWidth(newWidth);
     },
-    [isResizing, setPanelWidth]
+    [isResizing, setPanelWidth],
   );
 
   const handleResizeEnd = useCallback(() => {
@@ -264,7 +262,7 @@ export const ChatbotSidePanel: React.FC = () => {
         className={cn(
           "absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize z-10",
           "hover:bg-primary/20 transition-colors",
-          isResizing && "bg-primary/30"
+          isResizing && "bg-primary/30",
         )}
       >
         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-8 flex items-center justify-center -ml-1.5 opacity-0 hover:opacity-100 transition-opacity">
@@ -429,7 +427,7 @@ export const ChatbotSidePanel: React.FC = () => {
                     "flex w-full max-w-[92%]",
                     msg.role === "user"
                       ? "ml-auto justify-end"
-                      : "mr-auto justify-start"
+                      : "mr-auto justify-start",
                   )}
                 >
                   {msg.role === "assistant" && (
@@ -454,7 +452,7 @@ export const ChatbotSidePanel: React.FC = () => {
                         "rounded-xl px-2.5 py-1.5 text-[13px] break-words max-w-full leading-relaxed",
                         msg.role === "user"
                           ? "bg-primary text-primary-foreground rounded-br-sm shadow-sm"
-                          : "bg-card text-card-foreground rounded-bl-sm shadow-sm ring-1 ring-border/30"
+                          : "bg-card text-card-foreground rounded-bl-sm shadow-sm ring-1 ring-border/30",
                       )}
                     >
                       {msg.role === "user" ? (
@@ -552,7 +550,11 @@ export const ChatbotSidePanel: React.FC = () => {
                               ),
                             }}
                             rehypePlugins={[rehypeKatex]}
-                            remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+                            remarkPlugins={[
+                              remarkGfm,
+                              remarkMath,
+                              remarkBreaks,
+                            ]}
                           >
                             {msg.content}
                           </ReactMarkdown>
@@ -609,13 +611,17 @@ export const ChatbotSidePanel: React.FC = () => {
 
             {hasError && (
               <div className="w-full bg-destructive/10 border border-destructive/30 rounded-lg px-2.5 py-1.5 text-center">
-                <p className="text-xs text-destructive">Something went wrong. Start a new chat.</p>
+                <p className="text-xs text-destructive">
+                  Something went wrong. Start a new chat.
+                </p>
               </div>
             )}
 
             {isSessionClosed && (
               <div className="w-full bg-muted/40 border border-border/50 rounded-lg px-2.5 py-1.5 text-center">
-                <p className="text-xs text-muted-foreground">Session ended. Start a new chat.</p>
+                <p className="text-xs text-muted-foreground">
+                  Session ended. Start a new chat.
+                </p>
               </div>
             )}
 
@@ -653,22 +659,23 @@ export const ChatbotSidePanel: React.FC = () => {
         <div className="w-full flex items-center gap-1.5 mb-0.5">
           <Select
             value={selectedIntent}
-            onValueChange={(value) =>
-              setSelectedIntent(value as MessageIntent)
-            }
+            onValueChange={(value) => setSelectedIntent(value as MessageIntent)}
           >
             <SelectTrigger className="w-auto h-6 text-[10px] px-2 rounded-md border-0 bg-muted/60 hover:bg-muted text-muted-foreground gap-1">
               <SelectValue placeholder="Mode" />
             </SelectTrigger>
             <SelectContent className="z-[10006] min-w-[90px]">
-              <SelectItem value="general" className="text-xs">General</SelectItem>
-              <SelectItem value="doubt" className="text-xs">Doubt</SelectItem>
-              <SelectItem value="practice" className="text-xs">Practice</SelectItem>
+              <SelectItem value="general" className="text-xs">
+                General
+              </SelectItem>
+              <SelectItem value="doubt" className="text-xs">
+                Doubt
+              </SelectItem>
+              <SelectItem value="practice" className="text-xs">
+                Practice
+              </SelectItem>
             </SelectContent>
           </Select>
-          <span className="text-[10px] text-muted-foreground/60">
-            {selectedIntent === "general" ? "Ask anything" : selectedIntent === "doubt" ? "Clear your doubts" : "Get practice questions"}
-          </span>
         </div>
 
         {/* Modern Unified Input Box */}
@@ -687,9 +694,9 @@ export const ChatbotSidePanel: React.FC = () => {
             size="icon"
             className={cn(
               "h-8 w-8 shrink-0 rounded-lg transition-all",
-              inputValue.trim() 
-                ? "bg-primary text-primary-foreground shadow-sm" 
-                : "bg-muted text-muted-foreground"
+              inputValue.trim()
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted text-muted-foreground",
             )}
           >
             <Send className="h-3.5 w-3.5" />

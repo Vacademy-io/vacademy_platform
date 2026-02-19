@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MyInput } from "@/components/design-system/input";
 import { loginSchema } from "@/schemas/login/login";
 import { z } from "zod";
@@ -33,6 +33,8 @@ interface UsernameLoginProps {
     type?: string;
     courseId?: string;
     allowEmailOtpAuth?: boolean;
+    initialUsername?: string;
+    initialPassword?: string;
 }
 export function UsernameLogin({
     onSwitchToEmail,
@@ -41,6 +43,8 @@ export function UsernameLogin({
     onSwitchToSignup,
     onSwitchToForgotPassword,
     allowEmailOtpAuth,
+    initialUsername,
+    initialPassword,
 }: UsernameLoginProps & {
     onSwitchToSignup?: () => void;
     onSwitchToForgotPassword?: () => void;
@@ -60,11 +64,20 @@ export function UsernameLogin({
     const form = useForm<FormValues>({
         resolver: zodResolver(loginSchema),
         defaultValues: {
-            username: "",
-            password: "",
+            username: initialUsername ?? "",
+            password: initialPassword ?? "",
         },
         mode: "onTouched",
     });
+
+    useEffect(() => {
+        if (initialUsername || initialPassword) {
+            form.reset({
+                username: initialUsername ?? "",
+                password: initialPassword ?? "",
+            });
+        }
+    }, [initialUsername, initialPassword, form]);
 
     const mutation = useMutation({
         mutationFn: (values: FormValues) =>

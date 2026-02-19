@@ -51,6 +51,7 @@ const CourseCatalougePage: React.FC = () => {
 
   // Use selectors to prevent re-renders when store state changes
   const setInstituteData = useCatalogStore((state) => state.setInstituteData);
+  const instituteData = useCatalogStore((state) => state.instituteData);
   const setInstructors = useCatalogStore((state) => state.setInstructors);
 
   const setDripCondition = useDripConditionStore(
@@ -199,7 +200,14 @@ const CourseCatalougePage: React.FC = () => {
           level_ids: selectedLevels ?? [],
           faculty_ids: selectedInstructors ?? [],
           search_by_name: debouncedSearch ?? "",
-          tag: selectedTags ?? [],
+          tag: (() => {
+            const allTags = useCatalogStore.getState().instituteData?.tags || [];
+            if (!allTags.length) return selectedTags ?? [];
+            const expanded = (selectedTags ?? []).flatMap((t) =>
+              allTags.filter((at) => at.toLowerCase() === t.toLowerCase())
+            );
+            return expanded.length > 0 ? Array.from(new Set(expanded)) : selectedTags ?? [];
+          })(),
           min_percentage_completed: 0,
           max_percentage_completed: 0,
           type: tabType,
@@ -268,7 +276,14 @@ const CourseCatalougePage: React.FC = () => {
               faculty_ids: selectedInstructors ?? [],
               created_by_user_id: null as string | null,
               search_by_name: debouncedSearch ?? "",
-              tag: selectedTags ?? [],
+              tag: (() => {
+                const allTags = useCatalogStore.getState().instituteData?.tags || [];
+                if (!allTags.length) return selectedTags ?? [];
+                const expanded = (selectedTags ?? []).flatMap((t) =>
+                  allTags.filter((at) => at.toLowerCase() === t.toLowerCase())
+                );
+                return expanded.length > 0 ? Array.from(new Set(expanded)) : selectedTags ?? [];
+              })(),
               min_percentage_completed: 0,
               max_percentage_completed: 0,
               type: "ALL" as const,
@@ -515,12 +530,12 @@ const CourseCatalougePage: React.FC = () => {
                       "flex-1 sm:flex-none px-1.5 sm:px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-neutral-800 data-[state=active]:shadow-sm",
                       // Vibrant Styles - Flat Pastel
                       t.value === "COMPLETED" &&
-                        "[.ui-vibrant_&]:data-[state=active]:bg-emerald-100/50 [.ui-vibrant_&]:data-[state=active]:text-emerald-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-emerald-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-emerald-300",
+                      "[.ui-vibrant_&]:data-[state=active]:bg-emerald-100/50 [.ui-vibrant_&]:data-[state=active]:text-emerald-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-emerald-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-emerald-300",
                       t.value === "PROGRESS" &&
-                        "[.ui-vibrant_&]:data-[state=active]:bg-indigo-100/50 [.ui-vibrant_&]:data-[state=active]:text-indigo-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-indigo-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-indigo-300",
+                      "[.ui-vibrant_&]:data-[state=active]:bg-indigo-100/50 [.ui-vibrant_&]:data-[state=active]:text-indigo-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-indigo-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-indigo-300",
                       t.value !== "COMPLETED" &&
-                        t.value !== "PROGRESS" &&
-                        "[.ui-vibrant_&]:data-[state=active]:bg-slate-100/50 [.ui-vibrant_&]:data-[state=active]:text-slate-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-slate-800/50 dark:[.ui-vibrant_&]:data-[state=active]:text-slate-300"
+                      t.value !== "PROGRESS" &&
+                      "[.ui-vibrant_&]:data-[state=active]:bg-slate-100/50 [.ui-vibrant_&]:data-[state=active]:text-slate-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-slate-800/50 dark:[.ui-vibrant_&]:data-[state=active]:text-slate-300"
                     )}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -533,12 +548,12 @@ const CourseCatalougePage: React.FC = () => {
                       {t.label ||
                         (t.value === "ALL"
                           ? `All ${getTerminology(
-                              ContentTerms.Course,
-                              SystemTerms.Course
-                            )}s`
+                            ContentTerms.Course,
+                            SystemTerms.Course
+                          )}s`
                           : t.value === "PROGRESS"
-                          ? "In Progress"
-                          : "Completed")}
+                            ? "In Progress"
+                            : "Completed")}
                     </span>
                   </TabsTrigger>
                 ))}

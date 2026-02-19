@@ -1,5 +1,5 @@
 // Payment vendor types
-export type PaymentVendor = "STRIPE" | "EWAY" | "RAZORPAY" | "PAYPAL";
+export type PaymentVendor = "STRIPE" | "EWAY" | "RAZORPAY" | "PAYPAL" | "CASHFREE";
 
 interface InviteDataWithPayment {
   vendor: PaymentVendor;

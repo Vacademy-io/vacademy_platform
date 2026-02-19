@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { DaySession, SessionDetails } from "../-types/types";
+import { DaySession, SessionDetails, LearnerButtonConfig } from "../-types/types";
 import { LIVE_SESSION_GET_LIVE_AND_UPCOMING } from "@/constants/urls";
 import {
   getTokenDecodedData,
@@ -26,6 +26,11 @@ const fetchLiveAndUpcomingSessions = async (
   live_sessions: SessionDetails[];
   upcoming_sessions: SessionDetails[];
   totalReturned: number;
+  defaultDayConfig?: {
+    learnerButtonConfig?: LearnerButtonConfig | null;
+    defaultClassLink?: string | null;
+    defaultClassName?: string | null;
+  } | null;
 }> => {
   try {
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
@@ -58,10 +63,24 @@ const fetchLiveAndUpcomingSessions = async (
       return dateA.getTime() - dateB.getTime();
     });
 
+    const todayString = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+    const todaySession = (response.data as DaySession[]).find(
+      (day) => day.date === todayString
+    );
+
+    const defaultDayConfig = todaySession
+      ? {
+        learnerButtonConfig: todaySession.learnerButtonConfig,
+        defaultClassLink: todaySession.defaultClassLink,
+        defaultClassName: todaySession.defaultClassName,
+      }
+      : null;
+
     const transformedData = {
       live_sessions,
       upcoming_sessions,
       totalReturned: allSessions.length,
+      defaultDayConfig,
     };
 
     return transformedData;
@@ -79,6 +98,11 @@ const fetchLiveAndUpcomingSessionsForMultipleBatches = async (
   live_sessions: SessionDetails[];
   upcoming_sessions: SessionDetails[];
   totalReturned: number;
+  defaultDayConfig?: {
+    learnerButtonConfig?: LearnerButtonConfig | null;
+    defaultClassLink?: string | null;
+    defaultClassName?: string | null;
+  } | null;
 }> => {
   try {
     // If no batch IDs, return empty results
@@ -87,6 +111,7 @@ const fetchLiveAndUpcomingSessionsForMultipleBatches = async (
         live_sessions: [],
         upcoming_sessions: [],
         totalReturned: 0,
+        defaultDayConfig: null,
       };
     }
 
@@ -98,22 +123,37 @@ const fetchLiveAndUpcomingSessionsForMultipleBatches = async (
     // Combine all sessions from all batches
     const allLiveSessions: SessionDetails[] = [];
     const allUpcomingSessions: SessionDetails[] = [];
+    let defaultDayConfig: {
+      learnerButtonConfig?: LearnerButtonConfig | null;
+      defaultClassLink?: string | null;
+      defaultClassName?: string | null;
+    } | null = null;
 
     results.forEach((result) => {
       allLiveSessions.push(...result.live_sessions);
       allUpcomingSessions.push(...result.upcoming_sessions);
+      if (result.defaultDayConfig && !defaultDayConfig) {
+        defaultDayConfig = result.defaultDayConfig;
+      }
     });
 
-    // Deduplicate sessions by schedule_id (in case a session appears in multiple batches)
+    // Deduplicate sessions by session_id, meeting_date, and start_time
+    // This handles cases where a user is in multiple batches that have the same session scheduled
     const uniqueLiveSessions = Array.from(
       new Map(
-        allLiveSessions.map((session) => [session.schedule_id, session])
+        allLiveSessions.map((session) => [
+          `${session.session_id}_${session.meeting_date}_${session.start_time}`,
+          session,
+        ])
       ).values()
     );
 
     const uniqueUpcomingSessions = Array.from(
       new Map(
-        allUpcomingSessions.map((session) => [session.schedule_id, session])
+        allUpcomingSessions.map((session) => [
+          `${session.session_id}_${session.meeting_date}_${session.start_time}`,
+          session,
+        ])
       ).values()
     );
 
@@ -128,6 +168,7 @@ const fetchLiveAndUpcomingSessionsForMultipleBatches = async (
       live_sessions: uniqueLiveSessions,
       upcoming_sessions: uniqueUpcomingSessions,
       totalReturned: uniqueLiveSessions.length + uniqueUpcomingSessions.length,
+      defaultDayConfig,
     };
   } catch (error) {
     console.error("Error fetching sessions for multiple batches:", error);

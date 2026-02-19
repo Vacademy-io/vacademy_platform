@@ -34,6 +34,13 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { RazorpayCheckoutFormRef } from "./-components/razorpay-checkout-form";
 import { InstituteBrandingComponent } from "@/components/common/institute-branding";
+import {
+  initiateCashfreePayment,
+  getCashfreeReturnUrl,
+} from "@/services/cashfree-payment";
+import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 
 import {
   RegistrationStep,
@@ -126,6 +133,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cashfreeSessionData, setCashfreeSessionData] = useState<{
+    paymentSessionId: string;
+    orderId: string;
+  } | null>(null);
+  const [cashfreeInitLoading, setCashfreeInitLoading] = useState(false);
+  const cashfreeInitAttemptedRef = useRef(false);
   // Ref to prevent double auto-enrollment for FREE courses
   const hasAutoEnrolledRef = useRef(false);
   // Ref to track if prefill data has been applied (prevents double reset)
@@ -914,6 +927,125 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       return;
     }
 
+    // For CASHFREE payments - inline card flow (order created when entering step 3)
+    if (vendor === "CASHFREE") {
+      if (cashfreeSessionData || cashfreeInitLoading) {
+        return; // Payment is via inline Pay Now; or still initializing
+      }
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Step 1: Create enrollment (user + user plan with payment pending)
+        const paymentResponse = await handleEnrollLearnerForPayment({
+          registrationData: form.getValues(),
+          enrollmentData: enrollmentData,
+          instituteId,
+          enrollInviteId: inviteData?.id,
+          payment_option_id:
+            inviteData?.package_session_to_payment_options[0].payment_option.id,
+          package_session_ids:
+            inviteData?.package_session_to_payment_options.map(
+              (ps: { package_session_id: string }) => ps?.package_session_id
+            ) || [""],
+          allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
+          referRequest: referRequest,
+          paymentVendor: "CASHFREE",
+          isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+        });
+
+        // Extract userPlanId from response (backend creates enrollment and returns it)
+        const userPlanId =
+          paymentResponse?.payment_response?.user_plan_id ||
+          paymentResponse?.user_plan_id ||
+          paymentResponse?.learner_package_session_enroll?.user_plan_id;
+
+        if (!userPlanId) {
+          throw new Error(
+            "Enrollment created but user plan ID not received. Please contact support."
+          );
+        }
+
+        const userEmail = getUserDetails().email;
+        if (!userEmail) {
+          throw new Error("Email is required for payment.");
+        }
+
+        const token = await getTokenFromStorage(TokenKey.accessToken);
+        if (!token) {
+          throw new Error("Please log in to complete payment.");
+        }
+
+        const returnUrl = getCashfreeReturnUrl();
+        const amount =
+          enrollmentData.selectedPayment?.actual_price ??
+          enrollmentData.selectedPayment?.amount ??
+          0;
+        const currency =
+          enrollmentData.selectedPayment?.currency || "INR";
+
+        // Step 2: Call user-plan-payment API to get paymentSessionId
+        const cfResponse = await initiateCashfreePayment(
+          instituteId,
+          userPlanId,
+          {
+            amount,
+            currency,
+            email: userEmail,
+            returnUrl,
+            token,
+          }
+        );
+
+        const paymentSessionId =
+          cfResponse?.responseData?.paymentSessionId ??
+          cfResponse?.responseData?.payment_session_id;
+
+        if (!paymentSessionId) {
+          throw new Error(
+            "Failed to initialize payment. Please try again or contact support."
+          );
+        }
+
+        setOrderId(cfResponse.orderId);
+        setPaymentCompletionResponse(paymentResponse);
+
+        // Step 3: Launch Cashfree checkout (redirects to return_url on success/failure)
+        // For now always use sandbox (incl. production) for testing; set VITE_CASHFREE_SANDBOX=false when ready for prod keys
+        const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX !== "false";
+        const cashfree = await loadCashfree({ mode: isSandbox ? "sandbox" : "production" });
+
+        if (!cashfree) {
+          throw new Error("Failed to load Cashfree payment gateway.");
+        }
+
+        const checkoutResult = await cashfree.checkout({
+          paymentSessionId,
+          returnUrl: `${returnUrl}?orderId=${cfResponse.orderId}`,
+        });
+
+        if (checkoutResult?.error) {
+          throw new Error(checkoutResult.error.message || "Payment initialization failed.");
+        }
+        // On success, checkout redirects to return_url - no further action needed
+      } catch (err) {
+        const errorData = (err as { response?: { data?: { ex?: string; responseCode?: string } } })?.response?.data;
+        if (errorData?.responseCode?.includes("510")) {
+          toast.error(errorData?.ex || "Payment failed");
+          await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
+        }
+        setError(
+          (err as Error)?.message ||
+            errorData?.ex ||
+            "Failed to initiate Cashfree payment"
+        );
+        console.error("Cashfree enrollment error:", err);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     // For RAZORPAY payments
     if (vendor === "RAZORPAY") {
       setLoading(true);
@@ -1124,6 +1256,139 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [razorpayPaymentData]);
+
+  // Initialize Cashfree payment (create enrollment + get paymentSessionId) when entering step 3
+  useEffect(() => {
+    const vendor = propVendor || getPaymentVendor(inviteData);
+    if (
+      vendor !== "CASHFREE" ||
+      currentStep !== 3 ||
+      cashfreeSessionData ||
+      cashfreeInitLoading ||
+      cashfreeInitAttemptedRef.current
+    ) {
+      return;
+    }
+
+    cashfreeInitAttemptedRef.current = true;
+    setCashfreeInitLoading(true);
+    setError(null);
+
+    const init = async () => {
+      try {
+        const paymentResponse = await handleEnrollLearnerForPayment({
+          registrationData: form.getValues(),
+          enrollmentData: enrollmentData,
+          instituteId,
+          enrollInviteId: inviteData?.id,
+          payment_option_id:
+            inviteData?.package_session_to_payment_options[0].payment_option.id,
+          package_session_ids:
+            inviteData?.package_session_to_payment_options.map(
+              (ps: { package_session_id: string }) => ps?.package_session_id
+            ) || [""],
+          allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
+          referRequest: referRequestRef.current,
+          paymentVendor: "CASHFREE",
+          isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+        });
+
+        const userPlanId =
+          paymentResponse?.user_plan_id ||
+          paymentResponse?.payment_response?.user_plan_id ||
+          paymentResponse?.learner_package_session_enroll?.user_plan_id;
+
+        const responseData = paymentResponse?.payment_response?.response_data;
+        let paymentSessionId =
+          responseData?.paymentSessionId ?? responseData?.payment_session_id;
+        let cfOrderId =
+          responseData?.orderId ?? responseData?.order_id ?? paymentResponse?.payment_response?.order_id;
+
+        if (!paymentSessionId) {
+          if (!userPlanId) throw new Error("User plan ID not received.");
+          const token = await getTokenFromStorage(TokenKey.accessToken);
+          if (!token) {
+            throw new Error(
+              "Payment session not in response. Please log in to complete payment."
+            );
+          }
+          const userEmail = getUserDetails().email;
+          if (!userEmail) throw new Error("Email is required.");
+
+          const amount =
+            enrollmentData.selectedPayment?.actual_price ??
+            enrollmentData.selectedPayment?.amount ??
+            0;
+          const cfResponse = await initiateCashfreePayment(
+            instituteId,
+            userPlanId,
+            {
+              amount,
+              currency: enrollmentData.selectedPayment?.currency || "INR",
+              email: userEmail,
+              returnUrl: getCashfreeReturnUrl(),
+              token,
+            }
+          );
+
+          paymentSessionId =
+            cfResponse?.responseData?.paymentSessionId ??
+            cfResponse?.responseData?.payment_session_id;
+          cfOrderId = cfResponse?.orderId ?? cfOrderId;
+        }
+
+        if (!paymentSessionId) throw new Error("Failed to initialize payment.");
+
+        const ordId =
+          cfOrderId ?? paymentResponse?.payment_response?.order_id ?? "";
+        setCashfreeSessionData({
+          paymentSessionId,
+          orderId: ordId,
+        });
+        setOrderId(ordId);
+        setPaymentCompletionResponse(paymentResponse);
+        const userEmail =
+          paymentResponse?.user?.email ?? paymentResponse?.user?.username;
+        const userPassword = paymentResponse?.user?.password;
+        if (ordId && userEmail && userPassword) {
+          try {
+            sessionStorage.setItem(
+              `enroll_payment_creds_${ordId}`,
+              JSON.stringify({ username: userEmail, password: userPassword })
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch (err) {
+        const errData = (err as { response?: { data?: { ex?: string; responseCode?: string } } })?.response?.data;
+        if (errData?.responseCode?.includes("510")) {
+          toast.error(errData?.ex || "Payment failed");
+          fetchAndHandleEnrollmentPolicy("error_already_enrolled");
+        }
+        setError(
+          (err as Error)?.message || errData?.ex || "Failed to initialize payment"
+        );
+      } finally {
+        setCashfreeInitLoading(false);
+      }
+    };
+
+    init();
+  }, [
+    currentStep,
+    inviteData,
+    enrollmentData,
+    instituteId,
+    cashfreeSessionData,
+    cashfreeInitLoading,
+  ]);
+
+  useEffect(() => {
+    if (currentStep !== 3) {
+      cashfreeInitAttemptedRef.current = false;
+    }
+  }, [currentStep]);
 
   useEffect(() => {
     const loadCourseData = async () => {
@@ -1425,6 +1690,13 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               "Payment for course enrollment"
             }
             razorpayRef={razorpayRef}
+            cashfreePaymentSessionId={cashfreeSessionData?.paymentSessionId}
+            cashfreeReturnUrl={getCashfreeReturnUrl()}
+            cashfreeOrderId={cashfreeSessionData?.orderId}
+            cashfreeInitLoading={cashfreeInitLoading}
+            cashfreeInstituteId={instituteId}
+            onCashfreePayClick={() => setLoading(true)}
+            onCashfreePayError={() => setLoading(false)}
           />
         );
       }
@@ -1896,6 +2168,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                     : false
                 }
                 hasUnappliedReferral={hasUnappliedReferral}
+                hidePrimaryButton={
+                  currentStep === 3 &&
+                  getPaymentVendor(inviteData) === "CASHFREE" &&
+                  !!cashfreeSessionData
+                }
               />
             )}
           </div>

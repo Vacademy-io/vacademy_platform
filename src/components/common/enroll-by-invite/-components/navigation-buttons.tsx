@@ -15,6 +15,7 @@ interface NavigationButtonsProps {
   paymentVendor?: PaymentVendor;
   isPaymentDataReady?: boolean; // For Stripe processor or Eway encrypted data
   hasUnappliedReferral?: boolean;
+  hidePrimaryButton?: boolean; // For CASHFREE inline card - pay via form's Pay Now
 }
 
 const NavigationButtons = ({
@@ -29,6 +30,7 @@ const NavigationButtons = ({
   paymentVendor,
   isPaymentDataReady = false,
   hasUnappliedReferral = false,
+  hidePrimaryButton = false,
 }: NavigationButtonsProps) => {
   const isNextDisabled = () => {
     if (loading) return true;
@@ -69,6 +71,7 @@ const NavigationButtons = ({
         <ArrowLeft className="w-4 h-4" />
         Previous
       </MyButton>
+      {!hidePrimaryButton && (
       <MyButton
         type="button"
         buttonType="primary"
@@ -97,6 +100,7 @@ const NavigationButtons = ({
           <ArrowRight className="w-4 h-4" />
         )}
       </MyButton>
+      )}
     </div>
   );
 };

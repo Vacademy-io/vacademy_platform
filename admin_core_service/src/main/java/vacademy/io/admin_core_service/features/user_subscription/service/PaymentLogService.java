@@ -241,119 +241,6 @@ public class PaymentLogService {
     }
 
     /**
-     * Fast update method for Cashfree: uses ONLY payment_log.id (PK lookup), NEVER queries JSON column.
-     * Cashfree webhook sends order_id which equals payment_log.id, so we can skip expensive JSON LIKE scans.
-     * 
-     * CRITICAL: For Cashfree webhook path, we ONLY persist payment_status and return quickly.
-     * We intentionally DO NOT run post-payment operations here because they can be slow, can involve
-     * JSON queries (e.g. applicant_stage lookup), and can exhaust DB connections under load.
-     * 
-     * @param paymentLogId  The payment log ID (same as Cashfree order_id)
-     * @param paymentStatus The new payment status to set
-     * @param instituteId   The institute ID for post-payment processing
-     */
-    @Transactional
-    public void updatePaymentLogByPaymentLogId(String paymentLogId, String paymentStatus, String instituteId) {
-        log.info("Updating payment log by ID={} (Cashfree fast path, no JSON search), setting paymentStatus={}", 
-                paymentLogId, paymentStatus);
-
-        Optional<PaymentLog> logOpt = paymentLogRepository.findById(paymentLogId);
-        if (!logOpt.isPresent()) {
-            log.error("Payment log not found with ID={} (Cashfree webhook)", paymentLogId);
-            SentryLogger.SentryEventBuilder.error(new RuntimeException("Payment log not found by ID"))
-                    .withMessage("Payment log not found for Cashfree webhook")
-                    .withTag("payment.log.id", paymentLogId)
-                    .withTag("payment.payment.status", paymentStatus)
-                    .send();
-            throw new RuntimeException("Payment log not found with ID: " + paymentLogId);
-        }
-
-        PaymentLog paymentLog = logOpt.get();
-        List<PaymentLog> allLogsToUpdate = new ArrayList<>();
-        allLogsToUpdate.add(paymentLog);
-
-        // Check for child logs if it's a parent transaction
-        try {
-            if (StringUtils.hasText(paymentLog.getPaymentSpecificData())) {
-                Map<String, Object> data = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
-                if (data != null && data.containsKey("childPaymentLogIds")) {
-                    List<String> childIds = (List<String>) data.get("childPaymentLogIds");
-                    if (childIds != null && !childIds.isEmpty()) {
-                        log.info("Parent log {} has {} child logs. Adding them to update list.", paymentLog.getId(),
-                                childIds.size());
-                        for (String childId : childIds) {
-                            paymentLogRepository.findById(childId).ifPresent(childLog -> {
-                                if (!allLogsToUpdate.contains(childLog)) {
-                                    allLogsToUpdate.add(childLog);
-                                }
-                            });
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Error checking for child logs in payment log {}: {}", paymentLog.getId(), e.getMessage());
-        }
-
-        // Idempotency: avoid redundant DB writes/flushes when status is already set (common with webhook retries/duplicates).
-        List<PaymentLog> logsNeedingUpdate = new ArrayList<>();
-        for (PaymentLog logToUpdate : allLogsToUpdate) {
-            String current = logToUpdate.getPaymentStatus();
-            if (!StringUtils.hasText(current) || !current.equalsIgnoreCase(paymentStatus)) {
-                logsNeedingUpdate.add(logToUpdate);
-            }
-        }
-        if (logsNeedingUpdate.isEmpty()) {
-            log.info("Skipping update: payment status is already {} for payment log ID {} (and any child logs)", paymentStatus, paymentLogId);
-            return;
-        }
-
-        // STEP 1: Update payment status FIRST and commit immediately (critical path)
-        log.info("Updating payment status for {} logs (Parent + Children) for payment log ID {}", 
-                logsNeedingUpdate.size(), paymentLogId);
-        for (PaymentLog logToUpdate : logsNeedingUpdate) {
-            log.info("Updating log {} (UserPlan: {}, Vendor: {}) with status {}",
-                    logToUpdate.getId(),
-                    logToUpdate.getUserPlan() != null ? logToUpdate.getUserPlan().getId() : "N/A",
-                    logToUpdate.getVendor(),
-                    paymentStatus);
-
-            logToUpdate.setPaymentStatus(paymentStatus);
-            paymentLogRepository.saveAndFlush(logToUpdate); // Commit immediately - payment status is now PAID
-        }
-
-        // STEP 2: Run post-payment logic in separate transaction(s) so courses become visible and invoice/notifications run.
-        // Only one event (PAYMENT_SUCCESS_WEBHOOK) is accepted by Cashfree webhook, so duplicate load is avoided.
-        if (PaymentStatusEnum.PAID.name().equals(paymentStatus) || PaymentStatusEnum.FAILED.name().equals(paymentStatus)) {
-            for (PaymentLog logToUpdate : logsNeedingUpdate) {
-                try {
-                    self.handlePostPaymentLogicInNewTransaction(logToUpdate, paymentStatus, instituteId);
-                } catch (Exception e) {
-                    log.error("Post-payment logic failed for log {} (payment status already saved): {}. Non-critical.",
-                            logToUpdate.getId(), e.getMessage());
-                    SentryLogger.logError(e, "Post-payment logic failure (payment status already saved)", Map.of(
-                            "payment.log.id", logToUpdate.getId(),
-                            "payment.status", paymentStatus));
-                }
-            }
-        }
-    }
-
-    /**
-     * Runs post-payment logic in a NEW transaction (REQUIRES_NEW) so failures don't rollback payment status.
-     * This includes: notifications, invoices, applicant sync, etc.
-     * 
-     * @param paymentLog    The payment log that was already updated to PAID/FAILED
-     * @param paymentStatus The payment status (PAID or FAILED)
-     * @param instituteId   The institute ID
-     */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void handlePostPaymentLogicInNewTransaction(PaymentLog paymentLog, String paymentStatus, String instituteId) {
-        log.info("Running post-payment logic in separate transaction for payment log ID={}", paymentLog.getId());
-        handlePostPaymentLogic(paymentLog, paymentStatus, instituteId);
-    }
-
-    /**
      * Updates all PaymentLog entries where the orderId is found in
      * payment_specific_data JSON.
      * This method is specifically designed for webhook callbacks (e.g., PhonePe)
@@ -371,13 +258,38 @@ public class PaymentLogService {
         List<PaymentLog> paymentLogs = new ArrayList<>();
         int maxRetries = 10;
 
-        // --- FAST PATH (preferred): treat webhook orderId as PaymentLog PK ---
-        // In most of our flows (e.g. CASHFREE), the gateway "order_id" is the same UUID we generate for payment_log.id.
-        // Doing a PK lookup avoids expensive JSON LIKE scans on payment_specific_data.
-        Optional<PaymentLog> pkLogOpt = paymentLogRepository.findById(orderId);
-        if (pkLogOpt.isPresent()) {
-            paymentLogs.add(pkLogOpt.get());
-            log.info("Found payment log by PK id={} (skipping JSON order-id scan)", orderId);
+        // --- Retry Loop to find by OrderID in JSON or by PK as fallback ---
+        for (int i = 0; i < maxRetries; i++) {
+            // First check by orderId in originalRequest.order_id JSON path (primary method)
+            paymentLogs = paymentLogRepository.findAllByOrderIdInOriginalRequest(orderId);
+
+            // If not found, try the broader search
+            if (paymentLogs.isEmpty()) {
+                paymentLogs = paymentLogRepository.findAllByOrderIdInJson(orderId);
+            }
+
+            // If none found by OrderId, check if the input is actually a PK (legacy/default
+            // way)
+            if (paymentLogs.isEmpty()) {
+                Optional<PaymentLog> logOpt = paymentLogRepository.findById(orderId);
+                logOpt.ifPresent(paymentLogs::add);
+            }
+
+            if (!paymentLogs.isEmpty()) {
+                log.info("Found {} payment logs for ID/Order {} on attempt {}/{}", paymentLogs.size(), orderId, i + 1,
+                        maxRetries);
+                break;
+            }
+
+            if (i < maxRetries - 1) {
+                try {
+                    log.warn("No payment logs found for {}. Retrying in 2 seconds...", orderId);
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Thread interrupted during payment log retry", e);
+                }
+            }
         }
 
         // --- Multi-Package Logic: Check for child logs if it's a parent transaction
@@ -491,24 +403,19 @@ public class PaymentLogService {
                 }
             }
 
-            // Applicant sync: only run if the paying user is actually an applicant.
-            // Check audience_response by student_user_id with a non-null applicant_id (fast indexed query)
-            // to avoid the expensive JSON scan on applicant_stage.response_json for every payment.
+            // Applicant sync: only when paying user is an applicant (audience_response.student_user_id + applicant_id).
+            // Avoids expensive applicant_stage JSON query on every payment.
             String payingUserId = paymentLog.getUserId();
-            Optional<vacademy.io.admin_core_service.features.audience.entity.AudienceResponse> applicantAudienceResponse =
-                    Optional.empty();
+            boolean isApplicantPayment = false;
             if (StringUtils.hasText(payingUserId)) {
                 try {
-                    applicantAudienceResponse = audienceResponseRepository
-                            .findFirstByStudentUserIdAndApplicantIdIsNotNull(payingUserId);
+                    isApplicantPayment = audienceResponseRepository
+                            .findFirstByStudentUserIdAndApplicantIdIsNotNull(payingUserId).isPresent();
                 } catch (Exception ex) {
-                    log.error("Failed to check audience_response for applicant gate (userId={}): {}", payingUserId, ex.getMessage());
+                    log.debug("Applicant gate check failed for userId={}: {}", payingUserId, ex.getMessage());
                 }
             }
-
-            if (applicantAudienceResponse.isPresent()) {
-                log.info("User {} is an applicant (audienceResponse={}, applicantId={}). Running applicant stage sync.",
-                        payingUserId, applicantAudienceResponse.get().getId(), applicantAudienceResponse.get().getApplicantId());
+            if (isApplicantPayment) {
                 String orderIdToSync = paymentLog.getId();
                 try {
                     Map<String, Object> pData = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(), Map.class);
@@ -519,11 +426,9 @@ public class PaymentLogService {
                         }
                     }
                 } catch (Exception ex) {
-                    log.error("Failed to extract order_id for applicant sync: {}", ex.getMessage());
+                    log.debug("Failed to extract order_id for applicant sync: {}", ex.getMessage());
                 }
                 self.syncApplicantStageInNewTransaction(orderIdToSync);
-            } else {
-                log.info("User {} is not an applicant (no audience_response with applicant_id). Skipping applicant stage sync.", payingUserId);
             }
 
             // Parse the paymentSpecificData which now contains both response and original
@@ -633,10 +538,8 @@ public class PaymentLogService {
     public void syncApplicantStageInNewTransaction(String orderId) {
         try {
             applicantService.handlePaymentSuccess(orderId);
-            log.info("Applicant stage synced for orderId={} (applicant flow payment).", orderId);
         } catch (Exception e) {
-            // No applicant_stage row for this order_id = catalog/learner enrollment (not applicant flow). Normal.
-            log.info("Applicant sync skipped for orderId={} (no applicant stage for this order): {}", orderId, e.getMessage());
+            log.debug("No applicant stage updated for order {}: {}", orderId, e.getMessage());
         }
     }
 

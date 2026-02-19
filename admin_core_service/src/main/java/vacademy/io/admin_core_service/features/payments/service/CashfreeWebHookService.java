@@ -84,31 +84,9 @@ public class CashfreeWebHookService {
             }
 
             if (!StringUtils.hasText(orderId)) {
-                // Cashfree sends multiple webhook types (e.g. INSTRUMENT_*). Many are not payment/order events and
-                // legitimately do not include an order_id. Treat them as "ignored" to avoid noisy logs and retries.
-                log.info("Ignoring Cashfree webhook without order_id (type={}).", eventType);
-                if (webhookId != null) {
-                    webHookService.updateWebHookStatus(webhookId, WebHookStatus.PROCESSED,
-                            "Ignored webhook without order_id (non-payment event)");
-                }
-                return ResponseEntity.ok("IGNORED");
-            }
-
-            // Accept ONLY PAYMENT_SUCCESS_WEBHOOK to avoid multiple webhook processing (e.g. PAYMENT_CHARGES_WEBHOOK
-            // and PAYMENT_SUCCESS_WEBHOOK both updating the same order causes redundant DB writes and load).
-            // All other event types (PAYMENT_CHARGES_WEBHOOK, ORDER_PAID, INSTRUMENT_*, etc.) are ignored.
-            if (!StringUtils.hasText(eventType) || !"PAYMENT_SUCCESS_WEBHOOK".equalsIgnoreCase(eventType.trim())) {
-                log.info("Ignoring Cashfree webhook for orderId={}: only PAYMENT_SUCCESS_WEBHOOK is accepted (received type={}).", orderId, eventType);
-                if (webhookId != null) {
-                    try {
-                        webHookService.updateWebHook(webhookId, payload, orderId, eventType);
-                        webHookService.updateWebHookStatus(webhookId, WebHookStatus.PROCESSED,
-                                "Ignored non-success event (only PAYMENT_SUCCESS_WEBHOOK accepted)");
-                    } catch (Exception ignored) {
-                        // Best-effort: webhook audit should not block responding 200 to Cashfree
-                    }
-                }
-                return ResponseEntity.ok("IGNORED");
+                log.error("Cashfree webhook missing order_id. Payload: {}", payload);
+                webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED, "Missing order_id");
+                return ResponseEntity.badRequest().body("Missing order_id");
             }
 
             // Step 3: Resolve instituteId
@@ -143,11 +121,9 @@ public class CashfreeWebHookService {
             PaymentStatusEnum mappedStatus = mapStatus(status);
 
             // Step 5: Update payment logs
-            // For Cashfree: orderId from webhook = payment_log.id (we set it during order creation)
-            // Use fast path: ONLY PK lookup, NEVER query JSON column (avoids expensive LIKE scans)
             if (mappedStatus == PaymentStatusEnum.PAID || mappedStatus == PaymentStatusEnum.FAILED) {
-                paymentLogService.updatePaymentLogByPaymentLogId(orderId, mappedStatus.name(), instituteId);
-                log.info("Cashfree webhook updated payment log(s) for paymentLogId={} to {}", orderId, mappedStatus.name());
+                paymentLogService.updatePaymentLogsByOrderId(orderId, mappedStatus.name(), instituteId);
+                log.info("Cashfree webhook updated payment log(s) for orderId={} to {}", orderId, mappedStatus.name());
             } else {
                 log.info("Cashfree status {} treated as PAYMENT_PENDING for orderId={} (no update)", status, orderId);
             }

@@ -18,7 +18,6 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLo
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
-import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
@@ -439,20 +438,6 @@ public class PaymentService {
          * @return Map containing payment status and details
          */
         public Map<String, Object> checkPaymentStatus(String vendor, String instituteId, String orderId) {
-                return checkPaymentStatus(vendor, instituteId, orderId, null);
-        }
-
-        /**
-         * Checks payment status for a given order ID.
-         * Accepts an optional PaymentLogDTO to avoid duplicate database queries.
-         * 
-         * @param vendor      Payment gateway vendor
-         * @param instituteId Institute ID
-         * @param orderId     Order ID to check status for
-         * @param paymentLogDto Optional PaymentLogDTO (if already fetched, pass it to avoid duplicate query)
-         * @return Map containing payment status and details
-         */
-        public Map<String, Object> checkPaymentStatus(String vendor, String instituteId, String orderId, PaymentLogDTO paymentLogDto) {
                 Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
                                 .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
                 PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
@@ -481,48 +466,15 @@ public class PaymentService {
 
                 if (PaymentGateway.CASHFREE.name().equalsIgnoreCase(vendor)) {
                         // Cashfree: status is updated by webhook; return from PaymentLog
-                        // Reuse PaymentLogDTO if provided to avoid duplicate database query
-                        PaymentLogDTO logDto = paymentLogDto != null 
-                                        ? paymentLogDto 
-                                        : paymentLogService.getPaymentLog(orderId);
+                        var logDto = paymentLogService.getPaymentLog(orderId);
                         String paymentStatus = logDto.getPaymentStatus() != null
                                         ? logDto.getPaymentStatus()
                                         : PaymentStatusEnum.PAYMENT_PENDING.name();
                         Map<String, Object> responseMap = new HashMap<>();
                         responseMap.put("status", paymentStatus);
-                        responseMap.put("paymentStatus", paymentStatus);
-                        responseMap.put("payment_status", paymentStatus);
-                        Map<String, Object> details = new HashMap<>();
-                        details.put("orderId", orderId);
-                        details.put("order_id", orderId);
-                        details.put("paymentStatus", paymentStatus);
-                        details.put("payment_status", paymentStatus);
-                        responseMap.put("details", details);
-
-                        // When PAID: return login credentials for frontend to call v1/login API (catalog flow - no password).
-                        // Frontend must call POST /auth-service/learner/v1/login-by-username-trusted with username + institute_id
-                        // to get access/refresh tokens, then set auth state same as learner-invitation flow (courses visible).
-                        if (PaymentStatusEnum.PAID.name().equalsIgnoreCase(paymentStatus)
-                                        && StringUtils.hasText(logDto.getUserId())
-                                        && StringUtils.hasText(instituteId)) {
-                                try {
-                                        UserDTO userDto = getUserById(logDto.getUserId());
-                                        if (userDto != null) {
-                                                String loginUsername = StringUtils.hasText(userDto.getUsername())
-                                                                ? userDto.getUsername()
-                                                                : userDto.getEmail();
-                                                if (StringUtils.hasText(loginUsername)) {
-                                                        responseMap.put("login_username", loginUsername);
-                                                        responseMap.put("institute_id", instituteId);
-                                                        responseMap.put("user", userDto);
-                                                        responseMap.put("use_login_api", true);
-                                                }
-                                        }
-                                } catch (Exception e) {
-                                        log.warn("Could not prepare login credentials for post-payment catalog flow: orderId={}, userId={}, error={}",
-                                                        orderId, logDto.getUserId(), e.getMessage());
-                                }
-                        }
+                        responseMap.put("details", Map.of(
+                                        "orderId", orderId,
+                                        "paymentStatus", paymentStatus));
                         return responseMap;
                 }
 
@@ -534,7 +486,10 @@ public class PaymentService {
          */
         private UserDTO getUserById(String userId) {
                 List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
-                return users.isEmpty() ? null : users.get(0);
+                if (users.isEmpty()) {
+                        throw new RuntimeException("User not found with ID: " + userId);
+                }
+                return users.get(0);
         }
 
         /**

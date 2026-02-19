@@ -4,7 +4,6 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { FiSidebar } from "react-icons/fi";
 import { useEffect, useMemo, useState } from "react";
 import useStore from "../sidebar/useSidebar";
-import { Preferences } from "@capacitor/preferences";
 import { LogoutSidebar } from "../sidebar/logoutSidebar";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import {
@@ -22,9 +21,6 @@ import { SystemAlertsBar } from "@/components/announcements";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft } from "@phosphor-icons/react";
-import { ChatbotTrigger } from "@/components/chatbot/ChatbotTrigger";
-import { getDataFromPreferences } from "@/utils/storage";
-import { InstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { getInstituteLogoQuery } from "@/services/institute-logo";
 import { useIsIOS } from "@/hooks/useIsIOS";
 
@@ -38,7 +34,7 @@ interface UserRole {
 
 export function Navbar() {
   const { data: instituteDetails } = useSuspenseQuery(
-    handleGetPublicInstituteDetails()
+    handleGetPublicInstituteDetails(),
   );
   const {
     data: userRoleDetails,
@@ -48,7 +44,7 @@ export function Navbar() {
 
   // Fetch cached institute logo URL (cached for 24 hours)
   const { data: cachedLogoUrl } = useSuspenseQuery(
-    getInstituteLogoQuery(instituteDetails?.institute_logo_file_id ?? null)
+    getInstituteLogoQuery(instituteDetails?.institute_logo_file_id ?? null),
   );
   const isIOS = useIsIOS();
 
@@ -86,7 +82,7 @@ export function Navbar() {
           cachedLogoUrl || "",
           instituteDetails.home_icon_click_route ??
             instituteDetails.homeIconClickRoute ??
-            null
+            null,
         );
       }
     } catch (error) {
@@ -118,7 +114,7 @@ export function Navbar() {
               homeIconClickRoute?: string | null;
             }
           )?.homeIconClickRoute ??
-          null
+          null,
       );
     }
     // Load sidebar visibility from Student Display Settings (uses cache on dashboard refresh)
@@ -164,7 +160,7 @@ export function Navbar() {
   if (error) {
     console.warn(
       "Navbar: Error loading user role details, showing fallback UI:",
-      error
+      error,
     );
     // Return a simplified navbar without role-dependent features
     return (
@@ -255,7 +251,9 @@ export function Navbar() {
   }
 
   return (
-    <div className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-[60px] items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap ${isIOS ? 'mt-10' : ''}`}>
+    <div
+      className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-[60px] items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap ${isIOS ? "mt-10" : ""}`}
+    >
       <LogoutSidebar />
 
       {/* Left Section */}
@@ -357,9 +355,6 @@ export function Navbar() {
           </Tooltip>
         )}
         <div className="w-px h-6 bg-primary-200/60 dark:bg-neutral-700"></div>
-
-        {/* Chatbot Trigger Button */}
-        <ChatbotTrigger />
 
         {/* Menu Button (always visible) */}
         <button

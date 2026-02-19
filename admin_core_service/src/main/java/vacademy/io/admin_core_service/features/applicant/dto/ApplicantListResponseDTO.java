@@ -21,6 +21,7 @@ public class ApplicantListResponseDTO {
     private String applicantId;
     private String trackingId;
     private String overallStatus;
+    private String workflowType;
     private String applicationStageStatus;
     private Timestamp createdAt;
     private Timestamp updatedAt;

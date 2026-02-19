@@ -40,4 +40,7 @@ public class Applicant {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
+
+    @Column(name = "workflow_type")
+    private String workflowType;
 }

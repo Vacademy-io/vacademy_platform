@@ -19,7 +19,6 @@ public class ApplicationController {
 
     private final ApplicantService applicantService;
 
-    @Autowired
     public ApplicationController(ApplicantService applicantService) {
         this.applicantService = applicantService;
     }
@@ -35,12 +34,14 @@ public class ApplicationController {
     public ResponseEntity<java.util.List<ApplicationStageDTO>> listApplicationStages(
             @org.springframework.web.bind.annotation.RequestParam(required = false) String instituteId,
             @org.springframework.web.bind.annotation.RequestParam(required = false) String source,
-            @org.springframework.web.bind.annotation.RequestParam(required = false) String sourceId) {
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String sourceId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String workflowType) {
 
-        logger.info("Request to list Application Stages. Institute: {}, Source: {}, SourceId: {}", instituteId, source,
-                sourceId);
+        logger.info("Request to list Application Stages. Institute: {}, Source: {}, SourceId: {}, WorkflowType: {}",
+                instituteId, source,
+                sourceId, workflowType);
         java.util.List<ApplicationStageDTO> stages = applicantService.getApplicationStages(instituteId, source,
-                sourceId);
+                sourceId, workflowType);
         return ResponseEntity.ok(stages);
     }
 }

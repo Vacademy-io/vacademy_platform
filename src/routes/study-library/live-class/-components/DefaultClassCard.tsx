@@ -1,22 +1,16 @@
 
 import { Button } from "@/components/ui/button";
 import { ArrowSquareOut } from "@phosphor-icons/react";
-import { useNavigate } from "@tanstack/react-router";
-import { LearnerButtonConfig } from "../-types/types";
 
 interface DefaultClassCardProps {
     defaultClassLink: string;
-    learnerButtonConfig?: LearnerButtonConfig | null;
     defaultClassName?: string | null;
 }
 
 export const DefaultClassCard = ({
     defaultClassLink,
-    learnerButtonConfig,
     defaultClassName,
 }: DefaultClassCardProps) => {
-    const navigate = useNavigate();
-
     const displayTitle = defaultClassName || "Default Session";
 
     return (
@@ -35,32 +29,19 @@ export const DefaultClassCard = ({
                         There is no live session currently. You can watch this session.
                     </p>
                 </div>
-                <Button
-                    variant="default"
-                    size="sm"
-                    className="w-full sm:w-auto shrink-0"
-                    onClick={() => {
-                        navigate({
-                            to: "/study-library/live-class/embed",
-                            search: {
-                                videoUrl: defaultClassLink,
-                                title: displayTitle,
-                                learnerButtonConfig: learnerButtonConfig
-                                    ? {
-                                        text: learnerButtonConfig.text,
-                                        url: learnerButtonConfig.url,
-                                        background_color: learnerButtonConfig.background_color,
-                                        text_color: learnerButtonConfig.text_color,
-                                        visible: learnerButtonConfig.visible,
-                                    }
-                                    : undefined,
-                            },
-                        });
-                    }}
-                >
-                    <ArrowSquareOut size={16} className="mr-1.5 text-white" />
-                    <span className="text-white">View Session</span>
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <Button
+                        variant="default"
+                        size="sm"
+                        className="w-full sm:w-auto shrink-0"
+                        onClick={() => {
+                            window.open(defaultClassLink, "_blank");
+                        }}
+                    >
+                        <ArrowSquareOut size={16} className="mr-1.5 text-white" />
+                        <span className="text-white">View Session</span>
+                    </Button>
+                </div>
             </div>
         </div>
     );

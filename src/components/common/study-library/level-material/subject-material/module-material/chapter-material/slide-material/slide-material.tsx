@@ -29,6 +29,7 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { ConcentrationSettings } from "@/types/student-display-settings";
 import { fetchHtmlVideoUrls } from "@/utils/htmlVideoService";
 import AudioPlayer from "./audio-player";
+import ScormSlideComponent from "./scorm-slide";
 
 export const SlideMaterial = () => {
   const { activeItem, items, setActiveItem, slideEvaluations } =
@@ -770,6 +771,22 @@ export const SlideMaterial = () => {
                </div>
             );
           }
+          break;
+        }
+
+        case "SCORM": {
+          setContent(
+            <div
+              key={`scorm-${activeItem.id}`}
+              className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+            >
+              <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
+                <ScormSlideComponent
+                  slide={activeItem}
+                />
+              </div>
+            </div>
+          );
           break;
         }
 

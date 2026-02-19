@@ -4,5 +4,6 @@ public enum ApplicantStageType {
     FORM,
     PAYMENT,
     TEST,
-    VERIFICATION
+    VERIFICATION,
+    ADMISSION
 }

@@ -25,7 +25,7 @@ public class AudienceResponse {
     @Column(name = "id", nullable = false, unique = true)
     private String id;
 
-    @Column(name = "audience_id", nullable = false)
+    @Column(name = "audience_id", nullable = true)
     private String audienceId;
 
     @Column(name = "user_id")

@@ -155,6 +155,11 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
 
   Optional<Student> findTopByUserId(String userId);
 
+  @Query(value = "SELECT * FROM student WHERE parents_mobile_number = :parentMobile AND full_name = :childFullName ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
+  Optional<Student> findByParentMobileAndChildFullName(
+      @Param("parentMobile") String parentMobile,
+      @Param("childFullName") String childFullName);
+
   @Query(nativeQuery = true, value = "SELECT DISTINCT s.id, s.username, s.user_id, s.email, s.full_name, s.address_line, s.region, "
       +
       "s.city, s.pin_code, s.mobile_number, s.date_of_birth, s.gender, s.fathers_name, " +

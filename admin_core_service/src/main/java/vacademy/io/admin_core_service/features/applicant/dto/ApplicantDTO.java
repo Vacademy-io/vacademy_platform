@@ -26,6 +26,8 @@ public class ApplicantDTO {
     @JsonProperty("overall_status")
     private String overallStatus;
 
+    private String workflowType;
+
     @JsonProperty("source")
     private String source;
 

@@ -67,4 +67,10 @@ public class ApplyRequestDTO {
      * Represents the specific class or package session the applicant is targeting
      */
     private String destinationPackageSessionId;
+
+    /**
+     * Workflow Type (e.g., APPLICATION, ADMISSION)
+     * Defaults to APPLICATION if null
+     */
+    private String workflowType;
 }

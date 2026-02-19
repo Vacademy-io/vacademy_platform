@@ -78,7 +78,7 @@ public class FeeManagementController {
      * API #6: Soft delete CPO and all related records by status update.
      * PUT /admin-core-service/v1/fee-management/cpo/{cpoId}/soft-delete
      */
-    @PutMapping("/cpo/{cpoId}/soft-delete")
+    @PutMapping("/cpo/{cpoId}/soft-delete-shivamapi")
     public ResponseEntity<ComplexPaymentOptionDTO> softDeleteCpo(
             @PathVariable String cpoId,
             @RequestAttribute("user") CustomUserDetails userDetails) {

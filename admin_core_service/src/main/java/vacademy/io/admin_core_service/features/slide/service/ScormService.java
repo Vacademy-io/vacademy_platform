@@ -49,9 +49,15 @@ public class ScormService {
 
             // 5. Find the public URL of the launch file
             String launchFileKey = rootFolder + "/" + launchPath;
+            log.info("Looking for launch file key: {}", launchFileKey);
+            log.info("Uploaded file keys: {}", uploadedFileIds.keySet());
+            log.info("Uploaded file URLs count: {}", uploadedFileIds.size());
             String launchFilePublicUrl = uploadedFileIds.get(launchFileKey);
             if (launchFilePublicUrl == null) {
-                log.warn("Could not find public URL for launch file: {}", launchFileKey);
+                log.warn("Could not find public URL for launch file: {}. Available keys: {}", launchFileKey,
+                        uploadedFileIds.keySet());
+            } else {
+                log.info("Found launch URL: {}", launchFilePublicUrl);
             }
 
             // 6. Create ScormSlide entity

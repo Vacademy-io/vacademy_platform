@@ -119,6 +119,15 @@ export interface AudioSlide {
   external_url?: string | null;
 }
 
+// SCORM slide interface
+export interface ScormSlide {
+  id: string;
+  original_file_id?: string;
+  launch_path?: string;
+  launch_url?: string;
+  scorm_version?: string;
+}
+
 // AI Video Data interface
 export interface AIVideoData {
   status: 'COMPLETED' | 'GENERATING' | 'FAILED';
@@ -145,6 +154,7 @@ export interface Slide {
   audio_slide?: AudioSlide;
   audioSlide?: AudioSlide;
   html_video_slide?: HtmlVideoSlide; // For HTML_VIDEO source_type slides
+  scorm_slide?: ScormSlide | null; // For SCORM source_type slides
   aiVideoData?: AIVideoData;
   is_loaded: boolean;
   new_slide: boolean;

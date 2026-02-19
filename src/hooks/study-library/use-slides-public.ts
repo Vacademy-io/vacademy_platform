@@ -96,6 +96,15 @@ export interface AssignmentSlide {
     comma_separated_media_ids: string;
 }
 
+// SCORM slide interface
+export interface ScormSlide {
+    id: string;
+    original_file_id?: string;
+    launch_path?: string;
+    launch_url?: string;
+    scorm_version?: string;
+}
+
 // Main slide interface
 export interface Slide {
     id: string;
@@ -110,6 +119,7 @@ export interface Slide {
     document_slide?: DocumentSlide;
     question_slide?: QuestionSlide;
     assignment_slide?: AssignmentSlide;
+    scorm_slide?: ScormSlide | null;
     is_loaded: boolean;
     new_slide: boolean;
     percentage_completed: number;

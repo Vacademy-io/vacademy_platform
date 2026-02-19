@@ -43,8 +43,7 @@ public class CashfreePaymentManager implements PaymentServiceStrategy {
 
     /**
      * Base URL of this backend (admin-core-service) for webhook callbacks. Must be
-     * reachable by Cashfree. Production/Stage: https://backend-stage.vacademy.io (or
-     * your prod URL). Local dev: use ngrok URL or set in env.
+     * reachable by Cashfree. Default is backend-stage; override via payment.webhook.baseurl in env.
      */
     @Value("${payment.webhook.baseurl:https://backend-stage.vacademy.io}")
     private String paymentWebhookBaseUrl;

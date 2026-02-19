@@ -22,7 +22,6 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogD
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
-import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
@@ -500,28 +499,27 @@ public class PaymentService {
                         details.put("payment_status", paymentStatus);
                         responseMap.put("details", details);
 
-                        // When PAID: return tokens for auto-login (catalog / learner-invitation-response without stored password)
+                        // When PAID: return login credentials for frontend to call v1/login API (catalog flow - no password).
+                        // Frontend must call POST /auth-service/learner/v1/login-by-username-trusted with username + institute_id
+                        // to get access/refresh tokens, then set auth state same as learner-invitation flow (courses visible).
                         if (PaymentStatusEnum.PAID.name().equalsIgnoreCase(paymentStatus)
                                         && StringUtils.hasText(logDto.getUserId())
                                         && StringUtils.hasText(instituteId)) {
                                 try {
-                                        UserWithJwtDTO tokens = authService.generateJwtTokensWithUser(logDto.getUserId(), instituteId);
-                                        if (tokens != null) {
-                                                if (StringUtils.hasText(tokens.getAccessToken())) {
-                                                        responseMap.put("accessToken", tokens.getAccessToken());
-                                                        responseMap.put("access_token", tokens.getAccessToken());
+                                        UserDTO userDto = getUserById(logDto.getUserId());
+                                        if (userDto != null) {
+                                                String loginUsername = StringUtils.hasText(userDto.getUsername())
+                                                                ? userDto.getUsername()
+                                                                : userDto.getEmail();
+                                                if (StringUtils.hasText(loginUsername)) {
+                                                        responseMap.put("login_username", loginUsername);
+                                                        responseMap.put("institute_id", instituteId);
+                                                        responseMap.put("user", userDto);
+                                                        responseMap.put("use_login_api", true);
                                                 }
-                                                if (StringUtils.hasText(tokens.getRefreshToken())) {
-                                                        responseMap.put("refreshToken", tokens.getRefreshToken());
-                                                        responseMap.put("refresh_token", tokens.getRefreshToken());
-                                                }
-                                                if (tokens.getUser() != null) {
-                                                        responseMap.put("user", tokens.getUser());
-                                                }
-                                                responseMap.put("institute_id", instituteId);
                                         }
                                 } catch (Exception e) {
-                                        log.warn("Could not generate tokens for payment-result auto-login: orderId={}, userId={}, error={}",
+                                        log.warn("Could not prepare login credentials for post-payment catalog flow: orderId={}, userId={}, error={}",
                                                         orderId, logDto.getUserId(), e.getMessage());
                                 }
                         }
@@ -536,10 +534,7 @@ public class PaymentService {
          */
         private UserDTO getUserById(String userId) {
                 List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
-                if (users.isEmpty()) {
-                        throw new RuntimeException("User not found with ID: " + userId);
-                }
-                return users.get(0);
+                return users.isEmpty() ? null : users.get(0);
         }
 
         /**

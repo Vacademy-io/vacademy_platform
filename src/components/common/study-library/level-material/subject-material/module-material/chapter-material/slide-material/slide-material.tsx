@@ -30,6 +30,7 @@ import { ConcentrationSettings } from "@/types/student-display-settings";
 import { fetchHtmlVideoUrls } from "@/utils/htmlVideoService";
 import AudioPlayer from "./audio-player";
 import ScormSlideComponent from "./scorm-slide";
+import { SplitScreenHtmlVideoSlide } from "./split-screen-html-video-slide";
 
 export const SlideMaterial = () => {
   const { activeItem, items, setActiveItem, slideEvaluations } =
@@ -174,7 +175,7 @@ export const SlideMaterial = () => {
         case "AI_VIDEO": {
           // AI_VIDEO slides from course generation - have aiVideoData already
           const aiVideoData = activeItem.aiVideoData || (activeItem as any).ai_video_data;
-          
+
           // Transform snake_case to camelCase if needed
           let transformedData: AIVideoData | undefined;
           if (aiVideoData) {
@@ -190,12 +191,12 @@ export const SlideMaterial = () => {
             }
           }
 
-          if (transformedData?.status === "COMPLETED" && 
-              transformedData.timelineUrl && 
-              transformedData.audioUrl) {
+          if (transformedData?.status === "COMPLETED" &&
+            transformedData.timelineUrl &&
+            transformedData.audioUrl) {
             setContent(
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200 p-4">
+                <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
                   <AIVideoPlayer
                     timelineUrl={transformedData.timelineUrl}
                     audioUrl={transformedData.audioUrl}
@@ -215,6 +216,7 @@ export const SlideMaterial = () => {
                       {transformedData.progress}% complete
                     </p>
                   )}
+                  <p className="text-sm mt-2 text-gray-500">Video will be available in a few minutes.</p>
                 </div>
               </div>
             );
@@ -223,6 +225,7 @@ export const SlideMaterial = () => {
               <div className="h-full w-full flex items-center justify-center">
                 <div className="text-center text-gray-500">
                   <p>Video pending generation</p>
+                  <p className="text-sm mt-2 text-gray-500">Video will be available in a few minutes.</p>
                 </div>
               </div>
             );
@@ -230,15 +233,17 @@ export const SlideMaterial = () => {
           break;
         }
 
+
+
         case "HTML_VIDEO": {
           // HTML_VIDEO slides from backend
           // Check multiple possible field names (snake_case, camelCase, etc.)
-          const htmlVideoSlide = 
-            activeItem.html_video_slide || 
+          const htmlVideoSlide =
+            activeItem.html_video_slide ||
             (activeItem as any).htmlVideoSlide ||
             (activeItem as any).html_video ||
             (activeItem as any).htmlVideo;
-          
+
           console.log("[SlideMaterial] HTML_VIDEO slide detected:", {
             source_type: activeItem.source_type,
             slide_id: activeItem.id,
@@ -250,8 +255,54 @@ export const SlideMaterial = () => {
             fullSlide: activeItem,
           });
 
+          // Check for embedded content (Code, Scratch, Jupyter)
+          // It might be in htmlVideoSlide or activeItem directly
+          let embeddedType =
+            htmlVideoSlide?.embedded_type ||
+            (activeItem as any).embedded_type;
+
+          let embeddedData =
+            htmlVideoSlide?.embedded_data ||
+            (activeItem as any).embedded_data ||
+            htmlVideoSlide?.code_data ||
+            (activeItem as any).code_data;
+
+          // SPECIAL HANDLING: Check for code_editor_config (used in some HTML_VIDEO slides)
+          const codeEditorConfig =
+            htmlVideoSlide?.code_editor_config ||
+            (activeItem as any).code_editor_config;
+
+          if (codeEditorConfig && !embeddedData) {
+            try {
+              console.log("[SlideMaterial] Found code_editor_config, transforming to embedded data");
+              const config = typeof codeEditorConfig === 'string'
+                ? JSON.parse(codeEditorConfig)
+                : codeEditorConfig;
+
+              if (config.enabled) {
+                embeddedType = "CODE";
+                // Transform into CodeEditorData format expected by CodeEditorSlide
+                const codeData = {
+                  language: config.language || "python",
+                  theme: config.theme || "dark",
+                  code: config.initial_code || "",
+                  viewMode: "edit",
+                  readOnly: false
+                };
+                embeddedData = JSON.stringify(codeData);
+              }
+            } catch (e) {
+              console.error("[SlideMaterial] Failed to parse code_editor_config", e);
+            }
+          }
+
+          console.log("[SlideMaterial] Embedded content check:", {
+            embeddedType,
+            hasEmbeddedData: !!embeddedData
+          });
+
           // First, check if URLs are already in the slide data (might be pre-populated)
-          const existingHtmlUrl = 
+          let existingHtmlUrl =
             htmlVideoSlide?.html_url ||
             htmlVideoSlide?.htmlUrl ||
             htmlVideoSlide?.timeline_url ||
@@ -261,11 +312,49 @@ export const SlideMaterial = () => {
             (activeItem as any).timeline_url ||
             (activeItem as any).timelineUrl;
 
-          const existingAudioUrl = 
+          let existingAudioUrl =
             htmlVideoSlide?.audio_url ||
             htmlVideoSlide?.audioUrl ||
             (activeItem as any).audio_url ||
             (activeItem as any).audioUrl;
+
+          // If validation fails (e.g. empty strings), treat as not found
+          if (!existingHtmlUrl || existingHtmlUrl === "") existingHtmlUrl = null;
+          if (!existingAudioUrl || existingAudioUrl === "") existingAudioUrl = null;
+
+          // Helper to render content (Split or Full)
+          const renderHtmlVideoContent = (htmlUrl: string, audioUrl: string) => {
+            if (embeddedType && embeddedData) {
+              return (
+                <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <SplitScreenHtmlVideoSlide
+                    videoId={activeItem.source_id}
+                    videoUrls={{ htmlUrl, audioUrl }}
+                    documentId={activeItem.id}
+                    embeddedContent={{
+                      embedded_type: embeddedType,
+                      embedded_data: embeddedData
+                    }}
+                  />
+                </div>
+              );
+            } else {
+              return (
+                <div
+                  key={`html-video-${activeItem.id}`}
+                  className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+                >
+                  <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
+                    <AIVideoPlayer
+                      timelineUrl={htmlUrl}
+                      audioUrl={audioUrl}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              );
+            }
+          };
 
           // If URLs are already available, use them directly
           if (existingHtmlUrl && existingAudioUrl) {
@@ -273,26 +362,13 @@ export const SlideMaterial = () => {
               htmlUrl: existingHtmlUrl,
               audioUrl: existingAudioUrl,
             });
-            setContent(
-              <div 
-                key={`html-video-${activeItem.id}`} 
-                className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
-              >
-                <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200 p-4">
-                  <AIVideoPlayer
-                    timelineUrl={existingHtmlUrl}
-                    audioUrl={existingAudioUrl}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            );
+            setContent(renderHtmlVideoContent(existingHtmlUrl, existingAudioUrl));
             break;
           }
 
           // If URLs not in slide data, try to fetch from API
           // Check for video ID
-          const videoId = 
+          const videoId =
             htmlVideoSlide?.ai_gen_video_id ||
             htmlVideoSlide?.aiGenVideoId ||
             (activeItem as any).ai_gen_video_id ||
@@ -322,7 +398,7 @@ export const SlideMaterial = () => {
           try {
             console.log("[SlideMaterial] Fetching video URLs from API for videoId:", videoId);
             const videoUrls = await fetchHtmlVideoUrls(videoId);
-            
+
             console.log("[SlideMaterial] Fetched HTML video URLs:", {
               videoId: videoId,
               hasHtmlUrl: !!videoUrls.htmlUrl,
@@ -332,20 +408,7 @@ export const SlideMaterial = () => {
             });
 
             if (videoUrls.htmlUrl && videoUrls.audioUrl) {
-              setContent(
-                <div 
-                  key={`html-video-${activeItem.id}`} 
-                  className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
-                >
-                  <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200 p-4">
-                    <AIVideoPlayer
-                      timelineUrl={videoUrls.htmlUrl}
-                      audioUrl={videoUrls.audioUrl}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              );
+              setContent(renderHtmlVideoContent(videoUrls.htmlUrl, videoUrls.audioUrl));
             } else {
               setContent(
                 <div className="h-full w-full flex items-center justify-center">
@@ -353,6 +416,7 @@ export const SlideMaterial = () => {
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
                     <p className="text-gray-600 font-medium">Processing video...</p>
                     <p className="text-xs mt-2">Video URLs not available yet</p>
+                    <p className="text-sm mt-2 text-gray-500">Video will be available in a few minutes.</p>
                   </div>
                 </div>
               );
@@ -367,21 +431,21 @@ export const SlideMaterial = () => {
               // CORS error details
               isCorsError: err.code === 'ERR_NETWORK' || err.message === 'Network Error',
             });
-            
+
             // Check if it's a CORS error
             const isCorsError = err.code === 'ERR_NETWORK' || err.message === 'Network Error';
             const errorMessage = isCorsError
               ? 'CORS Error: Backend proxy route may not be configured. Please check backend configuration for /ai-service/video/urls/ endpoint.'
-              : err.response?.status === 404 
+              : err.response?.status === 404
                 ? `Video ${videoId} not found`
                 : 'Failed to load video URLs';
-            
+
             setContent(
               <div className="h-full w-full flex items-center justify-center">
                 <div className="text-center text-red-500 max-w-md">
                   <p className="font-medium">{errorMessage}</p>
                   <p className="text-xs mt-2">
-                    {isCorsError 
+                    {isCorsError
                       ? 'The backend needs to configure a proxy route for /ai-service/video/urls/'
                       : 'Please try again later'}
                   </p>
@@ -754,21 +818,21 @@ export const SlideMaterial = () => {
 
         case "AUDIO": {
           const audioSlide = activeItem.audio_slide || activeItem.audioSlide;
-          
+
           if (audioSlide) {
-             setContent(
+            setContent(
               <div
                 key={`audio-${activeItem.id}`}
                 className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
               >
-                  <AudioPlayer audioSlide={audioSlide} />
+                <AudioPlayer audioSlide={audioSlide} />
               </div>
             );
           } else {
             setContent(
-               <div className="flex h-[300px] flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <p className="text-red-500 font-medium">Audio slide data missing</p>
-               </div>
+              <div className="flex h-[300px] flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <p className="text-red-500 font-medium">Audio slide data missing</p>
+              </div>
             );
           }
           break;

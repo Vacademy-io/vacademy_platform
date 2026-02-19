@@ -109,10 +109,19 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
         name: toTitleCase(level.level_name || "Unnamed Level"),
     }));
 
-    const tags = (instituteData?.tags || []).map((tag: string) => ({
-        id: tag,
-        name: tag,
-    }));
+    const tags = React.useMemo(() => {
+        const uniqueMap = new Map<string, string>();
+        (instituteData?.tags || []).forEach((tag: string) => {
+            const normalized = tag.toLowerCase();
+            if (!uniqueMap.has(normalized)) {
+                uniqueMap.set(normalized, toTitleCase(tag));
+            }
+        });
+        return Array.from(uniqueMap.entries()).map(([id, name]) => ({
+            id,
+            name,
+        }));
+    }, [instituteData?.tags]);
 
     type InstructorItem = { id: string; full_name?: string; username?: string };
     const instructors = (instructor || []).map((inst: InstructorItem) => ({

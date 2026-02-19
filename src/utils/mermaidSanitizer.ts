@@ -5,14 +5,14 @@
 export function sanitizeMermaidCode(code: string): string {
     if (!code) return '';
     let sanitized = code.trim();
-    
+
     // Remove any text that appears after common Mermaid ending patterns
     // This helps clean up incomplete extractions
     const endPatterns = [
         /\n\s*<-->/,  // Catches stray connection syntax at the end
         /\n\s*-->/,   // Catches incomplete arrows
     ];
-    
+
     endPatterns.forEach(pattern => {
         const match = sanitized.match(pattern);
         if (match && match.index) {
@@ -27,7 +27,8 @@ export function sanitizeMermaidCode(code: string): string {
         /([A-Za-z0-9_]+)\[([^\]]*\([^)]+\)[^\]]*)\]/g,
         (match, id, label) => {
             if (!label.startsWith('"') && !label.endsWith('"')) {
-                return `${id}["${label}"]`;
+                const escapedLabel = label.replace(/"/g, "'");
+                return `${id}["${escapedLabel}"]`;
             }
             return match;
         }
@@ -58,9 +59,9 @@ export function sanitizeMermaidCode(code: string): string {
     sanitized = sanitized.replace(
         /([A-Za-z0-9_]+)\[([^\]]+)\]/g,
         (match, id, label) => {
-            if (!label.startsWith('"') && !label.endsWith('"') && 
-                (label.includes('"') || label.includes('`') || 
-                 label.includes('(') || label.includes(')'))) {
+            if (!label.startsWith('"') && !label.endsWith('"') &&
+                (label.includes('"') || label.includes('`') ||
+                    label.includes('(') || label.includes(')'))) {
                 const cleanedLabel = label.replace(/`/g, '').replace(/"/g, "'");
                 return `${id}["${cleanedLabel}"]`;
             }
@@ -85,7 +86,7 @@ export function sanitizeMermaidCode(code: string): string {
     // After:  A --> N0["Text"] (with N0 defined)
     const quotedStringMap = new Map<string, string>();
     let nodeCounter = 0;
-    
+
     const getNodeId = (text: string): string => {
         if (quotedStringMap.has(text)) {
             return quotedStringMap.get(text)!;
@@ -94,25 +95,25 @@ export function sanitizeMermaidCode(code: string): string {
         quotedStringMap.set(text, nodeId);
         return nodeId;
     };
-    
+
     // Replace quoted strings after arrows
     sanitized = sanitized.replace(/-->\s*"([^"]+)"/g, (match, text) => {
         const nodeId = getNodeId(text);
         return ` --> ${nodeId}`;
     });
-    
+
     // Replace quoted strings before arrows
     sanitized = sanitized.replace(/"([^"]+)"\s*-->/g, (match, text) => {
         const nodeId = getNodeId(text);
         return `${nodeId} -->`;
     });
-    
+
     // Add node definitions
     if (quotedStringMap.size > 0) {
         const nodeDefs = Array.from(quotedStringMap.entries())
             .map(([label, id]) => `    ${id}["${label}"]`)
             .join('\n');
-        
+
         const graphMatch = sanitized.match(/^(graph\s+[A-Za-z]+\s*\n?)/);
         if (graphMatch) {
             sanitized = sanitized.replace(/^(graph\s+[A-Za-z]+\s*\n?)/, `$1${nodeDefs}\n`);

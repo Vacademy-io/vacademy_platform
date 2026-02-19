@@ -1,13 +1,12 @@
 package vacademy.io.admin_core_service.features.fee_management.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.fee_management.dto.ComplexPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeManagementService;
 import vacademy.io.common.auth.model.CustomUserDetails;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/admin-core-service/v1/fee-management")
@@ -33,10 +32,12 @@ public class FeeManagementController {
      * GET /admin-core-service/v1/fee-management/cpo/{instituteId}
      */
     @GetMapping("/cpo/{instituteId}")
-    public ResponseEntity<List<ComplexPaymentOptionDTO>> listCposByInstitute(
+    public ResponseEntity<Page<ComplexPaymentOptionDTO>> listCposByInstitute(
             @PathVariable String instituteId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @RequestAttribute("user") CustomUserDetails userDetails) {
-        return ResponseEntity.ok(feeManagementService.listCposByInstitute(instituteId));
+        return ResponseEntity.ok(feeManagementService.listCposByInstitute(instituteId, page, size));
     }
 
     /**
@@ -46,8 +47,13 @@ public class FeeManagementController {
     @GetMapping("/cpo/{cpoId}/full")
     public ResponseEntity<ComplexPaymentOptionDTO> getFullCpo(
             @PathVariable String cpoId,
+            @RequestParam(defaultValue = "0") int feeTypePage,
+            @RequestParam(defaultValue = "20") int feeTypeSize,
+            @RequestParam(defaultValue = "0") int installmentPage,
+            @RequestParam(defaultValue = "50") int installmentSize,
             @RequestAttribute("user") CustomUserDetails userDetails) {
-        return ResponseEntity.ok(feeManagementService.getFullCpo(cpoId));
+        return ResponseEntity.ok(
+                feeManagementService.getFullCpo(cpoId, feeTypePage, feeTypeSize, installmentPage, installmentSize));
     }
 
     /**

@@ -21,7 +21,7 @@ interface CashfreeCheckoutFormProps {
 }
 
 export const CashfreeCheckoutForm = ({
-  error,
+  error: _error,
   amount,
   currency,
   paymentSessionId,
@@ -44,7 +44,8 @@ export const CashfreeCheckoutForm = ({
     setCardError(null);
 
     try {
-      const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX === "true";
+      // For now always use sandbox (incl. production) for testing; set VITE_CASHFREE_SANDBOX=false when ready for prod keys
+      const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX !== "false";
       const cashfree = await loadCashfree({
         mode: isSandbox ? "sandbox" : "production",
       });
@@ -113,12 +114,12 @@ export const CashfreeCheckoutForm = ({
           </div>
         )}
 
-        {(error || cardError) && (
+        {cardError && (
           <div className="mt-5 p-4 bg-red-50 border border-red-200 rounded-lg">
             <strong className="text-red-800 flex items-center gap-2">
               <span>❌</span> Error
             </strong>
-            <p className="text-red-700 text-sm mt-1">{error || cardError}</p>
+            <p className="text-red-700 text-sm mt-1">{cardError}</p>
           </div>
         )}
 

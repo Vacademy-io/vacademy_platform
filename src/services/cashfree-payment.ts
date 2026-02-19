@@ -96,15 +96,20 @@ export interface CashfreePaymentStatusResponse {
 }
 
 /**
- * Get Cashfree payment status (no auth required)
+ * Get Cashfree payment status (no auth required).
+ * Only sends instituteId when it's valid – omitting or sending "null" causes
+ * extra DB lookups on the backend.
  */
 export const getCashfreePaymentStatus = async (
   orderId: string,
   instituteId: string
 ): Promise<CashfreePaymentStatusResponse> => {
+  const isValidInstitute =
+    instituteId && instituteId !== "null" && instituteId.trim() !== "";
+  const params = isValidInstitute ? { instituteId } : {};
   const response = await axios.get(
     `${CASHFREE_PAYMENT_STATUS_URL}/${orderId}`,
-    { params: { instituteId } }
+    { params }
   );
   return response.data;
 };

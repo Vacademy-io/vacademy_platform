@@ -1098,10 +1098,12 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
         const responseData = paymentResponse?.payment_response?.response_data;
         const paymentSessionId =
           responseData?.paymentSessionId ?? responseData?.payment_session_id;
+        // Use top-level orderId (paymentLogId) for status API – backend looks up by payment_log.id
         const orderId =
+          paymentResponse?.orderId ??
+          paymentResponse?.payment_response?.order_id ??
           responseData?.orderId ??
-          responseData?.order_id ??
-          paymentResponse?.payment_response?.order_id;
+          responseData?.order_id;
 
         if (!paymentSessionId) {
           throw new Error("Failed to initialize Cashfree payment.");

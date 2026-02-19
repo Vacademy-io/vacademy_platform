@@ -229,6 +229,24 @@ const getFullNameField = (registrationData: RegistrationDataType): string => {
 };
 
 /**
+ * Helper function to find password field from registration data
+ * Used for storing credentials before Cashfree redirect (login after payment)
+ */
+export const getPasswordField = (
+  registrationData: RegistrationDataType
+): string => {
+  const passwordEntry = Object.entries(registrationData).find(([key, value]) => {
+    const lowerKey = key.toLowerCase();
+    const lowerName = (value.name || "").toLowerCase();
+    return (
+      lowerKey.includes("password") ||
+      lowerName.includes("password")
+    );
+  });
+  return passwordEntry ? String(passwordEntry[1]?.value || "") : "";
+};
+
+/**
  * Helper function to get keys that should be excluded from custom field values
  * Dynamically identifies email, phone, and name fields
  */
@@ -366,10 +384,11 @@ export const handleEnrollLearnerForPayment = async ({
   isUsingInstituteCustomFields = false,
   userId,
 }: EnrollLearnerForPaymentProps) => {
-  // Dynamically extract email, phone, and full name using helper functions
+  // Dynamically extract email, phone, full name, and password using helper functions
   const email = getEmailField(registrationData);
   const phoneNumber = getPhoneField(registrationData);
   const fullName = getFullNameField(registrationData);
+  const password = getPasswordField(registrationData);
 
   // Dynamically identify keys to exclude from custom field values
   // If using institute custom fields, don't exclude name, email, phone
@@ -439,7 +458,7 @@ export const handleEnrollLearnerForPayment = async ({
       mobile_number: phoneNumber,
       date_of_birth: "",
       gender: "",
-      password: "",
+      password: password || "",
       profile_pic_file_id: "",
       roles: allowLearnersToCreateCourses
         ? ["STUDENT", "TEACHER"]

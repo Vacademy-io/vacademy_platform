@@ -10,6 +10,7 @@ import {
   ReferRequest,
   submitEnrollmentForm,
   getEnrollmentPolicy,
+  getPasswordField,
 } from "./-services/enroll-invite-services";
 import { handleGetInstituteCustomFields } from "./-services/custom-fields-setup";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -1011,7 +1012,8 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         setPaymentCompletionResponse(paymentResponse);
 
         // Step 3: Launch Cashfree checkout (redirects to return_url on success/failure)
-        const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX === "true";
+        // For now always use sandbox (incl. production) for testing; set VITE_CASHFREE_SANDBOX=false when ready for prod keys
+        const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX !== "false";
         const cashfree = await loadCashfree({ mode: isSandbox ? "sandbox" : "production" });
 
         if (!cashfree) {
@@ -1020,7 +1022,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
 
         const checkoutResult = await cashfree.checkout({
           paymentSessionId,
-          returnUrl: `${returnUrl}?orderId=${cfResponse.orderId}`,
+          returnUrl: `${returnUrl}?orderId=${cfResponse.orderId}&instituteId=${instituteId}`,
         });
 
         if (checkoutResult?.error) {
@@ -1300,8 +1302,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         const responseData = paymentResponse?.payment_response?.response_data;
         let paymentSessionId =
           responseData?.paymentSessionId ?? responseData?.payment_session_id;
+        // Use top-level orderId (paymentLogId) for status API – backend looks up by payment_log.id
         let cfOrderId =
-          responseData?.orderId ?? responseData?.order_id ?? paymentResponse?.payment_response?.order_id;
+          paymentResponse?.orderId ??
+          paymentResponse?.payment_response?.order_id ??
+          responseData?.orderId ??
+          responseData?.order_id;
 
         if (!paymentSessionId) {
           if (!userPlanId) throw new Error("User plan ID not received.");
@@ -1339,7 +1345,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         if (!paymentSessionId) throw new Error("Failed to initialize payment.");
 
         const ordId =
-          cfOrderId ?? paymentResponse?.payment_response?.order_id ?? "";
+          cfOrderId ??
+          paymentResponse?.orderId ??
+          paymentResponse?.payment_response?.order_id ??
+          "";
         setCashfreeSessionData({
           paymentSessionId,
           orderId: ordId,
@@ -1347,8 +1356,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         setOrderId(ordId);
         setPaymentCompletionResponse(paymentResponse);
         const userEmail =
-          paymentResponse?.user?.email ?? paymentResponse?.user?.username;
-        const userPassword = paymentResponse?.user?.password;
+          paymentResponse?.user?.email ??
+          paymentResponse?.user?.username ??
+          getUserDetails().email;
+        const userPassword =
+          paymentResponse?.user?.password ??
+          getPasswordField(form.getValues());
         if (ordId && userEmail && userPassword) {
           try {
             sessionStorage.setItem(

@@ -5,13 +5,15 @@ import { useQuery } from "@tanstack/react-query";
 import { getPaymentCompletionStatus } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { getCashfreePaymentStatus } from "@/services/cashfree-payment";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
-import { loginEnrolledUser } from "@/services/signup-api";
+import { loginByUsernameTrusted, loginEnrolledUser } from "@/services/signup-api";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 
 const paymentResultSearchSchema = z.object({
   orderId: z.string().optional(),
+  order_id: z.string().optional(), // Cashfree may append this; prefer orderId (payment log ID)
   instituteId: z.string().optional(),
+  institute_id: z.string().optional(), // snake_case fallback
   status: z.enum(["success", "failed", "cancelled"]).optional(),
 });
 
@@ -20,9 +22,24 @@ export const Route = createFileRoute("/payment-result/")({
   component: PaymentResultPage,
 });
 
+function isValidInstituteId(id: string | undefined): id is string {
+  return !!(id && id !== "null" && id.trim() !== "");
+}
+
 function PaymentResultPage() {
-  const { orderId, instituteId, status: queryStatus } = Route.useSearch();
-  const isCashfreeFlow = !!orderId && !!instituteId;
+  const search = Route.useSearch();
+  const {
+    orderId: orderIdParam,
+    order_id: orderIdSnake,
+    instituteId: instituteIdParam,
+    institute_id: instituteIdSnake,
+    status: queryStatus,
+  } = search;
+  // Prefer orderId (payment log ID) from our return URL; order_id may be Cashfree's ID
+  const orderId = orderIdParam ?? orderIdSnake ?? "";
+  const instituteId = instituteIdParam ?? instituteIdSnake;
+  const validInstituteId = isValidInstituteId(instituteId) ? instituteId : undefined;
+  const isCashfreeFlow = !!orderId && !!validInstituteId;
   const hasRedirectedRef = useRef(false);
 
   // Extract status from various backend response shapes (payment_status, status, paymentStatus, nested)
@@ -46,11 +63,11 @@ function PaymentResultPage() {
 
   const { data: paymentStatus, isLoading } = useQuery({
     queryKey: isCashfreeFlow
-      ? ["CASHFREE_PAYMENT_STATUS", orderId, instituteId]
+      ? ["CASHFREE_PAYMENT_STATUS", orderId, validInstituteId]
       : ["GET_PAYMENT_COMPLETION_STATUS", orderId],
     queryFn: () =>
-      isCashfreeFlow && orderId && instituteId
-        ? getCashfreePaymentStatus(orderId, instituteId)
+      isCashfreeFlow && orderId && validInstituteId
+        ? getCashfreePaymentStatus(orderId, validInstituteId)
         : getPaymentCompletionStatus({ paymentLogId: orderId || "" }),
     enabled: !!orderId,
     refetchInterval: (query) => {
@@ -62,7 +79,8 @@ function PaymentResultPage() {
         ps === "FAILED"
       )
         return false;
-      return 3000;
+      // Poll less frequently to reduce backend load
+      return 12000; // 8 seconds
     },
   });
 
@@ -79,7 +97,7 @@ function PaymentResultPage() {
     queryStatus === "cancelled";
   const isPending = !isPaid && !isFailed && (!!orderId || isLoading);
 
-  // When payment is successful: use username/password to call login API, save tokens, redirect to courses
+  // When payment is successful: auto-login via tokens from status API, or fallback to stored creds + login API
   useEffect(() => {
     if (!isPaid || hasRedirectedRef.current) return;
 
@@ -94,59 +112,97 @@ function PaymentResultPage() {
     };
 
     const data = paymentStatus as {
+      use_login_api?: boolean;
+      login_username?: string;
       accessToken?: string;
+      access_token?: string;
       refreshToken?: string;
+      refresh_token?: string;
       user?: { email?: string; username?: string; password?: string };
-      response_data?: { accessToken?: string; refreshToken?: string };
+      response_data?: {
+        accessToken?: string;
+        access_token?: string;
+        refreshToken?: string;
+        refresh_token?: string;
+        institute_id?: string;
+      };
+      institute_id?: string;
     };
+    const useLoginApi = data?.use_login_api === true;
+    const loginUsername =
+      data?.login_username ?? data?.user?.username ?? data?.user?.email;
+    const instituteIdFromApi =
+      data?.institute_id ?? data?.response_data?.institute_id;
+    const effectiveInstituteId =
+      validInstituteId ?? (typeof instituteIdFromApi === "string" && instituteIdFromApi ? instituteIdFromApi : undefined);
+
+    // Tokens from status API (legacy – learner-invitation may still return them)
     const accessToken =
-      data?.accessToken ?? data?.response_data?.accessToken;
+      data?.accessToken ??
+      data?.access_token ??
+      data?.response_data?.accessToken ??
+      data?.response_data?.access_token;
     const refreshToken =
-      data?.refreshToken ?? data?.response_data?.refreshToken;
+      data?.refreshToken ??
+      data?.refresh_token ??
+      data?.response_data?.refreshToken ??
+      data?.response_data?.refresh_token;
     const userEmail = data?.user?.email ?? data?.user?.username;
     const userPassword = data?.user?.password;
 
     const runLoginAndRedirect = async () => {
       try {
-        const credsFromStorage =
-          orderId &&
-          (() => {
-            try {
-              const raw = sessionStorage.getItem(
-                `enroll_payment_creds_${orderId}`
-              );
-              if (!raw) return null;
-              const parsed = JSON.parse(raw) as {
-                username?: string;
-                password?: string;
-              };
-              sessionStorage.removeItem(`enroll_payment_creds_${orderId}`);
-              return parsed;
-            } catch {
-              return null;
-            }
-          })();
+        const credsFromStorage = orderId
+          ? (() => {
+              try {
+                const raw = sessionStorage.getItem(
+                  `enroll_payment_creds_${orderId}`
+                );
+                if (!raw) return null;
+                const parsed = JSON.parse(raw) as {
+                  username?: string;
+                  password?: string;
+                };
+                sessionStorage.removeItem(`enroll_payment_creds_${orderId}`);
+                return parsed;
+              } catch {
+                return null;
+              }
+            })()
+          : null;
 
-        const username =
-          credsFromStorage?.username ?? userEmail ?? "";
+        const username = credsFromStorage?.username ?? userEmail ?? loginUsername ?? "";
         const password = credsFromStorage?.password ?? userPassword ?? "";
 
-        if (instituteId && accessToken && refreshToken) {
+        // 1. Catalog post-payment: use_login_api + login_username – call login-by-username-trusted
+        if (useLoginApi && loginUsername && effectiveInstituteId) {
+          const loginResponse = await loginByUsernameTrusted(
+            loginUsername,
+            effectiveInstituteId
+          );
+          await performFullAuthCycle(loginResponse, effectiveInstituteId);
+          doRedirect("/study-library/courses");
+          return;
+        }
+
+        // 2. Legacy: tokens in status response (if backend still returns them)
+        if (effectiveInstituteId && accessToken && refreshToken) {
           await performFullAuthCycle(
             { accessToken, refreshToken },
-            instituteId
+            effectiveInstituteId
           );
           doRedirect("/study-library/courses");
           return;
         }
 
-        if (username && password && instituteId) {
+        // 3. Learner-invitation: stored creds + standard login API
+        if (username && password && effectiveInstituteId) {
           const loginResponse = await loginEnrolledUser(
             username,
             password,
-            instituteId
+            effectiveInstituteId
           );
-          await performFullAuthCycle(loginResponse, instituteId);
+          await performFullAuthCycle(loginResponse, effectiveInstituteId);
           doRedirect("/study-library/courses");
           return;
         }
@@ -157,7 +213,7 @@ function PaymentResultPage() {
     };
 
     runLoginAndRedirect();
-  }, [isPaid, paymentStatus, orderId, instituteId]);
+  }, [isPaid, paymentStatus, orderId, validInstituteId]);
 
   const useFullScreenLayout = isPending || isPaid;
 
@@ -219,7 +275,11 @@ function PaymentResultPage() {
               support if the issue persists.
             </p>
             <a
-              href={`${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`}
+              href={
+                typeof window !== "undefined"
+                  ? `${window.location.origin}/study-library/courses`
+                  : `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`
+              }
               className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 font-medium"
             >
               Back to Dashboard

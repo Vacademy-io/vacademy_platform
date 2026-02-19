@@ -47,11 +47,11 @@ public class ScormService {
             Map<String, String> uploadedFileIds = new HashMap<>();
             uploadDirectory(tempDir, rootFolder, uploadedFileIds);
 
-            // 5. Find the metadata UUID of the launch file
+            // 5. Find the public URL of the launch file
             String launchFileKey = rootFolder + "/" + launchPath;
-            String launchFileMetadataId = uploadedFileIds.get(launchFileKey);
-            if (launchFileMetadataId == null) {
-                log.warn("Could not find metadata ID for launch file: {}", launchFileKey);
+            String launchFilePublicUrl = uploadedFileIds.get(launchFileKey);
+            if (launchFilePublicUrl == null) {
+                log.warn("Could not find public URL for launch file: {}", launchFileKey);
             }
 
             // 6. Create ScormSlide entity
@@ -60,7 +60,7 @@ public class ScormService {
             slide.setOriginalFileId(rootFolder); // storing the root folder path as ID/Ref
             slide.setLaunchPath(launchPath);
             slide.setScormVersion(detectScormVersion(tempDir));
-            slide.setLaunchUrl(launchFileMetadataId); // media file metadata UUID for the launch file
+            slide.setLaunchUrl(launchFilePublicUrl); // full public S3 URL for the launch file
 
             slide = scormSlideRepository.save(slide);
 
@@ -179,8 +179,8 @@ public class ScormService {
                         MultipartFile multipartFile = new CustomMultipartFile(file);
                         vacademy.io.common.media.dto.FileDetailsDTO result = mediaService.uploadFileToKey(multipartFile,
                                 relativePath);
-                        if (result != null && result.getId() != null) {
-                            uploadedFileIds.put(relativePath, result.getId());
+                        if (result != null && result.getUrl() != null) {
+                            uploadedFileIds.put(relativePath, result.getUrl());
                         }
                     }
                 }

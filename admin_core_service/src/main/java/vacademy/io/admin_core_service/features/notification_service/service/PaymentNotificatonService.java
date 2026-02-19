@@ -159,7 +159,16 @@ public class PaymentNotificatonService {
             return null;
 
         String transactionId = safeCastToString(responseData.get("transactionId"));
-        String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
+        String instituteLogoUrl = "";
+        try {
+            if (StringUtils.hasText(institute.getLogoFileId())) {
+                instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
+            }
+        } catch (Exception e) {
+            // Log and continue without logo
+            SentryLogger.logError(e, "Failed to get institute logo for email",
+                    Map.of("instituteId", institute.getId()));
+        }
 
         // This is the receipt URL you fetch from the Charge object
         String receiptUrl = safeCastToString(responseData.get("receiptUrl"));

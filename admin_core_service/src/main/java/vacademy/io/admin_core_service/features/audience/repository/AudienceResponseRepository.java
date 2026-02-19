@@ -127,12 +127,6 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         boolean existsByAudienceIdAndUserId(String audienceId, String userId);
 
         /**
-         * Check if a child (student) has already been submitted for this audience campaign.
-         * Used for parent+child flows where the same parent can submit for multiple children.
-         */
-        boolean existsByAudienceIdAndStudentUserId(String audienceId, String studentUserId);
-
-        /**
          * Find all audience responses for a specific user
          */
         List<AudienceResponse> findByUserId(String userId);

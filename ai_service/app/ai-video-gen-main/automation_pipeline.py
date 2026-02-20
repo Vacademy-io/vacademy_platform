@@ -2070,9 +2070,40 @@ class VideoGenerationPipeline:
             
         # 1. Strip out hallucinated nested JSON blocks (e.g. LLM writes { "shots": ... inside the HTML string)
         # This prevents raw JSON text from rendering visibly on the frontend!
+        # If we detect a nested JSON structure, we will TRY to extract the REAL `html` string from inside it.
+        # Otherwise, we truncate.
         hallucination_match = re.search(r'\{[\s\n]*"?(shots|offsetSeconds|inTime)"?\s*:', html)
         if hallucination_match:
-            html = html[:hallucination_match.start()].strip()
+            idx = hallucination_match.start()
+            nested_matches = list(re.finditer(r'"html"\s*:\s*"', html[idx:]))
+            if nested_matches:
+                nested_parts = []
+                for m in nested_matches:
+                    start_str = idx + m.end()
+                    # find the end of the string, respecting escapes
+                    end_str = start_str
+                    escaped = False
+                    while end_str < len(html):
+                        if escaped:
+                            escaped = False
+                        elif html[end_str] == '\\':
+                            escaped = True
+                        elif html[end_str] == '"':
+                            break
+                        end_str += 1
+                    
+                    val = html[start_str:end_str]
+                    # Unescape standard JSON string escapes
+                    val = val.replace('\\"', '"').replace('\\n', '\n')
+                    nested_parts.append(val)
+                
+                if nested_parts:
+                    extracted = "\n<!-- SHOT SPLIT -->\n".join(nested_parts)
+                    # Recursively sanitize the extracted html (in case it also has garbage trailing)
+                    return AutomationPipeline._sanitize_html_content(extracted)
+            
+            # If we couldn't find a nested "html" key inside the hallucination, truncate
+            html = html[:idx].strip()
             
         # 2. Fix Mermaid arrows (naive global replace is risky but usually safe for arrows)
         # We target specific unicode arrows often used by LLMs
@@ -2119,8 +2150,6 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 0.2, ease: 'power2.out'}});
 </script>"""
                     html = html + additional_script
-
-        return html 
         if "graph TD" in html or "graph LR" in html:
             # Attempt to fix A"Label" pattern, but avoid breaking HTML attrs.
             # HTML attrs always have `=` or space before value? No. `required` has no value.
@@ -2171,7 +2200,13 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # Remove brackets from viewBox attribute
             html = re.sub(r'viewBox=["\']\[?([0-9\s\.]+)\]?["\']', r'viewBox="\1"', html)
 
-            pass
+        # FINAL SWEEP: Remove any trailing conversational LLM text or markdown
+        # Very often, the LLM will output valid HTML and then write its own thoughts
+        # "Wait, the delay for cleavage..."
+        # Simply find the very last closing > bracket and delete EVERYTHING after it.
+        last_tag_idx = html.rfind('>')
+        if last_tag_idx != -1:
+            html = html[:last_tag_idx + 1]
 
         return html
 

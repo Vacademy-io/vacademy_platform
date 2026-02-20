@@ -15,25 +15,26 @@ import { useTheme } from "@/providers/theme/theme-provider.tsx";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 // Auth modal is controlled within CourseListHeader via URL params
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { toTitleCase } from "@/lib/utils";
 
 /** Merge unique instructors from course list into existing list (by id). Ensures instructors attached to courses appear in the filter. */
 function mergeInstructorsFromCourses(
-  current: { id: string; full_name?: string; username?: string }[],
-  courses: { instructors?: { id: string; full_name?: string; username?: string }[] }[]
+    current: { id: string; full_name?: string; username?: string }[],
+    courses: { instructors?: { id: string; full_name?: string; username?: string }[] }[]
 ): { id: string; full_name?: string; username?: string }[] {
-  const byId = new Map(current.map((i) => [i.id, i]));
-  for (const course of courses) {
-    for (const inst of course.instructors || []) {
-      if (inst?.id && typeof inst.id === "string" && !byId.has(inst.id)) {
-        byId.set(inst.id, {
-          id: inst.id,
-          full_name: inst.full_name ?? inst.username,
-          username: inst.username,
-        });
-      }
+    const byId = new Map(current.map((i) => [i.id, i]));
+    for (const course of courses) {
+        for (const inst of course.instructors || []) {
+            if (inst?.id && typeof inst.id === "string" && !byId.has(inst.id)) {
+                byId.set(inst.id, {
+                    id: inst.id,
+                    full_name: inst.full_name ?? inst.username,
+                    username: inst.username,
+                });
+            }
+        }
     }
-  }
-  return Array.from(byId.values());
+    return Array.from(byId.values());
 }
 
 interface CourseCatalougePageProps {
@@ -143,13 +144,19 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
 
     const handleApplyFilters = async () => {
         try {
+            const allOriginalTags = instituteData?.tags || [];
+            const expandedTags = (selectedTags || []).flatMap(selectedNormalized =>
+                allOriginalTags.filter(og => toTitleCase(og.trim()) === selectedNormalized)
+            );
+            const finalTags = Array.from(new Set(expandedTags));
+
             const body = {
                 status: [] as string[],
                 level_ids: selectedLevels ?? [],
                 faculty_ids: [] as string[],
                 created_by_user_id: (selectedInstructors?.length ? selectedInstructors[0] : null) as string | null,
                 search_by_name: searchTerm ?? "",
-                tag: selectedTags ?? [],
+                tag: finalTags,
                 min_percentage_completed: 0,
                 max_percentage_completed: 0,
                 type: "ALL" as const,

@@ -48,8 +48,8 @@ export function sanitizeHtml(dirtyHtml: string): string {
   if (!dirtyHtml || typeof dirtyHtml !== "string") return "";
 
   const allowedTags = new Set([
-    "b","i","em","strong","u","br","p","span","div","ul","ol","li",
-    "blockquote","code","pre","a","img","h1","h2","h3","h4","h5","h6"
+    "b", "i", "em", "strong", "u", "br", "p", "span", "div", "ul", "ol", "li",
+    "blockquote", "code", "pre", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6"
   ]);
 
   const allowedAttrsByTag: Record<string, Set<string>> = {
@@ -189,6 +189,10 @@ export const processHtmlString = (htmlString: string) => {
  * @param text - The string to convert to title case
  * @returns The string in title case format
  */
-export function toTitleCase(text: string): string {  
-  return text;
+export function toTitleCase(text: string): string {
+  if (!text) return "";
+  return text
+    .split(/[\s_-]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }

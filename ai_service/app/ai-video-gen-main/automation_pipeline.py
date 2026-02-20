@@ -51,6 +51,7 @@ try:
         HTML_GENERATION_SAFE_AREA,
         HTML_GENERATION_USER_PROMPT_TEMPLATE,
         BACKGROUND_PRESETS,
+        TOPIC_SHOT_PROFILES,
     )
 except ImportError:
     # Fallback or error if not found. But since we just created it, it should be fine.
@@ -203,10 +204,11 @@ def _extract_json_blob(raw: str) -> Any:
 
     # 3. Find the outermost JSON object by matching balanced braces.
     # LLMs sometimes prepend <style> or text. We find `{` and matching `}`.
+    # We will search for EVERY candidate and try them all.
+    candidates = []
+    
     start_idx = text.find('{')
-    if start_idx != -1:
-        # We need to find the correct closing brace to avoid breaking on nested {}
-        # Simple stack-based parsing
+    while start_idx != -1:
         stack = 0
         end_idx = -1
         in_string = False
@@ -236,9 +238,15 @@ def _extract_json_blob(raw: str) -> Any:
         if end_idx != -1:
             candidate = text[start_idx : end_idx + 1]
             try:
-                return json.loads(candidate)
+                data = json.loads(candidate)
+                # If it's a valid dict or list, return it immediately!
+                if isinstance(data, (dict, list)):
+                    return data
             except json.JSONDecodeError:
                 pass
+                
+        # Move on to the next potential '{' character if this one didn't work out
+        start_idx = text.find('{', start_idx + 1)
                 
     raise ValueError(f"Could not parse JSON from response. Raw output:\n{raw}")
 
@@ -667,7 +675,10 @@ class VideoGenerationPipeline:
         tts_provider: str = "edge",
         branding_config: Optional[Dict[str, Any]] = None,
         content_type: str = "VIDEO",
+        max_segments: int = 8,
     ) -> Dict[str, Any]:
+        # Store max_segments for use in concept-aligned segmentation
+        self._max_segments = max_segments
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
         
@@ -831,18 +842,34 @@ class VideoGenerationPipeline:
                 accumulate_usage(image_usage)
             else:
                 # STANDARD VIDEO FLOW
-                print("🧠 Building minute-level segments ...")
-                # We need words for segmentation. If words is empty, we can't segment.
-                # But do_html implies we are past words stage, so words should be populated.
-                if not words and self.STAGE_INDEX["words"] < stop_idx:
-                     pass # Warning?
-                     
-                segments = self._segment_words(words)
+                # Extract subject domain from AI-classified script plan
+                plan_data = script_plan.get("plan", {})
+                subject_domain = plan_data.get("subject_domain", "general")
+                if subject_domain not in TOPIC_SHOT_PROFILES:
+                    subject_domain = "general"
+                self._current_subject_domain = subject_domain
+                print(f"📘 Subject domain: {subject_domain} ({TOPIC_SHOT_PROFILES[subject_domain]['description']})")
+                
+                print("🧠 Building concept-aligned segments ...")
+                # Use beat_outline for concept-aligned segmentation if available
+                beat_outline = plan_data.get("beat_outline", [])
+                
+                # Configurable max segments to limit LLM expense
+                # Default: max 8 segments (covers ~8 minutes of video at ~60s each)
+                max_segments = getattr(self, '_max_segments', 8)
+                
+                if beat_outline and len(beat_outline) >= 2 and words:
+                    segments = self._segment_words_by_beats(words, beat_outline, max_segments=max_segments)
+                    print(f"   ✅ Created {len(segments)} concept-aligned segments from {len(beat_outline)} beats (max: {max_segments})")
+                else:
+                    segments = self._segment_words(words)
+                    print(f"   ℹ️  Using fixed-window segmentation ({len(segments)} segments)")
+                
                 if not segments:
                     raise RuntimeError("Failed to derive segments from narration.")
                 
                 print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
-                html_results, html_usage = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
+                html_results, html_usage = self._generate_html_segments(segments, style_guide, plan_data, run_dir, language=language)
                 html_segments = html_results
                 accumulate_usage(html_usage)
                 
@@ -1571,6 +1598,101 @@ class VideoGenerationPipeline:
             start_time += window
         return segments
 
+    def _segment_words_by_beats(
+        self, words: List[Dict[str, Any]], beat_outline: List[Dict[str, Any]], max_segments: int = 8
+    ) -> List[Dict[str, Any]]:
+        """
+        Concept-aligned segmentation: uses the beat_outline labels to find natural
+        topic transitions in the narration text, then splits words at those boundaries.
+        
+        Falls back to fixed-window if beat matching fails.
+        max_segments caps total segments to control LLM cost.
+        """
+        if not words or not beat_outline:
+            return self._segment_words(words)
+        
+        total_duration = float(words[-1]["end"])
+        full_text = " ".join(str(w.get("word", "")) for w in words).lower()
+        
+        # Try to find approximate word positions for each beat label
+        # by searching for key_terms or summary keywords in the word stream
+        beat_boundaries: List[float] = [0.0]
+        
+        for beat in beat_outline:
+            key_terms = beat.get("key_terms", [])
+            summary_words = beat.get("summary", "").lower().split()[:3]  # First 3 words of summary
+            search_terms = [t.lower() for t in key_terms] + summary_words
+            
+            best_time = None
+            for term in search_terms:
+                if not term or len(term) < 3:
+                    continue
+                for w in words:
+                    word_text = str(w.get("word", "")).lower().strip(".,!?;:")
+                    if term in word_text and float(w["start"]) > beat_boundaries[-1] + 5.0:
+                        best_time = float(w["start"])
+                        break
+                if best_time:
+                    break
+            
+            if best_time and best_time > beat_boundaries[-1] + 10.0:  # Min 10s per segment
+                beat_boundaries.append(best_time)
+        
+        beat_boundaries.append(total_duration)
+        
+        # Merge very short segments (< 15s) with neighbors
+        merged = [beat_boundaries[0]]
+        for b in beat_boundaries[1:]:
+            if b - merged[-1] < 15.0 and len(merged) > 1:
+                continue  # Skip, let it merge with next
+            merged.append(b)
+        if merged[-1] != total_duration:
+            merged.append(total_duration)
+        beat_boundaries = merged
+        
+        # Enforce max_segments cap by merging smallest adjacent pairs
+        while len(beat_boundaries) - 1 > max_segments:
+            # Find smallest gap
+            min_gap = float("inf")
+            min_idx = 1
+            for i in range(1, len(beat_boundaries) - 1):
+                gap = beat_boundaries[i + 1] - beat_boundaries[i - 1]
+                if beat_boundaries[i] - beat_boundaries[i - 1] < min_gap:
+                    min_gap = beat_boundaries[i] - beat_boundaries[i - 1]
+                    min_idx = i
+            beat_boundaries.pop(min_idx)
+        
+        # If we only got start+end (no useful beat boundaries), fall back
+        if len(beat_boundaries) <= 2:
+            print("   ⚠️ Beat matching found no useful boundaries, using fixed-window fallback")
+            return self._segment_words(words)
+        
+        # Build segments from boundaries
+        segments: List[Dict[str, Any]] = []
+        for idx in range(len(beat_boundaries) - 1):
+            start_time = beat_boundaries[idx]
+            end_time = beat_boundaries[idx + 1]
+            chunk_words = [
+                w for w in words if float(w["start"]) < end_time and float(w["end"]) > start_time
+            ]
+            if chunk_words:
+                chunk_text = " ".join(str(w["word"]) for w in chunk_words).strip()
+                if chunk_text:
+                    # Check if this segment has a recap marker
+                    beat_idx = min(idx, len(beat_outline) - 1)
+                    needs_recap = beat_outline[beat_idx].get("needs_recap", False) if beat_idx < len(beat_outline) else False
+                    
+                    segments.append({
+                        "index": idx + 1,
+                        "start": round(start_time, 3),
+                        "end": round(end_time, 3),
+                        "text": chunk_text,
+                        "words": chunk_words,
+                        "needs_recap": needs_recap,
+                    })
+        
+        return segments
+
     def _process_interactive_content(self, script_plan: Dict[str, Any], content_type: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Process interactive content (Quiz, etc.) which doesn't use audio alignment for segmentation.
@@ -1776,6 +1898,24 @@ class VideoGenerationPipeline:
                 # Fallback to default if import fails
                 system_prompt = HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE
             
+            # Build topic-aware guidance based on subject domain
+            subject_domain = getattr(self, '_current_subject_domain', 'general')
+            topic_profile = TOPIC_SHOT_PROFILES.get(subject_domain, TOPIC_SHOT_PROFILES['general'])
+            topic_guidance = (
+                f"**📌 SUBJECT-SPECIFIC VISUAL GUIDANCE ({topic_profile['description']})**:\n"
+                f"{topic_profile['guidance']}\n"
+                f"Image ratio target: {topic_profile['image_ratio']*100:.0f}% of shots should use AI-generated images.\n"
+            )
+            
+            # Add recap hint if the segment is marked with needs_recap
+            if seg.get("needs_recap"):
+                topic_guidance += (
+                    "\n**📋 RECAP SHOT NEEDED**: This segment covers the final concept before a recap point. "
+                    "Include one additional shot at the end that briefly summarizes the key concepts "
+                    "covered so far using a clean bullet-point or numbered list layout. "
+                    "Use the key-takeaway card style.\n"
+                )
+
             user_prompt = HTML_GENERATION_USER_PROMPT_TEMPLATE.format(
                 index=seg["index"],
                 start=seg["start"],
@@ -1786,6 +1926,7 @@ class VideoGenerationPipeline:
                 beat_context=beat_context,
                 safe_area=HTML_GENERATION_SAFE_AREA,
                 language=language,
+                topic_guidance=topic_guidance,
                 # Color enforcement variables
                 background_type=background_type,
                 background_type_upper=background_type.upper(),
@@ -3361,6 +3502,12 @@ def parse_args() -> argparse.Namespace:
         default="2-3 minutes",
         help="Target video duration. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'."
     )
+    parser.add_argument(
+        "--max-segments",
+        type=int,
+        default=8,
+        help="Maximum number of segments to limit LLM expense (default: 8). Each segment = 1 LLM call for HTML generation."
+    )
     args = parser.parse_args()
 
     if args.resume_run and args.run_name:
@@ -3397,6 +3544,7 @@ def main() -> None:
         background_type=args.background_type,
         target_audience=args.target_audience,
         target_duration=args.target_duration,
+        max_segments=args.max_segments,
     )
     print("\n✅ Pipeline completed successfully!")
     print(f"• Run directory: {outputs['run_dir']}")

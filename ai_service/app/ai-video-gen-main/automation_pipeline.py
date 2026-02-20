@@ -2012,13 +2012,36 @@ class VideoGenerationPipeline:
         if stripped.startswith("{") and stripped.rstrip().endswith("}"):
             try:
                 data = json.loads(stripped)
-                if isinstance(data, dict) and "html" in data:
+                if isinstance(data, dict) and "shots" in data:
                     return data
             except json.JSONDecodeError:
                 pass
-        if "<" not in stripped or ">" not in stripped:
-            return {}
+
         html = stripped
+        if stripped.strip().startswith("{") or stripped.strip().startswith("["):
+            import ast
+            # Aggressive extraction of "html": "..." strings if JSON is broken
+            matches = list(re.finditer(r'"html"\s*:\s*("(?:\\.|[^"\\])*")', stripped))
+            if matches:
+                html_parts = []
+                for m in matches:
+                    try:
+                        extracted = ast.literal_eval(m.group(1))
+                        html_parts.append(extracted)
+                    except Exception:
+                        extracted = m.group(1)[1:-1].replace('\\"', '"').replace('\\n', '\n')
+                        html_parts.append(extracted)
+                html = "\n<!-- SHOT SPLIT -->\n".join(html_parts)
+            else:
+                cleaned = stripped.replace('\\"', '"').replace('\\n', '\n')
+                match_start = re.search(r'<(style|div|svg|h[1-6])\b', cleaned, re.IGNORECASE)
+                if match_start:
+                    html = cleaned[match_start.start():]
+                    html = re.sub(r'"?\s*\n?\s*\}\s*\]\s*\}\s*$', '', html).strip()
+
+        if "<" not in html or ">" not in html:
+            return {}
+
         return {
             "shots": [
                 {
@@ -2040,11 +2063,18 @@ class VideoGenerationPipeline:
         1. Replace Unicode arrows in Mermaid syntax (→ to -->).
         2. Remove repetitive 'In In In' garbage lines.
         3. Fix missing animations for opacity:0 elements.
+        4. Remove hallucinated JSON blocks nested inside the HTML string.
         """
         if not html:
             return ""
             
-        # 1. Fix Mermaid arrows (naive global replace is risky but usually safe for arrows)
+        # 1. Strip out hallucinated nested JSON blocks (e.g. LLM writes { "shots": ... inside the HTML string)
+        # This prevents raw JSON text from rendering visibly on the frontend!
+        hallucination_match = re.search(r'\{[\s\n]*"?(shots|offsetSeconds|inTime)"?\s*:', html)
+        if hallucination_match:
+            html = html[:hallucination_match.start()].strip()
+            
+        # 2. Fix Mermaid arrows (naive global replace is risky but usually safe for arrows)
         # We target specific unicode arrows often used by LLMs
         # Right arrow
         html = re.sub(r'([=-])\s*[→⇒]\s*', r'\1->', html)  # e.g., -→ to -->
@@ -2052,33 +2082,13 @@ class VideoGenerationPipeline:
         html = html.replace('→', '-->')
         html = html.replace('⇒', '==>')
         
-        # 2. Fix "In In In" garbage
+        # 3. Fix "In In In" garbage
         # Regex to match lines that are mostly "In" repeated
-        # pattern: line start, (In\s+){3,}, line end
-        def clean_garbage(match):
-            line = match.group(0)
-            # If line is > 50% "In ", nuke it
-            if line.count("In ") / max(1, len(line)/3) > 0.5:
-                return ""
-            return line
-
-        # Apply to text content nodes? Hard with regex.
-        # Let's just target obvious patterns in the string regardless of tags for now.
-        # "In In In In"
-        # 2. Fix "In In In" garbage
         html = re.sub(r'(?:\bIn\s+){3,}\bIn', '', html)
         
-        # 3. Sanitize attribute artifacts: class="]mermaid[" -> class="mermaid"
+        # 4. Sanitize attribute artifacts: class="]mermaid[" -> class="mermaid"
         html = re.sub(r'=(["\'])\](.*?)\[\1', r'=\1\2\1', html)
 
-        # 4. Remove potentially dangerous/garbage non-ascii characters
-        # But keep common useful ones like smart quotes if possible? 
-        # Actually, for correctness in code/Mermaid, strict ASCII is safer.
-        # Ideally we allow UTF-8 but LLM outputting corrupted ligatures is the issue.
-        # Let's strip non-ascii.
-        # UPDATE: Disabled this because it strips Math symbols (σ, π) and non-English languages.
-        # html = re.sub(r'[^\x00-\x7F]+', ' ', html)
-        
         # 5. FIX CRITICAL: Ensure elements with opacity:0 have animations
         # Find all elements with opacity:0 and extract their IDs
         opacity_zero_ids = re.findall(r'id=["\']([^"\']+)["\'][^>]*style=["\'][^"\']*opacity\s*:\s*0', html)

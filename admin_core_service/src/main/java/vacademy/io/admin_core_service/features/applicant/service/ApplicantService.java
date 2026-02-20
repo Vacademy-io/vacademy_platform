@@ -177,6 +177,7 @@ public class ApplicantService {
                                 .instituteId(stageDTO.getInstituteId())
                                 .configJson(stageDTO.getConfigJson())
                                 .type(stageDTO.getType())
+                                .workflowType(stageDTO.getWorkflowType())
                                 .isFirst(stageDTO.getIsFirst())
                                 .isLast(stageDTO.getIsLast())
                                 .build();

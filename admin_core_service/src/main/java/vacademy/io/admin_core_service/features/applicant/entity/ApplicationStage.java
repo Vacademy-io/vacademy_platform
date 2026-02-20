@@ -45,6 +45,9 @@ public class ApplicationStage {
     @Column(name = "type")
     private ApplicantStageType type;
 
+    @Column(name = "workflow_type")
+    private String workflowType;
+
     @Column(name = "is_first")
     private Boolean isFirst;
 

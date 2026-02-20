@@ -265,10 +265,12 @@ Explanation of the code output or key concepts.
 - Where code is part of the question, use proper code blocks or placeholders so the student knows what to implement or fix.
 
 **Output format**:
-- HTML only. Use <h2> for the single task title, <p> for instructions, <pre><code> for code snippets or starter code.
-- Structure: short introduction paragraph, then one section for the single homework task.
+- HTML only.
+- **Heading Rule**: The content MUST start with the main heading `<h1>Assignment</h1>`.
+- Use <h2> for the single task title, <p> for instructions, <pre><code> for code snippets or starter code.
+- Structure: Main heading ("Assignment"), task title, short introduction paragraph, then one section for the single homework task.
 
-**Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML."""
+**Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML. Start with <h1>Assignment</h1>."""
 
     @staticmethod
     def build_solution_prompt(text_prompt: str, title: str, homework_content: str | None = None) -> str:
@@ -303,10 +305,11 @@ Explanation of the code output or key concepts.
 
 **Output format**:
 - HTML only.
+- **Heading Rule**: The content MUST start with the main heading `<h1>Assignment Solutions</h1>`.
 - Use exactly two subsection headings: "Hint" (first), then "Solution" (second). Do not use "Exact solution" or "Exact Solution"—use "Solution" only.
 - Use <pre><code> for all code. Use <ol> or <p> for step-by-step instructions where appropriate.
 
-**Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML. Always put the HINT before the Solution. Use the heading "Solution", not "Exact Solution"."""
+**Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML. Always put the HINT before the Solution. Use the heading "Solution", not "Exact Solution". Start with <h1>Assignment Solutions</h1>."""
 
 
 __all__ = ["ContentGenerationPrompts"]

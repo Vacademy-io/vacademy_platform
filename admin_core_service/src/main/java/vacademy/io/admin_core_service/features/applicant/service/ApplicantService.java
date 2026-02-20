@@ -1,6 +1,6 @@
 package vacademy.io.admin_core_service.features.applicant.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -141,14 +141,45 @@ public class ApplicantService {
          */
         @Transactional
         public String createApplicationStage(ApplicationStageDTO stageDTO) {
+                // Find existing stages for this workflow to determine order
+                java.util.List<ApplicationStage> existingStages = applicationStageRepository.findByFilters(
+                                stageDTO.getInstituteId(),
+                                stageDTO.getSource(),
+                                stageDTO.getSourceId(),
+                                stageDTO.getWorkflowType());
+
+                boolean isFirst = false;
+                boolean isLast = true; // New stages are always placed at the end
+
+                if (existingStages.isEmpty()) {
+                        isFirst = true; // If no existing stages, it's also the first
+                } else {
+                        // Find the current last stage and update it
+                        for (ApplicationStage s : existingStages) {
+                                if (Boolean.TRUE.equals(s.getIsLast())) {
+                                        s.setIsLast(false);
+                                        applicationStageRepository.save(s);
+                                }
+                        }
+                }
+
+                // If sequence isn't strictly provided or to enforce linear logic we can
+                // automatically set it.
+                // But relying on existing string input for now, we leave as is or default to
+                // existingStages.size() + 1
+                String calculatedSequence = String.valueOf(existingStages.size() + 1);
+
                 ApplicationStage stage = ApplicationStage.builder()
                                 .stageName(stageDTO.getStageName())
-                                .sequence(stageDTO.getSequence())
+                                .sequence(calculatedSequence) // Ensuring sequence represents actual order
                                 .source(stageDTO.getSource())
                                 .sourceId(stageDTO.getSourceId())
                                 .instituteId(stageDTO.getInstituteId())
                                 .configJson(stageDTO.getConfigJson())
                                 .type(stageDTO.getType())
+                                .workflowType(stageDTO.getWorkflowType())
+                                .isFirst(isFirst)
+                                .isLast(isLast)
                                 .build();
 
                 return applicationStageRepository.save(stage).getId().toString();
@@ -348,8 +379,15 @@ public class ApplicantService {
          * Get Application Stages based on filters
          */
         public java.util.List<ApplicationStageDTO> getApplicationStages(String instituteId, String source,
-                        String sourceId) {
-                return applicationStageRepository.findByFilters(instituteId, source, sourceId)
+                        String sourceId, String workflowType) {
+
+                // Backward Compatibility: Default to "APPLICATION" if workflowType is
+                // null/empty
+                if (workflowType == null || workflowType.isEmpty()) {
+                        workflowType = "APPLICATION";
+                }
+
+                return applicationStageRepository.findByFilters(instituteId, source, sourceId, workflowType)
                                 .stream()
                                 .map(stage -> new ApplicationStageDTO(stage))
                                 .collect(java.util.stream.Collectors.toList());
@@ -698,20 +736,18 @@ public class ApplicantService {
                         throw new VacademyException("institute_id, source, and source_id are required");
                 }
 
-                // Find the first application stage for this workflow
-                List<ApplicationStage> stages = applicationStageRepository.findByFilters(
-                                request.getInstituteId(), request.getSource(), request.getSourceId());
+                String workflowTypeInput = request.getWorkflowType();
+                final String workflowType = (workflowTypeInput == null || workflowTypeInput.isEmpty()) ? "APPLICATION"
+                                : workflowTypeInput;
 
-                if (stages.isEmpty()) {
-                        throw new VacademyException("No application stage found for the given configuration");
-                }
-
-                // Get first stage (minimum sequence)
-                ApplicationStage firstStage = stages.stream()
-                                .min((s1, s2) -> Integer.compare(
-                                                s1.getSequence() != null ? Integer.parseInt(s1.getSequence()) : 0,
-                                                s2.getSequence() != null ? Integer.parseInt(s2.getSequence()) : 0))
-                                .orElse(stages.get(0));
+                // Find the first application stage for this workflow config
+                // Find the first application stage for this workflow (isFirst = true)
+                ApplicationStage firstStage = applicationStageRepository.findFirstStage(
+                                request.getInstituteId(), request.getSource(), request.getSourceId(), workflowType)
+                                .orElseThrow(() -> new VacademyException(
+                                                "No initial stage found for the given configuration (Workflow: "
+                                                                + workflowType
+                                                                + ")"));
 
                 String enquiryId = request.getEnquiryId();
                 String trackingId = generateCustomTrackingId(); // Generate NEW independent ID
@@ -733,7 +769,14 @@ public class ApplicantService {
 
                         // Check if already applied
                         if (audienceResponse.getApplicantId() != null) {
-                                throw new VacademyException("Application already submitted for this enquiry");
+                                // Transition Logic for ADMISSION workflow
+                                if ("ADMISSION".equals(workflowType)) {
+                                        // Allow transition/update
+                                        logger.info("Transitioning existing applicant {} to ADMISSION workflow",
+                                                        audienceResponse.getApplicantId());
+                                } else {
+                                        throw new VacademyException("Application already submitted for this enquiry");
+                                }
                         }
 
                         // Sync/Create Student record using existing User ID
@@ -771,19 +814,6 @@ public class ApplicantService {
                 } else {
                         // === Path 2: Manual / Direct Application ===
 
-                        // 1. Find Audience by Session (or default)
-                        if (request.getSessionId() == null) {
-                                throw new VacademyException("session_id is required for manual application");
-                        }
-
-                        Audience audience = audienceRepository
-                                        .findByInstituteIdAndSessionId(request.getInstituteId(), request.getSessionId())
-                                        .orElseThrow(() -> new VacademyException(
-                                                        "No audience campaign found for this session. Please contact admin."));
-
-                        // Fetch PackageSession
-                        packageSession = packageSessionRepository.findById(request.getSessionId()).orElse(null);
-
                         // 2. Create Users (Parent & Child)
                         parentUser = createParentUser(request);
                         childUser = createChildUser(request, parentUser.getId());
@@ -794,31 +824,112 @@ public class ApplicantService {
                                                 request.getInstituteId());
                         }
 
-                        // 4. Create Audience Response (New record)
-                        audienceResponse = AudienceResponse.builder()
-                                        .audienceId(audience.getId())
-                                        .userId(parentUser.getId())
-                                        .studentUserId(childUser != null ? childUser.getId() : null) // Store child ID
-                                        .sourceType("DIRECT_APPLICATION")
-                                        .sourceId(request.getSourceId())
-                                        .enquiryId(null) // Skip Enquiry
-                                        .parentName(getFormDataString(request.getFormData(), "parent_name"))
-                                        .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
-                                        .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
-                                        .overallStatus("APPLICATION")
-                                        .build();
-                        audienceResponse = audienceResponseRepository.save(audienceResponse);
+                        // 4. Check for Existing Audience Response by User IDs (Optimization for
+                        // Admission)
+                        // If we are in ADMISSION mode (or even standard), checking for existing link
+                        // prevents duplicates
+                        List<AudienceResponse> existingResponses = audienceResponseRepository
+                                        .findByUserIdOrStudentUserId(
+                                                        parentUser.getId(),
+                                                        childUser != null ? childUser.getId() : null);
+
+                        // Filter for relevant response (checking if one already exists with source
+                        // linkage or generic)
+                        // For Admission, we prioritize any existing link to reuse
+                        Optional<AudienceResponse> existingAr = existingResponses.stream().findFirst();
+
+                        if (existingAr.isPresent()) {
+                                audienceResponse = existingAr.get();
+                                logger.info("Found existing AudienceResponse/Lead for user. Reusing ID: {}",
+                                                audienceResponse.getId());
+
+                                // Check existing applicant on this AR
+                                if (audienceResponse.getApplicantId() != null) {
+                                        if ("ADMISSION".equals(workflowType)) {
+                                                logger.info("Transitioning existing applicant {} to ADMISSION workflow (Direct Path)",
+                                                                audienceResponse.getApplicantId());
+                                                // Logic continues below to reused applicant
+                                        } else {
+                                                throw new VacademyException(
+                                                                "Application already submitted for this user.");
+                                        }
+                                }
+                        } else {
+                                // Create NEW Audience Response
+                                if ("ADMISSION".equals(workflowType)) {
+                                        // ADMISSION path: no Audience campaign required — create a direct response
+                                        audienceResponse = AudienceResponse.builder()
+                                                        .audienceId(null) // No campaign for manual admission
+                                                        .userId(parentUser.getId())
+                                                        .studentUserId(childUser != null ? childUser.getId() : null)
+                                                        .sourceType("MANUAL_ADMISSION")
+                                                        .sourceId(request.getSourceId())
+                                                        .enquiryId(null)
+                                                        .parentName(getFormDataString(request.getFormData(),
+                                                                        "parent_name"))
+                                                        .parentEmail(getFormDataString(request.getFormData(),
+                                                                        "parent_email"))
+                                                        .parentMobile(getFormDataString(request.getFormData(),
+                                                                        "parent_phone"))
+                                                        .overallStatus("ADMISSION")
+                                                        .build();
+                                } else {
+                                        Audience audience = audienceRepository
+                                                        .findByInstituteIdAndSessionId(request.getInstituteId(),
+                                                                        request.getSessionId())
+                                                        .orElseThrow(() -> new VacademyException(
+                                                                        "No audience campaign found for this session. Please contact admin."));
+
+                                        audienceResponse = AudienceResponse.builder()
+                                                        .audienceId(audience.getId())
+                                                        .userId(parentUser.getId())
+                                                        .studentUserId(childUser != null ? childUser.getId() : null)
+                                                        .sourceType("DIRECT_APPLICATION")
+                                                        .sourceId(request.getSourceId())
+                                                        .enquiryId(null) // Skip Enquiry
+                                                        .parentName(getFormDataString(request.getFormData(),
+                                                                        "parent_name"))
+                                                        .parentEmail(getFormDataString(request.getFormData(),
+                                                                        "parent_email"))
+                                                        .parentMobile(getFormDataString(request.getFormData(),
+                                                                        "parent_phone"))
+                                                        .overallStatus("APPLICATION")
+                                                        .build();
+                                }
+                                audienceResponse = audienceResponseRepository.save(audienceResponse);
+                        }
                 }
 
                 // === Common Path: Create Applicant & Link ===
 
-                // Create applicant
-                Applicant applicant = Applicant.builder()
-                                .trackingId(trackingId)
-                                .applicationStageId(firstStage.getId().toString())
-                                .applicationStageStatus("INITIATED")
-                                .overallStatus("PENDING")
-                                .build();
+                Applicant applicant;
+                boolean isTransition = false;
+
+                if (audienceResponse.getApplicantId() != null && "ADMISSION".equals(workflowType)) {
+                        // Reuse Existing Applicant
+                        isTransition = true;
+                        applicant = applicantRepository.findById(UUID.fromString(audienceResponse.getApplicantId()))
+                                        .orElseThrow(() -> new VacademyException("Linked Applicant not found"));
+
+                        // Update Workflow and Reset Status
+                        applicant.setWorkflowType(workflowType);
+                        applicant.setApplicationStageId(firstStage.getId().toString());
+                        applicant.setApplicationStageStatus("INITIATED");
+                        applicant.setOverallStatus("PENDING"); // Or ADMISSION_IN_PROGRESS
+                        // We might want to close previous stage here?
+                        // For now, simply repointing the current stage ID effectively "moves" them.
+                        // The old ApplicantStage record remains in history.
+                } else {
+                        // Create NEW Applicant
+                        applicant = Applicant.builder()
+                                        .trackingId(trackingId)
+                                        .applicationStageId(firstStage.getId().toString())
+                                        .applicationStageStatus("INITIATED")
+                                        .overallStatus("PENDING")
+                                        .workflowType(workflowType)
+                                        .build();
+                }
+
                 Applicant savedApplicant = applicantRepository.save(applicant);
 
                 // Create applicant_stage with TEMPLATE CONFIG (from Application Stage)
@@ -832,8 +943,9 @@ public class ApplicantService {
                                 .applicantId(savedApplicant.getId().toString())
                                 .stageId(firstStage.getId().toString())
                                 .stageStatus("INITIATED")
-                                .responseJson(responseJson) // COPY Template
+                                .responseJson(responseJson)
                                 .build();
+
                 applicantStageRepository.save(applicantStage);
 
                 // Update audience_response with applicant_id and destination_package_session_id
@@ -863,7 +975,10 @@ public class ApplicantService {
                                 .trackingId(savedApplicant.getTrackingId())
                                 .currentStage(firstStage.getStageName())
                                 .status(savedApplicant.getOverallStatus())
-                                .message("Application submitted successfully")
+                                .overallStatus(savedApplicant.getOverallStatus())
+                                .isTransition(isTransition)
+                                .message(isTransition ? "Applicant transitioned to Admission workflow successfully"
+                                                : "Application submitted successfully")
                                 .build();
         }
 
@@ -922,6 +1037,54 @@ public class ApplicantService {
                         student.setLanguagesKnown(getFormDataString(formData, "languages_known"));
                         student.setCategory(getFormDataString(formData, "category"));
                         student.setNationality(getFormDataString(formData, "nationality"));
+
+                        // --- New Fields (V112) - Admission Specific ---
+                        student.setAdmissionNo(getFormDataString(formData, "admission_no"));
+                        // TODO (future migration): restore when columns are added
+                        // student.setSection(getFormDataString(formData, "section"));
+                        // student.setHasTransport(getFormDataBoolean(formData, "has_transport"));
+                        // student.setStudentType(getFormDataString(formData, "student_type"));
+                        // student.setClassGroup(getFormDataString(formData, "class_group"));
+                        student.setAdmissionType(getFormDataString(formData, "admission_type"));
+                        // student.setYearOfPassing(getFormDataString(formData, "year_of_passing"));
+                        // student.setPreviousAdmissionNo(getFormDataString(formData,
+                        // "previous_admission_no"));
+                        // student.setReligion(getFormDataString(formData, "religion"));
+                        // student.setCaste(getFormDataString(formData, "caste")); // TODO: restore once
+                        // migration adds caste column
+                        // student.setHowDidYouKnow(getFormDataString(formData, "how_did_you_know"));
+                        // Aadhaar for student
+                        String studentAadhaar = getFormDataString(formData, "student_aadhaar");
+                        if (studentAadhaar != null) {
+                                student.setIdNumber(studentAadhaar);
+                                student.setIdType("AADHAAR");
+                        }
+                        // Father details
+                        student.setFatherName(getFormDataString(formData, "fathers_name"));
+                        student.setParentsMobileNumber(getFormDataString(formData, "father_mobile"));
+                        student.setParentsEmail(getFormDataString(formData, "father_email"));
+                        // student.setFatherAadhaar(getFormDataString(formData, "father_aadhaar"));
+                        // student.setFatherQualification(getFormDataString(formData,
+                        // "father_qualification"));
+                        // student.setFatherOccupation(getFormDataString(formData,
+                        // "father_occupation"));
+                        // Mother details
+                        student.setMotherName(getFormDataString(formData, "mothers_name"));
+                        student.setParentToMotherMobileNumber(getFormDataString(formData, "mother_mobile"));
+                        student.setParentsToMotherEmail(getFormDataString(formData, "mother_email"));
+                        // student.setMotherAadhaar(getFormDataString(formData, "mother_aadhaar"));
+                        // student.setMotherQualification(getFormDataString(formData,
+                        // "mother_qualification"));
+                        // student.setMotherOccupation(getFormDataString(formData,
+                        // "mother_occupation"));
+                        // Guardian details
+                        student.setGuardianName(getFormDataString(formData, "guardian_name"));
+                        student.setGuardianMobile(getFormDataString(formData, "guardian_mobile"));
+                        // Address
+                        // student.setPermanentAddress(getFormDataString(formData,
+                        // "permanent_address"));
+                        // student.setPermanentLocality(getFormDataString(formData,
+                        // "permanent_locality"));
 
                         Student savedStudent = instituteStudentRepository.save(student);
 
@@ -1369,11 +1532,12 @@ public class ApplicantService {
                         String nextSeq = String.valueOf(currentSeq + 1);
 
                         Optional<ApplicationStage> nextStageOpt = applicationStageRepository
-                                        .findByInstituteIdAndSourceAndSourceIdAndSequence(
+                                        .findByInstituteIdAndSourceAndSourceIdAndSequenceAndWorkflowType(
                                                         currentStageDef.getInstituteId(),
                                                         currentStageDef.getSource(),
                                                         currentStageDef.getSourceId(),
-                                                        nextSeq);
+                                                        nextSeq,
+                                                        currentStageDef.getWorkflowType());
 
                         if (nextStageOpt.isPresent()) {
                                 ApplicationStage nextStage = nextStageOpt.get();

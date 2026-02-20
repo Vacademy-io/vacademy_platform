@@ -22,6 +22,7 @@ public class GetSessionByIdResponseDTO {
     private String descriptionHtml;
     private String defaultMeetLink;
     private String defaultClassLink;
+    private String defaultClassName;
     private String defaultClassLinkType;
     private LearnerButtonConfigDTO learnerButtonConfig;
     private LocalDateTime startTime;
@@ -51,6 +52,8 @@ public class GetSessionByIdResponseDTO {
         private String duration;
         private String link;
         private String defaultClassLink;
+        private String defaultClassName;
+        private LearnerButtonConfigDTO learnerButtonConfig;
         private LocalDate meetingDate;
         private String timezone;
     }

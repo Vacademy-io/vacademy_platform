@@ -37,37 +37,35 @@ public class GetLiveSessionService {
         private ScheduleNotificationRepository scheduleNotificationRepository;
 
         private GroupedSessionsByDateDTO createGroupedSessionsByDateDTO(Date date, List<LiveSessionListDTO> sessions) {
-                vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO config = null;
                 String defaultLink = null;
+                String defaultName = null;
 
-                // Find first non-null config/link
+                // Find first non-null config/link and clear default link/name from sessions
                 for (LiveSessionListDTO session : sessions) {
-                        if (session.getLearnerButtonConfig() != null && config == null) {
-                                config = session.getLearnerButtonConfig();
+                        // LearnerButtonConfig should remain in session and NOT be moved to group level.
+
+                        if (session.getDefaultClassLink() != null) {
+                                if (defaultLink == null) {
+                                        defaultLink = session.getDefaultClassLink();
+                                }
+                                session.setDefaultClassLink(null);
                         }
-                        if (session.getDefaultClassLink() != null && defaultLink == null) {
-                                defaultLink = session.getDefaultClassLink();
+                        if (session.getDefaultClassName() != null) {
+                                if (defaultName == null) {
+                                        defaultName = session.getDefaultClassName();
+                                }
+                                session.setDefaultClassName(null);
                         }
-                        if (config != null && defaultLink != null)
-                                break;
                 }
 
-                // Clear from sessions to avoid duplication in response
-                for (LiveSessionListDTO session : sessions) {
-                        session.setLearnerButtonConfig(null);
-                        session.setDefaultClassLink(null);
-                }
-
-                GroupedSessionsByDateDTO dto = new GroupedSessionsByDateDTO(date, sessions);
-                dto.setLearnerButtonConfig(config);
-                dto.setDefaultClassLink(defaultLink);
-                return dto;
+                // Pass null for learnerButtonConfig so it is excluded from group level response
+                return new GroupedSessionsByDateDTO(date, sessions, null, defaultLink, defaultName);
         }
 
-    public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
+        public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
 
-        List<LiveSessionRepository.LiveSessionListProjection> projections =
-                sessionRepository.findCurrentlyLiveSessions(instituteId);
+                List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
+                                .findCurrentlyLiveSessions(instituteId);
 
         return projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
@@ -87,13 +85,14 @@ public class GetLiveSessionService {
                 p.getRegistrationFormLinkForPublicSessions(),
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                p.getDefaultClassLink()
+                p.getDefaultClassLink(),
+                p.getDefaultClassName()
         )).toList();
     }
 
-    public List<GroupedSessionsByDateDTO> getUpcomingSession(String instituteId, CustomUserDetails user) {
-        List<LiveSessionRepository.LiveSessionListProjection> projections =
-                sessionRepository.findUpcomingSessions(instituteId);
+        public List<GroupedSessionsByDateDTO> getUpcomingSession(String instituteId, CustomUserDetails user) {
+                List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
+                                .findUpcomingSessions(instituteId);
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
@@ -113,7 +112,8 @@ public class GetLiveSessionService {
                 p.getRegistrationFormLinkForPublicSessions(),
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                p.getDefaultClassLink()
+                p.getDefaultClassLink(),
+                p.getDefaultClassName()
         )).toList();
 
         // Group by date
@@ -151,7 +151,8 @@ public class GetLiveSessionService {
                 p.getRegistrationFormLinkForPublicSessions(),
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                p.getDefaultClassLink()
+                p.getDefaultClassLink(),
+                p.getDefaultClassName()
         )).toList();
 
         // Group by date
@@ -230,7 +231,8 @@ public class GetLiveSessionService {
                         p.getRegistrationFormLinkForPublicSessions(),
                         p.getTimezone(),
                         deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                        p.getDefaultClassLink() 
+                        p.getDefaultClassLink(),
+                        p.getDefaultClassName()
                 );
                 uniqueSessions.put(sessionId, dto);
             }
@@ -262,7 +264,8 @@ public class GetLiveSessionService {
                 p.getRegistrationFormLinkForPublicSessions(),
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                p.getDefaultClassLink()
+                p.getDefaultClassLink(),
+                p.getDefaultClassName()
         )).toList();
 
         // Group by date
@@ -300,7 +303,8 @@ public class GetLiveSessionService {
                 p.getRegistrationFormLinkForPublicSessions(),
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                p.getDefaultClassLink()
+                p.getDefaultClassLink(),
+                p.getDefaultClassName()
         )).toList();
 
         // Group by date
@@ -345,7 +349,8 @@ public class GetLiveSessionService {
                 p.getRegistrationFormLinkForPublicSessions(),
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                p.getDefaultClassLink()
+                p.getDefaultClassLink(),
+                p.getDefaultClassName()
         )).toList();
 
                 // Group by date
@@ -388,7 +393,8 @@ public class GetLiveSessionService {
                 p.getRegistrationFormLinkForPublicSessions(),
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                p.getDefaultClassLink()
+                p.getDefaultClassLink(),
+                p.getDefaultClassName()
             ))
             .collect(Collectors.toList());
         

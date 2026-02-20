@@ -44,4 +44,13 @@ public class ApplicationStage {
     @Enumerated(EnumType.STRING)
     @Column(name = "type")
     private ApplicantStageType type;
+
+    @Column(name = "workflow_type")
+    private String workflowType;
+
+    @Column(name = "is_first")
+    private Boolean isFirst;
+
+    @Column(name = "is_last")
+    private Boolean isLast;
 }

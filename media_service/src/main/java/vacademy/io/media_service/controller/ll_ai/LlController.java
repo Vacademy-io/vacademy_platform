@@ -1,6 +1,5 @@
 package vacademy.io.media_service.controller.ll_ai;
 
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,7 +31,8 @@ public class LlController {
     ExternalAIApiServiceImpl deepSeekApiService;
 
     @PostMapping("/generate-incident-structure")
-    public ResponseEntity<IncidentAIStructureResponse> generateIncidentStructure(@RequestBody Map<String, String> request) throws JsonProcessingException {
+    public ResponseEntity<IncidentAIStructureResponse> generateIncidentStructure(
+            @RequestBody Map<String, String> request) throws JsonProcessingException {
         Map<String, IncidentType> incidentTypes = LL_AI_Constant.getIncidentTypes();
         ObjectMapper mapper = new ObjectMapper();
         String incidentsAndTypes = mapper.writeValueAsString(incidentTypes);
@@ -42,11 +42,11 @@ public class LlController {
         String template = """
                 Generate incident details for the following raw incident data:
                 {incidentText}
-                
-                
+
+
                 Incident Category, Code Mapping : {incidentTypes}
                 We need to extract a title, description, and categorize a incident code, category and subcategory
-                
+
                 also if the raw incident data if not in english then translate it to english
                 return the data in a json structure
                 {{
@@ -54,21 +54,44 @@ public class LlController {
                     "category": "INCIDENT_CATEGORY", // for the same event code
                     "subcategory": "INCIDENT_SUBCATEGORY", // from Incident Category, Code Mapping
                     "description": "INCIDENT_DESCRIPTION", // make a detailed report for the incident
-                    "title": "INCIDENT_TITLE" // title of the incident
+                    "title": "INCIDENT_TITLE", // title of the incident
+                    "was_reported_to_police": true/false, // check if the incident was reported to police
+                    "people_injured": [ // list of people injured if any
+                        {{
+                            "name": "NAME",
+                            "nature": "NATURE_OF_INJURY",
+                            "is_employee": true/false // check if the person is an employee
+                        }}
+                    ],
+                    "property_loss": [ // list of property damages or stolen items if any
+                        {{
+                            "name": "PROPERTY_NAME", // Name of the property damaged or stolen
+                            "description": "DESCRIPTION", // Description of the damage or theft
+                            "loss_value": 0.0, // Estimated loss value
+                            "type": "DAMAGE/STOLEN" // type of loss: either "DAMAGE" or "STOLEN"
+                        }}
+                    ],
+                    "suspects": [ // list of suspects if any
+                        {{
+                            "name": "NAME", // Name of the suspect keep empty if not known
+                            "description": "DESCRIPTION" // Description of the suspect
+                        }}
+                    ]
                 }}
                 """;
         Prompt prompt = new PromptTemplate(template).create(promptMap);
 
-
-        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash", prompt.getContents().trim(), 30000);
+        DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash",
+                prompt.getContents().trim(), 30000);
 
         if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
             throw new VacademyException("Failed to get response from deepseek");
         }
 
         String validJson = JsonUtils.extractAndSanitizeJson(response.getChoices().get(0).getMessage().getContent());
-        IncidentAIStructureResponse objectResponse = mapper.readValue(validJson, new TypeReference<IncidentAIStructureResponse>() {
-        });
+        IncidentAIStructureResponse objectResponse = mapper.readValue(validJson,
+                new TypeReference<IncidentAIStructureResponse>() {
+                });
         return ResponseEntity.ok(objectResponse);
 
     }

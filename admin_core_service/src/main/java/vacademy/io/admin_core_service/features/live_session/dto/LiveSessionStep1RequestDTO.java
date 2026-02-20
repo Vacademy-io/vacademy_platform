@@ -21,6 +21,7 @@ public class LiveSessionStep1RequestDTO {
     private String descriptionHtml;
     private String defaultMeetLink;
     private String defaultClassLink;
+    private String defaultClassName;
     private String joinLink;
     private Timestamp startTime;
     private Timestamp lastEntryTime;
@@ -60,6 +61,7 @@ public class LiveSessionStep1RequestDTO {
         private String thumbnailFileId;
         private boolean dailyAttendance;
         private String defaultClassLink;
+        private String defaultClassName;
         private LearnerButtonConfigDTO learnerButtonConfig;
     }
 

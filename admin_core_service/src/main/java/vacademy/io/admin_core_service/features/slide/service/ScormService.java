@@ -15,7 +15,10 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -39,17 +42,39 @@ public class ScormService {
 
             // 3. Parse manifest to find launch path
             String launchPath = parseLaunchPath(tempDir);
+            String scormVersion = detectScormVersion(tempDir);
 
-            // 4. Upload all files to Media Service (mimicking S3 folder structure)
+            // 4. Generate the SCORM player wrapper HTML
+            File wrapperFile = generatePlayerWrapper(tempDir, launchPath, scormVersion);
+
+            // 5. Upload all files (including wrapper) to Media Service
             String rootFolder = "scorm/" + UUID.randomUUID().toString();
-            uploadDirectory(tempDir, rootFolder);
+            Map<String, String> uploadedFileIds = new HashMap<>();
+            uploadDirectory(tempDir, rootFolder, uploadedFileIds);
 
-            // 5. Create ScormSlide entity
+            // 6. Find the public URL of the wrapper and launch file
+            String wrapperKey = rootFolder + "/" + wrapperFile.getName();
+            String wrapperPublicUrl = uploadedFileIds.get(wrapperKey);
+            log.info("Wrapper URL: {}", wrapperPublicUrl);
+
+            String launchFileKey = rootFolder + "/" + launchPath;
+            String launchFilePublicUrl = uploadedFileIds.get(launchFileKey);
+            log.info("Original launch URL: {}", launchFilePublicUrl);
+
+            // Use the wrapper URL as the launch URL (it embeds the actual SCORM content)
+            String finalLaunchUrl = wrapperPublicUrl != null ? wrapperPublicUrl : launchFilePublicUrl;
+            if (finalLaunchUrl == null) {
+                log.warn("Could not find public URL for wrapper or launch file. Available keys: {}",
+                        uploadedFileIds.keySet());
+            }
+
+            // 7. Create ScormSlide entity
             ScormSlide slide = new ScormSlide();
             slide.setId(UUID.randomUUID().toString());
-            slide.setOriginalFileId(rootFolder); // storing the root folder path as ID/Ref
+            slide.setOriginalFileId(rootFolder);
             slide.setLaunchPath(launchPath);
-            slide.setScormVersion(detectScormVersion(tempDir));
+            slide.setScormVersion(scormVersion);
+            slide.setLaunchUrl(finalLaunchUrl);
 
             slide = scormSlideRepository.save(slide);
 
@@ -59,11 +84,134 @@ public class ScormService {
             log.error("Failed to process SCORM package", e);
             throw new RuntimeException("Failed to process SCORM package: " + e.getMessage());
         } finally {
-            // Cleanup temp dir
             if (tempDir != null) {
                 deleteDirectory(tempDir);
             }
         }
+    }
+
+    /**
+     * Generates a wrapper HTML page that provides the SCORM API (both 1.2 and 2004)
+     * and loads the actual SCORM content in an iframe. Since both files live on the
+     * same S3 origin, the SCORM content can discover the API via window.parent.API.
+     *
+     * The wrapper also uses postMessage to bridge SCORM API calls back to the
+     * parent
+     * React app for learner tracking.
+     */
+    private File generatePlayerWrapper(File tempDir, String launchPath, String scormVersion) throws IOException {
+        String wrapperHtml = """
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>SCORM Player</title>
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        html, body { width: 100%%; height: 100%%; overflow: hidden; background: #f0f0f0; }
+                        iframe { width: 100%%; height: 100%%; border: none; }
+                    </style>
+                </head>
+                <body>
+                    <iframe id="scormContent" src="%s" allowfullscreen></iframe>
+                    <script>
+                        // ===== SCORM Data Store =====
+                        var cmiData = {};
+                        var lastError = '0';
+                        var initialized = false;
+
+                        // Notify parent app (React) of SCORM API calls for tracking
+                        function notifyParent(action, key, value) {
+                            try {
+                                if (window.parent && window.parent !== window) {
+                                    window.parent.postMessage({
+                                        type: 'vacademy_scorm',
+                                        action: action,
+                                        key: key || '',
+                                        value: value || ''
+                                    }, '*');
+                                }
+                            } catch(e) { /* cross-origin, ignore */ }
+                        }
+
+                        // Listen for initialization data from parent app
+                        window.addEventListener('message', function(event) {
+                            if (event.data && event.data.type === 'vacademy_scorm_init') {
+                                if (event.data.cmiData) {
+                                    cmiData = event.data.cmiData;
+                                }
+                            }
+                        });
+
+                        // ===== SCORM 1.2 API =====
+                        var API = {
+                            LMSInitialize: function(param) {
+                                initialized = true;
+                                notifyParent('LMSInitialize');
+                                return 'true';
+                            },
+                            LMSGetValue: function(key) {
+                                var value = cmiData[key] || '';
+                                notifyParent('LMSGetValue', key, value);
+                                return value;
+                            },
+                            LMSSetValue: function(key, value) {
+                                cmiData[key] = value;
+                                notifyParent('LMSSetValue', key, value);
+                                return 'true';
+                            },
+                            LMSCommit: function(param) {
+                                notifyParent('LMSCommit');
+                                return 'true';
+                            },
+                            LMSFinish: function(param) {
+                                notifyParent('LMSFinish');
+                                return 'true';
+                            },
+                            LMSGetLastError: function() { return lastError; },
+                            LMSGetErrorString: function(code) { return 'No error'; },
+                            LMSGetDiagnostic: function(code) { return 'No error'; }
+                        };
+
+                        // ===== SCORM 2004 API =====
+                        var API_1484_11 = {
+                            Initialize: function(param) {
+                                initialized = true;
+                                notifyParent('Initialize');
+                                return 'true';
+                            },
+                            GetValue: function(key) {
+                                var value = cmiData[key] || '';
+                                notifyParent('GetValue', key, value);
+                                return value;
+                            },
+                            SetValue: function(key, value) {
+                                cmiData[key] = value;
+                                notifyParent('SetValue', key, value);
+                                return 'true';
+                            },
+                            Commit: function(param) {
+                                notifyParent('Commit');
+                                return 'true';
+                            },
+                            Terminate: function(param) {
+                                notifyParent('Terminate');
+                                return 'true';
+                            },
+                            GetLastError: function() { return lastError; },
+                            GetErrorString: function(code) { return 'No error'; },
+                            GetDiagnostic: function(code) { return 'No error'; }
+                        };
+                    </script>
+                </body>
+                </html>
+                """.formatted(launchPath);
+
+        File wrapperFile = new File(tempDir, "vacademy_player.html");
+        Files.writeString(wrapperFile.toPath(), wrapperHtml, StandardCharsets.UTF_8);
+        log.info("Generated SCORM player wrapper at: {}", wrapperFile.getAbsolutePath());
+        return wrapperFile;
     }
 
     private void unzip(InputStream inputStream, File targetDir) throws IOException {
@@ -106,7 +254,6 @@ public class ScormService {
     private String parseLaunchPath(File dir) throws Exception {
         File manifest = new File(dir, "imsmanifest.xml");
         if (!manifest.exists()) {
-            // Fallback: look for index.html or story.html in root
             if (new File(dir, "index.html").exists())
                 return "index.html";
             if (new File(dir, "story.html").exists())
@@ -119,8 +266,6 @@ public class ScormService {
         Document doc = dBuilder.parse(manifest);
         doc.getDocumentElement().normalize();
 
-        // Basic parsing logic for SCORM 1.2/2004
-        // Find <resource> with adlcp:scormType="sco"
         NodeList resources = doc.getElementsByTagName("resource");
         for (int i = 0; i < resources.getLength(); i++) {
             Element resource = (Element) resources.item(i);
@@ -130,7 +275,6 @@ public class ScormService {
             }
         }
 
-        // Return first resource href as fallback
         if (resources.getLength() > 0) {
             return ((Element) resources.item(0)).getAttribute("href");
         }
@@ -139,7 +283,6 @@ public class ScormService {
     }
 
     private String detectScormVersion(File dir) {
-        // Simplified detection
         File manifest = new File(dir, "imsmanifest.xml");
         if (manifest.exists()) {
             try {
@@ -152,21 +295,25 @@ public class ScormService {
                 log.warn("Failed to read manifest for version detection", e);
             }
         }
-        return "1.2"; // Default
+        return "1.2";
     }
 
-    private void uploadDirectory(File dir, String rootKey) throws IOException {
+    private void uploadDirectory(File dir, String rootKey, Map<String, String> uploadedFileIds) throws IOException {
         if (dir.isDirectory()) {
             File[] files = dir.listFiles();
             if (files != null) {
                 for (File file : files) {
                     if (file.isDirectory()) {
-                        uploadDirectory(file, rootKey + "/" + file.getName());
+                        uploadDirectory(file, rootKey + "/" + file.getName(), uploadedFileIds);
                     } else {
                         String relativePath = rootKey + "/" + file.getName();
                         log.info("Uploading {} to {}", file.getName(), relativePath);
                         MultipartFile multipartFile = new CustomMultipartFile(file);
-                        mediaService.uploadFileToKey(multipartFile, relativePath);
+                        vacademy.io.common.media.dto.FileDetailsDTO result = mediaService.uploadFileToKey(multipartFile,
+                                relativePath);
+                        if (result != null && result.getUrl() != null) {
+                            uploadedFileIds.put(relativePath, result.getUrl());
+                        }
                     }
                 }
             }

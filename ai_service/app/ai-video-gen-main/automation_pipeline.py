@@ -51,6 +51,7 @@ try:
         HTML_GENERATION_SAFE_AREA,
         HTML_GENERATION_USER_PROMPT_TEMPLATE,
         BACKGROUND_PRESETS,
+        TOPIC_SHOT_PROFILES,
     )
 except ImportError:
     # Fallback or error if not found. But since we just created it, it should be fine.
@@ -183,69 +184,70 @@ def _extract_json_blob(raw: str) -> Any:
     """
     Try to recover a JSON object from a model response.
     Accepts fenced code blocks, plain JSON, or JSON mixed with text.
-    Handles common JSON errors like mismatched quotes.
+    Handles common JSON errors gracefully.
     """
-    # 1. Try stripping code fences first
     text = raw.strip()
-    # Regex to capture content inside ```json ... ``` or just ``` ... ```
-    # Non-greedy match for the content inside
+    
+    # 1. Try stripping code fences first
     fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
     if fence_match:
-        text = fence_match.group(1)
-    
-    # Helper function to fix common JSON errors
-    def fix_json_errors(json_str: str) -> str:
-        """Fix common JSON syntax errors."""
-        # Fix mismatched quotes: 'key": -> "key":
-        # Pattern matches: 'summary": (single quote start, word, double quote and colon)
-        # Use regular string for replacement to properly escape quotes
-        json_str = re.sub(r"'(\w+)\":", '"\\1":', json_str)
-        # Also fix: 'key': -> "key": (single quotes around key)
-        json_str = re.sub(r"'(\w+)':", '"\\1":', json_str)
-        # Fix trailing commas before closing braces/brackets
-        json_str = re.sub(r',\s*}', '}', json_str)
-        json_str = re.sub(r',\s*]', ']', json_str)
-        return json_str
-    
-    # Try parsing with error fixes
+        try:
+            return json.loads(fence_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Try parsing the whole text
     try:
-        fixed_text = fix_json_errors(text)
-        return json.loads(fixed_text)
+        return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 2. If that failed, try to find the largest brace-enclosed string
-    # We'll search for the first '{' and the last '}'
-    start_idx = raw.find('{')
-    end_idx = raw.rfind('}')
+    # 3. Find the outermost JSON object by matching balanced braces.
+    # LLMs sometimes prepend <style> or text. We find `{` and matching `}`.
+    # We will search for EVERY candidate and try them all.
+    candidates = []
     
-    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-        candidate = raw[start_idx : end_idx + 1]
-        try:
-            fixed_candidate = fix_json_errors(candidate)
-            return json.loads(fixed_candidate)
-        except json.JSONDecodeError as e:
-            # Try more aggressive fixes
+    start_idx = text.find('{')
+    while start_idx != -1:
+        stack = 0
+        end_idx = -1
+        in_string = False
+        escape = False
+        
+        for i in range(start_idx, len(text)):
+            char = text[i]
+            
+            if in_string:
+                if char == '\\':
+                    escape = not escape
+                elif char == '"' and not escape:
+                    in_string = False
+                else:
+                    escape = False
+            else:
+                if char == '"':
+                    in_string = True
+                elif char == '{':
+                    stack += 1
+                elif char == '}':
+                    stack -= 1
+                    if stack == 0:
+                        end_idx = i
+                        break
+        
+        if end_idx != -1:
+            candidate = text[start_idx : end_idx + 1]
             try:
-                # Fix single quotes around keys (mismatched quotes)
-                fixed_candidate = re.sub(r"'(\w+)\":", '"\\1":', candidate)
-                fixed_candidate = re.sub(r":\s*'([^']*)'", ': "\\1"', fixed_candidate)
-                # Fix trailing commas
-                fixed_candidate = re.sub(r',\s*}', '}', fixed_candidate)
-                fixed_candidate = re.sub(r',\s*]', ']', fixed_candidate)
-                return json.loads(fixed_candidate)
+                data = json.loads(candidate)
+                # If it's a valid dict or list, return it immediately!
+                if isinstance(data, (dict, list)):
+                    return data
             except json.JSONDecodeError:
                 pass
-
-    # 4. Try finding ALL brace pairs and decoding them, taking the first valid one
-    # This helps if there are multiple JSON blocks or nested confusion
-    for match in re.finditer(r"(\{.*\})", raw, re.DOTALL):
-        try:
-            fixed_match = fix_json_errors(match.group(1))
-            return json.loads(fixed_match)
-        except json.JSONDecodeError:
-            continue
-            
+                
+        # Move on to the next potential '{' character if this one didn't work out
+        start_idx = text.find('{', start_idx + 1)
+                
     raise ValueError(f"Could not parse JSON from response. Raw output:\n{raw}")
 
 
@@ -409,10 +411,6 @@ class GoogleCloudTTSClient:
 
         client = texttospeech.TextToSpeechClient(credentials=credentials)
 
-        # Create SSML with marks for each word to get precise timestamps
-        ssml_input, word_list = self._create_ssml_with_marks(text)
-        
-        input_text = texttospeech.SynthesisInput(ssml=ssml_input)
         voice = texttospeech.VoiceSelectionParams(
             language_code=language_code,
             name=voice_name
@@ -421,26 +419,39 @@ class GoogleCloudTTSClient:
             audio_encoding=texttospeech.AudioEncoding.MP3
         )
 
-        # Request timepoints for SSML marks
-        # Note: Time pointing may not be available in all API versions/voices
-        try:
-            request = texttospeech.SynthesizeSpeechRequest(
-                input=input_text,
-                voice=voice,
-                audio_config=audio_config,
-                enable_time_pointing=[
-                    texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
-                ]
-            )
-            response = client.synthesize_speech(request=request)
-        except Exception as tp_error:
-            # Fallback: synthesize without timepoints if API doesn't support it
-            print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis without SSML marks")
-            # Create simple input from plain text to avoid <mark> tag issues
+        # Voices that do NOT support SSML <mark> tags / timepoints
+        # Journey, Studio, and Polyglot voices return 400 with SSML marks
+        unsupported_mark_prefixes = ("Journey", "Studio", "Polyglot")
+        voice_short = voice_name.split("-")[-1] if voice_name else ""
+        supports_marks = not any(voice_short.startswith(p) for p in unsupported_mark_prefixes)
+
+        response = None
+        word_list = []
+
+        if supports_marks:
+            # Create SSML with marks for each word to get precise timestamps
+            ssml_input, word_list = self._create_ssml_with_marks(text)
+            input_text = texttospeech.SynthesisInput(ssml=ssml_input)
+            try:
+                request = texttospeech.SynthesizeSpeechRequest(
+                    input=input_text,
+                    voice=voice,
+                    audio_config=audio_config,
+                    enable_time_pointing=[
+                        texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
+                    ]
+                )
+                response = client.synthesize_speech(request=request)
+            except Exception as tp_error:
+                print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis")
+                response = None
+
+        if response is None:
+            # Plain text synthesis (for unsupported voices or after timepoint failure)
             simple_input = texttospeech.SynthesisInput(text=text)
             response = client.synthesize_speech(
-                input=simple_input, 
-                voice=voice, 
+                input=simple_input,
+                voice=voice,
                 audio_config=audio_config
             )
 
@@ -664,7 +675,10 @@ class VideoGenerationPipeline:
         tts_provider: str = "edge",
         branding_config: Optional[Dict[str, Any]] = None,
         content_type: str = "VIDEO",
+        max_segments: int = 8,
     ) -> Dict[str, Any]:
+        # Store max_segments for use in concept-aligned segmentation
+        self._max_segments = max_segments
         if start_from not in self.STAGE_INDEX:
             raise ValueError(f"Invalid start_from value: {start_from}")
         
@@ -828,18 +842,34 @@ class VideoGenerationPipeline:
                 accumulate_usage(image_usage)
             else:
                 # STANDARD VIDEO FLOW
-                print("🧠 Building minute-level segments ...")
-                # We need words for segmentation. If words is empty, we can't segment.
-                # But do_html implies we are past words stage, so words should be populated.
-                if not words and self.STAGE_INDEX["words"] < stop_idx:
-                     pass # Warning?
-                     
-                segments = self._segment_words(words)
+                # Extract subject domain from AI-classified script plan
+                plan_data = script_plan.get("plan", {})
+                subject_domain = plan_data.get("subject_domain", "general")
+                if subject_domain not in TOPIC_SHOT_PROFILES:
+                    subject_domain = "general"
+                self._current_subject_domain = subject_domain
+                print(f"📘 Subject domain: {subject_domain} ({TOPIC_SHOT_PROFILES[subject_domain]['description']})")
+                
+                print("🧠 Building concept-aligned segments ...")
+                # Use beat_outline for concept-aligned segmentation if available
+                beat_outline = plan_data.get("beat_outline", [])
+                
+                # Configurable max segments to limit LLM expense
+                # Default: max 8 segments (covers ~8 minutes of video at ~60s each)
+                max_segments = getattr(self, '_max_segments', 8)
+                
+                if beat_outline and len(beat_outline) >= 2 and words:
+                    segments = self._segment_words_by_beats(words, beat_outline, max_segments=max_segments)
+                    print(f"   ✅ Created {len(segments)} concept-aligned segments from {len(beat_outline)} beats (max: {max_segments})")
+                else:
+                    segments = self._segment_words(words)
+                    print(f"   ℹ️  Using fixed-window segmentation ({len(segments)} segments)")
+                
                 if not segments:
                     raise RuntimeError("Failed to derive segments from narration.")
                 
                 print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
-                html_results, html_usage = self._generate_html_segments(segments, style_guide, script_plan.get("plan"), run_dir, language=language)
+                html_results, html_usage = self._generate_html_segments(segments, style_guide, plan_data, run_dir, language=language)
                 html_segments = html_results
                 accumulate_usage(html_usage)
                 
@@ -1568,6 +1598,101 @@ class VideoGenerationPipeline:
             start_time += window
         return segments
 
+    def _segment_words_by_beats(
+        self, words: List[Dict[str, Any]], beat_outline: List[Dict[str, Any]], max_segments: int = 8
+    ) -> List[Dict[str, Any]]:
+        """
+        Concept-aligned segmentation: uses the beat_outline labels to find natural
+        topic transitions in the narration text, then splits words at those boundaries.
+        
+        Falls back to fixed-window if beat matching fails.
+        max_segments caps total segments to control LLM cost.
+        """
+        if not words or not beat_outline:
+            return self._segment_words(words)
+        
+        total_duration = float(words[-1]["end"])
+        full_text = " ".join(str(w.get("word", "")) for w in words).lower()
+        
+        # Try to find approximate word positions for each beat label
+        # by searching for key_terms or summary keywords in the word stream
+        beat_boundaries: List[float] = [0.0]
+        
+        for beat in beat_outline:
+            key_terms = beat.get("key_terms", [])
+            summary_words = beat.get("summary", "").lower().split()[:3]  # First 3 words of summary
+            search_terms = [t.lower() for t in key_terms] + summary_words
+            
+            best_time = None
+            for term in search_terms:
+                if not term or len(term) < 3:
+                    continue
+                for w in words:
+                    word_text = str(w.get("word", "")).lower().strip(".,!?;:")
+                    if term in word_text and float(w["start"]) > beat_boundaries[-1] + 5.0:
+                        best_time = float(w["start"])
+                        break
+                if best_time:
+                    break
+            
+            if best_time and best_time > beat_boundaries[-1] + 10.0:  # Min 10s per segment
+                beat_boundaries.append(best_time)
+        
+        beat_boundaries.append(total_duration)
+        
+        # Merge very short segments (< 15s) with neighbors
+        merged = [beat_boundaries[0]]
+        for b in beat_boundaries[1:]:
+            if b - merged[-1] < 15.0 and len(merged) > 1:
+                continue  # Skip, let it merge with next
+            merged.append(b)
+        if merged[-1] != total_duration:
+            merged.append(total_duration)
+        beat_boundaries = merged
+        
+        # Enforce max_segments cap by merging smallest adjacent pairs
+        while len(beat_boundaries) - 1 > max_segments:
+            # Find smallest gap
+            min_gap = float("inf")
+            min_idx = 1
+            for i in range(1, len(beat_boundaries) - 1):
+                gap = beat_boundaries[i + 1] - beat_boundaries[i - 1]
+                if beat_boundaries[i] - beat_boundaries[i - 1] < min_gap:
+                    min_gap = beat_boundaries[i] - beat_boundaries[i - 1]
+                    min_idx = i
+            beat_boundaries.pop(min_idx)
+        
+        # If we only got start+end (no useful beat boundaries), fall back
+        if len(beat_boundaries) <= 2:
+            print("   ⚠️ Beat matching found no useful boundaries, using fixed-window fallback")
+            return self._segment_words(words)
+        
+        # Build segments from boundaries
+        segments: List[Dict[str, Any]] = []
+        for idx in range(len(beat_boundaries) - 1):
+            start_time = beat_boundaries[idx]
+            end_time = beat_boundaries[idx + 1]
+            chunk_words = [
+                w for w in words if float(w["start"]) < end_time and float(w["end"]) > start_time
+            ]
+            if chunk_words:
+                chunk_text = " ".join(str(w["word"]) for w in chunk_words).strip()
+                if chunk_text:
+                    # Check if this segment has a recap marker
+                    beat_idx = min(idx, len(beat_outline) - 1)
+                    needs_recap = beat_outline[beat_idx].get("needs_recap", False) if beat_idx < len(beat_outline) else False
+                    
+                    segments.append({
+                        "index": idx + 1,
+                        "start": round(start_time, 3),
+                        "end": round(end_time, 3),
+                        "text": chunk_text,
+                        "words": chunk_words,
+                        "needs_recap": needs_recap,
+                    })
+        
+        return segments
+
     def _process_interactive_content(self, script_plan: Dict[str, Any], content_type: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Process interactive content (Quiz, etc.) which doesn't use audio alignment for segmentation.
@@ -1773,6 +1898,24 @@ class VideoGenerationPipeline:
                 # Fallback to default if import fails
                 system_prompt = HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE
             
+            # Build topic-aware guidance based on subject domain
+            subject_domain = getattr(self, '_current_subject_domain', 'general')
+            topic_profile = TOPIC_SHOT_PROFILES.get(subject_domain, TOPIC_SHOT_PROFILES['general'])
+            topic_guidance = (
+                f"**📌 SUBJECT-SPECIFIC VISUAL GUIDANCE ({topic_profile['description']})**:\n"
+                f"{topic_profile['guidance']}\n"
+                f"Image ratio target: {topic_profile['image_ratio']*100:.0f}% of shots should use AI-generated images.\n"
+            )
+            
+            # Add recap hint if the segment is marked with needs_recap
+            if seg.get("needs_recap"):
+                topic_guidance += (
+                    "\n**📋 RECAP SHOT NEEDED**: This segment covers the final concept before a recap point. "
+                    "Include one additional shot at the end that briefly summarizes the key concepts "
+                    "covered so far using a clean bullet-point or numbered list layout. "
+                    "Use the key-takeaway card style.\n"
+                )
+
             user_prompt = HTML_GENERATION_USER_PROMPT_TEMPLATE.format(
                 index=seg["index"],
                 start=seg["start"],
@@ -1783,6 +1926,7 @@ class VideoGenerationPipeline:
                 beat_context=beat_context,
                 safe_area=HTML_GENERATION_SAFE_AREA,
                 language=language,
+                topic_guidance=topic_guidance,
                 # Color enforcement variables
                 background_type=background_type,
                 background_type_upper=background_type.upper(),
@@ -3358,6 +3502,12 @@ def parse_args() -> argparse.Namespace:
         default="2-3 minutes",
         help="Target video duration. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'."
     )
+    parser.add_argument(
+        "--max-segments",
+        type=int,
+        default=8,
+        help="Maximum number of segments to limit LLM expense (default: 8). Each segment = 1 LLM call for HTML generation."
+    )
     args = parser.parse_args()
 
     if args.resume_run and args.run_name:
@@ -3394,6 +3544,7 @@ def main() -> None:
         background_type=args.background_type,
         target_audience=args.target_audience,
         target_duration=args.target_duration,
+        max_segments=args.max_segments,
     )
     print("\n✅ Pipeline completed successfully!")
     print(f"• Run directory: {outputs['run_dir']}")

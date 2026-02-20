@@ -42,11 +42,90 @@ BACKGROUND_PRESETS = {
     },
 }
 
+# Topic-aware shot profiles: maps subject domains to recommended visual mixes
+TOPIC_SHOT_PROFILES = {
+    "coding": {
+        "description": "Programming / Computer Science",
+        "preferred_shots": ["CODE_SPLIT", "TEXT_DIAGRAM", "MERMAID_FLOW"],
+        "image_ratio": 0.1,  # ~10% image shots, rest code/diagrams
+        "guidance": (
+            "This is a CODING topic. Prioritize:\n"
+            "- Code snippets with Prism.js syntax highlighting\n"
+            "- Mermaid flowcharts for logic/architecture\n"
+            "- SVG diagrams for data structures\n"
+            "- Minimal AI images (only for real-world analogies)\n"
+            "- Use layout-code-split for code + explanation side by side"
+        ),
+    },
+    "history": {
+        "description": "History / Social Studies / Geography",
+        "preferred_shots": ["IMAGE_HERO", "IMAGE_SPLIT", "TIMELINE"],
+        "image_ratio": 0.6,  # ~60% image shots for historical context
+        "guidance": (
+            "This is a HISTORY/GEOGRAPHY topic. Prioritize:\n"
+            "- IMAGE_HERO shots with period-appropriate scenes\n"
+            "- IMAGE_SPLIT for artifacts, maps, historical figures\n"
+            "- Timeline-style SVG for chronological events\n"
+            "- Use rich, cinematic image prompts with era-specific details"
+        ),
+    },
+    "science": {
+        "description": "Biology / Chemistry / Physics / Earth Science",
+        "preferred_shots": ["IMAGE_SPLIT", "SVG_DIAGRAM", "TEXT_DIAGRAM"],
+        "image_ratio": 0.35,  # ~35% images for specimens, experiments
+        "guidance": (
+            "This is a SCIENCE topic. Prioritize:\n"
+            "- SVG diagrams for processes (cell division, circuits, etc.)\n"
+            "- IMAGE_SPLIT for real-world specimens, lab setups\n"
+            "- Mermaid diagrams for classification trees\n"
+            "- Animated SVGs to show step-by-step processes\n"
+            "- Use Vivus.js to draw scientific diagrams progressively"
+        ),
+    },
+    "math": {
+        "description": "Mathematics / Statistics / Logic",
+        "preferred_shots": ["TEXT_DIAGRAM", "SVG_DIAGRAM", "EQUATION"],
+        "image_ratio": 0.05,  # Almost no images, pure diagrams/equations
+        "guidance": (
+            "This is a MATH topic. Prioritize:\n"
+            "- KaTeX equations rendered large and clear\n"
+            "- Step-by-step equation solving with progressive reveal\n"
+            "- SVG graphs, coordinate planes, geometric shapes\n"
+            "- NO AI images unless showing real-world application\n"
+            "- Use Vivus.js to 'draw' equations like a teacher writing"
+        ),
+    },
+    "language": {
+        "description": "Language Arts / Literature / Grammar",
+        "preferred_shots": ["TEXT_DIAGRAM", "IMAGE_HERO", "LOWER_THIRD"],
+        "image_ratio": 0.25,
+        "guidance": (
+            "This is a LANGUAGE topic. Prioritize:\n"
+            "- Large, readable text with Rough Notation annotations\n"
+            "- IMAGE_HERO for literary scenes or cultural context\n"
+            "- LOWER_THIRD for vocabulary definitions\n"
+            "- Comparison layouts for grammar rules (correct vs incorrect)"
+        ),
+    },
+    "general": {
+        "description": "General / Mixed / Default",
+        "preferred_shots": ["IMAGE_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT"],
+        "image_ratio": 0.3,
+        "guidance": (
+            "Use a balanced mix of shot types:\n"
+            "- 1 IMAGE_HERO for the hook/opener\n"
+            "- TEXT_DIAGRAM shots for core explanations\n"
+            "- IMAGE_SPLIT when a visual reference helps understanding"
+        ),
+    },
+}
+
 SCRIPT_SYSTEM_PROMPT = (
     "You are a senior educational scriptwriter for energetic 16:9 explainer videos. "
     "You adapt your vocabulary, examples, and concept depth based on the target audience's age/grade level. "
+    "You also classify the subject domain of the topic to guide visual design decisions. "
     "Return JSON containing a single continuous narration script (multiple paragraphs allowed), "
-    "plus a beat outline and CTA notes. Respond with JSON only."
+    "plus a beat outline, subject classification, and CTA notes. Respond with JSON only."
 )
 
 SCRIPT_USER_PROMPT_TEMPLATE = """
@@ -85,11 +164,20 @@ Requirements:
 - **Include a "Key Takeaway" statement** that summarizes the main point in one simple sentence.
 - **Mention a common mistake** students make about this topic (for Wrong vs Right visual).
 
+**EMOTIONAL ANCHORING (builds engagement)**:
+- **Hook**: Start with a relatable question, surprising fact, or "imagine you are..." scenario to spark curiosity.
+- **Tension**: Include a "Common Mistake" section that creates mild tension ("Most students think X, but actually...").
+- **Resolution**: Follow immediately with the correct understanding, giving satisfaction.
+- **Takeaway**: End with a clear, positive Key Takeaway that the learner can remember.
+
+**RECAP MARKERS**: If the video covers 3+ distinct concepts, add `"needs_recap": true` on the beat AFTER the last concept, so the system can optionally insert a visual summary.
+
 JSON shape:
 {{
   "title": "...",
   "audience": "...",
   "target_grade": "...",
+  "subject_domain": "coding | history | science | math | language | general",
   "script": "Full narration text...",
   "key_takeaway": "One sentence summary of the main concept",
   "common_mistake": "A typical misconception or error students make",
@@ -100,18 +188,30 @@ JSON shape:
       "visual_type": "IMAGE_HERO or IMAGE_SPLIT or TEXT_DIAGRAM or LOWER_THIRD",
       "visual_idea": "Describe a key visual metaphor for this section",
       "image_prompt_hint": "Only if visual_type uses images: cinematic photo description, 16:9, no text/faces",
-      "key_terms": ["term1", "term2"]
+      "key_terms": ["term1", "term2"],
+      "needs_recap": false
     }}
   ],
   "cta": "..."
 }}
+
+**subject_domain classification**:
+- "coding": Programming, algorithms, data structures, web dev, databases
+- "history": Historical events, civilizations, geography, social studies
+- "science": Biology, chemistry, physics, earth science, astronomy
+- "math": Arithmetic, algebra, geometry, calculus, statistics
+- "language": Grammar, literature, vocabulary, writing, foreign languages
+- "general": Business, life skills, art, music, mixed topics
 
 **visual_type guide for beat_outline**:
 - Use IMAGE_HERO for hooks, real-world scene-setters, topic introductions
 - Use IMAGE_SPLIT when explaining with a visual reference alongside text
 - Use TEXT_DIAGRAM for abstract concepts, math, code, processes, comparisons
 - Use LOWER_THIRD for vocabulary definitions (pairs with another shot type)
-- Most beats should be TEXT_DIAGRAM. Only use image types when the topic is visual/physical.
+- For **coding** topics: prefer TEXT_DIAGRAM and code blocks over images
+- For **history** topics: prefer IMAGE_HERO and IMAGE_SPLIT over diagrams
+- For **math** topics: prefer TEXT_DIAGRAM with KaTeX equations, almost no images
+- For **science** topics: balanced mix of IMAGE_SPLIT and SVG diagrams
 """
 
 # NOTE: Style guide prompts below are NOT actively used by the pipeline.
@@ -445,6 +545,22 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "</script>\n"
     "```\n\n"
     
+    "**🔄 PROGRESSIVE DISCLOSURE (MANDATORY for complex concepts)**:\n"
+    "Build understanding layer by layer within each shot:\n"
+    "1. Show the main heading/question FIRST (delay: 0)\n"
+    "2. Draw/reveal the first part of the diagram (delay: 2-3s, sync to word timing)\n"
+    "3. Annotate the key term being spoken (sync to word timing)\n"
+    "4. Add the next layer of detail (delay: 5-7s)\n"
+    "Each reveal should ADD to what's on screen, NOT replace it.\n"
+    "Use setTimeout with word timings to sync reveals to narration.\n\n"
+    
+    "**📚 DUAL CODING PRINCIPLE (MANDATORY)**:\n"
+    "Every shot that introduces a new concept MUST include BOTH:\n"
+    "1. TEXT (the concept name + brief explanation)\n"
+    "2. A VISUAL (SVG diagram, flowchart, comparison, annotated image, or code block)\n"
+    "Text-only shots are ONLY acceptable for Key Takeaway cards and LOWER_THIRD overlays.\n"
+    "This is backed by cognitive science: learners retain 2x more when information is presented in both verbal and visual channels.\n\n"
+
     "Output JSON with 2-4 'shots' per segment. Each shot: one concept, clean visual, annotations for key terms.\n"
 )
 
@@ -511,7 +627,8 @@ HTML_GENERATION_SAFE_AREA = (
     "  ]\n"
     "}\n"
     "Shots MUST NOT overlap in time. \n"
-    "ALWAYS begin your HTML with `@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');` (or your chosen pairing) and apply them."
+    "Ensure that the value of the `html` string property INSIDE your JSON begins with `<style>@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');</style>`. "
+    "The absolute FIRST character of your entire response must be `{` and the last character must be `}`. Add no markdown formatting, no code blocks, and no conversational text."
 )
 
 HTML_GENERATION_USER_PROMPT_TEMPLATE = """
@@ -674,6 +791,8 @@ setTimeout(() => annotate('#energy-term', {{type: 'underline', color: '{annotati
 - Supporting elements: Sync to word timings using the formula: `delay_ms = (word_time - shot_start) * 1000`
 - Annotations: Trigger slightly BEFORE the word is spoken (subtract 0.3s) so they're visible when heard
 - NEVER use delays longer than (shot_end - shot_start) seconds
+
+{topic_guidance}
 
 **Language**: {language}
 

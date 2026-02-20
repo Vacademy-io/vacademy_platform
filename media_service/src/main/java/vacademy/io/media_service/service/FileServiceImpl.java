@@ -3,6 +3,7 @@ package vacademy.io.media_service.service;
 import com.amazonaws.HttpMethod;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.CopyObjectRequest;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
@@ -92,7 +93,11 @@ public class FileServiceImpl implements FileService {
     @Override
     public FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key)
             throws FileUploadException, IOException {
-        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), null);
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentType(
+                multipartFile.getContentType() != null ? multipartFile.getContentType() : "application/octet-stream");
+        metadata.setContentLength(multipartFile.getSize());
+        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), metadata);
         FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(),
                 Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
                 "SCORM_UPLOAD", "SCORM_UPLOAD");

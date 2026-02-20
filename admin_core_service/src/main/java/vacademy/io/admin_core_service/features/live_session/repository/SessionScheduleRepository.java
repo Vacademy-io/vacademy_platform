@@ -45,6 +45,8 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
 
         String getDefaultClassLink();
 
+        String getDefaultClassName();
+
         String getDefaultClassLinkType();
 
         String getLearnerButtonConfig();
@@ -122,8 +124,9 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                     s.session_streaming_service_type AS sessionStreamingServiceType,
                     s.default_meet_link AS defaultMeetLink,
                     ss.default_class_link AS defaultClassLink,
+                    ss.default_class_name AS defaultClassName,
                     ss.default_class_link_type AS defaultClassLinkType,
-                    ss.learner_button_config AS learnerButtonConfig,
+                    s.learner_button_config AS learnerButtonConfig,
                     s.waiting_room_link AS waitingRoomLink,
                     s.waiting_room_time AS waitingRoomTime,
                     s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,
@@ -158,8 +161,9 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                     s.session_streaming_service_type AS sessionStreamingServiceType,
                     s.default_meet_link AS defaultMeetLink,
                     ss.default_class_link AS defaultClassLink,
+                    ss.default_class_name AS defaultClassName,
                     ss.default_class_link_type AS defaultClassLinkType,
-                    ss.learner_button_config AS learnerButtonConfig,
+                    s.learner_button_config AS learnerButtonConfig,
                     s.waiting_room_link AS waitingRoomLink,
                     s.waiting_room_time AS waitingRoomTime,
                     s.registration_form_link_for_public_sessions AS registrationFormLinkForPublicSessions,

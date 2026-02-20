@@ -189,4 +189,6 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("audienceId") String audienceId,
                         @Param("startDate") Timestamp startDate,
                         @Param("endDate") Timestamp endDate);
+
+        Optional<AudienceResponse> findFirstByStudentUserIdAndApplicantIdIsNotNull(String studentUserId);
 }

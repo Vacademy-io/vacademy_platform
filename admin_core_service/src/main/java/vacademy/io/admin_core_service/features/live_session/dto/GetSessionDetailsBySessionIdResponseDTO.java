@@ -26,6 +26,7 @@ public class GetSessionDetailsBySessionIdResponseDTO {
     private String sessionStreamingServiceType;
     private String defaultMeetLink;
     private String defaultClassLink;
+    private String defaultClassName;
     private String defaultClassLinkType;
     private LearnerButtonConfigDTO learnerButtonConfig;
     private String waitingRoomLink;

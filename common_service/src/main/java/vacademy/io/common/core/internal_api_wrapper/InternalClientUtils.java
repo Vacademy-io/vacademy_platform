@@ -83,7 +83,14 @@ public class InternalClientUtils {
 
         // Prepare body as multipart
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("file", new MultipartInputStreamFileResource(file.getInputStream(), file.getOriginalFilename()));
+        HttpHeaders partHeaders = new HttpHeaders();
+        if (file.getContentType() != null) {
+            partHeaders.setContentType(MediaType.parseMediaType(file.getContentType()));
+        }
+        MultipartInputStreamFileResource resource = new MultipartInputStreamFileResource(file.getInputStream(),
+                file.getOriginalFilename());
+        HttpEntity<MultipartInputStreamFileResource> partEntity = new HttpEntity<>(resource, partHeaders);
+        body.add("file", partEntity);
 
         if (additionalParams != null) {
             for (Map.Entry<String, Object> entry : additionalParams.entrySet()) {

@@ -558,7 +558,9 @@ class CourseOutlineGenerationService:
             "exercise",
             "exercises",
             "problem set",
-            "problem sets"
+            "problem sets",
+            "assignment",
+            "assignments"
         ]
         
         has_practice_keywords = any(keyword in prompt_lower for keyword in keywords)
@@ -575,13 +577,17 @@ class CourseOutlineGenerationService:
             title = (t.title or "").strip().lower()
             name = (t.name or "").strip().lower()
             # Our canonical slides we inject start with these prefixes
-            if title.startswith("homework questions -") or title.startswith("homework solutions -"):
+            if title.startswith("assignment -") or title.startswith("assignment solutions -"):
                 return False
-            if name.startswith("homework questions -") or name.startswith("homework solutions -"):
+            if name.startswith("assignment -") or name.startswith("assignment solutions -"):
                 return False
-            # LLM-generated ones look like "Spark Data Processing Homework", "X Homework Solution", etc.
+
+            # LLM-generated ones look like "Spark Data Processing Homework", "X Homework Solution", "Coding Assignment", etc.
             if "homework" in title or "homework" in name:
                 return True
+            if "assignment" in title or "assignment" in name:
+                return True
+
             if ("solution" in title or "solution" in name) and ("homework" in title or "homework" in name):
                 return True
             # LLM sometimes adds a standalone "Solution: [Topic]" slide (e.g. "Solution: Your First Spark Program");
@@ -683,8 +689,8 @@ class CourseOutlineGenerationService:
             
             # Create homework questions todo for this chapter (coding/task-focused, not simple Q&A)
             homework_todo = Todo(
-                name=f"Homework Questions - {chapter_name}",
-                title=f"Homework Questions - {chapter_name}",
+                name=f"Assignment - {chapter_name}",
+                title=f"Assignment - {chapter_name}",
                 type="DOCUMENT",
                 path=homework_path,
                 action_type="ADD",
@@ -705,8 +711,8 @@ The single task must have: clear title, brief context, concrete instructions, an
             
             # Create solutions todo for this chapter (hint first, then exact solution per item)
             solutions_todo = Todo(
-                name=f"Homework Solutions - {chapter_name}",
-                title=f"Homework Solutions - {chapter_name}",
+                name=f"Assignment Solutions - {chapter_name}",
+                title=f"Assignment Solutions - {chapter_name}",
                 type="DOCUMENT",
                 path=solutions_path,
                 action_type="ADD",

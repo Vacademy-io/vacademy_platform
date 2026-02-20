@@ -643,6 +643,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'scorm_slide', json_build_object(
                                     'id', sc.id,
                                     'launch_path', sc.launch_path,
+                                    'launch_url', sc.launch_url,
                                     'scorm_version', sc.scorm_version,
                                     'original_file_id', sc.original_file_id
                                 )
@@ -1742,6 +1743,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             'scorm_slide', json_build_object(
                                 'id', sc.id,
                                 'launch_path', sc.launch_path,
+                                'launch_url', sc.launch_url,
                                 'scorm_version', sc.scorm_version,
                                 'original_file_id', sc.original_file_id
                             )

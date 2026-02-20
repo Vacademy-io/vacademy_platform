@@ -33,6 +33,9 @@ public class ApplicationStageDTO {
 
     private ApplicantStageType type;
 
+    @JsonProperty("workflow_type")
+    private String workflowType;
+
     public ApplicationStageDTO(ApplicationStage stage) {
         this.id = stage.getId().toString();
         this.stageName = stage.getStageName();
@@ -42,5 +45,6 @@ public class ApplicationStageDTO {
         this.instituteId = stage.getInstituteId();
         this.configJson = stage.getConfigJson();
         this.type = stage.getType();
+        this.workflowType = stage.getWorkflowType();
     }
 }

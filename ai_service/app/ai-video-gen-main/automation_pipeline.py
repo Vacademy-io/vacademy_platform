@@ -183,69 +183,63 @@ def _extract_json_blob(raw: str) -> Any:
     """
     Try to recover a JSON object from a model response.
     Accepts fenced code blocks, plain JSON, or JSON mixed with text.
-    Handles common JSON errors like mismatched quotes.
+    Handles common JSON errors gracefully.
     """
-    # 1. Try stripping code fences first
     text = raw.strip()
-    # Regex to capture content inside ```json ... ``` or just ``` ... ```
-    # Non-greedy match for the content inside
+    
+    # 1. Try stripping code fences first
     fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
     if fence_match:
-        text = fence_match.group(1)
-    
-    # Helper function to fix common JSON errors
-    def fix_json_errors(json_str: str) -> str:
-        """Fix common JSON syntax errors."""
-        # Fix mismatched quotes: 'key": -> "key":
-        # Pattern matches: 'summary": (single quote start, word, double quote and colon)
-        # Use regular string for replacement to properly escape quotes
-        json_str = re.sub(r"'(\w+)\":", '"\\1":', json_str)
-        # Also fix: 'key': -> "key": (single quotes around key)
-        json_str = re.sub(r"'(\w+)':", '"\\1":', json_str)
-        # Fix trailing commas before closing braces/brackets
-        json_str = re.sub(r',\s*}', '}', json_str)
-        json_str = re.sub(r',\s*]', ']', json_str)
-        return json_str
-    
-    # Try parsing with error fixes
+        try:
+            return json.loads(fence_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Try parsing the whole text
     try:
-        fixed_text = fix_json_errors(text)
-        return json.loads(fixed_text)
+        return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 2. If that failed, try to find the largest brace-enclosed string
-    # We'll search for the first '{' and the last '}'
-    start_idx = raw.find('{')
-    end_idx = raw.rfind('}')
-    
-    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-        candidate = raw[start_idx : end_idx + 1]
-        try:
-            fixed_candidate = fix_json_errors(candidate)
-            return json.loads(fixed_candidate)
-        except json.JSONDecodeError as e:
-            # Try more aggressive fixes
+    # 3. Find the outermost JSON object by matching balanced braces.
+    # LLMs sometimes prepend <style> or text. We find `{` and matching `}`.
+    start_idx = text.find('{')
+    if start_idx != -1:
+        # We need to find the correct closing brace to avoid breaking on nested {}
+        # Simple stack-based parsing
+        stack = 0
+        end_idx = -1
+        in_string = False
+        escape = False
+        
+        for i in range(start_idx, len(text)):
+            char = text[i]
+            
+            if in_string:
+                if char == '\\':
+                    escape = not escape
+                elif char == '"' and not escape:
+                    in_string = False
+                else:
+                    escape = False
+            else:
+                if char == '"':
+                    in_string = True
+                elif char == '{':
+                    stack += 1
+                elif char == '}':
+                    stack -= 1
+                    if stack == 0:
+                        end_idx = i
+                        break
+        
+        if end_idx != -1:
+            candidate = text[start_idx : end_idx + 1]
             try:
-                # Fix single quotes around keys (mismatched quotes)
-                fixed_candidate = re.sub(r"'(\w+)\":", '"\\1":', candidate)
-                fixed_candidate = re.sub(r":\s*'([^']*)'", ': "\\1"', fixed_candidate)
-                # Fix trailing commas
-                fixed_candidate = re.sub(r',\s*}', '}', fixed_candidate)
-                fixed_candidate = re.sub(r',\s*]', ']', fixed_candidate)
-                return json.loads(fixed_candidate)
+                return json.loads(candidate)
             except json.JSONDecodeError:
                 pass
-
-    # 4. Try finding ALL brace pairs and decoding them, taking the first valid one
-    # This helps if there are multiple JSON blocks or nested confusion
-    for match in re.finditer(r"(\{.*\})", raw, re.DOTALL):
-        try:
-            fixed_match = fix_json_errors(match.group(1))
-            return json.loads(fixed_match)
-        except json.JSONDecodeError:
-            continue
-            
+                
     raise ValueError(f"Could not parse JSON from response. Raw output:\n{raw}")
 
 

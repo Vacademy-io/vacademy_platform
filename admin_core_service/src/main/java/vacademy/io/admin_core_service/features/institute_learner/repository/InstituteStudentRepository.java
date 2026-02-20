@@ -541,14 +541,16 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
   // Get student details by user IDs for tag management
   @Query(value = """
       SELECT
-          s.user_id as userId,
-          s.full_name as fullName,
-          s.username as username,
-          s.email as email,
-          s.mobile_number as phoneNumber,
-          ssigm.institute_enrollment_number as enrollmentId
+          s.user_id AS "userId",
+          s.full_name AS "fullName",
+          s.username AS "username",
+          s.email AS "email",
+          s.mobile_number AS "phoneNumber",
+          (SELECT ssigm.institute_enrollment_number
+           FROM student_session_institute_group_mapping ssigm
+           WHERE ssigm.user_id = s.user_id
+           LIMIT 1) AS "enrollmentId"
       FROM student s
-      LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
       WHERE s.user_id IN (:userIds)
       ORDER BY s.full_name
       """, nativeQuery = true)

@@ -511,7 +511,8 @@ HTML_GENERATION_SAFE_AREA = (
     "  ]\n"
     "}\n"
     "Shots MUST NOT overlap in time. \n"
-    "ALWAYS begin your HTML with `@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');` (or your chosen pairing) and apply them."
+    "Ensure that the value of the `html` string property INSIDE your JSON begins with `<style>@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');</style>`. "
+    "The absolute FIRST character of your entire response must be `{` and the last character must be `}`. Add no markdown formatting, no code blocks, and no conversational text."
 )
 
 HTML_GENERATION_USER_PROMPT_TEMPLATE = """

@@ -884,22 +884,6 @@ export const EnrollmentPaymentDialog: React.FC<
                           onBack={handleBack}
                         />
                       ) : vendor === "RAZORPAY" ? (
-                      {vendor === "CASHFREE" ? (
-                        <CashfreePaymentForm
-                          amount={selectedPaymentPlan.actual_price}
-                          currency={currency}
-                          email={email}
-                          fullName={fullName}
-                          phone={phone}
-                          instituteId={instituteId}
-                          courseData={courseData}
-                          enrollmentData={enrollmentData}
-                          selectedPaymentPlan={selectedPaymentPlan}
-                          onSuccess={handlePaymentSuccess}
-                          onError={handlePaymentError}
-                          onBack={handleBack}
-                        />
-                      ) : vendor === "RAZORPAY" ? (
                         <PaymentForm
                           amount={selectedPaymentPlan.actual_price}
                           currency={currency}

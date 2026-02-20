@@ -1718,13 +1718,6 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             cashfreeInstituteId={instituteId}
             onCashfreePayClick={() => setLoading(true)}
             onCashfreePayError={() => setLoading(false)}
-            cashfreePaymentSessionId={cashfreeSessionData?.paymentSessionId}
-            cashfreeReturnUrl={getCashfreeReturnUrl()}
-            cashfreeOrderId={cashfreeSessionData?.orderId}
-            cashfreeInitLoading={cashfreeInitLoading}
-            cashfreeInstituteId={instituteId}
-            onCashfreePayClick={() => setLoading(true)}
-            onCashfreePayError={() => setLoading(false)}
           />
         );
       }
@@ -2196,11 +2189,6 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                     : false
                 }
                 hasUnappliedReferral={hasUnappliedReferral}
-                hidePrimaryButton={
-                  currentStep === 3 &&
-                  getPaymentVendor(inviteData) === "CASHFREE" &&
-                  !!cashfreeSessionData
-                }
                 hidePrimaryButton={
                   currentStep === 3 &&
                   getPaymentVendor(inviteData) === "CASHFREE" &&

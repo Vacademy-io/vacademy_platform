@@ -535,8 +535,10 @@ public class HtmlBuilderService {
                               background: #FDEDD7;
                               font-weight: bold;
                             }
-                            .leaderboard-section {
+                            .daily-performance-section, .leaderboard-section {
                               page-break-inside: avoid;
+                            }
+                            .leaderboard-section {
                               margin-top: 40px;
                             }
                             .leaderboard-title {
@@ -582,19 +584,25 @@ public class HtmlBuilderService {
                             </table>
                           </div>
 
-                          <h2>Daily Learning Performance</h2>
-                          <div class="performance-table">
-                            <table>
-                              <thead>
-                                <tr>
-                                  <th>Date</th>
-                                  <th>Time Spent by batch (Avg)</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                %s
-                              </tbody>
-                            </table>
+                          <div class="daily-performance-section">
+                            <div class="performance-table">
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th colspan="2" style="background: #ffffff; color: #333; font-weight: bold; font-size: 18px; text-align: center; border-bottom: none;">
+                                      Daily Learning Performance
+                                    </th>
+                                  </tr>
+                                  <tr>
+                                    <th>Date</th>
+                                    <th>Time Spent by batch (Avg)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  %s
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
 
                           <div class="leaderboard-section">

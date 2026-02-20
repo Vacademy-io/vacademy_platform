@@ -147,12 +147,6 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   } | null>(null);
   const [cashfreeInitLoading, setCashfreeInitLoading] = useState(false);
   const cashfreeInitAttemptedRef = useRef(false);
-  const [cashfreeSessionData, setCashfreeSessionData] = useState<{
-    paymentSessionId: string;
-    orderId: string;
-  } | null>(null);
-  const [cashfreeInitLoading, setCashfreeInitLoading] = useState(false);
-  const cashfreeInitAttemptedRef = useRef(false);
   // Ref to prevent double auto-enrollment for FREE courses
   const hasAutoEnrolledRef = useRef(false);
   // Ref to track if prefill data has been applied (prevents double reset)

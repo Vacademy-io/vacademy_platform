@@ -33,6 +33,12 @@ public class ApplicationStageDTO {
 
     private ApplicantStageType type;
 
+    @JsonProperty("is_first")
+    private Boolean isFirst;
+
+    @JsonProperty("is_last")
+    private Boolean isLast;
+
     public ApplicationStageDTO(ApplicationStage stage) {
         this.id = stage.getId().toString();
         this.stageName = stage.getStageName();
@@ -42,5 +48,7 @@ public class ApplicationStageDTO {
         this.instituteId = stage.getInstituteId();
         this.configJson = stage.getConfigJson();
         this.type = stage.getType();
+        this.isFirst = stage.getIsFirst();
+        this.isLast = stage.getIsLast();
     }
 }

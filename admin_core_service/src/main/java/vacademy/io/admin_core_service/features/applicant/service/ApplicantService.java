@@ -149,6 +149,8 @@ public class ApplicantService {
                                 .instituteId(stageDTO.getInstituteId())
                                 .configJson(stageDTO.getConfigJson())
                                 .type(stageDTO.getType())
+                                .isFirst(stageDTO.getIsFirst())
+                                .isLast(stageDTO.getIsLast())
                                 .build();
 
                 return applicationStageRepository.save(stage).getId().toString();
@@ -1398,6 +1400,91 @@ public class ApplicantService {
                 } catch (Exception e) {
                         logger.error("Error moving to next stage for applicant {}", applicantId, e);
                 }
+        }
+
+        /**
+         * Admin manual move to next stage
+         * Updates applicant, creates new applicant_stage entry, and updates audience_response if workflow type completed
+         */
+        @Transactional
+        public void moveApplicantToNextStage(String applicantId) {
+                // Step 1: Load applicant
+                Applicant applicant = applicantRepository.findById(UUID.fromString(applicantId))
+                                .orElseThrow(() -> new VacademyException("Applicant not found: " + applicantId));
+
+                // Step 2: Load current stage from applicant.application_stage_id
+                ApplicationStage currentStageDef = applicationStageRepository
+                                .findById(UUID.fromString(applicant.getApplicationStageId()))
+                                .orElseThrow(() -> new VacademyException("Current application stage not found"));
+
+                // Step 3: Resolve next stage (sequence + 1, same institute/source/sourceId)
+                int currentSeq = 0;
+                try {
+                        currentSeq = Integer.parseInt(currentStageDef.getSequence());
+                } catch (NumberFormatException e) {
+                        throw new VacademyException("Invalid sequence format for stage: " + currentStageDef.getId());
+                }
+
+                String nextSeq = String.valueOf(currentSeq + 1);
+
+                Optional<ApplicationStage> nextStageOpt = applicationStageRepository
+                                .findByInstituteIdAndSourceAndSourceIdAndSequence(
+                                                currentStageDef.getInstituteId(),
+                                                currentStageDef.getSource(),
+                                                currentStageDef.getSourceId(),
+                                                nextSeq);
+
+                if (nextStageOpt.isEmpty()) {
+                        throw new VacademyException("No next stage found. Applicant is already at the last stage.");
+                }
+
+                ApplicationStage nextStage = nextStageOpt.get();
+
+                // Step 4: UPDATE applicant (application_stage_id and status)
+                applicant.setApplicationStageId(nextStage.getId().toString());
+                applicant.setApplicationStageStatus("INITIATED");
+                applicantRepository.save(applicant);
+
+                // Step 5: UPDATE current applicant_stage (mark COMPLETED) and CREATE new applicant_stage row
+                Optional<ApplicantStage> currentApplicantStageOpt = applicantStageRepository
+                                .findTopByApplicantIdOrderByCreatedAtDesc(applicantId);
+
+                if (currentApplicantStageOpt.isPresent()) {
+                        ApplicantStage currentApplicantStage = currentApplicantStageOpt.get();
+                        currentApplicantStage.setStageStatus("COMPLETED");
+                        applicantStageRepository.save(currentApplicantStage);
+                }
+
+                // Create new applicant_stage row
+                String responseJson = nextStage.getConfigJson();
+                if (responseJson == null || responseJson.isEmpty()) {
+                        responseJson = "{}";
+                }
+
+                ApplicantStage newApplicantStage = ApplicantStage.builder()
+                                .applicantId(applicantId)
+                                .stageId(nextStage.getId().toString())
+                                .stageStatus("PENDING")
+                                .responseJson(responseJson)
+                                .build();
+                applicantStageRepository.save(newApplicantStage);
+
+                // Step 6: UPDATE audience_response if current stage had is_last = 1 (workflow type completed)
+                Optional<AudienceResponse> audienceResponseOpt = audienceResponseRepository
+                                .findByApplicantId(applicantId);
+
+                if (audienceResponseOpt.isPresent()) {
+                        AudienceResponse audienceResponse = audienceResponseOpt.get();
+                        // Check if the stage we're leaving has is_last = 1
+                        if (Boolean.TRUE.equals(currentStageDef.getIsLast())) {
+                                audienceResponse.setOverallStatus("CHANGED");
+                                audienceResponseRepository.save(audienceResponse);
+                                logger.info("Updated audience_response.overall_status to CHANGED for applicant {} (workflow type completed)", applicantId);
+                        }
+                }
+
+                logger.info("Successfully moved applicant {} from stage {} to stage {}", applicantId,
+                                currentStageDef.getId(), nextStage.getId());
         }
 
         private String resolveLearnerDomain(String instituteId) {

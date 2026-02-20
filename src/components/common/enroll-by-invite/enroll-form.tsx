@@ -42,6 +42,13 @@ import {
 import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import {
+  initiateCashfreePayment,
+  getCashfreeReturnUrl,
+} from "@/services/cashfree-payment";
+import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
+import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
+import { TokenKey } from "@/constants/auth/tokens";
 
 import {
   RegistrationStep,
@@ -134,6 +141,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cashfreeSessionData, setCashfreeSessionData] = useState<{
+    paymentSessionId: string;
+    orderId: string;
+  } | null>(null);
+  const [cashfreeInitLoading, setCashfreeInitLoading] = useState(false);
+  const cashfreeInitAttemptedRef = useRef(false);
   const [cashfreeSessionData, setCashfreeSessionData] = useState<{
     paymentSessionId: string;
     orderId: string;
@@ -1711,6 +1724,13 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
             cashfreeInstituteId={instituteId}
             onCashfreePayClick={() => setLoading(true)}
             onCashfreePayError={() => setLoading(false)}
+            cashfreePaymentSessionId={cashfreeSessionData?.paymentSessionId}
+            cashfreeReturnUrl={getCashfreeReturnUrl()}
+            cashfreeOrderId={cashfreeSessionData?.orderId}
+            cashfreeInitLoading={cashfreeInitLoading}
+            cashfreeInstituteId={instituteId}
+            onCashfreePayClick={() => setLoading(true)}
+            onCashfreePayError={() => setLoading(false)}
           />
         );
       }
@@ -2182,6 +2202,11 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                     : false
                 }
                 hasUnappliedReferral={hasUnappliedReferral}
+                hidePrimaryButton={
+                  currentStep === 3 &&
+                  getPaymentVendor(inviteData) === "CASHFREE" &&
+                  !!cashfreeSessionData
+                }
                 hidePrimaryButton={
                   currentStep === 3 &&
                   getPaymentVendor(inviteData) === "CASHFREE" &&

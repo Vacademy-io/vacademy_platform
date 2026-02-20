@@ -24,6 +24,8 @@ import {
 } from "@/constants/urls";
 import { CashfreeCheckoutForm } from "@/components/common/enroll-by-invite/-components/cashfree-checkout-form";
 import { getCashfreeReturnUrl } from "@/services/cashfree-payment";
+import { CashfreeCheckoutForm } from "@/components/common/enroll-by-invite/-components/cashfree-checkout-form";
+import { getCashfreeReturnUrl } from "@/services/cashfree-payment";
 import { cachedGet } from "@/lib/http/clientCache";
 import { getCurrencySymbol } from "@/utils/currency";
 import axios from "axios";
@@ -312,6 +314,9 @@ export const EnrollmentPaymentDialog: React.FC<
           // Extract vendor and fetch payment gateway details
           const vendor = data.vendor || "STRIPE";
           setVendor(vendor);
+          if (vendor !== "CASHFREE") {
+            fetchStripeKey(vendor);
+          }
           if (vendor !== "CASHFREE") {
             fetchStripeKey(vendor);
           }
@@ -863,6 +868,22 @@ export const EnrollmentPaymentDialog: React.FC<
                         </div>
                       )}
 
+                      {vendor === "CASHFREE" ? (
+                        <CashfreePaymentForm
+                          amount={selectedPaymentPlan.actual_price}
+                          currency={currency}
+                          email={email}
+                          fullName={fullName}
+                          phone={phone}
+                          instituteId={instituteId}
+                          courseData={courseData}
+                          enrollmentData={enrollmentData}
+                          selectedPaymentPlan={selectedPaymentPlan}
+                          onSuccess={handlePaymentSuccess}
+                          onError={handlePaymentError}
+                          onBack={handleBack}
+                        />
+                      ) : vendor === "RAZORPAY" ? (
                       {vendor === "CASHFREE" ? (
                         <CashfreePaymentForm
                           amount={selectedPaymentPlan.actual_price}

@@ -39,6 +39,14 @@ export interface RawApiResponse {
   upcoming_sessions?: RawSession[];
 }
 
+export interface LearnerButtonConfig {
+  text: string;
+  url: string;
+  background_color: string;
+  text_color: string;
+  visible: boolean;
+}
+
 export interface SessionDetails {
   session_id: string;
   waiting_room_time: number;
@@ -53,11 +61,16 @@ export interface SessionDetails {
   meeting_link: string;
   session_streaming_service_type: string;
   timezone: string;
+  learner_button_config?: LearnerButtonConfig | null;
+  default_class_link?: string | null;
 }
 
 export interface DaySession {
   date: string;
   sessions: SessionDetails[];
+  learnerButtonConfig?: LearnerButtonConfig | null;
+  defaultClassLink?: string | null;
+  defaultClassName?: string | null;
 }
 
 export interface SessionDetailsResponse {

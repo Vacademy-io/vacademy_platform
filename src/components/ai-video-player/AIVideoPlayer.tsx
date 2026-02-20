@@ -2,30 +2,32 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Rewind, 
-  FastForward, 
-  Volume2, 
-  VolumeX, 
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  Rewind,
+  FastForward,
+  Volume2,
+  VolumeX,
   Settings,
   ChevronLeft,
   ChevronRight,
   Printer,
+  Maximize,
+  Minimize,
 } from "lucide-react";
-import type { 
-  ContentType, 
-  NavigationType, 
-  TimelineMeta, 
-  TimelineData, 
+import type {
+  ContentType,
+  NavigationType,
+  TimelineMeta,
+  TimelineData,
   Frame,
 } from "./types";
 import { CONTENT_TYPE_LABELS, DEFAULT_ENTRY_LABELS } from "./types";
 import { getLibraryScriptTags } from "./library-loader";
-import { 
-  createNavigationController, 
+import {
+  createNavigationController,
   type NavigationController,
 } from "./navigation-controller";
 
@@ -53,11 +55,11 @@ const DEFAULT_META: TimelineMeta = {
 };
 
 const fixHtmlContent = (html: string, includeLibs = true, contentType: ContentType = "VIDEO") => {
-    // Get libraries for the specific content type
-    const libsScripts = includeLibs ? getLibraryScriptTags(contentType) : "";
-    
-    // Inject required libraries + Interaction Script
-    const libs = `
+  // Get libraries for the specific content type
+  const libsScripts = includeLibs ? getLibraryScriptTags(contentType) : "";
+
+  // Inject required libraries + Interaction Script
+  const libs = `
         ${libsScripts}
         <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
         <style>
@@ -69,7 +71,7 @@ const fixHtmlContent = (html: string, includeLibs = true, contentType: ContentTy
             .is-dragging {
                 outline: 2px solid #3b82f6;
                 cursor: grabbing;
-                user-select: none;
+                user-select: auto;
             }
             [contenteditable="true"] {
                 outline: 2px solid #22c55e;
@@ -269,11 +271,11 @@ const fixHtmlContent = (html: string, includeLibs = true, contentType: ContentTy
         </script>
     `;
 
-    // Replace absolute file paths with valid Vite src paths and prepend libraries
-    // Use non-greedy match to avoid backtracking issues on large strings
-    const fixedPathHtml = html.replace(/file:\/\/\/[^"'\n]*\/runs\/dna_gene_editing\/generated_images\//g, '/src/routes/ai-video-studio/runs/dna_gene_editing/generated_images/');
+  // Replace absolute file paths with valid Vite src paths and prepend libraries
+  // Use non-greedy match to avoid backtracking issues on large strings
+  const fixedPathHtml = html.replace(/file:\/\/\/[^"'\n]*\/runs\/dna_gene_editing\/generated_images\//g, '/src/routes/ai-video-studio/runs/dna_gene_editing/generated_images/');
 
-    return (includeLibs ? libs : '') + fixedPathHtml;
+  return (includeLibs ? libs : '') + fixedPathHtml;
 };
 
 export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
@@ -290,7 +292,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const [meta, setMeta] = useState<TimelineMeta>(DEFAULT_META);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Use dimensions from meta or props
   const width = propWidth || meta.dimensions?.width || 1920;
   const height = propHeight || meta.dimensions?.height || 1080;
@@ -300,10 +302,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioStarted, setAudioStarted] = useState(false);
-  
+
   // User-driven state (for QUIZ, STORYBOOK, etc.)
   const [currentEntryIndex, setCurrentEntryIndex] = useState(0);
-  
+
   // Display state
   const [activeFrames, setActiveFrames] = useState<Frame[]>([]);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -311,6 +313,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [showPlaybackSpeedMenu, setShowPlaybackSpeedMenu] = useState(false);
   const [scale, setScale] = useState(0.8);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -382,14 +385,14 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         // Parse new structure with backward compatibility
         let framesArray: Frame[];
         let timelineMeta: TimelineMeta;
-        
+
         if (Array.isArray(timelineData)) {
           // Old format: just an array of frames (backward compatibility)
           framesArray = timelineData;
-          timelineMeta = { 
+          timelineMeta = {
             ...DEFAULT_META,
-            audio_start_at: 0, 
-            total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0 
+            audio_start_at: 0,
+            total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0
           };
         } else {
           // New format: { meta, entries }
@@ -398,13 +401,13 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             ...DEFAULT_META,
             ...timelineData.meta,
           };
-          
+
           // Ensure total_duration is set
           if (!timelineMeta.total_duration && framesArray.length > 0) {
             timelineMeta.total_duration = framesArray[framesArray.length - 1].exitTime;
           }
         }
-        
+
         console.log("[AIVideoPlayer] Parsed timeline:", {
           framesCount: framesArray.length,
           meta: timelineMeta,
@@ -418,10 +421,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         setMeta(timelineMeta);
 
         // Use meta.total_duration if available, otherwise calculate from last frame
-        const videoDuration = timelineMeta.total_duration || 
+        const videoDuration = timelineMeta.total_duration ||
           (framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0);
         setDuration(videoDuration);
-        
+
         // Initialize navigation controller with stable callback
         const nav = createNavigationController(
           timelineMeta,
@@ -449,7 +452,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         navigationRef.current = null;
       }
     };
-  }, [timelineUrl, handleNavChange]); 
+  }, [timelineUrl, handleNavChange]);
 
   // Initialize audio (only for time-driven content or content with audio)
   useEffect(() => {
@@ -466,7 +469,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
     // Set crossOrigin for S3 URLs to handle CORS
     audio.crossOrigin = "anonymous";
-    
+
     // Set preload to allow metadata loading
     audio.preload = "auto";
 
@@ -505,14 +508,14 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         src: audio.src,
         audioUrl: audioUrl,
       });
-      
+
       let errorMessage = "Failed to load audio";
       if (audio.error) {
         const MEDIA_ERR_ABORTED = 1;
         const MEDIA_ERR_NETWORK = 2;
         const MEDIA_ERR_DECODE = 3;
         const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
-        
+
         switch (audio.error.code) {
           case MEDIA_ERR_ABORTED:
             errorMessage = "Audio loading aborted";
@@ -532,7 +535,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     });
 
     audio.src = audioUrl;
-    
+
     try {
       audio.load();
     } catch (err) {
@@ -559,7 +562,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       const active = frames.filter(
         (frame) => currentTime >= frame.inTime && currentTime <= frame.exitTime
       );
-      
+
       let framesToShow = active;
       if (framesToShow.length === 0) {
         const framesAtOrBefore = frames.filter((frame) => frame.inTime <= currentTime);
@@ -569,7 +572,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           framesToShow = [frames[0]];
         }
       }
-      
+
       // OPTIMIZATION: Only update state if the frames have actually changed
       setActiveFrames(prev => {
         if (prev.length === framesToShow.length && prev.every((f, i) => f.id === framesToShow[i].id)) {
@@ -582,22 +585,22 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       // User-driven: show current entry
       const currentEntry = frames[currentEntryIndex];
       const newFrames = currentEntry ? [currentEntry] : [frames[0]];
-      
+
       setActiveFrames(prev => {
-         if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
-             return prev;
-         }
-         return newFrames;
+        if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
+          return prev;
+        }
+        return newFrames;
       });
 
     } else if (isSelfContained) {
       // Self-contained: show first (and only) entry
       const newFrames = [frames[0]];
       setActiveFrames(prev => {
-          if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
-              return prev;
-          }
-          return newFrames;
+        if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
+          return prev;
+        }
+        return newFrames;
       });
     }
   }, [frames, currentTime, currentEntryIndex, isTimeDriven, isUserDriven, isSelfContained]);
@@ -606,23 +609,23 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   useEffect(() => {
     const calculateScale = () => {
       if (!containerRef.current) return;
-      
+
       const container = containerRef.current;
       const rect = container.getBoundingClientRect();
       const containerWidth = rect.width;
       const containerHeight = rect.height;
-      
+
       if (containerWidth <= 0 || containerHeight <= 0) {
         console.warn("[AIVideoPlayer] Invalid container dimensions:", { containerWidth, containerHeight });
         return;
       }
-      
+
       const scaleX = containerWidth / width;
       const scaleY = containerHeight / height;
       const newScale = Math.min(scaleX, scaleY);
-      const zoomedOutScale = newScale * 0.95;
-      const finalScale = Math.min(zoomedOutScale, 1);
-      
+      // Remove artificial margin (0.95 multiplier) to allow full fit
+      const finalScale = Math.min(newScale, 1);
+
       // Prevent infinite loops by only updating if change is significant (> 0.001)
       setScale(prev => Math.abs(prev - finalScale) > 0.001 ? finalScale : prev);
     };
@@ -637,7 +640,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       if (!entry) return;
 
       const { width: newWidth, height: newHeight } = entry.contentRect;
-      
+
       // Only trigger if change is significant (> 1px) to avoid sub-pixel layout loops on iOS
       if (Math.abs(newWidth - lastWidth) < 1 && Math.abs(newHeight - lastHeight) < 1) {
         return;
@@ -649,12 +652,12 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       cancelAnimationFrame(frameId);
       frameId = requestAnimationFrame(() => calculateScale());
     };
-    
+
     const resizeObserver = new ResizeObserver(observerCallback);
-    
+
     // Initial calculation
     calculateScale();
-    
+
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }
@@ -678,9 +681,9 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     const iframe = iframeRef.current as HTMLIFrameElement & { __lastRenderedIds?: string };
     const lastRenderedIds = iframe.__lastRenderedIds;
     const currentIds = activeFrames.map(f => f.id).join(',');
-    
+
     if (lastRenderedIds === currentIds && iframe.contentDocument?.body?.innerHTML) {
-        return;
+      return;
     }
 
     const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
@@ -703,7 +706,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       frames: activeFrames.map((f) => ({ id: f.id, inTime: f.inTime, exitTime: f.exitTime })),
     });
 
-    const sortedFrames = [...activeFrames].sort((a, b) => a.z - b.z);
+    const sortedFrames = [...activeFrames].sort((a, b) => (a.z || 0) - (b.z || 0));
 
     let htmlContent = `
       <!DOCTYPE html>
@@ -722,14 +725,17 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               height: ${height}px;
               overflow: hidden;
               position: relative;
-              background: #000000;
+              background: transparent;
               margin: 0;
               padding: 0;
+              display: block;
             }
             .frame {
               position: absolute;
               width: 100%;
               height: 100%;
+              backface-visibility: hidden;
+              transform: translate3d(0,0,0);
             }
           </style>
         </head>
@@ -800,22 +806,22 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     if (!isTimeDriven) return;
 
     let lastTimestamp: number | null = null;
-    
+
     const updateTime = (timestamp: number) => {
       if (!isPlaying) return;
-      
+
       const deltaTime = lastTimestamp ? (timestamp - lastTimestamp) / 1000 * playbackRate : 0;
       lastTimestamp = timestamp;
-      
+
       setCurrentTime(prevTime => {
         let newTime = prevTime;
         const audioStartAt = meta.audio_start_at || 0;
         const totalDuration = meta.total_duration || duration;
-        
+
         // INTRO PHASE
         if (prevTime < audioStartAt) {
           newTime = prevTime + deltaTime;
-          
+
           if (newTime >= audioStartAt && audioRef.current && !audioStarted) {
             console.log("[AIVideoPlayer] Intro complete, starting audio");
             audioRef.current.currentTime = 0;
@@ -833,7 +839,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         // OUTRO PHASE
         else if (audioRef.current && audioRef.current.ended) {
           newTime = prevTime + deltaTime;
-          
+
           if (newTime >= totalDuration) {
             console.log("[AIVideoPlayer] Video complete (including outro)");
             setIsPlaying(false);
@@ -842,10 +848,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             return totalDuration;
           }
         }
-        
+
         return Math.min(newTime, totalDuration);
       });
-      
+
       animationFrameRef.current = requestAnimationFrame(updateTime);
     };
 
@@ -871,7 +877,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       setIsPlaying(false);
     } else {
       const audioStartAt = meta.audio_start_at || 0;
-      
+
       if (currentTime >= audioStartAt && audioRef.current) {
         const audioTime = currentTime - audioStartAt;
         audioRef.current.currentTime = Math.max(0, audioTime);
@@ -883,7 +889,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           setAudioStarted(true);
         }
       }
-      
+
       setIsPlaying(true);
     }
   }, [isPlaying, meta, currentTime, audioStarted, isTimeDriven, audioUrl]);
@@ -905,12 +911,12 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
   const handleSeek = useCallback((value: number[]) => {
     if (!isTimeDriven) return;
-    
+
     const newTimelineTime = value[0];
     const audioStartAt = meta.audio_start_at || 0;
-    
+
     setCurrentTime(newTimelineTime);
-    
+
     if (audioRef.current) {
       if (newTimelineTime < audioStartAt) {
         audioRef.current.pause();
@@ -919,7 +925,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       } else {
         const audioTime = newTimelineTime - audioStartAt;
         audioRef.current.currentTime = Math.max(0, audioTime);
-        
+
         if (isPlaying && newTimelineTime < (meta.content_ends_at || duration)) {
           if (!audioStarted) {
             setAudioStarted(true);
@@ -946,7 +952,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   // Navigation controls for user-driven content
   const handlePrevEntry = useCallback(() => {
     if (!isUserDriven || !navigationRef.current) return;
-    
+
     const entry = navigationRef.current.prev();
     if (entry) {
       setCurrentEntryIndex(navigationRef.current.currentIndex);
@@ -955,7 +961,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
   const handleNextEntry = useCallback(() => {
     if (!isUserDriven || !navigationRef.current) return;
-    
+
     const entry = navigationRef.current.next();
     if (entry) {
       setCurrentEntryIndex(navigationRef.current.currentIndex);
@@ -1001,6 +1007,30 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.print();
     }
+  }, []);
+
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  const handleToggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      // Use the root element of the player for fullscreen
+      rootRef.current?.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
   }, []);
 
   const playbackSpeeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -1062,7 +1092,11 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   }
 
   return (
-    <div className={`bg-black rounded-lg overflow-hidden flex flex-col ${className}`} style={{ aspectRatio: "16/9", maxHeight: "calc(100vh - 150px)" }}>
+    <div
+      ref={rootRef}
+      className={`bg-black rounded-lg overflow-hidden flex flex-col ${className} ${isFullscreen ? 'fixed inset-0 z-50 rounded-none w-screen h-screen' : ''}`}
+      style={isFullscreen ? { maxHeight: '100vh', aspectRatio: 'auto' } : { aspectRatio: "16/9", maxHeight: "calc(100vh - 150px)" }}
+    >
       {/* Content Type Badge */}
       <div className="bg-gray-900 px-4 py-2 flex items-center justify-between border-b border-gray-800">
         <span className="text-white text-sm font-medium">{contentTypeBadge}</span>
@@ -1085,9 +1119,9 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       </div>
 
       {/* Video Frame */}
-      <div 
+      <div
         ref={containerRef}
-        className="relative w-full flex-1 bg-black overflow-hidden flex items-center justify-center" 
+        className="relative w-full flex-1 bg-black overflow-hidden flex items-center justify-center"
         style={{ minHeight: 0, position: 'relative' }}
       >
         <div
@@ -1108,7 +1142,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               width: `${width}px`,
               height: `${height}px`,
               display: "block",
-              backgroundColor: "#000000",
+              backgroundColor: "transparent",
             }}
           />
         </div>
@@ -1134,7 +1168,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             </div>
 
             {/* Control Buttons */}
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
               {/* Left Side: Playback Controls */}
               <div className="flex items-center gap-3">
                 <Button
@@ -1184,9 +1218,9 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               </div>
 
               {/* Right Side: Volume and Speed Controls */}
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
                 {/* Volume Control */}
-                <div className="flex items-center gap-3 min-w-[120px] max-w-[180px]">
+                <div className="flex items-center gap-3 min-w-[80px] max-w-[120px]">
                   <Button
                     variant="outline"
                     size="icon"
@@ -1227,9 +1261,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                         <button
                           key={speed}
                           onClick={() => handlePlaybackRateChange(speed)}
-                          className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg ${
-                            playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"
-                          }`}
+                          className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg ${playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"
+                            }`}
                         >
                           {speed}x
                         </button>
@@ -1237,6 +1270,21 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Fullscreen Toggle */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleToggleFullscreen}
+                  className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 w-8"
+                  title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                >
+                  {isFullscreen ? (
+                    <Minimize className="h-4 w-4" />
+                  ) : (
+                    <Maximize className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
             </div>
           </>
@@ -1258,11 +1306,11 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 <ChevronLeft className="h-4 w-4 mr-1" />
                 Previous
               </Button>
-              
+
               <span className="text-white text-sm px-3">
                 {progressDisplay}
               </span>
-              
+
               <Button
                 variant="outline"
                 size="sm"

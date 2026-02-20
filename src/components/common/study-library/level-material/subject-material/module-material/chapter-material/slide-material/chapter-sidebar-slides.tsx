@@ -13,6 +13,7 @@ import {
   Lightning,
   File,
   ChatText,
+  Globe,
 } from "@phosphor-icons/react";
 import { useRouter } from "@tanstack/react-router";
 import { Slide, useSlides } from "@/hooks/study-library/use-slides";
@@ -114,6 +115,13 @@ const getTypeColorClasses = (slide: Slide, mediaKind?: "audio" | "video") => {
         bg: "bg-emerald-50",
         dot: "bg-emerald-500",
         detailText: "text-emerald-600",
+      };
+    case "SCORM":
+      return {
+        text: "text-teal-700",
+        bg: "bg-teal-50",
+        dot: "bg-teal-500",
+        detailText: "text-teal-600",
       };
     default:
       return {
@@ -222,6 +230,13 @@ export const getIcon = (slide: Slide, size?: string): React.ReactNode => {
             />
           );
       }
+    case "SCORM":
+      return (
+        <Globe
+          className={`${iconClass} text-teal-500`}
+          weight="duotone"
+        />
+      );
     default:
       return (
         <BookOpenText
@@ -292,6 +307,9 @@ export const getSlideTypeDisplay = (slide: Slide): string => {
       break;
     case "ASSIGNMENT":
       baseType = "Assignment";
+      break;
+    case "SCORM":
+      baseType = "SCORM Module";
       break;
     default:
       if (slide.source_type && typeof slide.source_type === "string") {

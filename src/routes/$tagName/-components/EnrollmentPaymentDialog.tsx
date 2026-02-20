@@ -24,6 +24,8 @@ import {
 } from "@/constants/urls";
 import { CashfreeCheckoutForm } from "@/components/common/enroll-by-invite/-components/cashfree-checkout-form";
 import { getCashfreeReturnUrl } from "@/services/cashfree-payment";
+import { CashfreeCheckoutForm } from "@/components/common/enroll-by-invite/-components/cashfree-checkout-form";
+import { getCashfreeReturnUrl } from "@/services/cashfree-payment";
 import { cachedGet } from "@/lib/http/clientCache";
 import { getCurrencySymbol } from "@/utils/currency";
 import axios from "axios";
@@ -312,6 +314,9 @@ export const EnrollmentPaymentDialog: React.FC<
           // Extract vendor and fetch payment gateway details
           const vendor = data.vendor || "STRIPE";
           setVendor(vendor);
+          if (vendor !== "CASHFREE") {
+            fetchStripeKey(vendor);
+          }
           if (vendor !== "CASHFREE") {
             fetchStripeKey(vendor);
           }
@@ -1098,10 +1103,12 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
         const responseData = paymentResponse?.payment_response?.response_data;
         const paymentSessionId =
           responseData?.paymentSessionId ?? responseData?.payment_session_id;
+        // Use top-level orderId (paymentLogId) for status API – backend looks up by payment_log.id
         const orderId =
+          paymentResponse?.orderId ??
+          paymentResponse?.payment_response?.order_id ??
           responseData?.orderId ??
-          responseData?.order_id ??
-          paymentResponse?.payment_response?.order_id;
+          responseData?.order_id;
 
         if (!paymentSessionId) {
           throw new Error("Failed to initialize Cashfree payment.");
@@ -1113,14 +1120,16 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
           orderId: ordId,
         });
 
-        const userEmail =
-          paymentResponse?.user?.email ?? paymentResponse?.user?.username;
+        // Store username and password from enrollment response for post-payment login
+        // Prefer user.username (required by login API), fallback to user.email
+        const username =
+          paymentResponse?.user?.username ?? paymentResponse?.user?.email;
         const userPassword = paymentResponse?.user?.password;
-        if (ordId && userEmail && userPassword) {
+        if (ordId && username && userPassword) {
           try {
             sessionStorage.setItem(
               `enroll_payment_creds_${ordId}`,
-              JSON.stringify({ username: userEmail, password: userPassword })
+              JSON.stringify({ username, password: userPassword })
             );
           } catch {
             /* ignore */

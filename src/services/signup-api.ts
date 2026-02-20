@@ -1,5 +1,5 @@
 import axios from "axios";
-import { BASE_URL, GET_USER_DETAILS_BY_EMAIL, LOGIN_URL } from "@/constants/urls";
+import { BASE_URL, GET_USER_DETAILS_BY_EMAIL, LOGIN_BY_USERNAME_TRUSTED, LOGIN_URL } from "@/constants/urls";
 import { useQuery } from "@tanstack/react-query";
 import { Preferences } from "@capacitor/preferences";
 import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
@@ -294,11 +294,11 @@ export const loginEnrolledUser = async (
   instituteId: string
 ): Promise<RegisterUserResponse> => {
   try {
-    // Match working login page payload: user_name, password, client_name: "ADMIN_PORTAL" (no institute_id)
+    // Post-payment login: user_name, password, institute_id
     const response = await axios.post(LOGIN_URL, {
       user_name: username,
       password: password,
-      client_name: "ADMIN_PORTAL",
+      institute_id: instituteId,
     }, {
       headers: {
         accept: "*/*",
@@ -329,5 +329,49 @@ export const loginEnrolledUser = async (
       throw new Error("Failed to login with existing account. Please try again or contact support.");
     }
   }
+};
+
+/**
+ * Login by username (trusted) - no password required.
+ * Used for catalog post-payment flow when backend returns use_login_api: true.
+ * Requires security.trusted-login.enabled=true in auth-service.
+ */
+export const loginByUsernameTrusted = async (
+  username: string,
+  instituteId: string
+): Promise<RegisterUserResponse> => {
+  const response = await axios.post(
+    LOGIN_BY_USERNAME_TRUSTED,
+    { username, institute_id: instituteId },
+    {
+      headers: {
+        accept: "*/*",
+        "Content-Type": "application/json",
+      },
+    }
+  );
+  const data = response.data as {
+    accessToken?: string;
+    access_token?: string;
+    refreshToken?: string;
+    refresh_token?: string;
+    user?: { id?: string; username?: string; email?: string; full_name?: string; roles?: string[] };
+  };
+  const accessToken = data.accessToken ?? data.access_token;
+  const refreshToken = data.refreshToken ?? data.refresh_token;
+  if (!accessToken || !refreshToken) {
+    throw new Error("Invalid login response: tokens missing");
+  }
+  return {
+    accessToken,
+    refreshToken,
+    user: {
+      id: data.user?.id ?? "",
+      username: data.user?.username ?? username,
+      email: data.user?.email ?? "",
+      full_name: data.user?.full_name ?? "",
+      roles: data.user?.roles ?? [],
+    },
+  };
 };
 

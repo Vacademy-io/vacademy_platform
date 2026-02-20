@@ -1,7 +1,7 @@
 "use client";
-import React, { useEffect, useRef, useState, useCallback, useMemo} from "react";
-import { Button} from "@/components/ui/button";
-import { Slider} from "@/components/ui/slider";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import {
   Play,
   Pause,
@@ -15,22 +15,25 @@ import {
   ChevronRight,
   Printer,
   Maximize,
-  Minimize,} from "lucide-react";
+  Minimize,
+} from "lucide-react";
 import type {
   ContentType,
   NavigationType,
   TimelineMeta,
   TimelineData,
-  Frame,} from "./types";
-import { CONTENT_TYPE_LABELS, CONTENT_TYPE_ENTRY_LABELS} from "./types";
-import { getLibraryScriptTags} from "./library-loader";
+  Frame,
+} from "./types";
+import { CONTENT_TYPE_LABELS, CONTENT_TYPE_ENTRY_LABELS } from "./types";
+import { getLibraryScriptTags } from "./library-loader";
 import {
   createNavigationController,
-  type NavigationController,} from "./navigation-controller";
-import { processHtmlContent, fixHtmlContent} from "./html-processor";
+  type NavigationController,
+} from "./navigation-controller";
+import { processHtmlContent, fixHtmlContent } from "./html-processor";
 
 // Re-export types for backward compatibility
-export type { Frame, TimelineMeta, TimelineData, ContentType, NavigationType};
+export type { Frame, TimelineMeta, TimelineData, ContentType, NavigationType };
 
 /**
  * Format time in seconds to MM:SS format
@@ -38,7 +41,8 @@ export type { Frame, TimelineMeta, TimelineData, ContentType, NavigationType};
 const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;};
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
 
 export interface AIVideoPlayerProps {
   timelineUrl: string;
@@ -47,7 +51,8 @@ export interface AIVideoPlayerProps {
   width?: number;
   height?: number;
   onEntryChange?: (entry: Frame, index: number) => void;
-  onContentComplete?: () => void;}
+  onContentComplete?: () => void;
+}
 
 // Default meta for backward compatibility
 const DEFAULT_META: TimelineMeta = {
@@ -56,7 +61,8 @@ const DEFAULT_META: TimelineMeta = {
   entry_label: "segment",
   audio_start_at: 0,
   total_duration: null,
-  dimensions: { width: 1920, height: 1080},};
+  dimensions: { width: 1920, height: 1080 },
+};
 
 
 
@@ -68,7 +74,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   width: propWidth,
   height: propHeight,
   onEntryChange,
-  onContentComplete,}) => {
+  onContentComplete, }) => {
   // Core state
   const [frames, setFrames] = useState<Frame[]>([]);
   const [meta, setMeta] = useState<TimelineMeta>(DEFAULT_META);
@@ -108,7 +114,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
   // Keep callback ref up to date without causing effect re-runs
   useEffect(() => {
-    onEntryChangeRef.current = onEntryChange;}, [onEntryChange]);
+    onEntryChangeRef.current = onEntryChange;
+  }, [onEntryChange]);
 
   // Stable navigation callback with re-entrancy guard
   const handleNavChange = useCallback((entry: Frame, index: number) => {
@@ -117,11 +124,16 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     try {
       setCurrentEntryIndex((prev) => {
         if (prev === index) return prev;
-        return index;});
+        return index;
+      });
       // Use ref to avoid re-triggering effects if parent's callback changes
       if (onEntryChangeRef.current) {
-        onEntryChangeRef.current(entry, index);}} finally {
-      handlingNavChangeRef.current = false;}}, []);
+        onEntryChangeRef.current(entry, index);
+      }
+    } finally {
+      handlingNavChangeRef.current = false;
+    }
+  }, []);
 
   // Derived values
   const contentType = meta.content_type || "VIDEO";
@@ -134,7 +146,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   // Content type badge
   const contentTypeBadge = useMemo(() => {
     const config = CONTENT_TYPE_LABELS[contentType];
-    return config ? `${config.emoji} ${config.label}` : "🎬 Video";}, [contentType]);
+    return config ? `${config.emoji} ${config.label}` : "🎬 Video";
+  }, [contentType]);
 
   // Load timeline data
   useEffect(() => {
@@ -146,14 +159,16 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         console.log("[AIVideoPlayer] Loading timeline from:", timelineUrl);
         const response = await fetch(timelineUrl);
         if (!response.ok) {
-          throw new Error(`Failed to load timeline: ${response.statusText} `);}
+          throw new Error(`Failed to load timeline: ${response.statusText} `);
+        }
 
         const timelineData: TimelineData | Frame[] = await response.json();
         console.log("[AIVideoPlayer] Timeline data received:", {
           isArray: Array.isArray(timelineData),
           hasMeta: !Array.isArray(timelineData) && !!timelineData.meta,
           hasEntries: !Array.isArray(timelineData) && !!timelineData.entries,
-          dataKeys: Array.isArray(timelineData) ? [] : Object.keys(timelineData),});
+          dataKeys: Array.isArray(timelineData) ? [] : Object.keys(timelineData),
+        });
 
         // Parse new structure with backward compatibility
         let framesArray: Frame[];
@@ -165,16 +180,21 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           timelineMeta = {
             ...DEFAULT_META,
             audio_start_at: 0,
-            total_duration: framesArray.length > 0 ? framesArray[framesArray.length-1].exitTime : 0};} else {
+            total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0
+          };
+        } else {
           // New format: { meta, entries}
           framesArray = (timelineData.entries as Frame[]) || [];
           timelineMeta = {
             ...DEFAULT_META,
-            ...timelineData.meta,};
+            ...timelineData.meta,
+          };
 
           // Ensure total_duration is set
           if (!timelineMeta.total_duration && framesArray.length > 0) {
-            timelineMeta.total_duration = framesArray[framesArray.length-1].exitTime;}}
+            timelineMeta.total_duration = framesArray[framesArray.length - 1].exitTime;
+          }
+        }
 
         console.log("[AIVideoPlayer] Parsed timeline:", {
           framesCount: framesArray.length,
@@ -182,14 +202,15 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           contentType: timelineMeta.content_type,
           navigation: timelineMeta.navigation,
           firstFrame: framesArray[0],
-          lastFrame: framesArray[framesArray.length-1],});
+          lastFrame: framesArray[framesArray.length - 1],
+        });
 
         setFrames(framesArray);
         setMeta(timelineMeta);
 
         // Use meta.total_duration if available, otherwise calculate from last frame
         const videoDuration = timelineMeta.total_duration ||
-          (framesArray.length > 0 ? framesArray[framesArray.length-1].exitTime : 0);
+          (framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0);
         setDuration(videoDuration);
 
         // Initialize navigation controller with stable callback
@@ -200,26 +221,36 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         );
         navigationRef.current = nav;
 
-        console.log("[AIVideoPlayer] Duration set to:", videoDuration);} catch (err) {
+        console.log("[AIVideoPlayer] Duration set to:", videoDuration);
+      } catch (err) {
         console.error("[AIVideoPlayer] Error loading timeline:", err);
-        setError(err instanceof Error ? err.message : "Failed to load timeline");} finally {
-        setIsLoading(false);}};
+        setError(err instanceof Error ? err.message : "Failed to load timeline");
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
     if (timelineUrl) {
-      loadTimeline();}
+      loadTimeline();
+    }
 
     return () => {
       if (navigationRef.current) {
         navigationRef.current.dispose();
-        navigationRef.current = null;}};}, [timelineUrl, handleNavChange]);
+        navigationRef.current = null;
+      }
+    };
+  }, [timelineUrl, handleNavChange]);
 
   // Initialize audio (only for time-driven content or content with audio)
   useEffect(() => {
     // Skip audio initialization if no audio URL or not time-driven
     if (!audioUrl) {
       if (isTimeDriven) {
-        console.log("[AIVideoPlayer] No audio URL provided for time-driven content");}
-      return;}
+        console.log("[AIVideoPlayer] No audio URL provided for time-driven content");
+      }
+      return;
+    }
 
     const audio = new Audio();
     audioRef.current = audio;
@@ -233,14 +264,18 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     audio.addEventListener("loadedmetadata", () => {
       console.log("[AIVideoPlayer] Audio metadata loaded:", {
         duration: audio.duration,
-        readyState: audio.readyState,});});
+        readyState: audio.readyState,
+      });
+    });
 
     audio.addEventListener("canplay", () => {
       console.log("[AIVideoPlayer] Audio can play");
-      setError(null);});
+      setError(null);
+    });
 
     audio.addEventListener("canplaythrough", () => {
-      console.log("[AIVideoPlayer] Audio can play through");});
+      console.log("[AIVideoPlayer] Audio can play through");
+    });
 
     // Set initial playback rate and volume
     audio.playbackRate = playbackRate;
@@ -248,7 +283,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     audio.muted = isMuted;
 
     audio.addEventListener("ended", () => {
-      console.log("[AIVideoPlayer] Audio ended, continuing to outro if present");});
+      console.log("[AIVideoPlayer] Audio ended, continuing to outro if present");
+    });
 
     audio.addEventListener("error", (e) => {
       console.error("[AIVideoPlayer] Audio error:", {
@@ -258,7 +294,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         networkState: audio.networkState,
         readyState: audio.readyState,
         src: audio.src,
-        audioUrl: audioUrl,});
+        audioUrl: audioUrl,
+      });
 
       let errorMessage = "Failed to load audio";
       if (audio.error) {
@@ -279,26 +316,34 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             break;
           case MEDIA_ERR_SRC_NOT_SUPPORTED:
             errorMessage = "Audio format not supported";
-            break;}}
-      setError(errorMessage);});
+            break;
+        }
+      }
+      setError(errorMessage);
+    });
 
     audio.src = audioUrl;
 
     try {
-      audio.load();} catch (err) {
-      console.error("[AIVideoPlayer] Error calling audio.load():", err);}
+      audio.load();
+    } catch (err) {
+      console.error("[AIVideoPlayer] Error calling audio.load():", err);
+    }
 
     return () => {
       audio.pause();
       audio.src = "";
       audioRef.current = null;
-      setAudioStarted(false);};}, [audioUrl, isTimeDriven]);
+      setAudioStarted(false);
+    };
+  }, [audioUrl, isTimeDriven]);
 
   // Update active frames based on navigation mode
   useEffect(() => {
     if (frames.length === 0) {
       setActiveFrames([]);
-      return;}
+      return;
+    }
 
     if (isTimeDriven) {
       // Time-driven: show frames active at current time
@@ -310,28 +355,41 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       if (framesToShow.length === 0) {
         const framesAtOrBefore = frames.filter((frame) => frame.inTime <= currentTime);
         if (framesAtOrBefore.length > 0) {
-          framesToShow = [framesAtOrBefore[framesAtOrBefore.length-1]];} else {
-          framesToShow = [frames[0]];}}
+          framesToShow = [framesAtOrBefore[framesAtOrBefore.length - 1]];
+        } else {
+          framesToShow = [frames[0]];
+        }
+      }
 
       // OPTIMIZATION: Only update state if the frames have actually changed
       setActiveFrames(prev => {
         if (prev.length === framesToShow.length && prev.every((f, i) => f.id === framesToShow[i].id)) {
-          return prev;}
-        return framesToShow;});} else if (isUserDriven) {
+          return prev;
+        }
+        return framesToShow;
+      });
+    } else if (isUserDriven) {
       // User-driven: show current entry
       const currentEntry = frames[currentEntryIndex];
       const newFrames = currentEntry ? [currentEntry] : [frames[0]];
 
       setActiveFrames(prev => {
         if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
-          return prev;}
-        return newFrames;});} else if (isSelfContained) {
+          return prev;
+        }
+        return newFrames;
+      });
+    } else if (isSelfContained) {
       // Self-contained: show first (and only) entry
       const newFrames = [frames[0]];
       setActiveFrames(prev => {
         if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
-          return prev;}
-        return newFrames;});}}, [frames, currentTime, currentEntryIndex, isTimeDriven, isUserDriven, isSelfContained]);
+          return prev;
+        }
+        return newFrames;
+      });
+    }
+  }, [frames, currentTime, currentEntryIndex, isTimeDriven, isUserDriven, isSelfContained]);
 
   // Calculate scale to fit iframe content in container
   useEffect(() => {
@@ -344,17 +402,23 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       const containerHeight = rect.height;
 
       if (containerWidth <= 0 || containerHeight <= 0) {
-        console.warn("[AIVideoPlayer] Invalid container dimensions:", { containerWidth, containerHeight});
-        return;}
+        console.warn("[AIVideoPlayer] Invalid container dimensions:", { containerWidth, containerHeight });
+        console.warn("[AIVideoPlayer] Invalid container dimensions:", {
+          containerWidth,
+          containerHeight
+        });
+        return;
+      }
 
       const scaleX = containerWidth / width;
       const scaleY = containerHeight / height;
       const newScale = Math.min(scaleX, scaleY);
-      // Remove artificial margin (0.95 multiplier) to allow full fit
-      const finalScale = Math.min(newScale, 1);
+      // Add a small buffer (0.98 multiplier) to ensure it doesn't hit edges in default view
+      const finalScale = isFullscreen ? Math.min(newScale, 1) : Math.min(newScale * 0.98, 1);
 
       // Prevent infinite loops by only updating if change is significant (> 0.001)
-      setScale(prev => Math.abs(prev -finalScale) > 0.001 ? finalScale : prev);};
+      setScale(prev => Math.abs(prev - finalScale) > 0.001 ? finalScale : prev);
+    };
 
     // Use a throttled observer to prevent ResizeObserver loop limit errors
     let frameId: number;
@@ -365,17 +429,19 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       const entry = entries[0];
       if (!entry) return;
 
-      const { width: newWidth, height: newHeight} = entry.contentRect;
+      const { width: newWidth, height: newHeight } = entry.contentRect;
 
       // Only trigger if change is significant (> 1px) to avoid sub-pixel layout loops on iOS
-      if (Math.abs(newWidth-lastWidth) < 1 && Math.abs(newHeight -lastHeight) < 1) {
-        return;}
+      if (Math.abs(newWidth - lastWidth) < 1 && Math.abs(newHeight - lastHeight) < 1) {
+        return;
+      }
 
       lastWidth = newWidth;
       lastHeight = newHeight;
 
       cancelAnimationFrame(frameId);
-      frameId = requestAnimationFrame(() => calculateScale());};
+      frameId = requestAnimationFrame(() => calculateScale());
+    };
 
     const resizeObserver = new ResizeObserver(observerCallback);
 
@@ -383,14 +449,17 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     calculateScale();
 
     if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);}
+      resizeObserver.observe(containerRef.current);
+    }
 
     window.addEventListener('resize', calculateScale);
 
     return () => {
       cancelAnimationFrame(frameId);
       resizeObserver.disconnect();
-      window.removeEventListener('resize', calculateScale);};}, [width, height]);
+      window.removeEventListener('resize', calculateScale);
+    };
+  }, [width, height]);
 
 
 
@@ -403,7 +472,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     const updateTime = (timestamp: number) => {
       if (!isPlaying) return;
 
-      const deltaTime = lastTimestamp ? (timestamp-lastTimestamp) / 1000 * playbackRate : 0;
+      const deltaTime = lastTimestamp ? (timestamp - lastTimestamp) / 1000 * playbackRate : 0;
       lastTimestamp = timestamp;
 
       setCurrentTime(prevTime => {
@@ -419,12 +488,16 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             console.log("[AIVideoPlayer] Intro complete, starting audio");
             audioRef.current.currentTime = 0;
             audioRef.current.play().catch(err => {
-              console.error("[AIVideoPlayer] Error starting audio after intro:", err);});
+              console.error("[AIVideoPlayer] Error starting audio after intro:", err);
+            });
             setAudioStarted(true);
-            newTime = audioStartAt;}}
+            newTime = audioStartAt;
+          }
+        }
         // CONTENT PHASE
         else if (audioRef.current && !audioRef.current.ended) {
-          newTime = audioRef.current.currentTime + audioStartAt;}
+          newTime = audioRef.current.currentTime + audioStartAt;
+        }
         // OUTRO PHASE
         else if (audioRef.current && audioRef.current.ended) {
           newTime = prevTime + deltaTime;
@@ -434,19 +507,27 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             setIsPlaying(false);
             setAudioStarted(false);
             onContentComplete?.();
-            return totalDuration;}}
+            return totalDuration;
+          }
+        }
 
-        return Math.min(newTime, totalDuration);});
+        return Math.min(newTime, totalDuration);
+      });
 
-      animationFrameRef.current = requestAnimationFrame(updateTime);};
+      animationFrameRef.current = requestAnimationFrame(updateTime);
+    };
 
     if (isPlaying) {
       lastTimestamp = null;
-      animationFrameRef.current = requestAnimationFrame(updateTime);}
+      animationFrameRef.current = requestAnimationFrame(updateTime);
+    }
 
     return () => {
       if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);}};}, [isPlaying, meta, duration, audioStarted, playbackRate, isTimeDriven, onContentComplete]);
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isPlaying, meta, duration, audioStarted, playbackRate, isTimeDriven, onContentComplete]);
 
   // Playback controls for time-driven content
   const handlePlayPause = useCallback(() => {
@@ -455,30 +536,40 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
     if (isPlaying) {
       audioRef.current?.pause();
-      setIsPlaying(false);} else {
+      setIsPlaying(false);
+    } else {
       const audioStartAt = meta.audio_start_at || 0;
 
       if (currentTime >= audioStartAt && audioRef.current) {
-        const audioTime = currentTime -audioStartAt;
+        const audioTime = currentTime - audioStartAt;
         audioRef.current.currentTime = Math.max(0, audioTime);
         audioRef.current.play().catch((err) => {
           console.error("Error playing audio:", err);
-          setError("Failed to play audio");});
+          setError("Failed to play audio");
+        });
         if (!audioStarted) {
-          setAudioStarted(true);}}
+          setAudioStarted(true);
+        }
+      }
 
-      setIsPlaying(true);}}, [isPlaying, meta, currentTime, audioStarted, isTimeDriven, audioUrl]);
+      setIsPlaying(true);
+    }
+  }, [isPlaying, meta, currentTime, audioStarted, isTimeDriven, audioUrl]);
 
   const handleReset = useCallback(() => {
     if (isTimeDriven) {
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
-        audioRef.current.pause();}
+        audioRef.current.pause();
+      }
       setCurrentTime(0);
       setIsPlaying(false);
-      setAudioStarted(false);} else {
+      setAudioStarted(false);
+    } else {
       setCurrentEntryIndex(0);
-      navigationRef.current?.goTo(0);}}, [isTimeDriven]);
+      navigationRef.current?.goTo(0);
+    }
+  }, [isTimeDriven]);
 
   const handleSeek = useCallback((value: number[]) => {
     if (!isTimeDriven) return;
@@ -492,24 +583,33 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       if (newTimelineTime < audioStartAt) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
-        setAudioStarted(false);} else {
-        const audioTime = newTimelineTime -audioStartAt;
+        setAudioStarted(false);
+      } else {
+        const audioTime = newTimelineTime - audioStartAt;
         audioRef.current.currentTime = Math.max(0, audioTime);
 
         if (isPlaying && newTimelineTime < (meta.content_ends_at || duration)) {
           if (!audioStarted) {
-            setAudioStarted(true);}
+            setAudioStarted(true);
+          }
           audioRef.current.play().catch(err => {
-            console.error("[AIVideoPlayer] Error playing audio after seek:", err);});}}}}, [meta, isPlaying, audioStarted, duration, isTimeDriven]);
+            console.error("[AIVideoPlayer] Error playing audio after seek:", err);
+          });
+        }
+      }
+    }
+  }, [meta, isPlaying, audioStarted, duration, isTimeDriven]);
 
   const handleBackward = useCallback(() => {
-    const newTimelineTime = Math.max(0, currentTime -10);
-    handleSeek([newTimelineTime]);}, [currentTime, handleSeek]);
+    const newTimelineTime = Math.max(0, currentTime - 10);
+    handleSeek([newTimelineTime]);
+  }, [currentTime, handleSeek]);
 
   const handleForward = useCallback(() => {
     const totalDuration = meta.total_duration || duration;
     const newTimelineTime = Math.min(totalDuration, currentTime + 10);
-    handleSeek([newTimelineTime]);}, [currentTime, meta, duration, handleSeek]);
+    handleSeek([newTimelineTime]);
+  }, [currentTime, meta, duration, handleSeek]);
 
   // Navigation controls for user-driven content
   const handlePrevEntry = useCallback(() => {
@@ -517,29 +617,38 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
     const entry = navigationRef.current.prev();
     if (entry) {
-      setCurrentEntryIndex(navigationRef.current.currentIndex);}}, [isUserDriven]);
+      setCurrentEntryIndex(navigationRef.current.currentIndex);
+    }
+  }, [isUserDriven]);
 
   const handleNextEntry = useCallback(() => {
     if (!isUserDriven || !navigationRef.current) return;
 
     const entry = navigationRef.current.next();
     if (entry) {
-      setCurrentEntryIndex(navigationRef.current.currentIndex);} else if (navigationRef.current.currentIndex === frames.length-1) {
+      setCurrentEntryIndex(navigationRef.current.currentIndex);
+    } else if (navigationRef.current.currentIndex === frames.length - 1) {
       // Last entry reached
-      onContentComplete?.();}}, [isUserDriven, frames.length, onContentComplete]);
+      onContentComplete?.();
+    }
+  }, [isUserDriven, frames.length, onContentComplete]);
 
   // Playback rate and volume controls
   const handlePlaybackRateChange = useCallback((rate: number) => {
     setPlaybackRate(rate);
     if (audioRef.current) {
-      audioRef.current.playbackRate = rate;}
-    setShowPlaybackSpeedMenu(false);}, []);
+      audioRef.current.playbackRate = rate;
+    }
+    setShowPlaybackSpeedMenu(false);
+  }, []);
 
   const handleVolumeChange = useCallback((vol: number) => {
     setVolume(vol);
     if (audioRef.current) {
       audioRef.current.volume = vol;
-      setIsMuted(vol === 0);}}, []);
+      setIsMuted(vol === 0);
+    }
+  }, []);
 
   const handleToggleMute = useCallback(() => {
     if (audioRef.current) {
@@ -547,14 +656,20 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       setIsMuted(newMuted);
       audioRef.current.muted = newMuted;
       if (newMuted) {
-        setVolume(0);} else {
+        setVolume(0);
+      } else {
         setVolume(1);
-        audioRef.current.volume = 1;}}}, [isMuted]);
+        audioRef.current.volume = 1;
+      }
+    }
+  }, [isMuted]);
 
   // Print handler for WORKSHEET content
   const handlePrint = useCallback(() => {
     if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.print();}}, []);
+      iframeRef.current.contentWindow.print();
+    }
+  }, []);
 
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -562,16 +677,23 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     if (!document.fullscreenElement) {
       // Use the root element of the player for fullscreen
       rootRef.current?.requestFullscreen().catch((err) => {
-        console.error(`Error attempting to enable fullscreen: ${err.message} `);});} else {
-      document.exitFullscreen();}}, []);
+        console.error(`Error attempting to enable fullscreen: ${err.message} `);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  }, []);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);};
+      setIsFullscreen(!!document.fullscreenElement);
+    };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);};}, []);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
 
   const playbackSpeeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -581,11 +703,16 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       if (showPlaybackSpeedMenu) {
         const target = event.target as HTMLElement;
         if (!target.closest('.playback-speed-menu')) {
-          setShowPlaybackSpeedMenu(false);}}};
+          setShowPlaybackSpeedMenu(false);
+        }
+      }
+    };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);};}, [showPlaybackSpeedMenu]);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPlaybackSpeedMenu]);
 
   // Get progress display
   const progressDisplay = useMemo(() => {
@@ -593,37 +720,41 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       const label = entryLabel.charAt(0).toUpperCase() + entryLabel.slice(1);
       const current = currentEntryIndex + 1;
       const total = frames.length;
-      return `${label} ${current} of ${total} `;}
-    return null;}, [isUserDriven, isSelfContained, entryLabel, currentEntryIndex, frames.length]);
+      return `${label} ${current} of ${total} `;
+    }
+    return null;
+  }, [isUserDriven, isSelfContained, entryLabel, currentEntryIndex, frames.length]);
 
   if (isLoading) {
     return (
-      <div className={`flex items-center justify-center bg-gray -100 rounded-lg ${className} `} style={{ aspectRatio: "16/9"}}>
+      <div className={`flex items-center justify-center bg-gray-100 rounded-lg ${className}`} style={{ aspectRatio: "16/9" }}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-gray-600">Loading {contentTypeBadge}...</p>
         </div>
       </div>
-    );}
+    );
+  }
 
   if (error) {
     return (
-      <div className={`flex items-center justify-center bg-red -50 rounded-lg border border-red -200 ${className} `} style={{ aspectRatio: "16/9"}}>
+      <div className={`flex items-center justify-center bg-red-50 rounded-lg border border-red-200 ${className}`} style={{ aspectRatio: "16/9" }}>
         <div className="text-center p-4">
           <p className="text-red-600 font-semibold mb-2">Error</p>
           <p className="text-red-500 text-sm">{error}</p>
         </div>
       </div>
-    );}
+    );
+  }
 
   return (
     <div
       ref={rootRef}
       className={`bg-black rounded-lg overflow-hidden flex flex-col ${className} ${isFullscreen ? 'fixed inset-0 z-50 rounded-none w-screen h-screen' : ''} `}
-      style={isFullscreen ? { maxHeight: '100vh', aspectRatio: 'auto'} : { aspectRatio: "16/9", maxHeight: "calc(100vh-150px)"}}
+      style={isFullscreen ? { maxHeight: '100vh' } : { maxHeight: "calc(100vh - 150px)" }}
     >
       {/* Content Type Badge */}
-      <div className="bg-gray-900px-4 py-2 flex items-center justify-between border-b border-gray-800">
+      <div className="bg-gray-900 px-4 py-2 flex items-center justify-between border-b border-gray-800">
         <span className="text-white text-sm font-medium">{contentTypeBadge}</span>
         {progressDisplay && (
           <span className="text-gray-400 text-sm">{progressDisplay}</span>
@@ -634,7 +765,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             variant="outline"
             size="sm"
             onClick={handlePrint}
-            className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8px-3"
+            className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 px-3"
             title="Print Worksheet"
           >
             <Printer className="h-3 w-3 mr-1" />
@@ -647,7 +778,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       <div
         ref={containerRef}
         className="relative w-full flex-1 bg-black overflow-hidden"
-        style={{ minHeight: 0, position: 'relative'}}
+        style={{ minHeight: 0, position: 'relative', aspectRatio: isFullscreen ? 'auto' : '16/9' }}
       >
         <div
           style={{
@@ -659,7 +790,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             top: '50%',
             left: '50%',
             marginTop: `-${height / 2}px`,
-            marginLeft: `-${width / 2}px`,}}
+            marginLeft: `-${width / 2}px`,
+          }}
         >
           {activeFrames.length > 0 ? (
             [...activeFrames].sort((a, b) => (a.z || 0) - (b.z || 0)).map((frame, index) => {
@@ -674,7 +806,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 top: 0,
                 width: '100%',
                 height: '100%',
-                zIndex: frame.z || 0,};
+                zIndex: frame.z || 0,
+              };
 
               return (
                 <iframe
@@ -687,9 +820,11 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   style={{
                     backgroundColor: index === 0 ? "#ffffff" : "transparent",
                     pointerEvents: frame.id?.startsWith('branding-watermark') ? 'none' : 'auto',
-                    ...frameStyle}}
+                    ...frameStyle
+                  }}
                 />
-              );})
+              );
+            })
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-gray-500">
               No frame content available
@@ -864,7 +999,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={handleNextEntry}
-                disabled={currentEntryIndex === frames.length-1}
+                disabled={currentEntryIndex === frames.length - 1}
                 className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 disabled:opacity-50"
                 title="Next"
               >
@@ -906,4 +1041,5 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         )}
       </div>
     </div>
-  );};
+  );
+};

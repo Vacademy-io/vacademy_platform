@@ -293,10 +293,4 @@ export function createNavigationController(
   }
 }
 
-/**
- * Helper to format entry label for display
- */
-export function formatEntryLabel(label: string, index: number, total: number): string {
-  const capitalized = label.charAt(0).toUpperCase() + label.slice(1);
-  return `${capitalized} ${index + 1} of ${total}`;
-}
+

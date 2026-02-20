@@ -149,54 +149,29 @@ public class ApplicantService {
                                 stageDTO.getWorkflowType());
 
                 boolean isFirst = false;
-                boolean isLast = false;
+                boolean isLast = true; // New stages are always placed at the end
 
                 if (existingStages.isEmpty()) {
-                        isFirst = true;
-                        isLast = true;
+                        isFirst = true; // If no existing stages, it's also the first
                 } else {
-                        // Find min/max sequence from existing (safely parse String sequence)
-                        int minSeq = existingStages.stream()
-                                        .mapToInt(s -> Integer.parseInt(s.getSequence()))
-                                        .min()
-                                        .orElse(Integer.MAX_VALUE);
-                        int maxSeq = existingStages.stream()
-                                        .mapToInt(s -> Integer.parseInt(s.getSequence()))
-                                        .max()
-                                        .orElse(Integer.MIN_VALUE);
-
-                        int newSeq = Integer.parseInt(stageDTO.getSequence());
-
-                        // Check if new stage becomes the FIRST
-                        if (newSeq < minSeq) {
-                                isFirst = true;
-                                // Unset old first
-                                for (ApplicationStage s : existingStages) {
-                                        if (Boolean.TRUE.equals(s.getIsFirst())) {
-                                                s.setIsFirst(false);
-                                                applicationStageRepository.save(s);
-                                        }
-                                }
-                        }
-
-                        // Check if new stage becomes the LAST
-                        if (newSeq > maxSeq) {
-                                isLast = true;
-                                // Unset old last
-                                for (ApplicationStage s : existingStages) {
-                                        if (Boolean.TRUE.equals(s.getIsLast())) {
-                                                s.setIsLast(false);
-                                                applicationStageRepository.save(s);
-                                        }
+                        // Find the current last stage and update it
+                        for (ApplicationStage s : existingStages) {
+                                if (Boolean.TRUE.equals(s.getIsLast())) {
+                                        s.setIsLast(false);
+                                        applicationStageRepository.save(s);
                                 }
                         }
                 }
 
-                // If inserting in middle, both remain false (default)
+                // If sequence isn't strictly provided or to enforce linear logic we can
+                // automatically set it.
+                // But relying on existing string input for now, we leave as is or default to
+                // existingStages.size() + 1
+                String calculatedSequence = String.valueOf(existingStages.size() + 1);
 
                 ApplicationStage stage = ApplicationStage.builder()
                                 .stageName(stageDTO.getStageName())
-                                .sequence(stageDTO.getSequence())
+                                .sequence(calculatedSequence) // Ensuring sequence represents actual order
                                 .source(stageDTO.getSource())
                                 .sourceId(stageDTO.getSourceId())
                                 .instituteId(stageDTO.getInstituteId())

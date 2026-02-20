@@ -1,6 +1,9 @@
 package vacademy.io.admin_core_service.features.fee_management.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.fee_management.dto.ComplexPaymentOptionDTO;
@@ -94,17 +97,16 @@ public class FeeManagementService {
     /**
      * API #2: List all CPOs for an institute (lightweight - no nested children).
      */
-    public List<ComplexPaymentOptionDTO> listCposByInstitute(String instituteId) {
-        List<ComplexPaymentOption> cpos = cpoRepository.findByInstituteIdAndStatus(instituteId, "ACTIVE");
-        return cpos.stream()
+    public Page<ComplexPaymentOptionDTO> listCposByInstitute(String instituteId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return cpoRepository.findByInstituteIdAndStatusNot(instituteId, "DELETED", pageable)
                 .map(cpo -> ComplexPaymentOptionDTO.builder()
                         .id(cpo.getId())
                         .name(cpo.getName())
                         .instituteId(cpo.getInstituteId())
                         .defaultPaymentOptionId(cpo.getDefaultPaymentOptionId())
                         .status(cpo.getStatus())
-                        .build())
-                .collect(Collectors.toList());
+                        .build());
     }
 
     /**
@@ -112,23 +114,36 @@ public class FeeManagementService {
      * installments).
      */
     public ComplexPaymentOptionDTO getFullCpo(String cpoId) {
-        ComplexPaymentOption cpo = cpoRepository.findById(cpoId)
-                .orElseThrow(() -> new VacademyException("Complex Payment Option not found: " + cpoId));
+        ComplexPaymentOption cpo = cpoRepository.findByIdAndStatusNot(cpoId, "DELETED")
+                .orElseThrow(() -> new VacademyException("Complex Payment Option not found or deleted: " + cpoId));
+
+        // Default "full" behavior (no pagination params passed)
+        return getFullCpo(cpoId, 0, Integer.MAX_VALUE, 0, Integer.MAX_VALUE);
+    }
+
+    public ComplexPaymentOptionDTO getFullCpo(String cpoId, int feeTypePage, int feeTypeSize, int installmentPage, int installmentSize) {
+        ComplexPaymentOption cpo = cpoRepository.findByIdAndStatusNot(cpoId, "DELETED")
+                .orElseThrow(() -> new VacademyException("Complex Payment Option not found or deleted: " + cpoId));
 
         // Fetch fee types by cpoId
-        List<FeeType> feeTypes = feeTypeRepository.findByCpoId(cpo.getId());
+        Pageable feeTypePageable = PageRequest.of(feeTypePage, feeTypeSize);
+        List<FeeType> feeTypes = feeTypeRepository
+                .findByCpoIdAndStatusNot(cpo.getId(), "DELETED", feeTypePageable)
+                .getContent();
 
         List<ComplexPaymentOptionDTO.FeeTypeDTO> feeTypeDTOs = new ArrayList<>();
         for (FeeType ft : feeTypes) {
             // Fetch assigned fee values by feeTypeId
-            List<AssignedFeeValue> afvList = assignedFeeValueRepository.findByFeeTypeId(ft.getId());
+            List<AssignedFeeValue> afvList = assignedFeeValueRepository.findByFeeTypeIdAndStatusNot(ft.getId(), "DELETED");
 
             ComplexPaymentOptionDTO.AssignedFeeValueDTO afvDTO = null;
             if (!afvList.isEmpty()) {
                 AssignedFeeValue afv = afvList.get(0); // One AFV per fee type
                 // Fetch installments by assignedFeeValueId
+                Pageable installmentPageable = PageRequest.of(installmentPage, installmentSize);
                 List<AftInstallment> installments = aftInstallmentRepository
-                        .findByAssignedFeeValueIdOrderByInstallmentNumberAsc(afv.getId());
+                        .findByAssignedFeeValueIdAndStatusNotOrderByInstallmentNumberAsc(afv.getId(), "DELETED", installmentPageable)
+                        .getContent();
 
                 List<ComplexPaymentOptionDTO.AftInstallmentDTO> instDTOs = installments.stream()
                         .map(inst -> ComplexPaymentOptionDTO.AftInstallmentDTO.builder()

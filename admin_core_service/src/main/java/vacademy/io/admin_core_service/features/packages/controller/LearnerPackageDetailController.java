@@ -33,6 +33,23 @@ public class LearnerPackageDetailController {
         return ResponseEntity.ok(result);
     }
 
+    @PostMapping("/search-by-user-id")
+    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
+    public ResponseEntity<Page<PackageDetailDTO>> getLearnerPackagesByUserId(
+            @RequestBody LearnerPackageFilterDTO filterDTO,
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("userId") String userId,
+            @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int page,
+            @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int size
+    ) {
+
+        CustomUserDetails queryUser = new CustomUserDetails();
+        queryUser.setId(userId);
+        Page<PackageDetailDTO> result = learnerPackageService.getLearnerPackageDetail(filterDTO, queryUser,instituteId, page, size);
+        return ResponseEntity.ok(result);
+    }
+
     @GetMapping("/package-detail")
     @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC)
     public ResponseEntity<PackageDetailDTO> getPackageDetailById(@RequestParam("packageId") String packageId) {

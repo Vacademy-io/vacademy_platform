@@ -10,4 +10,6 @@ import java.util.List;
 public interface AssignedFeeValueRepository extends JpaRepository<AssignedFeeValue, String> {
 
     List<AssignedFeeValue> findByFeeTypeId(String feeTypeId);
+
+    List<AssignedFeeValue> findByFeeTypeIdAndStatusNot(String feeTypeId, String status);
 }

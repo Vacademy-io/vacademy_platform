@@ -24,8 +24,6 @@ import {
 } from "@/constants/urls";
 import { CashfreeCheckoutForm } from "@/components/common/enroll-by-invite/-components/cashfree-checkout-form";
 import { getCashfreeReturnUrl } from "@/services/cashfree-payment";
-import { CashfreeCheckoutForm } from "@/components/common/enroll-by-invite/-components/cashfree-checkout-form";
-import { getCashfreeReturnUrl } from "@/services/cashfree-payment";
 import { cachedGet } from "@/lib/http/clientCache";
 import { getCurrencySymbol } from "@/utils/currency";
 import axios from "axios";
@@ -1180,7 +1178,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
         returnUrl={getCashfreeReturnUrl()}
         orderId={cashfreeSessionData.orderId}
         instituteId={instituteId}
-        onPayClick={() => {}}
+        onPayClick={() => { }}
         onPayError={() => onError("Payment initialization failed.")}
         isProcessing={false}
       />

@@ -42,13 +42,6 @@ import {
 import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
-import {
-  initiateCashfreePayment,
-  getCashfreeReturnUrl,
-} from "@/services/cashfree-payment";
-import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
-import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
-import { TokenKey } from "@/constants/auth/tokens";
 
 import {
   RegistrationStep,
@@ -202,7 +195,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   });
 
   const { instituteId, inviteCode, ref } = Route.useSearch();
-  
+
   // Keep ref in sync with state for referRequest (to avoid closure issues)
   useEffect(() => {
     referRequestRef.current = referRequest;
@@ -837,7 +830,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         // Use ref to get the latest referRequest value (avoids closure issues)
         const currentReferRequest = referRequestRef.current;
         console.log("[FREE Enrollment] Using referRequest:", currentReferRequest);
-        
+
         const paymentResponse = await handleEnrollLearnerForPayment({
           registrationData: form.getValues(),
           enrollmentData: enrollmentData,
@@ -1044,8 +1037,8 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         }
         setError(
           (err as Error)?.message ||
-            errorData?.ex ||
-            "Failed to initiate Cashfree payment"
+          errorData?.ex ||
+          "Failed to initiate Cashfree payment"
         );
         console.error("Cashfree enrollment error:", err);
       } finally {
@@ -1978,14 +1971,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               <div className="flex items-center justify-center gap-0">
                 {/* Step 1: Details */}
                 <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                    currentStep >= 0 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                  }`}>
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 0 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                    }`}>
                     {currentStep > 0 ? "✓" : "1"}
                   </div>
-                  <span className={`text-xs sm:text-sm font-medium ${
-                    currentStep === 0 ? "text-primary" : currentStep > 0 ? "text-gray-700" : "text-gray-400"
-                  }`}>
+                  <span className={`text-xs sm:text-sm font-medium ${currentStep === 0 ? "text-primary" : currentStep > 0 ? "text-gray-700" : "text-gray-400"
+                    }`}>
                     Details
                   </span>
                 </div>
@@ -1993,14 +1984,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 <div className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep > 0 ? "bg-primary" : "bg-gray-200"}`} />
                 {/* Step 2: Plan */}
                 <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                    currentStep >= 1 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                  }`}>
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 1 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                    }`}>
                     {currentStep > 1 ? "✓" : "2"}
                   </div>
-                  <span className={`text-xs sm:text-sm font-medium ${
-                    currentStep === 1 ? "text-primary" : currentStep > 1 ? "text-gray-700" : "text-gray-400"
-                  }`}>
+                  <span className={`text-xs sm:text-sm font-medium ${currentStep === 1 ? "text-primary" : currentStep > 1 ? "text-gray-700" : "text-gray-400"
+                    }`}>
                     Plan
                   </span>
                 </div>
@@ -2008,14 +1997,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 <div className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep > 1 ? "bg-primary" : "bg-gray-200"}`} />
                 {/* Step 3: Pay */}
                 <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                    currentStep >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                  }`}>
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                    }`}>
                     {currentStep > 4 ? "✓" : "3"}
                   </div>
-                  <span className={`text-xs sm:text-sm font-medium ${
-                    currentStep >= 2 && currentStep < 5 ? "text-primary" : currentStep >= 5 ? "text-gray-700" : "text-gray-400"
-                  }`}>
+                  <span className={`text-xs sm:text-sm font-medium ${currentStep >= 2 && currentStep < 5 ? "text-primary" : currentStep >= 5 ? "text-gray-700" : "text-gray-400"
+                    }`}>
                     Pay
                   </span>
                 </div>
@@ -2024,14 +2011,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
               <div className="flex items-center justify-center gap-0">
                 {/* Step 1: Details */}
                 <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                    currentStep >= 0 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                  }`}>
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 0 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                    }`}>
                     {currentStep > 0 ? "✓" : "1"}
                   </div>
-                  <span className={`text-xs sm:text-sm font-medium ${
-                    currentStep === 0 ? "text-primary" : currentStep > 0 ? "text-gray-700" : "text-gray-400"
-                  }`}>
+                  <span className={`text-xs sm:text-sm font-medium ${currentStep === 0 ? "text-primary" : currentStep > 0 ? "text-gray-700" : "text-gray-400"
+                    }`}>
                     Details
                   </span>
                 </div>
@@ -2039,14 +2024,12 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
                 <div className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep >= 2 ? "bg-primary" : "bg-gray-200"}`} />
                 {/* Step 2: Confirm */}
                 <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                    currentStep >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                  }`}>
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
+                    }`}>
                     {currentStep > 2 ? "✓" : "2"}
                   </div>
-                  <span className={`text-xs sm:text-sm font-medium ${
-                    currentStep >= 2 ? "text-primary" : "text-gray-400"
-                  }`}>
+                  <span className={`text-xs sm:text-sm font-medium ${currentStep >= 2 ? "text-primary" : "text-gray-400"
+                    }`}>
                     Confirm
                   </span>
                 </div>

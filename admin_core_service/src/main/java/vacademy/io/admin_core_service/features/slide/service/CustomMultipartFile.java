@@ -26,7 +26,36 @@ public class CustomMultipartFile implements MultipartFile {
 
     @Override
     public String getContentType() {
-        // Simple MIME type detection based on extension or default to octet-stream
+        try {
+            String contentType = Files.probeContentType(file.toPath());
+            if (contentType != null) {
+                return contentType;
+            }
+        } catch (IOException e) {
+            log.warn("Could not detect content type for file: {}", file.getName());
+        }
+        // Fallback: detect by extension for common web types
+        String name = file.getName().toLowerCase();
+        if (name.endsWith(".html") || name.endsWith(".htm"))
+            return "text/html";
+        if (name.endsWith(".css"))
+            return "text/css";
+        if (name.endsWith(".js"))
+            return "application/javascript";
+        if (name.endsWith(".json"))
+            return "application/json";
+        if (name.endsWith(".xml") || name.endsWith(".xsd"))
+            return "application/xml";
+        if (name.endsWith(".jpg") || name.endsWith(".jpeg"))
+            return "image/jpeg";
+        if (name.endsWith(".png"))
+            return "image/png";
+        if (name.endsWith(".gif"))
+            return "image/gif";
+        if (name.endsWith(".svg"))
+            return "image/svg+xml";
+        if (name.endsWith(".pdf"))
+            return "application/pdf";
         return "application/octet-stream";
     }
 

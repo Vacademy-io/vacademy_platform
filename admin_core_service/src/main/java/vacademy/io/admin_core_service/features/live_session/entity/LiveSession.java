@@ -66,6 +66,10 @@ public class LiveSession {
     private Integer waitingRoomTime; // New field
     private String thumbnailFileId; // New field
     private String backgroundScoreFileId; // New field
+
+    @Column(name = "learner_button_config", columnDefinition = "text")
+    private String learnerButtonConfig;
+
     private Boolean allowRewind;
     private String sessionStreamingServiceType;
 

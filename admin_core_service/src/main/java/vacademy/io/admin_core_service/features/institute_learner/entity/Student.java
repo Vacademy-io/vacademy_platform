@@ -126,6 +126,28 @@ public class Student {
     @Column(name = "nationality")
     private String nationality;
 
+    // --- New Fields (V112) - Admission Specific ---
+    @Column(name = "admission_no")
+    private String admissionNo;
+
+    @Column(name = "date_of_admission")
+    private java.util.Date dateOfAdmission;
+
+    @Column(name = "admission_type")
+    private String admissionType;
+
+    @Column(name = "guardian_name")
+    private String guardianName;
+
+    @Column(name = "guardian_mobile")
+    private String guardianMobile;
+
+    // TODO (future migration): section, has_transport, student_type, class_group,
+    // year_of_passing, previous_admission_no, religion, how_did_you_know,
+    // father_aadhaar, father_qualification, father_occupation,
+    // mother_aadhaar, mother_qualification, mother_occupation,
+    // permanent_address, permanent_locality
+
     public Student(UserDTO userDTO) {
         this.id = userDTO.getId();
         this.username = userDTO.getUsername();

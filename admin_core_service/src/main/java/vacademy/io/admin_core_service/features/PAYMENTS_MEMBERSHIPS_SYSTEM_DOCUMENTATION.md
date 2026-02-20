@@ -10,12 +10,13 @@
 6. [Enrollment Policy Lifecycle](#enrollment-policy-lifecycle)
 7. [Notification System](#notification-system)
 8. [Security Considerations](#security-considerations)
-9. [Coupon Code System](#coupon-code-system)
-10. [Referral System Enhancement](#referral-system-enhancement)
-11. [Additional API Endpoints](#additional-api-endpoints)
-12. [Detailed Policy Configuration](#detailed-policy-configuration)
-13. [Sub-Organization Settings](#sub-organization-settings)
-14. [Renewal Payment Service](#renewal-payment-service)
+9. [Bulk Assign / De-assign APIs](#bulk-assign--de-assign-apis)
+10. [Coupon Code System](#coupon-code-system)
+11. [Referral System Enhancement](#referral-system-enhancement)
+12. [Additional API Endpoints](#additional-api-endpoints)
+13. [Detailed Policy Configuration](#detailed-policy-configuration)
+14. [Sub-Organization Settings](#sub-organization-settings)
+15. [Renewal Payment Service](#renewal-payment-service)
 
 ---
 
@@ -1210,19 +1211,26 @@ Tracks benefits given to referrers/referees.
 }
 ```
 
-#### 5. Cancel UserPlan
+#### 5. Cancel / Terminate UserPlan
 
 **Endpoint:** `PUT /admin-core-service/v1/user-plan/{userPlanId}/cancel`
 
 **Query Parameters:**
 
-- `force` (boolean, default: false): Skip validation checks
+- `force` (boolean, default: false):
+  - `false`: **Standard Cancellation**. Sets status to `CANCELED`. Access continues until grace period ends.
+  - `true`: **Force Termination**. Immediately terminates plan and revokes access.
 
 **Behavior:**
 
-- Sets UserPlan status to `CANCELED`
-- Mappings remain ACTIVE until waiting period ends
-- Scheduler will eventually move to EXPIRED
+- **Standard (`force=false`)**:
+  - Sets UserPlan status to `CANCELED`
+  - Mappings remain `ACTIVE` until waiting period ends
+  - Scheduler will eventually move to `EXPIRED`
+- **Force (`force=true`)**:
+  - Sets UserPlan status to `TERMINATED`/`EXPIRED`
+  - Active session mappings are soft-deleted or marked `TERMINATED`
+  - Immediate access revocation
 
 ---
 
@@ -1360,7 +1368,7 @@ For organization/B2B enrollments, the `setting_json` field contains:
 
 ### Sub-Org Enrollment Flow
 
-```
+````
 EnrollInvite (tag: SUB_ORG)
       │
       ├── ROOT_ADMIN enrolls organization
@@ -1370,7 +1378,31 @@ EnrollInvite (tag: SUB_ORG)
       ├── Creates mappings for all learners in organization
       │
       └── Notifications sent to ROOT_ADMIN only (not individual learners)
-```
+
+### Sub-Organization Management APIs
+
+#### 1. Terminate/Remove Members (Bulk)
+
+**Endpoint:** `POST /admin-core-service/sub-org/v1/terminate-member`
+
+**Description:**
+Terminates access for multiple learners within a sub-organization for a specific package session.
+
+**Request Body:**
+
+```json
+{
+  "sub_org_id": "sub-org-uuid",
+  "institute_id": "institute-uuid",
+  "package_session_id": "package-session-uuid",
+  "user_ids": [
+    "user-uuid-1",
+    "user-uuid-2"
+  ]
+}
+````
+
+````
 
 ---
 
@@ -1392,7 +1424,7 @@ Called by webhook handlers when auto-renewal payment completes:
 4. If payment FAILED:
    - Send failure notification
    - (UserPlan remains in current state, waiting for FinalExpiryProcessor)
-```
+````
 
 ### Date Extension Calculation
 
@@ -1593,7 +1625,414 @@ EnrollInvite (1) ──────────▶ (N) PackageSessionLearnerInvi
 
 ---
 
+## 🔄 Bulk Assign / De-assign APIs
+
+> **v3 APIs** for admin-initiated bulk learner enrollment and removal.  
+> Base Path: `/admin-core-service/v3/learner-management`
+
+### Overview
+
+These APIs allow admins to assign or de-assign **N users × M package sessions** in a single call. They integrate with the existing enrollment infrastructure (EnrollInvite → PaymentOption → PaymentPlan → UserPlan → StudentSessionMapping) and support:
+
+- **Default resolution**: Auto-find or auto-create enrollment invites, payment options, and plans
+- **Dry-run mode**: Preview all operations without making changes
+- **Inline user creation**: Create new learners on-the-fly during assignment
+- **Filter-based selection**: Select users from another package session by status
+- **Re-enrollment**: Re-enroll previously terminated/inactive users
+- **Notifications**: Optionally send enrollment emails after assignment
+
+### How It Relates to Existing Entities
+
+```
+Bulk Assign API
+    │
+    ├── Resolves EnrollInvite (existing or auto-created)
+    │       └── via DefaultInviteResolver
+    │           ├── Explicit ID → use as-is
+    │           ├── DEFAULT tag → find via EnrollInviteRepository
+    │           └── None found → auto-create free invite + payment option + plan
+    │
+    ├── Creates UserPlan (via UserPlanService.createUserPlan)
+    │       └── Links to resolved PaymentPlan + PaymentOption + EnrollInvite
+    │
+    └── Creates StudentSessionInstituteGroupMapping
+            └── Links user to package session with ACTIVE status
+
+Bulk De-assign API
+    │
+    ├── Finds active StudentSessionInstituteGroupMapping
+    │
+    ├── SOFT mode → UserPlanService.cancelUserPlan(id, false)
+    │       └── Status → CANCELED, access continues until expiry
+    │
+    └── HARD mode → UserPlanService.cancelUserPlan(id, true)
+            └── Status → TERMINATED, immediate access revocation
+```
+
 ---
 
-**Last Updated:** January 2026  
+### 1. Bulk Assign
+
+**Endpoint:** `POST /admin-core-service/v3/learner-management/assign`
+
+**Description:** Assigns multiple users to multiple package sessions with configurable enrollment options.
+
+**Request Body:**
+
+```json
+{
+  "institute_id": "inst-uuid",
+  "user_ids": ["user-1", "user-2"],
+  "new_users": [
+    {
+      "email": "newstudent@example.com",
+      "full_name": "New Student",
+      "mobile_number": "+919876543210",
+      "username": null,
+      "password": null,
+      "roles": ["STUDENT"],
+      "gender": "MALE"
+    }
+  ],
+  "user_filter": {
+    "source_package_session_id": "source-ps-uuid",
+    "statuses": ["ACTIVE"]
+  },
+  "assignments": [
+    {
+      "package_session_id": "target-ps-uuid-1",
+      "enroll_invite_id": null,
+      "payment_option_id": null,
+      "plan_id": null,
+      "access_days": null
+    },
+    {
+      "package_session_id": "target-ps-uuid-2",
+      "enroll_invite_id": "explicit-invite-uuid",
+      "payment_option_id": "explicit-option-uuid",
+      "plan_id": "explicit-plan-uuid",
+      "access_days": 365
+    }
+  ],
+  "options": {
+    "duplicate_handling": "SKIP",
+    "notify_learners": true,
+    "transaction_id": "external-ref-123",
+    "dry_run": false
+  }
+}
+```
+
+#### Request Fields
+
+| Field          | Type               | Required | Description                                             |
+| -------------- | ------------------ | -------- | ------------------------------------------------------- |
+| `institute_id` | `string`           | ✅       | Institute UUID                                          |
+| `user_ids`     | `string[]`         | ⚡       | Existing user IDs to assign                             |
+| `new_users`    | `NewUser[]`        | ⚡       | Users to create inline then assign                      |
+| `user_filter`  | `UserFilter`       | ⚡       | Filter-based user selection                             |
+| `assignments`  | `AssignmentItem[]` | ✅       | Per-package-session enrollment config                   |
+| `options`      | `AssignOptions`    | ❌       | Controls for duplicate handling, notifications, dry-run |
+
+> ⚡ At least one of `user_ids`, `new_users`, or `user_filter` is required. All three are additive (union).
+
+#### NewUser Object
+
+| Field           | Type       | Required | Description               |
+| --------------- | ---------- | -------- | ------------------------- |
+| `email`         | `string`   | ✅       | Email (unique identifier) |
+| `full_name`     | `string`   | ✅       | Display name              |
+| `mobile_number` | `string`   | ❌       | Phone number              |
+| `username`      | `string`   | ❌       | Defaults to email         |
+| `password`      | `string`   | ❌       | Auto-generated if omitted |
+| `roles`         | `string[]` | ❌       | Defaults to `["STUDENT"]` |
+| `gender`        | `string`   | ❌       | Optional                  |
+
+> Users are created via `AuthService.createUserFromAuthServiceForLearnerEnrollment()`.
+> If creation fails for one user, their failure is recorded but other users proceed normally.
+
+#### UserFilter Object
+
+| Field                       | Type       | Required | Description                                         |
+| --------------------------- | ---------- | -------- | --------------------------------------------------- |
+| `source_package_session_id` | `string`   | ✅       | Package session to pull users from                  |
+| `statuses`                  | `string[]` | ❌       | Filter by enrollment status (default: `["ACTIVE"]`) |
+
+> Uses `StudentSessionRepository.findDistinctUserIdsByPackageSessionAndStatus()` to resolve user IDs.
+
+#### AssignmentItem Object
+
+| Field                | Type      | Required | Description                                       |
+| -------------------- | --------- | -------- | ------------------------------------------------- |
+| `package_session_id` | `string`  | ✅       | Target package session                            |
+| `enroll_invite_id`   | `string`  | ❌       | Explicit invite — `null` triggers auto-resolution |
+| `payment_option_id`  | `string`  | ❌       | Explicit option — `null` triggers auto-resolution |
+| `plan_id`            | `string`  | ❌       | Explicit plan — `null` triggers auto-resolution   |
+| `access_days`        | `integer` | ❌       | Override access duration                          |
+
+#### Default Resolution Logic (when IDs are null)
+
+```
+1. enroll_invite_id = null?
+   ├── Find invite with tag="DEFAULT" for this package session
+   │   └── Uses EnrollInviteRepository.findLatestForPackageSessionWithFilters()
+   │       with statuses=["ACTIVE"], tags=["DEFAULT"], mappingStatuses=["ACTIVE"]
+   │
+   ├── Found → use it
+   └── Not found → AUTO-CREATE:
+       ├── Create free EnrollInvite (tag="DEFAULT", status="ACTIVE")
+       ├── Create free PaymentOption (type="FREE", tag="DEFAULT")
+       ├── Create free PaymentPlan (price=0, tag="DEFAULT")
+       └── Link via PackageSessionLearnerInvitationToPaymentOption
+
+2. payment_option_id = null?
+   └── Find first ACTIVE payment option linked to the resolved invite
+       for this specific package session
+
+3. plan_id = null?
+   └── Find first ACTIVE plan under the resolved payment option
+
+4. access_days = null?
+   └── Use invite.learnerAccessDays → plan.validityInDays → null
+```
+
+#### AssignOptions Object
+
+| Field                | Type      | Default  | Description                                                                                    |
+| -------------------- | --------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `duplicate_handling` | `string`  | `"SKIP"` | `SKIP` = silently skip, `ERROR` = report as failed, `RE_ENROLL` = re-activate terminated users |
+| `notify_learners`    | `boolean` | `false`  | Send enrollment notification email via `LearnerEnrollmentNotificationService`                  |
+| `transaction_id`     | `string`  | `null`   | External payment reference (for logging only)                                                  |
+| `dry_run`            | `boolean` | `false`  | Preview mode — no database writes                                                              |
+
+#### Duplicate Handling Behavior
+
+| Mode        | User has ACTIVE enrollment | User has TERMINATED/INACTIVE | User has no enrollment |
+| ----------- | -------------------------- | ---------------------------- | ---------------------- |
+| `SKIP`      | ⏭ Skip (status=SKIPPED)   | ⏭ Skip                      | ✅ Create new          |
+| `ERROR`     | ❌ Fail (status=FAILED)    | ❌ Fail                      | ✅ Create new          |
+| `RE_ENROLL` | ⏭ Skip (already active)   | ✅ Create new mapping + plan | ✅ Create new          |
+
+**Response:**
+
+```json
+{
+  "dry_run": false,
+  "summary": {
+    "total_requested": 6,
+    "successful": 5,
+    "failed": 0,
+    "skipped": 1,
+    "re_enrolled": 1
+  },
+  "results": [
+    {
+      "user_id": "user-1",
+      "user_email": "john@example.com",
+      "package_session_id": "target-ps-uuid-1",
+      "status": "SUCCESS",
+      "action_taken": "CREATED",
+      "mapping_id": "mapping-uuid-1",
+      "user_plan_id": "user-plan-uuid-1",
+      "enroll_invite_id_used": "auto-resolved-invite-uuid",
+      "message": null
+    },
+    {
+      "user_id": "user-2",
+      "user_email": "jane@example.com",
+      "package_session_id": "target-ps-uuid-1",
+      "status": "SKIPPED",
+      "action_taken": "NONE",
+      "message": "Already enrolled (ACTIVE)"
+    },
+    {
+      "user_id": null,
+      "user_email": "failed-new@example.com",
+      "package_session_id": "target-ps-uuid-1",
+      "status": "FAILED",
+      "action_taken": "NONE",
+      "message": "User creation failed: Email already exists"
+    }
+  ]
+}
+```
+
+#### Result Item Fields
+
+| Field                   | Type      | Description                                          |
+| ----------------------- | --------- | ---------------------------------------------------- |
+| `user_id`               | `string?` | User UUID (null if new user creation failed)         |
+| `user_email`            | `string?` | User email for display                               |
+| `package_session_id`    | `string`  | Target package session                               |
+| `status`                | `string`  | `SUCCESS`, `FAILED`, or `SKIPPED`                    |
+| `action_taken`          | `string`  | `CREATED`, `RE_ENROLLED`, or `NONE`                  |
+| `mapping_id`            | `string?` | Created StudentSessionInstituteGroupMapping ID       |
+| `user_plan_id`          | `string?` | Created UserPlan ID                                  |
+| `enroll_invite_id_used` | `string?` | The invite that was used (explicit or auto-resolved) |
+| `message`               | `string?` | Human-readable detail (skip reason, error, etc.)     |
+
+---
+
+### 2. Bulk De-assign
+
+**Endpoint:** `POST /admin-core-service/v3/learner-management/deassign`
+
+**Description:** De-assigns multiple users from multiple package sessions with SOFT or HARD cancellation.
+
+**Request Body:**
+
+```json
+{
+  "institute_id": "inst-uuid",
+  "user_ids": ["user-1", "user-2"],
+  "user_filter": null,
+  "package_session_ids": ["ps-uuid-1", "ps-uuid-2"],
+  "options": {
+    "mode": "SOFT",
+    "notify_learners": false,
+    "dry_run": true
+  }
+}
+```
+
+#### Request Fields
+
+| Field                 | Type              | Required | Description                                  |
+| --------------------- | ----------------- | -------- | -------------------------------------------- |
+| `institute_id`        | `string`          | ✅       | Institute UUID                               |
+| `user_ids`            | `string[]`        | ⚡       | User IDs to de-assign                        |
+| `user_filter`         | `UserFilter`      | ⚡       | Filter-based user selection (same as assign) |
+| `package_session_ids` | `string[]`        | ✅       | Package sessions to remove users from        |
+| `options`             | `DeassignOptions` | ❌       | Mode, notifications, dry-run                 |
+
+#### DeassignOptions Object
+
+| Field             | Type      | Default  | Description                                                           |
+| ----------------- | --------- | -------- | --------------------------------------------------------------------- |
+| `mode`            | `string`  | `"SOFT"` | `SOFT` = cancel (access until expiry), `HARD` = terminate immediately |
+| `notify_learners` | `boolean` | `false`  | Send de-enrollment notification                                       |
+| `dry_run`         | `boolean` | `false`  | Preview mode                                                          |
+
+#### Cancellation Modes
+
+| Mode   | UserPlan Status | Mapping Status | Access Impact               | Reversible?                       |
+| ------ | --------------- | -------------- | --------------------------- | --------------------------------- |
+| `SOFT` | → CANCELED      | → INACTIVE     | Continues until plan expiry | ✅ Re-enrollment possible         |
+| `HARD` | → TERMINATED    | → TERMINATED   | **Immediate revocation**    | ✅ Re-enrollment creates new plan |
+
+#### Shared UserPlan Warning
+
+If a user's `UserPlan` is shared across multiple package sessions, canceling the plan will affect **all** associated enrollments. The API detects this and returns a warning:
+
+```json
+{
+  "warning": "UserPlan up-123 is shared across 2 package sessions. Canceling this plan will affect other enrollments."
+}
+```
+
+When no `UserPlan` is linked to the mapping (direct enrollment without subscription), the de-assign API falls back to updating the mapping status directly.
+
+**Response:**
+
+```json
+{
+  "dry_run": true,
+  "summary": {
+    "total_requested": 4,
+    "successful": 3,
+    "failed": 0,
+    "skipped": 1
+  },
+  "results": [
+    {
+      "user_id": "user-1",
+      "user_email": "john@example.com",
+      "package_session_id": "ps-uuid-1",
+      "status": "SUCCESS",
+      "action_taken": "SOFT_CANCELED",
+      "user_plan_id": "up-shared-uuid",
+      "message": "Would soft-cancel (access until expiry)",
+      "warning": "UserPlan up-shared-uuid is shared across 2 package sessions. Canceling this plan will affect other enrollments."
+    },
+    {
+      "user_id": "user-2",
+      "user_email": "jane@example.com",
+      "package_session_id": "ps-uuid-1",
+      "status": "SKIPPED",
+      "action_taken": "NONE",
+      "message": "No active enrollment found"
+    }
+  ]
+}
+```
+
+---
+
+### 3. Processing Guarantees
+
+| Property              | Behavior                                                          |
+| --------------------- | ----------------------------------------------------------------- |
+| **Atomicity**         | Per-item (not transactional across all items)                     |
+| **Failure isolation** | One user's failure does not block others                          |
+| **Idempotency**       | `SKIP` mode ensures safe re-runs                                  |
+| **Ordering**          | Results returned in same order as input                           |
+| **Concurrency**       | Not safe for concurrent calls on same (user, packageSession) pair |
+
+### 4. Notifications
+
+- **Trigger:** Only when `notify_learners = true` AND `dry_run = false`
+- **Service:** `LearnerEnrollmentNotificationService.sendLearnerEnrollmentNotification()`
+- **Scope:** Only for `SUCCESS` results with `CREATED` or `RE_ENROLLED` action
+- **Execution:** Asynchronous (fire-and-forget) — notification failures do not affect API results
+- **Channels:** Uses the existing dynamic notification system (`NotificationEventType.LEARNER_ENROLL`)
+
+### 5. Backend Service Architecture
+
+```
+BulkLearnerManagementController
+├── POST /assign  → BulkAssignmentService.bulkAssign()
+│   ├── resolveUserIds()                    ← explicit + filter-based
+│   ├── createNewUser() × N                 ← via AuthService
+│   ├── DefaultInviteResolver.resolve()     ← per package session
+│   │   ├── resolveInvite()                 ← explicit → DEFAULT → auto-create
+│   │   ├── resolvePaymentOption()          ← from invite links
+│   │   └── resolvePaymentPlan()            ← from option
+│   ├── processAssignment() × (N users × M sessions)
+│   │   ├── Check duplicates
+│   │   ├── UserPlanService.createUserPlan()
+│   │   └── Save StudentSessionInstituteGroupMapping
+│   └── LearnerEnrollmentNotificationService (async)
+│
+└── POST /deassign → BulkDeassignmentService.bulkDeassign()
+    ├── resolveUserIds()
+    └── processDeassignment() × (N × M)
+        ├── Find active mapping
+        ├── Check shared UserPlan
+        └── UserPlanService.cancelUserPlan(id, force)
+```
+
+### 6. Key Java Classes
+
+| Class                             | Location      | Purpose                                    |
+| --------------------------------- | ------------- | ------------------------------------------ |
+| `BulkLearnerManagementController` | `controller/` | REST endpoints                             |
+| `BulkAssignmentService`           | `service/`    | Assignment orchestration                   |
+| `BulkDeassignmentService`         | `service/`    | De-assignment orchestration                |
+| `DefaultInviteResolver`           | `service/`    | EnrollInvite/PaymentOption/Plan resolution |
+| `BulkAssignRequestDTO`            | `dto/`        | Assign request                             |
+| `BulkAssignResponseDTO`           | `dto/`        | Assign response with summary               |
+| `BulkAssignResultItemDTO`         | `dto/`        | Per-item result                            |
+| `BulkDeassignRequestDTO`          | `dto/`        | De-assign request                          |
+| `BulkDeassignResponseDTO`         | `dto/`        | De-assign response with warnings           |
+| `AssignmentItemDTO`               | `dto/`        | Per-package-session config                 |
+| `NewUserDTO`                      | `dto/`        | Inline user creation                       |
+| `UserFilterDTO`                   | `dto/`        | Filter-based selection                     |
+| `BulkAssignOptionsDTO`            | `dto/`        | Assign options                             |
+| `DeassignOptionsDTO`              | `dto/`        | De-assign options                          |
+
+---
+
+---
+
+**Last Updated:** February 2026  
 **Author:** Vacademy Platform Team

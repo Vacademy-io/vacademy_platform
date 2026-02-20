@@ -24,5 +24,7 @@ public class ApplyResponseDTO {
     private String trackingId;
     private String currentStage;
     private String status;
+    private String overallStatus;
     private String message;
+    private boolean isTransition;
 }

@@ -535,11 +535,17 @@ public class HtmlBuilderService {
                               background: #FDEDD7;
                               font-weight: bold;
                             }
-                            .leaderboard-title {
+                            .daily-performance-section, .leaderboard-section {
+                              page-break-inside: avoid;
+                            }
+                            .leaderboard-section {
                               margin-top: 40px;
+                            }
+                            .leaderboard-title {
                               color: #f4731c;
                               font-weight: bold;
                               font-size: 16px;
+                              margin-bottom: 10px;
                             }
                           </style>
                         </head>
@@ -578,37 +584,49 @@ public class HtmlBuilderService {
                             </table>
                           </div>
 
-                          <h2>Daily Learning Performance</h2>
-                          <div class="performance-table">
-                            <table>
-                              <thead>
-                                <tr>
-                                  <th>Date</th>
-                                  <th>Time Spent by batch (Avg)</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                %s
-                              </tbody>
-                            </table>
+                          <div class="daily-performance-section">
+                            <div class="performance-table">
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th colspan="2" style="background: #ffffff; color: #333; font-weight: bold; font-size: 18px; text-align: center; border-bottom: none;">
+                                      Daily Learning Performance
+                                    </th>
+                                  </tr>
+                                  <tr>
+                                    <th>Date</th>
+                                    <th>Time Spent by batch (Avg)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  %s
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
 
-                          <div class="leaderboard-title">Leaderboard</div>
-                          <div class="performance-table">
-                            <table>
-                              <thead>
-                                <tr>
-                                  <th>Rank</th>
-                                  <th>Student Name</th>
-                                  <th>Concentration Score</th>
-                                  <th>Daily Time Spent (Avg.)</th>
-                                  <th>Total Time</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                %s
-                              </tbody>
-                            </table>
+                          <div class="leaderboard-section">
+                            <div class="performance-table">
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th colspan="5" style="background: #ffffff; color: #f4731c; font-weight: bold; font-size: 16px; text-align: left; border-bottom: none;">
+                                      Leaderboard
+                                    </th>
+                                  </tr>
+                                  <tr>
+                                    <th>Rank</th>
+                                    <th>Student Name</th>
+                                    <th>Concentration Score</th>
+                                    <th>Daily Time Spent (Avg.)</th>
+                                    <th>Total Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  %s
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
 
                         </body>
@@ -661,6 +679,13 @@ public class HtmlBuilderService {
             String dateRange,
             String learnerName) {
 
+        double learnerCourse = getOrDefault(learnerProgressReport.getPercentageCourseCompleted());
+        double batchCourse = getOrDefault(batchProgressReport.getPercentageCourseCompleted());
+        double learnerConcentration = getOrDefault(learnerProgressReport.getPercentageConcentrationScore());
+        double batchConcentration = getOrDefault(batchProgressReport.getPercentageConcentrationScore());
+        String learnerTime = formatMinutesToHrMin(learnerProgressReport.getAvgTimeSpentInMinutes());
+        String batchTime = formatMinutesToHrMin(batchProgressReport.getAvgTimeSpentInMinutes());
+
         StringBuilder slideSections = new StringBuilder();
         for (SlideProgressDateWiseDTO dateWise : slideProgressDateWise) {
             slideSections.append(String.format("""
@@ -678,42 +703,50 @@ public class HtmlBuilderService {
                           </tr>
                         </thead>
                         <tbody>
-                    """, dateWise.getDate()));
+                    """, escapeHtml(dateWise.getDate())));
 
-            for (SlideProgressDTO slide : dateWise.getSlideDetails()) {
-                slideSections.append(String.format("""
-                                <tr>
-                                  <td>%s</td>
-                                  <td>%s</td>
-                                  <td>%s</td>
-                                  <td>%s</td>
-                                  <td>%.2f%%</td>
-                                  <td>%s</td>
-                                </tr>
-                                """,
-                        slide.getSlideTitle(),
-                        slide.getChapterName(),
-                        slide.getModuleName(),
-                        slide.getSubjectName(),
-                        slide.getConcentrationScore(),
-                        slide.getTimeSpent()
-                ));
+            if (dateWise.getSlideDetails() != null) {
+                for (SlideProgressDTO slide : dateWise.getSlideDetails()) {
+                    String formattedTime = formatTimeSpentString(slide.getTimeSpent());
+                    String slideTitle = truncate(slide.getSlideTitle(), 40);
+                    String chapterName = slide.getChapterName() != null ? slide.getChapterName() : "-";
+                    String moduleName = slide.getModuleName() != null ? slide.getModuleName() : "-";
+                    String subjectName = slide.getSubjectName() != null ? slide.getSubjectName() : "-";
+
+                    slideSections.append(String.format("""
+                                    <tr>
+                                      <td>%s</td>
+                                      <td>%s</td>
+                                      <td>%s</td>
+                                      <td>%s</td>
+                                      <td>%.2f%%</td>
+                                      <td>%s</td>
+                                    </tr>
+                                    """,
+                            escapeHtml(slideTitle),
+                            escapeHtml(chapterName),
+                            escapeHtml(moduleName),
+                            escapeHtml(subjectName),
+                            slide.getConcentrationScore(),
+                            escapeHtml(formattedTime)
+                    ));
+                }
             }
 
             slideSections.append("</tbody></table></div>");
         }
 
         return String.format(getHtmlTemplateForLearnerSlideProgress(),
-                instituteName,
-                batchName,
-                learnerName,
-                dateRange,
-                learnerProgressReport.getPercentageCourseCompleted(),
-                batchProgressReport.getPercentageCourseCompleted(),
-                learnerProgressReport.getAvgTimeSpentInMinutes(),
-                batchProgressReport.getAvgTimeSpentInMinutes(),
-                learnerProgressReport.getPercentageConcentrationScore(),
-                batchProgressReport.getPercentageConcentrationScore(),
+                escapeHtml(instituteName),
+                escapeHtml(batchName),
+                escapeHtml(learnerName),
+                escapeHtml(dateRange),
+                learnerCourse,
+                batchCourse,
+                learnerTime,
+                batchTime,
+                learnerConcentration,
+                batchConcentration,
                 slideSections.toString()
         );
     }
@@ -727,19 +760,17 @@ public class HtmlBuilderService {
                 <title>Learner Report</title>
                 <style>
                     body {
-                      font-family: 'Georgia', serif;
-                      background-color: #f8f8f8;
+                      font-family: 'Arial', sans-serif;
+                      background-color: #fff;
                       margin: 0;
-                      padding: 40px;
+                      padding: 10px 15px;
                       color: #333;
                     }
 
                     .container {
-                      max-width: 800px;
-                      margin: auto;
-                      background: #fff;
-                      padding: 40px 50px;
-                      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                      width: 100%%;
+                      margin: 0;
+                      padding: 0;
                     }
 
                     h1, h2 {
@@ -748,61 +779,69 @@ public class HtmlBuilderService {
                     }
 
                     h1 {
-                      font-size: 28px;
-                      margin-bottom: 30px;
+                      font-size: 24px;
+                      margin-bottom: 20px;
                     }
 
                     h2 {
-                      font-size: 22px;
-                      margin-top: 40px;
-                      margin-bottom: 20px;
+                      font-size: 18px;
+                      margin-top: 30px;
+                      margin-bottom: 15px;
                     }
 
                     .details {
                       text-align: center;
-                      margin-bottom: 30px;
-                      font-size: 16px;
+                      margin-bottom: 25px;
+                      font-size: 13px;
                     }
 
                     .details p {
-                      margin: 4px 0;
+                      margin: 3px 0;
                     }
 
                     table {
                       width: 100%%;
                       border-collapse: collapse;
-                      margin-bottom: 30px;
-                      font-size: 16px;
+                      margin: 0 auto 20px auto;
+                      font-size: 10px;
                     }
 
                     thead th {
                       background-color: #fcedda;
                       text-align: left;
-                      padding: 12px;
+                      padding: 5px 6px;
                       font-weight: bold;
+                      border: 1px solid #e0e0e0;
+                      white-space: nowrap;
                     }
 
                     tbody td {
                       background-color: #ffffff;
-                      padding: 12px;
-                      border-bottom: 1px solid #ddd;
+                      padding: 5px 6px;
+                      border: 1px solid #e0e0e0;
+                      overflow: hidden;
+                      white-space: nowrap;
+                    }
+
+                    tbody tr {
+                      page-break-inside: avoid;
                     }
 
                     .date-section {
-                      margin-top: 30px;
+                      margin-top: 25px;
                     }
 
                     .date-title {
-                      font-size: 18px;
+                      font-size: 14px;
                       font-weight: bold;
-                      margin-bottom: 10px;
-                      color: #444;
+                      margin-bottom: 8px;
+                      color: #f57c00;
                     }
                 </style>
                 </head>
                 <body>
                 <div class="container">
-                  <h1>Progress Report</h1>
+                  <h1>Learner Progress Report</h1>
 
                   <div class="details">
                     <p><b>Institute:</b> %s</p>
@@ -828,8 +867,8 @@ public class HtmlBuilderService {
                       </tr>
                       <tr>
                         <td>Daily Time Spent (Avg)</td>
-                        <td>%.2f minutes</td>
-                        <td>%.2f minutes</td>
+                        <td>%s</td>
+                        <td>%s</td>
                       </tr>
                       <tr>
                         <td>Concentration Score (Avg)</td>
@@ -1093,6 +1132,25 @@ public class HtmlBuilderService {
         int hours = totalMinutes / 60;
         int mins = totalMinutes % 60;
         return hours + "h " + mins + "m";
+    }
+
+    private static String truncate(String text, int maxLen) {
+        if (text == null || text.isBlank()) return "-";
+        return text.length() > maxLen ? text.substring(0, maxLen) + "..." : text;
+    }
+
+    private static String formatTimeSpentString(String timeSpent) {
+        if (timeSpent == null || timeSpent.isBlank()) return "0m 0s";
+        try {
+            double totalMinutes = Double.parseDouble(timeSpent);
+            if (totalMinutes <= 0) return "0m 0s";
+            int mins = (int) totalMinutes;
+            int secs = (int) Math.round((totalMinutes - mins) * 60);
+            if (secs == 60) { mins++; secs = 0; }
+            return mins + "m " + secs + "s";
+        } catch (NumberFormatException e) {
+            return timeSpent;
+        }
     }
 
     private static String escapeHtml(String input) {

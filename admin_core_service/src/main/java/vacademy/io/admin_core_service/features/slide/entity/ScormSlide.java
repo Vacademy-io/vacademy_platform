@@ -28,6 +28,9 @@ public class ScormSlide {
     @Column(name = "scorm_version", length = 50)
     private String scormVersion;
 
+    @Column(name = "launch_url", length = 512)
+    private String launchUrl;
+
     @Column(name = "created_at", insertable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp createdAt;
 

@@ -55,6 +55,7 @@ public class ScormController {
                 .scormVersion(slide.getScormVersion())
                 .originalFileId(slide.getOriginalFileId())
                 .launchPath(slide.getLaunchPath())
+                .launchUrl(slide.getLaunchUrl())
                 .build();
     }
 }

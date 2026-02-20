@@ -24,15 +24,25 @@ import type {
   TimelineData,
   Frame,
 } from "./types";
-import { CONTENT_TYPE_LABELS, DEFAULT_ENTRY_LABELS } from "./types";
+import { CONTENT_TYPE_LABELS, CONTENT_TYPE_ENTRY_LABELS } from "./types";
 import { getLibraryScriptTags } from "./library-loader";
 import {
   createNavigationController,
   type NavigationController,
 } from "./navigation-controller";
+import { processHtmlContent, fixHtmlContent } from "./html-processor";
 
 // Re-export types for backward compatibility
 export type { Frame, TimelineMeta, TimelineData, ContentType, NavigationType };
+
+/**
+ * Format time in seconds to MM:SS format
+ */
+const formatTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
 
 export interface AIVideoPlayerProps {
   timelineUrl: string;
@@ -54,229 +64,8 @@ const DEFAULT_META: TimelineMeta = {
   dimensions: { width: 1920, height: 1080 },
 };
 
-const fixHtmlContent = (html: string, includeLibs = true, contentType: ContentType = "VIDEO") => {
-  // Get libraries for the specific content type
-  const libsScripts = includeLibs ? getLibraryScriptTags(contentType) : "";
-
-  // Inject required libraries + Interaction Script
-  const libs = `
-        ${libsScripts}
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
-        <style>
-            /* Visual cues for interactive elements */
-            .hover-target:hover {
-                outline: 2px dashed #3b82f6;
-                cursor: grab;
-            }
-            .is-dragging {
-                outline: 2px solid #3b82f6;
-                cursor: grabbing;
-                user-select: auto;
-            }
-            [contenteditable="true"] {
-                outline: 2px solid #22c55e;
-                cursor: text;
-                min-width: 10px;
-            }
-            /* Print styles for WORKSHEET content */
-            @media print {
-                #nav-controls, .no-print { display: none !important; }
-                .worksheet-container { max-width: 100%; padding: 0; }
-            }
-        </style>
-        <script>
-            try {
-                window.addEventListener('load', () => {
-                    // Initialize Libraries
-                    if(window.gsap && window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
-                    if(window.mermaid) mermaid.initialize({startOnLoad:true});
-
-                    // --- Interaction Logic ---
-                    const postUpdate = () => {
-                        // Robust serialization to preserve styles (which might move to HEAD) and content
-                        let result = "";
-
-                        const isInjection = (node) => {
-                            // Check scripts
-                            if (node.tagName === 'SCRIPT') {
-                                if (node.src && (node.src.includes('gsap') || node.src.includes('mermaid'))) return true;
-                                if (node.innerHTML.includes('Interaction Logic')) return true;
-                                if (node.innerHTML.includes('gsap.registerPlugin(MotionPathPlugin)')) return true; 
-                            }
-                            // Check interaction style
-                            if (node.tagName === 'STYLE') {
-                                if (node.innerHTML.includes('Visual cues for interactive elements')) return true;
-                            }
-                            return false;
-                        }
-
-                        // 1. Process HEAD (Styles often end up here)
-                        if (document.head) {
-                            Array.from(document.head.childNodes).forEach(node => {
-                                if (!isInjection(node)) {
-                                    result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
-                                }
-                            });
-                        }
-
-                        // 2. Process BODY
-                        // Clone body to clean up interaction markers on elements (classes/attributes)
-                        const bodyClone = document.body.cloneNode(true);
-                        
-                        // Clean attributes
-                        bodyClone.querySelectorAll('*').forEach(el => {
-                            el.classList.remove('hover-target', 'is-dragging');
-                            el.removeAttribute('contenteditable');
-                        });
-                        
-                        Array.from(bodyClone.childNodes).forEach(node => {
-                             if (!isInjection(node)) {
-                                 result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
-                             }
-                        });
 
 
-                        const parent = window.parent || window.top;
-                        if (parent && parent.postMessage) {
-                            parent.postMessage({
-                                type: 'HTML_UPDATE',
-                                html: result 
-                            }, '*');
-                        }
-                    };
-
-                    // Add hover effects to everything reasonable
-                    document.body.addEventListener('mouseover', (e) => {
-                        if (e.target !== document.body && !e.target.classList.contains('hover-target')) {
-                            // e.target.classList.add('hover-target');
-                        }
-                    });
-                    
-                    // Helper to find a "movable" block (divs, imgs, etc)
-                    const getMovable = (target) => {
-                        let current = target;
-                        let depth = 0;
-                        while (current && current !== document.body && depth < 50) {
-                            const style = window.getComputedStyle(current);
-                            if (style.display === 'block' || style.display === 'flex' || current.tagName === 'IMG') {
-                                return current;
-                            }
-                            current = current.parentElement;
-                            depth++;
-                        }
-                        return null;
-                    }
-
-                    // Drag Logic
-                    let draggedEl = null;
-                    let startX = 0, startY = 0;
-                    let initialTransform = {x: 0, y: 0};
-                    let hasMoved = false;
-
-                    const getTranslate = (el) => {
-                        const style = window.getComputedStyle(el);
-                        const matrix = new WebKitCSSMatrix(style.transform);
-                        return {x: matrix.m41, y: matrix.m42};
-                    }
-
-                    document.addEventListener('mousedown', (e) => {
-                        if (e.target.isContentEditable) return; // Don't drag if editing text
-                        
-                        const target = getMovable(e.target);
-                        if (!target) return;
-
-                        draggedEl = target;
-                        startX = e.clientX;
-                        startY = e.clientY;
-                        initialTransform = getTranslate(draggedEl);
-                        hasMoved = false;
-                        
-                        // Don't add class yet, wait for move
-                        e.preventDefault(); 
-                    });
-
-                    document.addEventListener('mousemove', (e) => {
-                        if (!draggedEl) return;
-                        e.preventDefault();
-                        
-                        const dx = e.clientX - startX;
-                        const dy = e.clientY - startY;
-                        
-                        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-                             hasMoved = true;
-                             draggedEl.classList.add('is-dragging');
-                        }
-
-                        if (!hasMoved) return;
-                        
-                        // Apply translate
-                        draggedEl.style.transform = \`translate3d(\${initialTransform.x + dx}px, \${initialTransform.y + dy}px, 0)\`;
-                    });
-
-                    document.addEventListener('mouseup', () => {
-                        if (draggedEl) {
-                            draggedEl.classList.remove('is-dragging');
-                            draggedEl = null; 
-                            if (hasMoved) {
-                                postUpdate(); // Only save if actually moved
-                            }
-                        }
-                    });
-
-                    // Text Edit Logic
-                    document.addEventListener('dblclick', (e) => {
-                        const target = e.target;
-                        // Relaxed check: Allow text editing on anything that isn't the root containers
-                        // and has some text content.
-                        if (target !== document.body && target !== document.documentElement) {
-                            e.stopPropagation(); // Only edit the specific clicked element
-                            
-                            target.setAttribute('contenteditable', 'true');
-                            target.focus();
-                            
-                            // Select all text
-                            // Use try-catch as execCommand can be flaky in some contexts
-                            try {
-                                document.execCommand('selectAll', false, null);
-                            } catch(err) {}
-                            
-                            // Prevent drag while editing
-                            const stopProp = (k) => k.stopPropagation();
-                            target.addEventListener('keydown', stopProp);
-                            target.addEventListener('mousedown', stopProp); // Stop drag start
-                            
-                            // Save on blur
-                            target.addEventListener('blur', () => {
-                                target.removeAttribute('contenteditable');
-                                target.removeEventListener('keydown', stopProp);
-                                target.removeEventListener('mousedown', stopProp);
-                                postUpdate();
-                            }, {once: true});
-                        }
-                    });
-
-                    // CONVERSATION content type: Text-to-speech for dialogue bubbles
-                    document.querySelectorAll('.audio-btn').forEach(btn => {
-                        btn.addEventListener('click', () => {
-                            const text = btn.closest('.message-content')?.querySelector('.speech-text')?.textContent;
-                            if (text && window.speechSynthesis) {
-                                const utterance = new SpeechSynthesisUtterance(text);
-                                utterance.lang = document.documentElement.lang || 'en-US';
-                                speechSynthesis.speak(utterance);
-                            }
-                        });
-                    });
-                });
-            } catch(e) { console.error("Error in interactive script", e); }
-        </script>
-    `;
-
-  // Replace absolute file paths with valid Vite src paths and prepend libraries
-  // Use non-greedy match to avoid backtracking issues on large strings
-  const fixedPathHtml = html.replace(/file:\/\/\/[^"'\n]*\/runs\/dna_gene_editing\/generated_images\//g, '/src/routes/ai-video-studio/runs/dna_gene_editing/generated_images/');
-
-  return (includeLibs ? libs : '') + fixedPathHtml;
-};
 
 export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   timelineUrl,
@@ -285,8 +74,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   width: propWidth,
   height: propHeight,
   onEntryChange,
-  onContentComplete,
-}) => {
+  onContentComplete, }) => {
   // Core state
   const [frames, setFrames] = useState<Frame[]>([]);
   const [meta, setMeta] = useState<TimelineMeta>(DEFAULT_META);
@@ -350,7 +138,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   // Derived values
   const contentType = meta.content_type || "VIDEO";
   const navigationMode = meta.navigation || "time_driven";
-  const entryLabel = meta.entry_label || DEFAULT_ENTRY_LABELS[contentType] || "segment";
+  const entryLabel = meta.entry_label || CONTENT_TYPE_ENTRY_LABELS[contentType] || "segment";
   const isTimeDriven = navigationMode === "time_driven";
   const isUserDriven = navigationMode === "user_driven";
   const isSelfContained = navigationMode === "self_contained";
@@ -371,7 +159,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         console.log("[AIVideoPlayer] Loading timeline from:", timelineUrl);
         const response = await fetch(timelineUrl);
         if (!response.ok) {
-          throw new Error(`Failed to load timeline: ${response.statusText}`);
+          throw new Error(`Failed to load timeline: ${response.statusText} `);
         }
 
         const timelineData: TimelineData | Frame[] = await response.json();
@@ -395,8 +183,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0
           };
         } else {
-          // New format: { meta, entries }
-          framesArray = timelineData.entries || [];
+          // New format: { meta, entries}
+          framesArray = (timelineData.entries as Frame[]) || [];
           timelineMeta = {
             ...DEFAULT_META,
             ...timelineData.meta,
@@ -580,7 +368,6 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         }
         return framesToShow;
       });
-
     } else if (isUserDriven) {
       // User-driven: show current entry
       const currentEntry = frames[currentEntryIndex];
@@ -592,7 +379,6 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         }
         return newFrames;
       });
-
     } else if (isSelfContained) {
       // Self-contained: show first (and only) entry
       const newFrames = [frames[0]];
@@ -617,14 +403,18 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
       if (containerWidth <= 0 || containerHeight <= 0) {
         console.warn("[AIVideoPlayer] Invalid container dimensions:", { containerWidth, containerHeight });
+        console.warn("[AIVideoPlayer] Invalid container dimensions:", {
+          containerWidth,
+          containerHeight
+        });
         return;
       }
 
       const scaleX = containerWidth / width;
       const scaleY = containerHeight / height;
       const newScale = Math.min(scaleX, scaleY);
-      // Remove artificial margin (0.95 multiplier) to allow full fit
-      const finalScale = Math.min(newScale, 1);
+      // Add a small buffer (0.98 multiplier) to ensure it doesn't hit edges in default view
+      const finalScale = isFullscreen ? Math.min(newScale, 1) : Math.min(newScale * 0.98, 1);
 
       // Prevent infinite loops by only updating if change is significant (> 0.001)
       setScale(prev => Math.abs(prev - finalScale) > 0.001 ? finalScale : prev);
@@ -671,135 +461,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     };
   }, [width, height]);
 
-  // Update iframe content with active frames
-  useEffect(() => {
-    if (!iframeRef.current) return;
 
-    // Check if we need to update at all
-    // If the iframe already has content and the frames are the same, skip
-    // We attach lastRenderedFrames to the iframe element to track this
-    const iframe = iframeRef.current as HTMLIFrameElement & { __lastRenderedIds?: string };
-    const lastRenderedIds = iframe.__lastRenderedIds;
-    const currentIds = activeFrames.map(f => f.id).join(',');
-
-    if (lastRenderedIds === currentIds && iframe.contentDocument?.body?.innerHTML) {
-      return;
-    }
-
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!iframeDoc) {
-      console.warn("[AIVideoPlayer] Cannot access iframe document");
-      return;
-    }
-
-    // Mark as rendered
-    iframe.__lastRenderedIds = currentIds;
-
-    if (activeFrames.length === 0) {
-      iframeDoc.body.innerHTML = "";
-      return;
-    }
-
-    console.log("[AIVideoPlayer] Rendering frames:", {
-      count: activeFrames.length,
-      contentType,
-      frames: activeFrames.map((f) => ({ id: f.id, inTime: f.inTime, exitTime: f.exitTime })),
-    });
-
-    const sortedFrames = [...activeFrames].sort((a, b) => (a.z || 0) - (b.z || 0));
-
-    let htmlContent = `
-      <!DOCTYPE html>
-      <html lang="${meta.target_language || 'en'}">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            body {
-              width: ${width}px;
-              height: ${height}px;
-              overflow: hidden;
-              position: relative;
-              background: transparent;
-              margin: 0;
-              padding: 0;
-              display: block;
-            }
-            .frame {
-              position: absolute;
-              width: 100%;
-              height: 100%;
-              backface-visibility: hidden;
-              transform: translate3d(0,0,0);
-            }
-          </style>
-        </head>
-        <body>
-          ${fixHtmlContent("", true, contentType)}
-    `;
-
-    sortedFrames.forEach((frame) => {
-      const frameStyle = frame.htmlStartX !== undefined ? `
-        left: ${frame.htmlStartX}px;
-        top: ${frame.htmlStartY}px;
-        width: ${(frame.htmlEndX || width) - (frame.htmlStartX || 0)}px;
-        height: ${(frame.htmlEndY || height) - (frame.htmlStartY || 0)}px;
-        z-index: ${frame.z};
-      ` : `
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        z-index: ${frame.z};
-      `;
-
-      htmlContent += `
-        <div class="frame" style="${frameStyle}">
-          ${fixHtmlContent(frame.html, false, contentType)}
-        </div>
-      `;
-    });
-
-    htmlContent += `
-        </body>
-      </html>
-    `;
-
-    iframeDoc.open();
-    iframeDoc.write(htmlContent);
-    iframeDoc.close();
-  }, [activeFrames, width, height, contentType, meta.target_language, isSelfContained]);
-
-  // ✅ Separate effect for script re-execution (iOS stability)
-  // Only re-execute scripts for truly self-contained content when frames or iframe change
-  useEffect(() => {
-    if (!isSelfContained || !iframeRef.current || frames.length === 0) return;
-
-    const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow?.document;
-    if (!iframeDoc) return;
-
-    // We only want to do this once when the content is first loaded or significant segments change
-    // Using a ref to track what was last script-executed
-    const iframe = iframeRef.current as HTMLIFrameElement & { __lastScriptIds?: string };
-    const lastScriptIds = iframe.__lastScriptIds;
-    const currentIds = frames.map(f => f.id).join(',');
-    if (lastScriptIds === currentIds) return;
-    iframe.__lastScriptIds = currentIds;
-
-    const scripts = iframeDoc.querySelectorAll('script');
-    scripts.forEach((oldScript) => {
-      if (!oldScript.src) {
-        const newScript = iframeDoc.createElement('script');
-        newScript.textContent = oldScript.textContent;
-        oldScript.parentNode?.replaceChild(newScript, oldScript);
-      }
-    });
-  }, [isSelfContained, frames]);
 
   // Animation loop for time-driven content
   useEffect(() => {
@@ -1015,7 +677,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     if (!document.fullscreenElement) {
       // Use the root element of the player for fullscreen
       rootRef.current?.requestFullscreen().catch((err) => {
-        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+        console.error(`Error attempting to enable fullscreen: ${err.message} `);
       });
     } else {
       document.exitFullscreen();
@@ -1052,19 +714,13 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     };
   }, [showPlaybackSpeedMenu]);
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
   // Get progress display
   const progressDisplay = useMemo(() => {
     if (isUserDriven || isSelfContained) {
       const label = entryLabel.charAt(0).toUpperCase() + entryLabel.slice(1);
       const current = currentEntryIndex + 1;
       const total = frames.length;
-      return `${label} ${current} of ${total}`;
+      return `${label} ${current} of ${total} `;
     }
     return null;
   }, [isUserDriven, isSelfContained, entryLabel, currentEntryIndex, frames.length]);
@@ -1094,8 +750,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   return (
     <div
       ref={rootRef}
-      className={`bg-black rounded-lg overflow-hidden flex flex-col ${className} ${isFullscreen ? 'fixed inset-0 z-50 rounded-none w-screen h-screen' : ''}`}
-      style={isFullscreen ? { maxHeight: '100vh', aspectRatio: 'auto' } : { aspectRatio: "16/9", maxHeight: "calc(100vh - 150px)" }}
+      className={`bg-black rounded-lg overflow-hidden flex flex-col ${className} ${isFullscreen ? 'fixed inset-0 z-50 rounded-none w-screen h-screen' : ''} `}
+      style={isFullscreen ? { maxHeight: '100vh' } : { maxHeight: "calc(100vh - 150px)" }}
     >
       {/* Content Type Badge */}
       <div className="bg-gray-900 px-4 py-2 flex items-center justify-between border-b border-gray-800">
@@ -1121,8 +777,8 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       {/* Video Frame */}
       <div
         ref={containerRef}
-        className="relative w-full flex-1 bg-black overflow-hidden flex items-center justify-center"
-        style={{ minHeight: 0, position: 'relative' }}
+        className="relative w-full flex-1 bg-black overflow-hidden"
+        style={{ minHeight: 0, position: 'relative', aspectRatio: isFullscreen ? 'auto' : '16/9' }}
       >
         <div
           style={{
@@ -1130,25 +786,54 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             height: `${height}px`,
             transform: `scale(${scale})`,
             transformOrigin: "center center",
-            position: 'relative',
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            marginTop: `-${height / 2}px`,
+            marginLeft: `-${width / 2}px`,
           }}
         >
-          <iframe
-            ref={iframeRef}
-            className="border-0 bg-black"
-            sandbox="allow-scripts allow-same-origin allow-modals"
-            title="AI Video Player"
-            style={{
-              width: `${width}px`,
-              height: `${height}px`,
-              display: "block",
-              backgroundColor: "transparent",
-            }}
-          />
+          {activeFrames.length > 0 ? (
+            [...activeFrames].sort((a, b) => (a.z || 0) - (b.z || 0)).map((frame, index) => {
+              const htmlDoc = contentType === 'VIDEO' ? processHtmlContent(
+                frame.html,
+                contentType,
+                index > 0
+              ) : frame.html;
+
+              const frameStyle = {
+                left: 0,
+                top: 0,
+                width: '100%',
+                height: '100%',
+                zIndex: frame.z || 0,
+              };
+
+              return (
+                <iframe
+                  ref={index === 0 ? iframeRef : null}
+                  key={`frame-${frame.id}-${index}`}
+                  srcDoc={htmlDoc}
+                  className="border-0 bg-transparent absolute"
+                  sandbox="allow-scripts allow-same-origin allow-modals"
+                  title={`AI Video Layer ${frame.id}`}
+                  style={{
+                    backgroundColor: index === 0 ? "#ffffff" : "transparent",
+                    pointerEvents: frame.id?.startsWith('branding-watermark') ? 'none' : 'auto',
+                    ...frameStyle
+                  }}
+                />
+              );
+            })
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-gray-500">
+              No frame content available
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Controls - Different layout based on navigation mode */}
+      {/* Controls -Different layout based on navigation mode */}
       <div className="bg-gray-900 p-4 space-y-3 flex-shrink-0">
         {/* Time-Driven Controls (VIDEO) */}
         {isTimeDriven && (
@@ -1249,7 +934,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => setShowPlaybackSpeedMenu(!showPlaybackSpeedMenu)}
-                    className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 px-3"
+                    className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8px-3"
                     title="Playback speed"
                   >
                     <Settings className="h-3 w-3 mr-1" />
@@ -1261,8 +946,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                         <button
                           key={speed}
                           onClick={() => handlePlaybackRateChange(speed)}
-                          className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg ${playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"
-                            }`}
+                          className={`w-fullpx-4 py-2 text-left text-sm hover: bg-gray -700 first: rounded-t -lg last: rounded-b -lg ${playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"} `}
                         >
                           {speed}x
                         </button>
@@ -1307,7 +991,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 Previous
               </Button>
 
-              <span className="text-white text-sm px-3">
+              <span className="text-white text-smpx-3">
                 {progressDisplay}
               </span>
 

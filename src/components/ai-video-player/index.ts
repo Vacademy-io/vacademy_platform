@@ -6,7 +6,6 @@ export type { AIVideoPlayerProps } from "./AIVideoPlayer";
 export type {
   ContentType,
   NavigationType,
-  EntryLabel,
   BrandingConfig,
   Frame,
   TimelineMeta,
@@ -15,8 +14,9 @@ export type {
 
 export {
   CONTENT_TYPE_LABELS,
-  NAVIGATION_CONFIG,
-  DEFAULT_ENTRY_LABELS,
+  CONTENT_TYPE_NAVIGATION,
+  CONTENT_TYPE_ENTRY_LABELS,
+  formatEntryLabel,
 } from "./types";
 
 // Library loader utilities
@@ -28,6 +28,5 @@ export {
   TimeDrivenNavigation,
   UserDrivenNavigation,
   SelfContainedNavigation,
-  formatEntryLabel,
 } from "./navigation-controller";
 export type { NavigationController } from "./navigation-controller";

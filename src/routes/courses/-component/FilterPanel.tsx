@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useCatalogStore } from "../-store/catalogStore";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
@@ -45,9 +45,8 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         {itemsToDisplay.map((item) => (
           <label
             key={item.id}
-            className={`flex items-center text-gray-600 hover:text-gray-800 ${
-              disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-            }`}
+            className={`flex items-center text-gray-600 hover:text-gray-800 ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+              }`}
           >
             <input
               type="checkbox"
@@ -65,11 +64,10 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           disabled={disabled}
-          className={`text-sm mt-2 flex items-center gap-1 ${
-            disabled
-              ? "text-gray-400 cursor-not-allowed"
-              : "text-blue-600 hover:text-blue-800"
-          }`}
+          className={`text-sm mt-2 flex items-center gap-1 ${disabled
+            ? "text-gray-400 cursor-not-allowed"
+            : "text-blue-600 hover:text-blue-800"
+            }`}
         >
           {isExpanded ? (
             <>
@@ -118,7 +116,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 }) => {
   const { instructor, instituteData } = useCatalogStore();
   const [isMobileExpanded, setIsMobileExpanded] = useState(false);
-  
+
   const hasActiveFilters =
     selectedLevels.length > 0 ||
     selectedTags.length > 0 ||
@@ -130,10 +128,21 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     name: toTitleCase(level.level_name || "Unnamed Level"),
   }));
 
-  const tags = (instituteData?.tags || []).map((tag: string) => ({
-    id: tag,
-    name: tag,
-  }));
+  const tags = useMemo(() => {
+    const uniqueNormalizedTags = new Set<string>();
+    (instituteData?.tags || []).forEach((tag: string) => {
+      if (tag) {
+        uniqueNormalizedTags.add(toTitleCase(tag.trim()));
+      }
+    });
+
+    return Array.from(uniqueNormalizedTags)
+      .sort((a, b) => a.localeCompare(b))
+      .map((tag) => ({
+        id: tag,
+        name: tag,
+      }));
+  }, [instituteData?.tags]);
 
   //   eslint-disable-next-line @typescript-eslint/no-explicit-any
   const instructors = (instructor || []).map((inst: any) => ({
@@ -158,9 +167,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
               </span>
             )}
           </div>
-          <ChevronDown 
-            size={16} 
-            className={`text-gray-500 transition-transform ${isMobileExpanded ? 'rotate-180' : ''}`} 
+          <ChevronDown
+            size={16}
+            className={`text-gray-500 transition-transform ${isMobileExpanded ? 'rotate-180' : ''}`}
           />
         </button>
       </div>

@@ -314,20 +314,22 @@ class OpenRouterClient:
                     # Parse JSON response and return content
                     data = json.loads(raw)
                     content = data["choices"][0]["message"]["content"]
+                    
+                    if not content or not content.strip():
+                        raise ValueError("Model returned an empty string.")
+                        
                     usage = data.get("usage", {})
                     return content, usage
-            except urllib.error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="ignore")
-                last_error = RuntimeError(f"OpenRouter request failed with {model_to_use}: {exc.code} {exc.reason}\n{detail}")
+            except Exception as exc:
+                if isinstance(exc, urllib.error.HTTPError):
+                    detail = exc.read().decode("utf-8", errors="ignore")
+                    last_error = RuntimeError(f"OpenRouter request failed with {model_to_use}: {exc.code} {exc.reason}\n{detail}")
+                else:
+                    last_error = RuntimeError(f"OpenRouter request error with {model_to_use}: {str(exc)}")
+                    
                 # If this is not the last model, continue to next
                 if model_to_use != models_to_try[-1]:
-                    continue
-                # Last model failed, raise the error
-                raise last_error from exc
-            except urllib.error.URLError as exc:
-                last_error = RuntimeError(f"OpenRouter request error with {model_to_use}: {exc.reason}")
-                # If this is not the last model, continue to next
-                if model_to_use != models_to_try[-1]:
+                    print(f"⚠️ Model {model_to_use} failed. Trying next model...")
                     continue
                 # Last model failed, raise the error
                 raise last_error from exc
@@ -336,9 +338,6 @@ class OpenRouterClient:
         if last_error:
             raise last_error
         raise RuntimeError("No models available to try")
-
-        data = json.loads(raw)
-        return data["choices"][0]["message"]["content"]
 
 
 class GoogleCloudTTSClient:
@@ -998,12 +997,24 @@ class VideoGenerationPipeline:
             
         print(f"📝 Generating {content_type} content...")
 
-        raw, usage = self.script_client.chat(
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            temperature=0.5,
-            max_tokens=16000,  # Increased for complex content types
-        )
-        data = _extract_json_blob(raw)
+        # Retry up to 3 times if we get invalid JSON
+        max_attempts = 3
+        last_error = None
+        for attempt in range(max_attempts):
+            try:
+                raw, usage = self.script_client.chat(
+                    messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                    temperature=0.5,
+                    max_tokens=16000,  # Increased for complex content types
+                )
+                data = _extract_json_blob(raw)
+                break  # Success
+            except ValueError as e:
+                last_error = e
+                print(f"⚠️ JSON extraction failed (attempt {attempt + 1}/{max_attempts}): {e}")
+                time.sleep(2)
+        else:
+            raise last_error
         
         # Handle different content type outputs
         if content_type == "VIDEO":

@@ -26,16 +26,21 @@ WORKDIR /workspace/echomimic_v3
 RUN pip install --upgrade pip
 RUN pip install runpod boto3
 
+# Pin tensorflow BEFORE requirements.txt to prevent TF 2.16+ from being pulled in.
+# TF 2.16+ separates keras into a standalone package (keras 3.x) which removes
+# tensorflow.keras — breaking retinaface which imports from tensorflow.keras.models.
+RUN pip install "tensorflow==2.15.1"
+
 # Fix opencv dependency issue commonly found on fresh Linux headless installs
 RUN sed -i 's/opencv-python/opencv-python-headless/' requirements.txt
 
 # Install V3 specific dependencies
 RUN pip install -r requirements.txt
 
-# Force uninstallation of pre-installed generic keras and completely replace with TF 2.15 explicitly linked
-# RetinaFace requires native Keras which was stripped from TF 2.16+
-RUN pip uninstall -y tensorflow keras tf-keras
-RUN pip install tensorflow==2.15.0 keras==2.15.0
+# requirements.txt may have upgraded TF or installed standalone keras 3.x.
+# Force reinstall TF 2.15.1 and purge any conflicting standalone keras package.
+RUN pip install --force-reinstall "tensorflow==2.15.1" && \
+    pip uninstall -y keras 2>/dev/null; true
 
 # Fast Download HuggingFace Pre-trained Weights using Python to bypass PATH issues (.local/bin)
 # This prevents the 30-minute RunPod GitHub builder timeout

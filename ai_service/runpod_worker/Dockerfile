@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04
+FROM runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04
 
 # Keep tzdata non-interactive
 ENV DEBIAN_FRONTEND=noninteractive
@@ -32,14 +32,16 @@ RUN sed -i 's/opencv-python/opencv-python-headless/' requirements.txt
 # Install V3 specific dependencies
 RUN pip install -r requirements.txt
 
-# Download HuggingFace Pre-trained Weights using Git LFS (Warning: Massive Models!)
-RUN git lfs install
+# Fast Download HuggingFace Pre-trained Weights using huggingface-cli to skip massive .git history
+# This prevents the 30-minute RunPod GitHub builder timeout
+RUN pip install "huggingface_hub[cli]"
+
 RUN mkdir -p models
 WORKDIR /workspace/echomimic_v3/models
 
-RUN git clone https://huggingface.co/alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP
-RUN git clone https://huggingface.co/facebook/wav2vec2-base-960h
-RUN git clone https://huggingface.co/BadToBest/EchoMimicV3 preview_weights
+RUN huggingface-cli download alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP --local-dir Wan2.1-Fun-V1.1-1.3B-InP --exclude "*.md" "*.gitattributes"
+RUN huggingface-cli download facebook/wav2vec2-base-960h --local-dir wav2vec2-base-960h --exclude "*.md" "*.gitattributes"
+RUN huggingface-cli download BadToBest/EchoMimicV3 --local-dir preview_weights --exclude "*.md" "*.gitattributes"
 
 # Construct the exact folder structure expected by V3
 RUN mkdir -p transformer

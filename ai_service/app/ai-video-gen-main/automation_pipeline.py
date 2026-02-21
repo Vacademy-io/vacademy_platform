@@ -610,7 +610,7 @@ class GoogleCloudTTSClient:
 
 
 class VideoGenerationPipeline:
-    STAGE_ORDER = ("script", "tts", "words", "html", "render")
+    STAGE_ORDER = ("script", "tts", "words", "html", "avatar", "render")
     STAGE_INDEX = {name: idx for idx, name in enumerate(STAGE_ORDER)}
 
     def __init__(
@@ -675,6 +675,8 @@ class VideoGenerationPipeline:
         tts_provider: str = "edge",
         branding_config: Optional[Dict[str, Any]] = None,
         content_type: str = "VIDEO",
+        generate_avatar: bool = False,
+        avatar_image_url: Optional[str] = None,
         max_segments: int = 8,
     ) -> Dict[str, Any]:
         # Store max_segments for use in concept-aligned segmentation
@@ -714,6 +716,7 @@ class VideoGenerationPipeline:
         self._current_html_quality = html_quality
         self._current_background_type = background_type
         self._current_content_type = content_type
+        self._current_avatar_image_url = avatar_image_url
         
         # Store branding config (use defaults if not provided)
         self._current_branding = branding_config or self._get_default_branding()
@@ -730,6 +733,7 @@ class VideoGenerationPipeline:
         do_tts = stage_idx <= self.STAGE_INDEX["tts"] and self.STAGE_INDEX["tts"] < stop_idx
         do_words = stage_idx <= self.STAGE_INDEX["words"] and self.STAGE_INDEX["words"] < stop_idx
         do_html = stage_idx <= self.STAGE_INDEX["html"] and self.STAGE_INDEX["html"] < stop_idx
+        do_avatar = stage_idx <= self.STAGE_INDEX["avatar"] and self.STAGE_INDEX["avatar"] < stop_idx and generate_avatar
         do_render = stage_idx <= self.STAGE_INDEX["render"] and self.STAGE_INDEX["render"] < stop_idx
 
         # Token usage aggregation
@@ -880,6 +884,14 @@ class VideoGenerationPipeline:
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(html_segments, run_dir, self._current_branding, self._current_content_type)
         
+        avatar_video_path = None
+        if do_avatar:
+            if content_type == "VIDEO":
+                print("👤 Starting AVATAR stage...")
+                avatar_video_path = self._generate_avatar_runpod(run_dir)
+            else:
+                print(f"⏩ Skipping AVATAR stage (content_type={content_type} is not VIDEO)")
+
         if do_render:
             print("🎥 Rendering final video with Playwright...")
             
@@ -893,22 +905,13 @@ class VideoGenerationPipeline:
                 preset = BACKGROUND_PRESETS.get(background_type, BACKGROUND_PRESETS["black"])
                 render_bg_color = preset["background"]
             
-            # Check for avatar generation
-            avatar_video = None
-            if DEFAULT_VIDEO_OPTIONS.exists():
-                try:
-                    opts = json.loads(DEFAULT_VIDEO_OPTIONS.read_text())
-                    avatar_video = self._generate_avatar(tts_outputs["audio_path"], run_dir, opts)
-                except Exception as e:
-                    print(f"⚠️ Avatar generation skipped due to error: {e}")
-
-
+            
             video_path = self._render_video(
-                audio_path=tts_outputs["audio_path"],
+                audio_path=tts_outputs.get("audio_path") or audio_path,
                 timeline_path=timeline_path,
-                words_json_path=word_outputs["words_json"],
+                words_json_path=word_outputs.get("words_json") or words_json,
                 run_dir=run_dir,
-                avatar_video_path=avatar_video,
+                avatar_video_path=run_dir / "avatar_video.mp4" if (run_dir / "avatar_video.mp4").exists() else None,
                 show_captions=show_captions,
                 background_color=render_bg_color,
             )
@@ -924,6 +927,7 @@ class VideoGenerationPipeline:
             "words_csv": word_outputs.get("words_csv", words_csv),
             "alignment_json": word_outputs.get("alignment_json", alignment_json),
             "timeline_json": timeline_path,
+            "avatar_video_path": avatar_video_path,
             "video_path": video_path,
             "token_usage": total_usage,
         }
@@ -3051,6 +3055,103 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             import traceback
             print(f"    📋 Error details: {traceback.format_exc()[:500]}")  # Limit traceback length
             return None, None
+
+    def _generate_avatar_runpod(self, run_dir: Path) -> Optional[Path]:
+        if not self._current_avatar_image_url:
+            print("⚠️ No avatar image URL provided, using default teacher image.")
+            import sys
+            import logging
+            from pathlib import Path
+            logger = logging.getLogger(__name__)
+            
+            app_dir = Path(__file__).parent.parent
+            if str(app_dir) not in sys.path:
+                sys.path.insert(0, str(app_dir))
+                
+            from services.s3_service import S3Service
+            s3_service = S3Service()
+            default_teacher_path = app_dir / "assets" / "default_teacher.png"
+            video_id = run_dir.name
+            
+            if default_teacher_path.exists():
+                print("📤 Uploading default teacher image to S3 for RunPod access...")
+                try:
+                    s3_url = s3_service.upload_video_file(
+                        file_path=default_teacher_path,
+                        video_id=video_id,
+                        stage="avatar_input" # Save it under an avatar_input folder
+                    )
+                    if s3_url:
+                        self._current_avatar_image_url = s3_url
+                        print(f"✅ Default teacher image uploaded: {s3_url}")
+                    else:
+                        print("⚠️ Failed to upload default teacher image, avatar generation may fail.")
+                except Exception as e:
+                    print(f"⚠️ Exception uploading default teacher: {e}")
+            else:
+                print(f"⚠️ Default teacher image not found at {default_teacher_path}. Ensure it exists or provide avatar_image_url.")
+        print(f"👤 Generating Avatar Video via RunPod with image: {self._current_avatar_image_url}")
+        
+        audio_url_file = run_dir / "audio_s3_url.txt"
+        if not audio_url_file.exists():
+            print("⚠️ audio_s3_url.txt not found. Avatar generation requires a public S3 URL for the audio.")
+            return None
+            
+        audio_s3_url = audio_url_file.read_text().strip()
+        if not audio_s3_url:
+            print("⚠️ audio_s3_url.txt is empty.")
+            return None
+            
+        try:
+            # Import dynamically to avoid path issues
+            import sys
+            import logging
+            from pathlib import Path
+            logger = logging.getLogger(__name__)
+            # Ensure the app dir is in path
+            app_dir = Path(__file__).parent.parent
+            if str(app_dir) not in sys.path:
+                sys.path.insert(0, str(app_dir))
+            
+            from services.avatar_service import get_avatar_provider
+            from config import get_settings
+            
+            settings = get_settings()
+            
+            # The config now has runpod api key
+            if not settings.runpod_api_key or not settings.runpod_endpoint_id:
+                print("⚠️ RunPod API key or Endpoint ID not configured in settings. Skipping avatar generation gracefully and proceeding without breaking the pipeline.")
+                return None
+                
+            provider = get_avatar_provider(
+                provider="runpod",
+                api_key=settings.runpod_api_key,
+                endpoint_id=settings.runpod_endpoint_id
+            )
+            
+            video_url = provider.generate(
+                image_url=self._current_avatar_image_url,
+                audio_url=audio_s3_url
+            )
+            
+            print(f"✅ Avatar video generated at public URL: {video_url}")
+            
+            # Download it to run_dir
+            import requests
+            print("📥 Downloading avatar video from RunPod...")
+            resp = requests.get(video_url, timeout=60)
+            resp.raise_for_status()
+            
+            final_path = run_dir / "avatar_video.mp4"
+            final_path.write_bytes(resp.content)
+            print(f"✅ Avatar video downloaded to: {final_path}")
+            return final_path
+            
+        except Exception as e:
+            print(f"❌ RunPod avatar generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def _generate_avatar(self, audio_path: Path, run_dir: Path, opts: Dict[str, Any]) -> Optional[Path]:
         avatar_opts = opts.get("avatar", {})

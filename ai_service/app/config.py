@@ -104,6 +104,10 @@ class Settings(BaseSettings):
     # Google Generative AI Configuration (for Gemini image generation)
     gemini_api_key: Optional[str] = None
 
+    # RunPod Configuration (for avatar video generation via EchoMimic)
+    runpod_api_key: Optional[str] = None
+    runpod_endpoint_id: Optional[str] = None
+
     # YouTube API Configuration
     youtube_api_key: Optional[str] = None
     

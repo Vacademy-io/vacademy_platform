@@ -64,6 +64,8 @@ jobs:
               AWS_BUCKET_NAME=${{ secrets.AWS_S3_PUBLIC_BUCKET }} \
               GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
               YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }} \
+              RUNPOD_API_KEY=${{ secrets.RUNPOD_API_KEY }} \
+              RUNPOD_ENDPOINT_ID=${{ secrets.RUNPOD_ENDPOINT_ID }} \
               LLM_DEFAULT_MODEL=google/gemini-2.5-flash \
               DB_USERNAME=${{ secrets.DB_USERNAME }} \
               DB_PASSWORD=${{ secrets.DB_PASSWORD }} \

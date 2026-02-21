@@ -63,10 +63,11 @@ RUN cp preview_weights/transformer/diffusion_pytorch_model.safetensors transform
 WORKDIR /workspace/echomimic_v3
 
 # Copy CLI wrapper injected over V3 infer_preview.py
-COPY infer_audio2vid_cli.py /workspace/echomimic_v3/infer_audio2vid_cli.py
+# Paths are relative to repo root (RunPod GitHub builder sets context = repo root)
+COPY ai_service/runpod_worker/infer_audio2vid_cli.py /workspace/echomimic_v3/infer_audio2vid_cli.py
 
 # Copy out Serverless Handler
-COPY handler.py /workspace/echomimic_v3/handler.py
+COPY ai_service/runpod_worker/handler.py /workspace/echomimic_v3/handler.py
 
 # Start the built-in RunPod listener automatically
 CMD python -u /workspace/echomimic_v3/handler.py

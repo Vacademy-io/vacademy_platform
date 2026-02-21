@@ -948,6 +948,122 @@ public class HtmlBuilderService {
         return html.toString();
     }
 
+    /**
+     * Builds HTML for the full learner Subject-wise Progress Report PDF with all columns:
+     * Subject, Module, Module Completed, Module completed by batch,
+     * Daily Time spent by batch (Avg), Daily Time spent (Avg).
+     * Uses full document structure and @page margins so the header is not cut off at top of PDF.
+     */
+    public static String getLearnerSubjectWiseProgressReportFullHtml(List<LearnerSubjectWiseProgressReportDTO> subjectWiseProgress,
+                                                                    String learnerName,
+                                                                    String batchName,
+                                                                    String instituteName) {
+        StringBuilder html = new StringBuilder();
+
+        // Full document wrapper with @page margins to prevent top content from being cut off in PDF
+        html.append("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/>")
+                .append("<style>")
+                .append("@page { size: A4; margin: 20mm 15mm; }")
+                .append("body { font-family: Georgia, serif; margin: 0; padding: 0; color: #333; }")
+                .append("table { page-break-inside: auto; } tr { page-break-inside: avoid; page-break-after: auto; }")
+                .append("</style></head><body>");
+
+        html.append("<div style='background-color: #f8f8f8; padding: 30px 20px; min-height: 100%;'>");
+
+        // Container
+        html.append("<div style='max-width: 1000px; margin: auto; background: #fff; padding: 40px 50px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);'>");
+
+        // Heading
+        html.append("<h2 style='text-align: center; font-size: 28px; color: #222; margin: 0 0 30px 0;'>Subject-wise Progress Report</h2>");
+
+        // Details
+        html.append("<div style='text-align: center; font-size: 16px; margin-bottom: 30px;'>")
+                .append("<p style='margin: 4px 0;'><strong>Institute:</strong> ").append(escapeHtml(nullToDash(instituteName))).append("</p>")
+                .append("<p style='margin: 4px 0;'><strong>Batch:</strong> ").append(escapeHtml(nullToDash(batchName))).append("</p>")
+                .append("<p style='margin: 4px 0;'><strong>Learner Name:</strong> ").append(escapeHtml(nullToDash(learnerName))).append("</p>")
+                .append("</div>");
+
+        // Section Heading
+        html.append("<h2 style='text-align: center; font-size: 22px; color: #222; margin: 40px 0 20px 0;'>Subject-wise Overview</h2>");
+
+        // Table with all 6 columns
+        html.append("<table style='width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 30px; border: 1px solid #ddd;'>");
+        html.append("<thead>")
+                .append("<tr style='background-color: #fcedda;'>")
+                .append("<th style='text-align: left; padding: 12px; border: 1px solid #ddd;'>Subject</th>")
+                .append("<th style='text-align: left; padding: 12px; border: 1px solid #ddd;'>Module</th>")
+                .append("<th style='text-align: left; padding: 12px; border: 1px solid #ddd;'>Module Completed</th>")
+                .append("<th style='text-align: left; padding: 12px; border: 1px solid #ddd;'>Module completed by batch</th>")
+                .append("<th style='text-align: left; padding: 12px; border: 1px solid #ddd;'>Daily Time spent by batch (Avg)</th>")
+                .append("<th style='text-align: left; padding: 12px; border: 1px solid #ddd;'>Daily Time spent (Avg)</th>")
+                .append("</tr>")
+                .append("</thead><tbody>");
+
+        for (LearnerSubjectWiseProgressReportDTO subject : subjectWiseProgress) {
+            String subjectName = nullToDash(subject.getSubjectName());
+            List<LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO> modules = subject.getModules();
+            if (modules == null) continue;
+
+            for (int i = 0; i < modules.size(); i++) {
+                LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO module = modules.get(i);
+                double completionPct = module.getCompletionPercentage() != null ? module.getCompletionPercentage() : 0.0;
+                double completionByBatch = module.getCompletionPercentageByBatch() != null ? module.getCompletionPercentageByBatch() : 0.0;
+                double avgTimeMins = module.getAvgTimeSpentMinutes() != null ? module.getAvgTimeSpentMinutes() : 0.0;
+                double avgTimeByBatchMins = module.getAvgTimeSpentMinutesByBatch() != null ? module.getAvgTimeSpentMinutesByBatch() : 0.0;
+
+                String moduleName = nullToDash(module.getModuleName());
+
+                html.append("<tr>")
+                        .append("<td style='padding: 12px; border: 1px solid #ddd;'>")
+                        .append(i == 0 ? escapeHtml(subjectName) : "")
+                        .append("</td>")
+                        .append("<td style='padding: 12px; border: 1px solid #ddd;'>")
+                        .append(escapeHtml(moduleName))
+                        .append("</td>")
+                        .append("<td style='padding: 12px; border: 1px solid #ddd;'>")
+                        .append(String.format("%.2f%%", completionPct))
+                        .append("</td>")
+                        .append("<td style='padding: 12px; border: 1px solid #ddd;'>")
+                        .append(String.format("%.2f%%", completionByBatch))
+                        .append("</td>")
+                        .append("<td style='padding: 12px; border: 1px solid #ddd;'>")
+                        .append(formatMinutesToDurationString(avgTimeByBatchMins))
+                        .append("</td>")
+                        .append("<td style='padding: 12px; border: 1px solid #ddd;'>")
+                        .append(formatMinutesToDurationString(avgTimeMins))
+                        .append("</td>")
+                        .append("</tr>");
+            }
+        }
+
+        html.append("</tbody></table></div></div></body></html>");
+        return html.toString();
+    }
+
+    private static String nullToDash(String value) {
+        return (value == null || value.isBlank()) ? "-" : value;
+    }
+
+    /**
+     * Formats minutes to duration string like "6h 15m 51s" or "2m 49s" to match frontend display.
+     */
+    private static String formatMinutesToDurationString(double minutes) {
+        if (minutes <= 0) return "0m 0s";
+        long totalSeconds = Math.round(minutes * 60);
+        long days = totalSeconds / 86400;
+        long remainder = totalSeconds % 86400;
+        long hours = remainder / 3600;
+        remainder %= 3600;
+        long mins = remainder / 60;
+        long secs = remainder % 60;
+
+        StringBuilder sb = new StringBuilder();
+        if (days > 0) sb.append(days).append("d ");
+        if (hours > 0 || days > 0) sb.append(hours).append("h ");
+        sb.append(mins).append("m ").append(secs).append("s");
+        return sb.toString();
+    }
+
     public static String getBatchSubjectWiseProgressReportHtml(List<SubjectProgressDTO> subjectWiseProgress,
                                                                String batchName,
                                                                String instituteName) {

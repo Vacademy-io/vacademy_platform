@@ -87,4 +87,20 @@ public class ApplicantAdminController {
         Page<ApplicantDTO> applicants = applicantService.getApplicants(filterDTO);
         return ResponseEntity.ok(applicants);
     }
+
+    /**
+     * Admin endpoint to manually move applicant to next stage
+     * Updates applicant, creates new applicant_stage entry, and updates audience_response if workflow type completed
+     */
+    @PostMapping("/{applicantId}/move-stage")
+    public ResponseEntity<String> moveApplicantToNextStage(@PathVariable String applicantId) {
+        logger.info("Request to move applicant {} to next stage", applicantId);
+        try {
+            applicantService.moveApplicantToNextStage(applicantId);
+            return ResponseEntity.ok("Applicant moved to next stage successfully");
+        } catch (Exception e) {
+            logger.error("Error moving applicant to next stage: {}", applicantId, e);
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
 }

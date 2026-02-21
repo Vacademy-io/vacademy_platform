@@ -36,6 +36,12 @@ public class ApplicationStageDTO {
     @JsonProperty("workflow_type")
     private String workflowType;
 
+    @JsonProperty("is_first")
+    private Boolean isFirst;
+
+    @JsonProperty("is_last")
+    private Boolean isLast;
+
     public ApplicationStageDTO(ApplicationStage stage) {
         this.id = stage.getId().toString();
         this.stageName = stage.getStageName();
@@ -46,5 +52,7 @@ public class ApplicationStageDTO {
         this.configJson = stage.getConfigJson();
         this.type = stage.getType();
         this.workflowType = stage.getWorkflowType();
+        this.isFirst = stage.getIsFirst();
+        this.isLast = stage.getIsLast();
     }
 }

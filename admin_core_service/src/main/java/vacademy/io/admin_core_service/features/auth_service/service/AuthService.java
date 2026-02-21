@@ -315,6 +315,11 @@ public class AuthService {
             }
             return null;
         } catch (Exception e) {
+            // A 404 from Auth Service simply means the user doesn't exist yet, which is
+            // expected for new admissions.
+            if (e.getMessage() != null && e.getMessage().contains("404")) {
+                return null;
+            }
             throw new VacademyException("Failed to get user by mobile number: " + e.getMessage());
         }
     }

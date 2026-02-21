@@ -32,16 +32,19 @@ RUN sed -i 's/opencv-python/opencv-python-headless/' requirements.txt
 # Install V3 specific dependencies
 RUN pip install -r requirements.txt
 
-# Fast Download HuggingFace Pre-trained Weights using huggingface-cli to skip massive .git history
+# Fast Download HuggingFace Pre-trained Weights using Python to bypass PATH issues (.local/bin)
 # This prevents the 30-minute RunPod GitHub builder timeout
-RUN pip install "huggingface_hub[cli]"
+RUN pip install "huggingface_hub[cli,hf_transfer]"
+
+# Enable extreme download speeds via hf_transfer
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
 
 RUN mkdir -p models
 WORKDIR /workspace/echomimic_v3/models
 
-RUN huggingface-cli download alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP --local-dir Wan2.1-Fun-V1.1-1.3B-InP --exclude "*.md" "*.gitattributes"
-RUN huggingface-cli download facebook/wav2vec2-base-960h --local-dir wav2vec2-base-960h --exclude "*.md" "*.gitattributes"
-RUN huggingface-cli download BadToBest/EchoMimicV3 --local-dir preview_weights --exclude "*.md" "*.gitattributes"
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP', local_dir='Wan2.1-Fun-V1.1-1.3B-InP', ignore_patterns=['*.md', '*.gitattributes', '*.txt'])"
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='facebook/wav2vec2-base-960h', local_dir='wav2vec2-base-960h', ignore_patterns=['*.md', '*.gitattributes', '*.txt'])"
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='BadToBest/EchoMimicV3', local_dir='preview_weights', ignore_patterns=['*.md', '*.gitattributes', '*.txt'])"
 
 # Construct the exact folder structure expected by V3
 RUN mkdir -p transformer

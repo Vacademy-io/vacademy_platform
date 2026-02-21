@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.notification_service.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.service.InstituteService;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
@@ -159,7 +160,16 @@ public class PaymentNotificatonService {
             return null;
 
         String transactionId = safeCastToString(responseData.get("transactionId"));
-        String instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
+        String instituteLogoUrl = "";
+        try {
+            if (StringUtils.hasText(institute.getLogoFileId())) {
+                instituteLogoUrl = mediaService.getFileUrlById(institute.getLogoFileId());
+            }
+        } catch (Exception e) {
+            // Log and continue without logo
+            SentryLogger.logError(e, "Failed to get institute logo for email",
+                    Map.of("instituteId", institute.getId()));
+        }
 
         // This is the receipt URL you fetch from the Charge object
         String receiptUrl = safeCastToString(responseData.get("receiptUrl"));

@@ -75,3 +75,13 @@ spec:
                 name: auth-service
                 port:
                   number: {{ .Values.services.auth_service.port }}
+    - host: u.vacademy.io
+      http:
+        paths:
+          - path: /s
+            pathType: Prefix
+            backend:
+              service:
+                name: media-service
+                port:
+                  number: {{ .Values.services.media_service.port }}

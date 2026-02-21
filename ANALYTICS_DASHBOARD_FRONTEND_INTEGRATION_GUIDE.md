@@ -3,6 +3,7 @@
 ## Overview
 This document provides comprehensive guidance for integrating the Challenge Program Analytics Dashboard APIs with the frontend. The dashboard tracks parent engagement across challenge programs and provides actionable insights for marketing and retention optimization.
 
+
 ## 🔐 Authentication Requirements
 
 **ALL ANALYTICS ENDPOINTS REQUIRE JWT AUTHENTICATION**

@@ -212,6 +212,7 @@ async def generate_till_html(
             institute_id=payload.institute_id,
             user_id=payload.user_id,
             avatar_image_url=payload.avatar_image_url,
+            generate_avatar=payload.generate_avatar,
         ):
             yield f"data: {event}\n\n"
     

@@ -3065,10 +3065,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             logger = logging.getLogger(__name__)
             
             app_dir = Path(__file__).parent.parent
-            if str(app_dir) not in sys.path:
-                sys.path.insert(0, str(app_dir))
+            if str(app_dir.parent) not in sys.path:
+                sys.path.insert(0, str(app_dir.parent))
                 
-            from services.s3_service import S3Service
+            from app.services.s3_service import S3Service
             s3_service = S3Service()
             default_teacher_path = app_dir / "assets" / "default_teacher.png"
             video_id = run_dir.name
@@ -3110,11 +3110,11 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             logger = logging.getLogger(__name__)
             # Ensure the app dir is in path
             app_dir = Path(__file__).parent.parent
-            if str(app_dir) not in sys.path:
-                sys.path.insert(0, str(app_dir))
+            if str(app_dir.parent) not in sys.path:
+                sys.path.insert(0, str(app_dir.parent))
             
-            from services.avatar_service import get_avatar_provider
-            from config import get_settings
+            from app.services.avatar_service import get_avatar_provider
+            from app.config import get_settings
             
             settings = get_settings()
             

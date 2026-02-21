@@ -21,6 +21,12 @@ public interface ApplicationStageRepository extends JpaRepository<ApplicationSta
                         String sequence,
                         String workflowType);
 
+        Optional<ApplicationStage> findByInstituteIdAndSourceAndSourceIdAndSequence(
+                        String instituteId,
+                        String source,
+                        String sourceId,
+                        String sequence);
+
         @Query("SELECT s FROM ApplicationStage s WHERE " +
                         "(:instituteId IS NULL OR s.instituteId = :instituteId) AND " +
                         "(:source IS NULL OR s.source = :source) AND " +

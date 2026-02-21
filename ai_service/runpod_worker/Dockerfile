@@ -32,9 +32,9 @@ RUN sed -i 's/opencv-python/opencv-python-headless/' requirements.txt
 # Install V3 specific dependencies
 RUN pip install -r requirements.txt
 
-# Force legacy keras routing for RetinaFace in TF 2.16+
-ENV TF_USE_LEGACY_KERAS=1
-RUN pip install "tf-keras>=2.16.0"
+# Force tensorflow <= 2.15.1 so keras correctly ships alongside it
+# RetinaFace crashes instantly with TF 2.16+ generic architecture
+RUN pip install "tensorflow<2.16.0"
 
 # Fast Download HuggingFace Pre-trained Weights using Python to bypass PATH issues (.local/bin)
 # This prevents the 30-minute RunPod GitHub builder timeout

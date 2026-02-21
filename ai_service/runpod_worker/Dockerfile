@@ -32,6 +32,9 @@ RUN sed -i 's/opencv-python/opencv-python-headless/' requirements.txt
 # Install V3 specific dependencies
 RUN pip install -r requirements.txt
 
+# Force tensorflow 2.15.1 to prevent retinaface Keras 3 ModuleNotFoundError
+RUN pip install "tensorflow==2.15.1"
+
 # Fast Download HuggingFace Pre-trained Weights using Python to bypass PATH issues (.local/bin)
 # This prevents the 30-minute RunPod GitHub builder timeout
 RUN pip install "huggingface_hub[cli,hf_transfer]"

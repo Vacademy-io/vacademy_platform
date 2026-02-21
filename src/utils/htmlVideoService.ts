@@ -2,11 +2,10 @@
 import axios from 'axios';
 import { getTokenFromStorage } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { AI_SERVICE_URL } from '@/constants/urls';
 
-// Use the same URL as admin dashboard (direct call to AI service)
-const AI_SERVICE_BASE_URL = "https://backend-stage.vacademy.io/ai-service";
-const GET_VIDEO_URLS = (videoId: string) => 
-    `${AI_SERVICE_BASE_URL}/video/urls/${videoId}`;
+const GET_VIDEO_URLS = (videoId: string) =>
+    `${AI_SERVICE_URL}/video/urls/${videoId}`;
 
 export interface HtmlVideoUrls {
     htmlUrl: string;
@@ -20,7 +19,7 @@ export interface HtmlVideoUrls {
 export const fetchHtmlVideoUrls = async (videoId: string): Promise<HtmlVideoUrls> => {
     // Get access token directly
     const accessToken = await getTokenFromStorage(TokenKey.accessToken);
-    
+
     if (!accessToken) {
         throw new Error('No access token found');
     }
@@ -32,7 +31,7 @@ export const fetchHtmlVideoUrls = async (videoId: string): Promise<HtmlVideoUrls
             'Accept': 'application/json, text/plain, */*',
         },
     });
-    
+
     // Handle both snake_case (html_url, audio_url) and camelCase (htmlUrl, audioUrl) responses
     return {
         htmlUrl: response.data.html_url || response.data.htmlUrl || response.data.timelineUrl || '',

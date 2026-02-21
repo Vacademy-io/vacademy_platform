@@ -200,7 +200,7 @@ async def generate_till_html(
         async for event in service.generate_till_stage(
             video_id=video_id,
             prompt=payload.prompt,
-            target_stage="HTML",
+            target_stage="AVATAR" if payload.generate_avatar else "HTML",
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,

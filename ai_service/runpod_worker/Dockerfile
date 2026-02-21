@@ -18,34 +18,40 @@ RUN apt-get update && apt-get install -y \
 # Setup Workspace
 WORKDIR /workspace
 
-# Clone EchoMimic
-RUN git clone https://github.com/BadToBest/EchoMimic.git
-WORKDIR /workspace/EchoMimic
+# Clone EchoMimic V3 (AntGroup)
+RUN git clone https://github.com/antgroup/echomimic_v3.git
+WORKDIR /workspace/echomimic_v3
 
 # Upgrade pip and install standard RunPod/Boto3 wrappers
 RUN pip install --upgrade pip
 RUN pip install runpod boto3
 
-# Fix older exact pinning of requirements to ensure they build successfully
-RUN sed -i 's/torch>=2.0.1,<=2.2.2/torch>=2.0.1/' requirements.txt
-RUN sed -i 's/torchvision>=0.15.2,<=0.17.2/torchvision>=0.15.2/' requirements.txt
-RUN sed -i 's/torchaudio>=2.0.2,<=2.2.2/torchaudio>=2.0.2/' requirements.txt
-RUN sed -i 's/av==11.0.0/av/' requirements.txt
+# Fix opencv dependency issue commonly found on fresh Linux headless installs
+RUN sed -i 's/opencv-python/opencv-python-headless/' requirements.txt
 
-# Install EchoMimic dependencies
+# Install V3 specific dependencies
 RUN pip install -r requirements.txt
 
-# Download HuggingFace Pre-trained Weights using Git LFS
-# This bakes the weights into the Docker Image for fast cold-starts
+# Download HuggingFace Pre-trained Weights using Git LFS (Warning: Massive Models!)
 RUN git lfs install
-RUN git clone https://huggingface.co/BadToBest/EchoMimic pretrained_weights
+RUN mkdir -p models
+WORKDIR /workspace/echomimic_v3/models
 
-# Optionally construct a basic CLI script to trigger infer_audio2vid dynamically
-# (Instead of modifying animation.yaml manually every time)
-COPY infer_audio2vid_cli.py /workspace/EchoMimic/infer_audio2vid_cli.py
+RUN git clone https://huggingface.co/alibaba-pai/Wan2.1-Fun-V1.1-1.3B-InP
+RUN git clone https://huggingface.co/facebook/wav2vec2-base-960h
+RUN git clone https://huggingface.co/BadToBest/EchoMimicV3 preview_weights
+
+# Construct the exact folder structure expected by V3
+RUN mkdir -p transformer
+RUN cp preview_weights/transformer/diffusion_pytorch_model.safetensors transformer/
+
+WORKDIR /workspace/echomimic_v3
+
+# Copy CLI wrapper injected over V3 infer_preview.py
+COPY infer_audio2vid_cli.py /workspace/echomimic_v3/infer_audio2vid_cli.py
 
 # Copy out Serverless Handler
-COPY handler.py /workspace/EchoMimic/handler.py
+COPY handler.py /workspace/echomimic_v3/handler.py
 
 # Start the built-in RunPod listener automatically
-CMD python -u /workspace/EchoMimic/handler.py
+CMD python -u /workspace/echomimic_v3/handler.py

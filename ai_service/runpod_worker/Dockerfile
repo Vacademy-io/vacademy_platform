@@ -296,5 +296,8 @@ print("[Startup] Starting RunPod serverless worker.")
 runpod.serverless.start({"handler": generate_avatar})
 HANDLER_EOF
 
+# Set PyTorch memory allocator to avoid fragmentation OOM errors on RunPod
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 # Start the built-in RunPod listener automatically
 CMD python -u /workspace/echomimic_v3/handler.py

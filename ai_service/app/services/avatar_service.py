@@ -72,7 +72,17 @@ class RunPodAvatarProvider(AvatarProvider):
             poll.raise_for_status()
             data = poll.json()
             status = data.get("status")
-            logger.info("RunPod job %s status: %s", job_id, status)
+
+            # Log the latest progress update if the worker sent one via
+            # runpod.serverless.progress_update(), otherwise just log status.
+            stream = data.get("stream") or []
+            if stream:
+                latest = stream[-1].get("output", {})
+                progress = latest.get("progress", "?")
+                stage = latest.get("stage", "")
+                logger.info("RunPod job %s: %s%% – %s", job_id, progress, stage)
+            else:
+                logger.info("RunPod job %s status: %s", job_id, status)
 
             if status == "COMPLETED":
                 video_url = data["output"]["video_url"]

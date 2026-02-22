@@ -59,86 +59,194 @@ import sys
 import os
 import shutil
 import glob
+import json
+import subprocess
 
 # ---------------------------------------------------------------------------
-# CRITICAL: Force TensorFlow (used by RetinaFace for face detection) to run
-# on CPU BEFORE importing infer_preview. Without this, TF pre-allocates ~13 GB
-# of GPU VRAM at import time, leaving PyTorch without enough memory for the
-# diffusion pipeline during inference (OOM on even 48 GB GPUs).
-# tf.config.set_visible_devices only affects TF's runtime — PyTorch/CUDA are
-# completely unaffected and continue to use the full GPU.
+# CRITICAL: Force TensorFlow (used by RetinaFace) to CPU BEFORE importing
+# infer_preview. Without this, TF pre-allocates ~13 GB of GPU VRAM at import
+# time, leaving PyTorch without enough memory for the diffusion pipeline.
+# tf.config.set_visible_devices only affects TF — PyTorch/CUDA are unaffected.
 # ---------------------------------------------------------------------------
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'   # suppress TF startup noise
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
-tf.config.set_visible_devices([], 'GPU')    # TF uses CPU only from here on
+tf.config.set_visible_devices([], 'GPU')
 
 from infer_preview import Config, main
 import infer_preview
 
+# ---------------------------------------------------------------------------
+# Audio chunking: a 1-minute clip = ~1500 frames at 25 fps. Attempting to
+# generate all at once OOMs even on A6000 48 GB. We split into MAX_CHUNK_DURATION
+# second segments, process each with a SINGLE model load (test_name_list loop
+# inside infer_preview.main keeps the model in VRAM), then concat with ffmpeg.
+# ---------------------------------------------------------------------------
+MAX_CHUNK_DURATION = 25  # seconds; safe at 512x512 / 10 steps / TeaCache on 48 GB
+
+def get_audio_duration(audio_path):
+    result = subprocess.run(
+        ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_streams', audio_path],
+        capture_output=True, text=True, check=True
+    )
+    info = json.loads(result.stdout)
+    for stream in info['streams']:
+        if stream.get('codec_type') == 'audio':
+            return float(stream['duration'])
+    raise RuntimeError("No audio stream found in: " + audio_path)
+
+def to_wav_16k(src, dst):
+    """Convert any audio to 16 kHz mono WAV (required by wav2vec2)."""
+    subprocess.run(
+        ['ffmpeg', '-y', '-i', src, '-ar', '16000', '-ac', '1', dst],
+        check=True, capture_output=True, text=True
+    )
+
+def split_audio(wav_path, chunk_duration, out_dir):
+    """Split WAV into fixed-duration chunks. Returns list of (idx, path) tuples."""
+    duration = get_audio_duration(wav_path)
+    os.makedirs(out_dir, exist_ok=True)
+    chunks = []
+    start = 0.0
+    idx   = 0
+    while start < duration - 1.0:   # skip trailing fragments shorter than 1 s
+        chunk_path = os.path.join(out_dir, f"chunk_{idx:03d}.wav")
+        subprocess.run(
+            ['ffmpeg', '-y', '-i', wav_path,
+             '-ss', str(start), '-t', str(chunk_duration), chunk_path],
+            check=True, capture_output=True, text=True
+        )
+        chunks.append((idx, chunk_path))
+        start += chunk_duration
+        idx   += 1
+    return chunks, duration
+
+def concat_videos(paths, out_path):
+    """Losslessly concatenate MP4s via ffmpeg concat demuxer."""
+    lst = '/tmp/concat_list.txt'
+    with open(lst, 'w') as fh:
+        for p in paths:
+            fh.write(f"file '{os.path.abspath(p)}'\n")
+    subprocess.run(
+        ['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', out_path],
+        check=True, capture_output=True, text=True
+    )
+    os.remove(lst)
+
+def find_output_video(save_dir, prefix=None):
+    """Find the most-recently-modified *_audio.mp4 in save_dir, optionally filtered by prefix."""
+    candidates = []
+    for root, _, files in os.walk(save_dir):
+        for f in files:
+            if not f.endswith("_audio.mp4"):
+                continue
+            if prefix and not f.startswith(prefix):
+                continue
+            candidates.append(os.path.join(root, f))
+    if not candidates:
+        return None
+    return max(candidates, key=os.path.getmtime)
+
 def run_cli():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image_path", required=True)
-    parser.add_argument("--audio_path", required=True)
+    parser.add_argument("--image_path",  required=True)
+    parser.add_argument("--audio_path",  required=True)
     parser.add_argument("--output_path", required=True)
     args = parser.parse_args()
 
-    job_id = "runpod_job"
+    # Normalise to 16 kHz mono WAV so wav2vec2 always gets the correct format
+    # regardless of whether the input is MP3, M4A, or already WAV.
+    wav_path = "/tmp/input_norm.wav"
+    print("[CLI] Converting audio to 16 kHz WAV...")
+    to_wav_16k(args.audio_path, wav_path)
 
-    # EchoMimic V3 infer_preview strictly expects a nested directory dataset format
-    base_dir = "datasets/dynamic_runpod"
-    os.makedirs(f"{base_dir}/imgs", exist_ok=True)
-    os.makedirs(f"{base_dir}/audios", exist_ok=True)
-    os.makedirs(f"{base_dir}/prompts", exist_ok=True)
+    duration = get_audio_duration(wav_path)
+    print(f"[CLI] Audio duration: {duration:.1f}s")
 
-    shutil.copy(args.image_path, f"{base_dir}/imgs/{job_id}.png")
-    shutil.copy(args.audio_path, f"{base_dir}/audios/{job_id}.WAV")
+    # Helper: build a RunPodConfig subclass closed over the given parameters.
+    def make_config(base_dir, test_name_list, save_path):
+        _b, _n, _s = base_dir, test_name_list, save_path
+        class RunPodConfig(Config):
+            def __init__(self):
+                super().__init__()
+                self.base_dir            = _b
+                self.test_name_list      = _n
+                self.model_name          = "models/Wan2.1-Fun-V1.1-1.3B-InP"
+                self.transformer_path    = "models/transformer/diffusion_pytorch_model.safetensors"
+                self.wav2vec_model_dir   = "models/wav2vec2-base-960h"
+                self.save_path           = _s
+                self.enable_teacache     = True
+                self.teacache_threshold  = 0.1
+                self.num_inference_steps = 10
+                self.sample_size         = [512, 512]
+        return RunPodConfig
 
-    with open(f"{base_dir}/prompts/{job_id}.txt", "w") as f:
-        f.write("a teacher talking")
+    if duration <= MAX_CHUNK_DURATION:
+        # ── Short clip: single inference pass ──────────────────────────────
+        job_id   = "runpod_job"
+        base_dir = "datasets/dynamic_runpod"
+        save_dir = "outputs_dynamic"
+        os.makedirs(f"{base_dir}/imgs",    exist_ok=True)
+        os.makedirs(f"{base_dir}/audios",  exist_ok=True)
+        os.makedirs(f"{base_dir}/prompts", exist_ok=True)
 
-    class RunPodConfig(Config):
-        def __init__(self):
-            super().__init__()
-            self.base_dir = base_dir
-            self.test_name_list = [job_id]
-            self.model_name = "models/Wan2.1-Fun-V1.1-1.3B-InP"
-            self.transformer_path = "models/transformer/diffusion_pytorch_model.safetensors"
-            self.wav2vec_model_dir = "models/wav2vec2-base-960h"
-            self.save_path = "outputs_dynamic"
-            # TeaCache skips redundant attention computations — 2-3x speedup with
-            # minimal quality loss. Built into EchoMimic V3's transformer.
-            self.enable_teacache = True
-            self.teacache_threshold = 0.1
-            # 10 steps vs 25 default: good quality/speed balance for talking-head video.
-            self.num_inference_steps = 10
-            # 512x512 vs 768x768 default: 2.25x less VRAM + attention compute.
-            # Increase back to [768, 768] if output quality is insufficient.
-            self.sample_size = [512, 512]
+        shutil.copy(args.image_path, f"{base_dir}/imgs/{job_id}.png")
+        shutil.copy(wav_path,        f"{base_dir}/audios/{job_id}.WAV")
+        with open(f"{base_dir}/prompts/{job_id}.txt", "w") as fh:
+            fh.write("a teacher talking")
 
-    # Monkeypatch the Config class inside infer_preview
-    infer_preview.Config = RunPodConfig
+        infer_preview.Config = make_config(base_dir, [job_id], save_dir)
+        main()
 
-    # Execute the primary generation logic natively
-    main()
+        out = find_output_video(save_dir)
+        if not out:
+            raise RuntimeError("No *_audio.mp4 found in " + save_dir)
+        shutil.copy(out, args.output_path)
+        print(f"[CLI] Done → {args.output_path}")
 
-    # Search the dynamic output directory to catch the result
-    latest_video = None
-    max_time = 0
-    for root, dirs, files in os.walk("outputs_dynamic"):
-        for file in files:
-            if file.endswith("_audio.mp4"):
-                filepath = os.path.join(root, file)
-                mtime = os.path.getmtime(filepath)
-                if mtime > max_time:
-                    max_time = mtime
-                    latest_video = filepath
-
-    if latest_video:
-        shutil.copy(latest_video, args.output_path)
-        print(f"V3 Inference completed successfully. Output copied to {args.output_path}")
     else:
-        raise RuntimeError("V3 generation finished but mp4 was not found in outputs_dynamic directory.")
+        # ── Long clip: chunk audio, single model load, sequential inference ─
+        # infer_preview.main() iterates over test_name_list keeping the model
+        # loaded in VRAM — each chunk is processed without a reload.
+        print(f"[CLI] Audio > {MAX_CHUNK_DURATION}s — splitting into {MAX_CHUNK_DURATION}s segments")
+        chunks, _ = split_audio(wav_path, MAX_CHUNK_DURATION, "/tmp/audio_chunks")
+        print(f"[CLI] {len(chunks)} chunk(s) to process")
+
+        base_dir = "datasets/dynamic_chunked"
+        save_dir = "outputs_dynamic_chunked"
+        os.makedirs(f"{base_dir}/imgs",    exist_ok=True)
+        os.makedirs(f"{base_dir}/audios",  exist_ok=True)
+        os.makedirs(f"{base_dir}/prompts", exist_ok=True)
+
+        chunk_ids = []
+        for idx, chunk_wav in chunks:
+            cid = f"chunk{idx:03d}"
+            shutil.copy(args.image_path, f"{base_dir}/imgs/{cid}.png")
+            shutil.copy(chunk_wav,       f"{base_dir}/audios/{cid}.WAV")
+            with open(f"{base_dir}/prompts/{cid}.txt", "w") as fh:
+                fh.write("a teacher talking")
+            chunk_ids.append(cid)
+
+        infer_preview.Config = make_config(base_dir, chunk_ids, save_dir)
+        print(f"[CLI] Running inference for {len(chunk_ids)} chunks (single model load)...")
+        main()
+
+        # Collect chunk videos in original order, then concatenate
+        chunk_videos = []
+        for cid in chunk_ids:
+            vid = find_output_video(save_dir, prefix=cid)
+            if not vid:
+                raise RuntimeError(f"No output video for chunk {cid} in {save_dir}")
+            chunk_videos.append(vid)
+            print(f"[CLI]   {cid} → {vid}")
+
+        if len(chunk_videos) == 1:
+            shutil.copy(chunk_videos[0], args.output_path)
+        else:
+            print(f"[CLI] Concatenating {len(chunk_videos)} segments...")
+            concat_videos(chunk_videos, args.output_path)
+
+        print(f"[CLI] Done → {args.output_path}")
 
 if __name__ == "__main__":
     run_cli()
@@ -270,33 +378,78 @@ def generate_avatar(job):
     audio_path = os.path.join(work_dir, "input_audio.mp3")
     output_video_path = os.path.join(work_dir, "output.mp4")
 
+    runpod.serverless.progress_update(job, {"progress": 5, "stage": "Downloading inputs"})
     print(f"[{job_id}] Downloading image from {image_url}")
     urllib.request.urlretrieve(image_url, image_path)
-
     print(f"[{job_id}] Downloading audio from {audio_url}")
     urllib.request.urlretrieve(audio_url, audio_path)
 
+    runpod.serverless.progress_update(job, {"progress": 10, "stage": "Starting EchoMimic inference"})
     print(f"[{job_id}] Running EchoMimic Inference...")
-    try:
-        cmd = [
-            "python", "-u", "infer_audio2vid_cli.py",
-            "--image_path", image_path,
-            "--audio_path", audio_path,
-            "--output_path", output_video_path
-        ]
-        # cwd must be the echomimic dir so relative paths (datasets/, outputs_dynamic/)
-        # created by infer_audio2vid_cli.py land in the correct location.
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True,
-                                cwd=ECHOMIMIC_DIR)
-        print(f"[{job_id}] EchoMimic Run Success:\n{result.stdout}")
 
-    except subprocess.CalledProcessError as e:
-        print(f"[{job_id}] EchoMimic Run Failed:\n{e.stderr}")
-        return {"error": f"EchoMimic failed: {e.stderr}"}
+    cmd = [
+        "python", "-u", "infer_audio2vid_cli.py",
+        "--image_path", image_path,
+        "--audio_path", audio_path,
+        "--output_path", output_video_path
+    ]
+
+    # Stream stdout+stderr line-by-line so we can forward logs to RunPod and
+    # parse [CLI] progress markers emitted by infer_audio2vid_cli.py.
+    # python -u ensures the subprocess writes lines without buffering.
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,   # merge stderr into the same pipe
+        text=True,
+        cwd=ECHOMIMIC_DIR
+    )
+
+    output_lines = []
+    num_chunks = None
+    chunks_done = 0
+
+    for line in process.stdout:
+        line = line.rstrip()
+        if not line:
+            continue
+        output_lines.append(line)
+        print(f"[EchoMimic] {line}", flush=True)
+
+        # Parse progress markers from infer_audio2vid_cli.py ───────────────
+        if "chunk(s) to process" in line:
+            # "[CLI] 3 chunk(s) to process"
+            try:
+                num_chunks = int(line.split("[CLI]")[1].strip().split()[0])
+            except Exception:
+                pass
+
+        elif "[CLI]" in line and "\u2192" in line and "chunk" in line and "chunk(s)" not in line:
+            # Chunk done: "[CLI]   chunk000 \u2192 outputs_dynamic_chunked/..."
+            chunks_done += 1
+            if num_chunks and num_chunks > 1:
+                pct = 10 + int((chunks_done / num_chunks) * 75)
+                runpod.serverless.progress_update(job, {
+                    "progress": pct,
+                    "stage": f"Inference: segment {chunks_done}/{num_chunks} complete"
+                })
+
+        elif "Concatenating" in line and "segment" in line:
+            runpod.serverless.progress_update(job, {"progress": 87, "stage": "Concatenating video segments"})
+
+        elif "[CLI] Done" in line:
+            runpod.serverless.progress_update(job, {"progress": 90, "stage": "Inference complete"})
+
+    process.wait()
+    if process.returncode != 0:
+        tail = "\n".join(output_lines[-30:])
+        print(f"[{job_id}] EchoMimic failed (exit {process.returncode})")
+        return {"error": f"EchoMimic failed (exit {process.returncode}):\n{tail}"}
 
     if not os.path.exists(output_video_path):
         return {"error": "Output video was not generated."}
 
+    runpod.serverless.progress_update(job, {"progress": 92, "stage": "Uploading to S3"})
     print(f"[{job_id}] Uploading output to S3...")
     s3_key = f"runpod_outputs/{job_id}/avatar_video.mp4"
 

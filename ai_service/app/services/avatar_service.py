@@ -50,48 +50,59 @@ class RunPodAvatarProvider(AvatarProvider):
         self.api_key = api_key
         self.endpoint_id = endpoint_id
 
-    def generate(self, image_url: str, audio_url: str) -> str:
+    def submit(self, image_url: str, audio_url: str) -> str:
+        """Submit a RunPod job and return the job ID immediately (non-blocking)."""
         headers = {"Authorization": f"Bearer {self.api_key}"}
         run_url = f"https://api.runpod.ai/v2/{self.endpoint_id}/run"
-
-        # 1. Submit the job
         payload = {"input": {"image_url": image_url, "audio_url": audio_url}}
         logger.info("Submitting RunPod job to %s", run_url)
         resp = requests.post(run_url, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         job_id = resp.json()["id"]
         logger.info("RunPod job submitted: %s", job_id)
+        return job_id
 
-        # 2. Poll until completion
+    def check_status(self, job_id: str) -> Dict[str, Any]:
+        """Poll one RunPod job status check. Returns dict with 'status', 'progress',
+        'stage', and 'video_url' (only when COMPLETED) or 'error' (only when FAILED)."""
+        headers = {"Authorization": f"Bearer {self.api_key}"}
         status_url = f"https://api.runpod.ai/v2/{self.endpoint_id}/status/{job_id}"
+        resp = requests.get(status_url, headers=headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        status = data.get("status", "UNKNOWN")
+
+        stream = data.get("stream") or []
+        progress, stage = 0, ""
+        if stream:
+            latest = stream[-1].get("output", {})
+            progress = latest.get("progress", 0)
+            stage = latest.get("stage", "")
+
+        logger.info("RunPod job %s: status=%s progress=%s%% stage=%s", job_id, status, progress, stage)
+        result: Dict[str, Any] = {"status": status, "progress": progress, "stage": stage}
+        if status == "COMPLETED":
+            result["video_url"] = data.get("output", {}).get("video_url", "")
+        elif status == "FAILED":
+            result["error"] = data.get("error", "unknown error")
+        return result
+
+    def generate(self, image_url: str, audio_url: str) -> str:
+        """Synchronous convenience wrapper: submit then poll until completion.
+        Prefer submit() + check_status() from async contexts to avoid blocking threads."""
+        job_id = self.submit(image_url, audio_url)
         deadline = time.time() + self.TIMEOUT_SECONDS
 
         while time.time() < deadline:
             time.sleep(self.POLL_INTERVAL_SECONDS)
-            poll = requests.get(status_url, headers=headers, timeout=30)
-            poll.raise_for_status()
-            data = poll.json()
-            status = data.get("status")
-
-            # Log the latest progress update if the worker sent one via
-            # runpod.serverless.progress_update(), otherwise just log status.
-            stream = data.get("stream") or []
-            if stream:
-                latest = stream[-1].get("output", {})
-                progress = latest.get("progress", "?")
-                stage = latest.get("stage", "")
-                logger.info("RunPod job %s: %s%% – %s", job_id, progress, stage)
-            else:
-                logger.info("RunPod job %s status: %s", job_id, status)
+            result = self.check_status(job_id)
+            status = result["status"]
 
             if status == "COMPLETED":
-                video_url = data["output"]["video_url"]
-                logger.info("RunPod job %s completed: %s", job_id, video_url)
-                return video_url
-
+                logger.info("RunPod job %s completed: %s", job_id, result["video_url"])
+                return result["video_url"]
             if status == "FAILED":
-                error = data.get("error", "unknown error")
-                raise RuntimeError(f"RunPod job {job_id} failed: {error}")
+                raise RuntimeError(f"RunPod job {job_id} failed: {result.get('error', 'unknown')}")
 
         raise TimeoutError(
             f"RunPod job {job_id} did not complete within {self.TIMEOUT_SECONDS}s"

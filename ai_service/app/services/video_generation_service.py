@@ -4,12 +4,14 @@ Wraps the ai-video-gen pipeline and provides stage-based generation.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any, AsyncIterator
 from uuid import uuid4
@@ -607,7 +609,62 @@ class VideoGenerationService:
                 logger.error(f"[VideoGenService] Stage {stage_pipeline_name} failed: {pipeline_error}")
                 logger.error(f"[VideoGenService] Traceback: {error_traceback}")
                 # Loop continues to try to save partial files
-            
+
+            # For the avatar stage: _generate_avatar_runpod() submitted the RunPod job and
+            # wrote its ID to runpod_job_id.txt, then returned immediately (no blocking wait).
+            # Poll RunPod here using asyncio.sleep() so the event loop stays free between polls.
+            if stage_pipeline_name == "avatar":
+                runpod_job_id_file = run_dir / "runpod_job_id.txt"
+                if runpod_job_id_file.exists():
+                    runpod_job_id = runpod_job_id_file.read_text().strip()
+                    if runpod_job_id:
+                        yield {
+                            "type": "progress",
+                            "stage": "AVATAR",
+                            "message": "Avatar job submitted — waiting for RunPod inference...",
+                            "video_id": video_id,
+                            "percentage": 20,
+                        }
+                        import requests as _requests
+                        from .avatar_service import get_avatar_provider
+                        from ..config import get_settings as _get_settings
+                        _settings = _get_settings()
+                        avatar_provider = get_avatar_provider(
+                            provider="runpod",
+                            api_key=_settings.runpod_api_key,
+                            endpoint_id=_settings.runpod_endpoint_id,
+                        )
+                        deadline = time.time() + 900  # 15-min timeout matches RunPodAvatarProvider
+                        avatar_succeeded = False
+                        while time.time() < deadline:
+                            await asyncio.sleep(10)
+                            rp = avatar_provider.check_status(runpod_job_id)
+                            rp_status = rp["status"]
+                            pct = rp.get("progress", 0)
+                            stage_msg = rp.get("stage", "")
+                            yield {
+                                "type": "progress",
+                                "stage": "AVATAR",
+                                "message": f"Avatar: {stage_msg or f'{pct}% complete'}",
+                                "video_id": video_id,
+                                "percentage": 20 + int(pct * 0.65),  # 20-85 range
+                            }
+                            if rp_status == "COMPLETED":
+                                video_url = rp.get("video_url", "")
+                                logger.info(f"[VideoGenService] Avatar job complete: {video_url}")
+                                resp = _requests.get(video_url, timeout=120)
+                                resp.raise_for_status()
+                                avatar_path = run_dir / "avatar_video.mp4"
+                                avatar_path.write_bytes(resp.content)
+                                logger.info(f"[VideoGenService] Avatar video downloaded: {avatar_path}")
+                                avatar_succeeded = True
+                                break
+                            elif rp_status == "FAILED":
+                                logger.error(f"[VideoGenService] RunPod avatar job failed: {rp.get('error')}")
+                                break
+                        if not avatar_succeeded:
+                            logger.error(f"[VideoGenService] Avatar polling timed out/failed for RunPod job {runpod_job_id}")
+
             # Recalculate percentage for file processing (slightly higher)
             percentage = 5 + int((stage_idx - start_stage_idx + 1) * percentage_per_stage)
             

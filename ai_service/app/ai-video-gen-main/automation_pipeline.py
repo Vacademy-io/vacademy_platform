@@ -3139,27 +3139,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 api_key=settings.runpod_api_key,
                 endpoint_id=settings.runpod_endpoint_id
             )
-            
-            video_url = provider.generate(
+
+            # Submit the job and return immediately. The caller (video_generation_service)
+            # will poll RunPod asynchronously via asyncio.sleep() so the thread is freed.
+            runpod_job_id = provider.submit(
                 image_url=self._current_avatar_image_url,
                 audio_url=audio_s3_url
             )
-            
-            print(f"✅ Avatar video generated at public URL: {video_url}")
-            
-            # Download it to run_dir
-            import requests
-            print("📥 Downloading avatar video from RunPod...")
-            resp = requests.get(video_url, timeout=60)
-            resp.raise_for_status()
-            
-            final_path = run_dir / "avatar_video.mp4"
-            final_path.write_bytes(resp.content)
-            print(f"✅ Avatar video downloaded to: {final_path}")
-            return final_path
-            
+            (run_dir / "runpod_job_id.txt").write_text(runpod_job_id)
+            print(f"✅ RunPod avatar job submitted: {runpod_job_id} — polling will happen async")
+            return None
+
         except Exception as e:
-            print(f"❌ RunPod avatar generation failed: {e}")
+            print(f"❌ RunPod avatar submission failed: {e}")
             import traceback
             traceback.print_exc()
             return None

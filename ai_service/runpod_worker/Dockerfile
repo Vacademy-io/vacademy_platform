@@ -59,6 +59,19 @@ import sys
 import os
 import shutil
 import glob
+
+# ---------------------------------------------------------------------------
+# CRITICAL: Force TensorFlow (used by RetinaFace for face detection) to run
+# on CPU BEFORE importing infer_preview. Without this, TF pre-allocates ~13 GB
+# of GPU VRAM at import time, leaving PyTorch without enough memory for the
+# diffusion pipeline during inference (OOM on even 48 GB GPUs).
+# tf.config.set_visible_devices only affects TF's runtime — PyTorch/CUDA are
+# completely unaffected and continue to use the full GPU.
+# ---------------------------------------------------------------------------
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'   # suppress TF startup noise
+import tensorflow as tf
+tf.config.set_visible_devices([], 'GPU')    # TF uses CPU only from here on
+
 from infer_preview import Config, main
 import infer_preview
 
@@ -205,6 +218,23 @@ def initialize_models():
     elif os.path.isdir(WORKSPACE_MODELS):
         shutil.rmtree(WORKSPACE_MODELS)
     os.symlink(MODELS_STORE, WORKSPACE_MODELS)
+
+    # Pre-cache RetinaFace weights so face detection doesn't download 119 MB
+    # from GitHub on every cold start (default path: /root/.deepface/weights/).
+    retinaface_cache = os.path.join(MODELS_STORE, "retinaface.h5")
+    retinaface_dst  = "/root/.deepface/weights/retinaface.h5"
+    if not os.path.exists(retinaface_cache):
+        print("[Init] Downloading retinaface.h5 to network volume cache...")
+        import urllib.request
+        os.makedirs(os.path.dirname(retinaface_dst), exist_ok=True)
+        urllib.request.urlretrieve(
+            "https://github.com/serengil/deepface_models/releases/download/v1.0/retinaface.h5",
+            retinaface_cache,
+        )
+        print("[Init] retinaface.h5 done.")
+    if not os.path.exists(retinaface_dst):
+        os.makedirs(os.path.dirname(retinaface_dst), exist_ok=True)
+        shutil.copy2(retinaface_cache, retinaface_dst)
 
     print("[Init] Models ready.")
 

@@ -124,10 +124,12 @@ def run_cli():
             self.num_inference_steps = 10
             self.sample_size         = [512, 512]
             # EchoMimic V3 built-in sliding window for long video generation.
-            # Without this, generating >138 frames tries to process all frames
-            # at once → OOM on any GPU. At 25fps, 65 frames = ~2.6s per window.
-            # The model maintains temporal consistency across windows automatically.
+            # partial_video_length sets the window size (65 frames ≈ 2.6s at 25fps).
+            # use_long_video_cfg MUST also be True to activate the windowed path —
+            # without it the model still tries to process all frames at once (OOM)
+            # and prints "not use long video cfg" in the logs.
             self.partial_video_length = 65
+            self.use_long_video_cfg   = True
 
     infer_preview.Config = RunPodConfig
     main()
@@ -360,7 +362,7 @@ def generate_avatar(job):
             output_video_path,
             S3_BUCKET,
             s3_key,
-            ExtraArgs={'ContentType': 'video/mp4', 'ACL': 'public-read'}
+            ExtraArgs={'ContentType': 'video/mp4'}
         )
         video_url = f"https://{S3_BUCKET}.s3.{os.getenv('AWS_REGION', 'ap-south-1')}.amazonaws.com/{s3_key}"
         print(f"[{job_id}] Upload complete: {video_url}")

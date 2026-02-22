@@ -175,7 +175,7 @@ def generate_avatar(job):
             output_video_path,
             S3_BUCKET,
             s3_key,
-            ExtraArgs={'ContentType': 'video/mp4', 'ACL': 'public-read'}
+            ExtraArgs={'ContentType': 'video/mp4'}
         )
         video_url = f"https://{S3_BUCKET}.s3.{os.getenv('AWS_REGION', 'ap-south-1')}.amazonaws.com/{s3_key}"
         print(f"[{job_id}] Upload complete: {video_url}")

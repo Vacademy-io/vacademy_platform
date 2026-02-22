@@ -43,8 +43,8 @@ class AvatarProvider(ABC):
 class RunPodAvatarProvider(AvatarProvider):
     """Generate avatar videos via RunPod Serverless (EchoMimic)."""
 
-    TIMEOUT_SECONDS = 600
-    POLL_INTERVAL_SECONDS = 5
+    TIMEOUT_SECONDS = 1800  # 30 min: model init (~5 min) + inference (~15 min) + buffer
+    POLL_INTERVAL_SECONDS = 10
 
     def __init__(self, api_key: str, endpoint_id: str):
         self.api_key = api_key

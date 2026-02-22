@@ -58,8 +58,6 @@ RUN cat > /workspace/echomimic_v3/infer_audio2vid_cli.py <<'INFER_EOF'
 import sys
 import os
 import shutil
-import glob
-import json
 import subprocess
 
 # ---------------------------------------------------------------------------
@@ -75,24 +73,6 @@ tf.config.set_visible_devices([], 'GPU')
 from infer_preview import Config, main
 import infer_preview
 
-# ---------------------------------------------------------------------------
-# Audio chunking: a 1-minute clip = ~1500 frames at 25 fps. Attempting to
-# generate all at once OOMs even on A6000 48 GB. We split into MAX_CHUNK_DURATION
-# second segments, process each with a SINGLE model load (test_name_list loop
-# inside infer_preview.main keeps the model in VRAM), then concat with ffmpeg.
-# ---------------------------------------------------------------------------
-MAX_CHUNK_DURATION = 25  # seconds; safe at 512x512 / 10 steps / TeaCache on 48 GB
-
-def get_audio_duration(audio_path):
-    result = subprocess.run(
-        ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_streams', audio_path],
-        capture_output=True, text=True, check=True
-    )
-    info = json.loads(result.stdout)
-    for stream in info['streams']:
-        if stream.get('codec_type') == 'audio':
-            return float(stream['duration'])
-    raise RuntimeError("No audio stream found in: " + audio_path)
 
 def to_wav_16k(src, dst):
     """Convert any audio to 16 kHz mono WAV (required by wav2vec2)."""
@@ -101,50 +81,6 @@ def to_wav_16k(src, dst):
         check=True, capture_output=True, text=True
     )
 
-def split_audio(wav_path, chunk_duration, out_dir):
-    """Split WAV into fixed-duration chunks. Returns list of (idx, path) tuples."""
-    duration = get_audio_duration(wav_path)
-    os.makedirs(out_dir, exist_ok=True)
-    chunks = []
-    start = 0.0
-    idx   = 0
-    while start < duration - 1.0:   # skip trailing fragments shorter than 1 s
-        chunk_path = os.path.join(out_dir, f"chunk_{idx:03d}.wav")
-        subprocess.run(
-            ['ffmpeg', '-y', '-i', wav_path,
-             '-ss', str(start), '-t', str(chunk_duration), chunk_path],
-            check=True, capture_output=True, text=True
-        )
-        chunks.append((idx, chunk_path))
-        start += chunk_duration
-        idx   += 1
-    return chunks, duration
-
-def concat_videos(paths, out_path):
-    """Losslessly concatenate MP4s via ffmpeg concat demuxer."""
-    lst = '/tmp/concat_list.txt'
-    with open(lst, 'w') as fh:
-        for p in paths:
-            fh.write(f"file '{os.path.abspath(p)}'\n")
-    subprocess.run(
-        ['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', out_path],
-        check=True, capture_output=True, text=True
-    )
-    os.remove(lst)
-
-def find_output_video(save_dir, prefix=None):
-    """Find the most-recently-modified *_audio.mp4 in save_dir, optionally filtered by prefix."""
-    candidates = []
-    for root, _, files in os.walk(save_dir):
-        for f in files:
-            if not f.endswith("_audio.mp4"):
-                continue
-            if prefix and not f.startswith(prefix):
-                continue
-            candidates.append(os.path.join(root, f))
-    if not candidates:
-        return None
-    return max(candidates, key=os.path.getmtime)
 
 def run_cli():
     import argparse
@@ -160,93 +96,59 @@ def run_cli():
     print("[CLI] Converting audio to 16 kHz WAV...")
     to_wav_16k(args.audio_path, wav_path)
 
-    duration = get_audio_duration(wav_path)
-    print(f"[CLI] Audio duration: {duration:.1f}s")
+    job_id   = "runpod_job"
+    base_dir = "datasets/dynamic_runpod"
+    save_dir = "outputs_dynamic"
+    os.makedirs(f"{base_dir}/imgs",    exist_ok=True)
+    os.makedirs(f"{base_dir}/audios",  exist_ok=True)
+    os.makedirs(f"{base_dir}/prompts", exist_ok=True)
 
-    # Helper: build a RunPodConfig subclass closed over the given parameters.
-    def make_config(base_dir, test_name_list, save_path):
-        _b, _n, _s = base_dir, test_name_list, save_path
-        class RunPodConfig(Config):
-            def __init__(self):
-                super().__init__()
-                self.base_dir            = _b
-                self.test_name_list      = _n
-                self.model_name          = "models/Wan2.1-Fun-V1.1-1.3B-InP"
-                self.transformer_path    = "models/transformer/diffusion_pytorch_model.safetensors"
-                self.wav2vec_model_dir   = "models/wav2vec2-base-960h"
-                self.save_path           = _s
-                self.enable_teacache     = True
-                self.teacache_threshold  = 0.1
-                self.num_inference_steps = 10
-                self.sample_size         = [512, 512]
-        return RunPodConfig
+    shutil.copy(args.image_path, f"{base_dir}/imgs/{job_id}.png")
+    shutil.copy(wav_path,        f"{base_dir}/audios/{job_id}.WAV")
+    with open(f"{base_dir}/prompts/{job_id}.txt", "w") as fh:
+        fh.write("a teacher talking")
 
-    if duration <= MAX_CHUNK_DURATION:
-        # ── Short clip: single inference pass ──────────────────────────────
-        job_id   = "runpod_job"
-        base_dir = "datasets/dynamic_runpod"
-        save_dir = "outputs_dynamic"
-        os.makedirs(f"{base_dir}/imgs",    exist_ok=True)
-        os.makedirs(f"{base_dir}/audios",  exist_ok=True)
-        os.makedirs(f"{base_dir}/prompts", exist_ok=True)
+    class RunPodConfig(Config):
+        def __init__(self):
+            super().__init__()
+            self.base_dir            = base_dir
+            self.test_name_list      = [job_id]
+            self.model_name          = "models/Wan2.1-Fun-V1.1-1.3B-InP"
+            self.transformer_path    = "models/transformer/diffusion_pytorch_model.safetensors"
+            self.wav2vec_model_dir   = "models/wav2vec2-base-960h"
+            self.save_path           = save_dir
+            self.enable_teacache     = True
+            self.teacache_threshold  = 0.1
+            # 10 steps: good quality/speed for talking-head (README says 5 steps
+            # minimum for talking head, 15-25 for talking body)
+            self.num_inference_steps = 10
+            self.sample_size         = [512, 512]
+            # EchoMimic V3 built-in sliding window for long video generation.
+            # Without this, generating >138 frames tries to process all frames
+            # at once → OOM on any GPU. At 25fps, 65 frames = ~2.6s per window.
+            # The model maintains temporal consistency across windows automatically.
+            self.partial_video_length = 65
 
-        shutil.copy(args.image_path, f"{base_dir}/imgs/{job_id}.png")
-        shutil.copy(wav_path,        f"{base_dir}/audios/{job_id}.WAV")
-        with open(f"{base_dir}/prompts/{job_id}.txt", "w") as fh:
-            fh.write("a teacher talking")
+    infer_preview.Config = RunPodConfig
+    main()
 
-        infer_preview.Config = make_config(base_dir, [job_id], save_dir)
-        main()
+    # Find the most recently modified output video
+    latest_video, max_time = None, 0
+    for root, _, files in os.walk(save_dir):
+        for f in files:
+            if f.endswith("_audio.mp4"):
+                p  = os.path.join(root, f)
+                mt = os.path.getmtime(p)
+                if mt > max_time:
+                    max_time     = mt
+                    latest_video = p
 
-        out = find_output_video(save_dir)
-        if not out:
-            raise RuntimeError("No *_audio.mp4 found in " + save_dir)
-        shutil.copy(out, args.output_path)
-        print(f"[CLI] Done → {args.output_path}")
+    if not latest_video:
+        raise RuntimeError("No *_audio.mp4 found in " + save_dir)
 
-    else:
-        # ── Long clip: chunk audio, single model load, sequential inference ─
-        # infer_preview.main() iterates over test_name_list keeping the model
-        # loaded in VRAM — each chunk is processed without a reload.
-        print(f"[CLI] Audio > {MAX_CHUNK_DURATION}s — splitting into {MAX_CHUNK_DURATION}s segments")
-        chunks, _ = split_audio(wav_path, MAX_CHUNK_DURATION, "/tmp/audio_chunks")
-        print(f"[CLI] {len(chunks)} chunk(s) to process")
+    shutil.copy(latest_video, args.output_path)
+    print(f"[CLI] Done \u2192 {args.output_path}")
 
-        base_dir = "datasets/dynamic_chunked"
-        save_dir = "outputs_dynamic_chunked"
-        os.makedirs(f"{base_dir}/imgs",    exist_ok=True)
-        os.makedirs(f"{base_dir}/audios",  exist_ok=True)
-        os.makedirs(f"{base_dir}/prompts", exist_ok=True)
-
-        chunk_ids = []
-        for idx, chunk_wav in chunks:
-            cid = f"chunk{idx:03d}"
-            shutil.copy(args.image_path, f"{base_dir}/imgs/{cid}.png")
-            shutil.copy(chunk_wav,       f"{base_dir}/audios/{cid}.WAV")
-            with open(f"{base_dir}/prompts/{cid}.txt", "w") as fh:
-                fh.write("a teacher talking")
-            chunk_ids.append(cid)
-
-        infer_preview.Config = make_config(base_dir, chunk_ids, save_dir)
-        print(f"[CLI] Running inference for {len(chunk_ids)} chunks (single model load)...")
-        main()
-
-        # Collect chunk videos in original order, then concatenate
-        chunk_videos = []
-        for cid in chunk_ids:
-            vid = find_output_video(save_dir, prefix=cid)
-            if not vid:
-                raise RuntimeError(f"No output video for chunk {cid} in {save_dir}")
-            chunk_videos.append(vid)
-            print(f"[CLI]   {cid} → {vid}")
-
-        if len(chunk_videos) == 1:
-            shutil.copy(chunk_videos[0], args.output_path)
-        else:
-            print(f"[CLI] Concatenating {len(chunk_videos)} segments...")
-            concat_videos(chunk_videos, args.output_path)
-
-        print(f"[CLI] Done → {args.output_path}")
 
 if __name__ == "__main__":
     run_cli()
@@ -256,7 +158,7 @@ INFER_EOF
 # Embed handler.py inline
 # ---------------------------------------------------------------------------
 RUN cat > /workspace/echomimic_v3/handler.py <<'HANDLER_EOF'
-# RunPod Worker Handler for EchoMimic
+# RunPod Worker Handler for EchoMimic V3
 import os
 import shutil
 import boto3
@@ -267,7 +169,7 @@ import runpod
 # ---------------------------------------------------------------------------
 # Model paths
 # ---------------------------------------------------------------------------
-ECHOMIMIC_DIR = "/workspace/echomimic_v3"
+ECHOMIMIC_DIR    = "/workspace/echomimic_v3"
 WORKSPACE_MODELS = os.path.join(ECHOMIMIC_DIR, "models")
 
 # Use RunPod Network Volume if mounted, otherwise fall back to local workspace.

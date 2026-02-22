@@ -93,7 +93,15 @@ def run_cli():
             self.transformer_path = "models/transformer/diffusion_pytorch_model.safetensors"
             self.wav2vec_model_dir = "models/wav2vec2-base-960h"
             self.save_path = "outputs_dynamic"
-            self.num_inference_steps = 15
+            # TeaCache skips redundant attention computations — 2-3x speedup with
+            # minimal quality loss. Built into EchoMimic V3's transformer.
+            self.enable_teacache = True
+            self.teacache_threshold = 0.1
+            # 10 steps vs 25 default: good quality/speed balance for talking-head video.
+            self.num_inference_steps = 10
+            # 512x512 vs 768x768 default: 2.25x less VRAM + attention compute.
+            # Increase back to [768, 768] if output quality is insufficient.
+            self.sample_size = [512, 512]
 
     # Monkeypatch the Config class inside infer_preview
     infer_preview.Config = RunPodConfig

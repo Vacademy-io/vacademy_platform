@@ -73,6 +73,26 @@ jobs:
               DB_HOST=pgbouncer \
               DB_PORT=6432 \
               GOOGLE_APPLICATION_CREDENTIALS_JSON='${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}'
+
+            # Apply resource limits from deployment YAML (helm upgrade not used in CI,
+            # so patch directly to keep requests/limits in sync with the checked-in values).
+            kubectl patch deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" --type=strategic \
+              --patch '{
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [{
+                        "name": "ai-service",
+                        "resources": {
+                          "requests": { "cpu": "500m", "memory": "1Gi" },
+                          "limits":   { "cpu": "1500m", "memory": "2Gi" }
+                        }
+                      }]
+                    }
+                  }
+                }
+              }'
+
             kubectl rollout restart deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE"
           else
             echo "Deployment $DEPLOYMENT_NAME not found in namespace $NAMESPACE. Skipping restart."

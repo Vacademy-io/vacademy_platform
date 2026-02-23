@@ -2404,6 +2404,7 @@ export const SlideMaterial = ({
                                                 updateAssignmentOrder,
                                                 addUpdateQuizSlide,
                                                 addUpdateAudioSlide,
+                                                addUpdateScormSlide,
                                                 SaveDraft,
                                                 playerRef
                                             )
@@ -2432,6 +2433,7 @@ export const SlideMaterial = ({
                                                     updateAssignmentOrder,
                                                     addUpdateQuizSlide,
                                                     addUpdateAudioSlide,
+                                                    addUpdateScormSlide,
                                                     SaveDraft,
                                                     playerRef
                                                 );                                            }

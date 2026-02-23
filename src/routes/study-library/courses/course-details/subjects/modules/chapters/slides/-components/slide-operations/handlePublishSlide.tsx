@@ -7,6 +7,7 @@ import {
     VideoSlidePayload,
     QuizSlidePayload,
     AudioSlidePayload,
+    ScormSlidePayload,
 } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-hooks/use-slides';
 import { SlideQuestionsDataInterface } from '@/types/study-library/study-library-slides-type';
 import {
@@ -52,6 +53,7 @@ export const handlePublishSlide = async (
     >,
     addUpdateQuizSlide: UseMutateAsyncFunction<SlideResponse, Error, QuizSlidePayload, unknown>,
     addUpdateAudioSlide: UseMutateAsyncFunction<SlideResponse, Error, AudioSlidePayload, unknown>,
+    addUpdateScormSlide: UseMutateAsyncFunction<SlideResponse, Error, ScormSlidePayload, unknown>,
     SaveDraft: (activeItem: Slide) => Promise<void>,
     playerRef?: RefObject<YTPlayer> // Optional YouTube player ref
 ) => {
@@ -212,6 +214,36 @@ export const handlePublishSlide = async (
             setIsOpen(false);
         } catch {
             toast.error('Error in publishing the slide');
+        }
+    }
+
+    if (activeItem?.source_type === 'SCORM') {
+        if (!activeItem.scorm_slide) {
+            toast.error('SCORM slide data is missing.');
+            return;
+        }
+
+        try {
+            await addUpdateScormSlide({
+                id: activeItem.id,
+                title: activeItem.title,
+                description: activeItem.description || '',
+                image_file_id: activeItem.image_file_id || '',
+                status: 'PUBLISHED',
+                slide_order: activeItem.slide_order,
+                notify: notify,
+                new_slide: false,
+                scorm_slide: {
+                    id: activeItem.scorm_slide.id,
+                    original_file_id: activeItem.scorm_slide.original_file_id || '',
+                    launch_path: activeItem.scorm_slide.launch_path || '',
+                    scorm_version: activeItem.scorm_slide.scorm_version || '',
+                },
+            });
+            toast.success('SCORM slide published successfully!');
+            setIsOpen(false);
+        } catch {
+            toast.error('Error in publishing the SCORM slide');
         }
     }
 };

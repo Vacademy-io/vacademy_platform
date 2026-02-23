@@ -4,12 +4,14 @@ Wraps the ai-video-gen pipeline and provides stage-based generation.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any, AsyncIterator
 from uuid import uuid4
@@ -28,7 +30,7 @@ class VideoGenerationService:
     """
     
     # Stage order for progression
-    STAGES = ["PENDING", "SCRIPT", "TTS", "WORDS", "HTML", "RENDER"]
+    STAGES = ["PENDING", "SCRIPT", "TTS", "WORDS", "HTML", "AVATAR", "RENDER"]
     
     def __init__(
         self,
@@ -97,7 +99,9 @@ class VideoGenerationService:
         content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        generate_avatar: bool = False,
+        avatar_image_url: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -207,7 +211,9 @@ class VideoGenerationService:
                     content_type=content_type,
                     db_session=db_session,
                     institute_id=institute_id,
-                    user_id=user_id
+                    user_id=user_id,
+                    generate_avatar=generate_avatar,
+                    avatar_image_url=avatar_image_url
                 ):
                     # If we get an error event, log it and check if we should stop
                     if event.get("type") == "error":
@@ -266,7 +272,9 @@ class VideoGenerationService:
         content_type: str = "VIDEO",
         db_session: Optional[Session] = None,
         institute_id: Optional[str] = None,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        generate_avatar: bool = False,
+        avatar_image_url: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -336,7 +344,8 @@ class VideoGenerationService:
             2: {"name": "tts", "file_key": "audio", "file_name": "narration.mp3"},
             3: {"name": "words", "file_key": "words", "file_name": "narration.words.json"},
             4: {"name": "html", "file_key": "timeline", "file_name": "time_based_frame.json"},
-            5: {"name": "render", "file_key": "video", "file_name": "output.mp4"}
+            5: {"name": "avatar", "file_key": "avatar", "file_name": "avatar_video.mp4"},
+            6: {"name": "render", "file_key": "video", "file_name": "output.mp4"}
         }
         
         # Determine start_from and stop_at parameters
@@ -491,6 +500,7 @@ class VideoGenerationService:
                 (None, "branding_meta", "branding_meta.json"),  # Branding metadata for audio delay
                 ("timeline_json", "timeline", "time_based_frame.json")  # Process AFTER images to update URLs
             ],
+            "avatar": [("avatar_video_path", "avatar", "avatar_video.mp4")],
             "render": [("video_path", "video", "output.mp4")]
         }
         
@@ -525,6 +535,18 @@ class VideoGenerationService:
             try:
                 logger.info(f"[VideoGenService] Running pipeline stage: {stage_pipeline_name} (idx {stage_idx})")
                 
+                # For AVATAR stage: write audio S3 URL hint file so pipeline can pass it to RunPod
+                if stage_pipeline_name == "avatar":
+                    video_record = self.repository.get_by_video_id(video_id)
+                    if video_record:
+                        audio_s3_url = video_record.s3_urls.get("audio", "")
+                        if audio_s3_url:
+                            audio_url_file = run_dir / "audio_s3_url.txt"
+                            audio_url_file.write_text(audio_s3_url)
+                            logger.info(f"[VideoGenService] Wrote audio S3 URL hint for avatar stage: {audio_s3_url}")
+                        else:
+                            logger.warning("[VideoGenService] No audio S3 URL found for avatar stage")
+
                 pipeline_run = functools.partial(
                     pipeline.run,
                     base_prompt=prompt,
@@ -540,7 +562,9 @@ class VideoGenerationService:
                     voice_gender=voice_gender,
                     tts_provider=tts_provider,
                     branding_config=branding_config,
-                    content_type=content_type
+                    content_type=content_type,
+                    generate_avatar=generate_avatar,
+                    avatar_image_url=avatar_image_url
                 )
                 
                 with ThreadPoolExecutor() as executor:
@@ -585,7 +609,62 @@ class VideoGenerationService:
                 logger.error(f"[VideoGenService] Stage {stage_pipeline_name} failed: {pipeline_error}")
                 logger.error(f"[VideoGenService] Traceback: {error_traceback}")
                 # Loop continues to try to save partial files
-            
+
+            # For the avatar stage: _generate_avatar_runpod() submitted the RunPod job and
+            # wrote its ID to runpod_job_id.txt, then returned immediately (no blocking wait).
+            # Poll RunPod here using asyncio.sleep() so the event loop stays free between polls.
+            if stage_pipeline_name == "avatar":
+                runpod_job_id_file = run_dir / "runpod_job_id.txt"
+                if runpod_job_id_file.exists():
+                    runpod_job_id = runpod_job_id_file.read_text().strip()
+                    if runpod_job_id:
+                        yield {
+                            "type": "progress",
+                            "stage": "AVATAR",
+                            "message": "Avatar job submitted — waiting for RunPod inference...",
+                            "video_id": video_id,
+                            "percentage": 20,
+                        }
+                        import requests as _requests
+                        from .avatar_service import get_avatar_provider
+                        from ..config import get_settings as _get_settings
+                        _settings = _get_settings()
+                        avatar_provider = get_avatar_provider(
+                            provider="runpod",
+                            api_key=_settings.runpod_api_key,
+                            endpoint_id=_settings.runpod_endpoint_id,
+                        )
+                        deadline = time.time() + 3600  # 60-min timeout (cold start + chunked inference)
+                        avatar_succeeded = False
+                        while time.time() < deadline:
+                            await asyncio.sleep(10)
+                            rp = avatar_provider.check_status(runpod_job_id)
+                            rp_status = rp["status"]
+                            pct = rp.get("progress", 0)
+                            stage_msg = rp.get("stage", "")
+                            yield {
+                                "type": "progress",
+                                "stage": "AVATAR",
+                                "message": f"Avatar: {stage_msg or f'{pct}% complete'}",
+                                "video_id": video_id,
+                                "percentage": 20 + int(pct * 0.65),  # 20-85 range
+                            }
+                            if rp_status == "COMPLETED":
+                                video_url = rp.get("video_url", "")
+                                logger.info(f"[VideoGenService] Avatar job complete: {video_url}")
+                                resp = _requests.get(video_url, timeout=120)
+                                resp.raise_for_status()
+                                avatar_path = run_dir / "avatar_video.mp4"
+                                avatar_path.write_bytes(resp.content)
+                                logger.info(f"[VideoGenService] Avatar video downloaded: {avatar_path}")
+                                avatar_succeeded = True
+                                break
+                            elif rp_status == "FAILED":
+                                logger.error(f"[VideoGenService] RunPod avatar job failed: {rp.get('error')}")
+                                break
+                        if not avatar_succeeded:
+                            logger.error(f"[VideoGenService] Avatar polling timed out/failed for RunPod job {runpod_job_id}")
+
             # Recalculate percentage for file processing (slightly higher)
             percentage = 5 + int((stage_idx - start_stage_idx + 1) * percentage_per_stage)
             
@@ -886,7 +965,6 @@ class VideoGenerationService:
                                         if "server closed the connection" in str(db_error) or "OperationalError" in str(type(db_error).__name__):
                                             if retry < max_db_retries - 1:
                                                 logger.warning(f"[VideoGenService] Database connection error (attempt {retry + 1}/{max_db_retries}): {db_error}. Retrying...")
-                                                import time
                                                 time.sleep(1)  # Wait 1 second before retry
                                                 continue
                                             else:

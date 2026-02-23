@@ -47,8 +47,7 @@ public class EwayPoolingService {
      */
     @Scheduled(fixedRate = POLLING_INTERVAL_MS)
     public void pollPendingEwayTransactions() {
-        List<WebHook> pendingWebhooks =
-                webHookService.getPendingWebHooks(PaymentGateway.EWAY.name());
+        List<WebHook> pendingWebhooks = webHookService.getPendingWebHooks(PaymentGateway.EWAY.name());
 
         if (pendingWebhooks.isEmpty()) {
             return;
@@ -63,8 +62,7 @@ public class EwayPoolingService {
 
     private void processWebhook(WebHook webhook) {
         try {
-            EwayWebHookDTO dto =
-                    objectMapper.readValue(webhook.getPayload(), EwayWebHookDTO.class);
+            EwayWebHookDTO dto = objectMapper.readValue(webhook.getPayload(), EwayWebHookDTO.class);
 
             PaymentResponseDTO paymentResponse = dto.getPaymentResponse();
             if (paymentResponse == null || !StringUtils.hasText(paymentResponse.getOrderId())) {
@@ -73,21 +71,18 @@ public class EwayPoolingService {
             }
 
             String instituteId = dto.getInstituteId();
-            String transactionId =
-                    (String) paymentResponse.getResponseData().get("transactionId");
+            String transactionId = (String) paymentResponse.getResponseData().get("transactionId");
 
             if (!StringUtils.hasText(transactionId)) {
                 failWebhook(webhook, "Missing transactionId");
                 return;
             }
 
-            Map<String, Object> credentials =
-                    institutePaymentGatewayMappingService
-                            .findInstitutePaymentGatewaySpecifData(
-                                    PaymentGateway.EWAY.name(), instituteId);
+            Map<String, Object> credentials = institutePaymentGatewayMappingService
+                    .findInstitutePaymentGatewaySpecifData(
+                            PaymentGateway.EWAY.name(), instituteId);
 
-            EwayTransaction transaction =
-                    ewayPaymentManager.getTransactionById(transactionId, credentials);
+            EwayTransaction transaction = ewayPaymentManager.getTransactionById(transactionId, credentials);
 
             if (transaction == null) {
                 log.warn("Transaction not found for webhookId={}", webhook.getId());
@@ -107,6 +102,13 @@ public class EwayPoolingService {
             log.error("Eway polling failed for webhookId={}", webhook.getId(), ex);
             SentryLogger.logError(ex, "Eway polling failed",
                     Map.of("webhookId", webhook.getId()));
+
+            // Fix for infinite loop: Mark webhook as FAILED so it's not picked up again
+            // immediately
+            webHookService.updateWebHookStatus(
+                    webhook.getId(),
+                    WebHookStatus.FAILED,
+                    "Polling failed: " + ex.getMessage());
         }
     }
 
@@ -132,17 +134,14 @@ public class EwayPoolingService {
         webHookService.updateWebHookStatus(
                 webhook.getId(),
                 WebHookStatus.PROCESSED,
-                null
-        );
+                null);
     }
-
 
     private void handleInitialPayment(EwayWebHookDTO dto) {
         paymentLogService.updatePaymentLog(
                 dto.getPaymentResponse().getOrderId(),
                 PaymentStatusEnum.PAID.name(),
-                dto.getInstituteId()
-        );
+                dto.getInstituteId());
     }
 
     private void handleRenewalPayment(EwayWebHookDTO dto) {
@@ -159,16 +158,14 @@ public class EwayPoolingService {
                 response.getOrderId(),
                 dto.getInstituteId(),
                 status,
-                response
-        );
+                response);
     }
 
     private void handleFailure(EwayWebHookDTO dto, WebHook webhook) {
         paymentLogService.updatePaymentLog(
                 dto.getPaymentResponse().getOrderId(),
                 PaymentStatusEnum.FAILED.name(),
-                dto.getInstituteId()
-        );
+                dto.getInstituteId());
 
         webHookService.updateWebHookStatus(
                 webhook.getId(), WebHookStatus.PROCESSED, null);
@@ -180,7 +177,8 @@ public class EwayPoolingService {
     }
 
     private boolean isDefinitiveFailure(String responseMessage) {
-        if (responseMessage == null) return false;
+        if (responseMessage == null)
+            return false;
         String msg = responseMessage.toLowerCase();
         return msg.contains("declined")
                 || msg.contains("invalid")

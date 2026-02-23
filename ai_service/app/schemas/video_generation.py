@@ -65,6 +65,14 @@ class VideoGenerationRequest(BaseModel):
         default="edge",
         description="TTS Provider: 'edge' (Microsoft Edge TTS, default) or 'google' (Google Cloud TTS)."
     )
+    generate_avatar: bool = Field(
+        default=False,
+        description="Whether to generate a talking head avatar. Defaults to False."
+    )
+    avatar_image_url: Optional[str] = Field(
+        default=None,
+        description="URL of a face/portrait image for the speaking avatar. If not provided, a default teacher image is used. Only applies to VIDEO content type."
+    )
     
     class Config:
         json_schema_extra = {
@@ -78,7 +86,8 @@ class VideoGenerationRequest(BaseModel):
                 "target_audience": "Class 3 (Ages 7-8)",
                 "target_duration": "5 minutes",
                 "voice_gender": "female",
-                "tts_provider": "edge"
+                "tts_provider": "edge",
+                "avatar_image_url": None
             }
         }
 
@@ -87,11 +96,20 @@ class VideoGenerationResumeRequest(BaseModel):
     """Request for resuming video generation from a checkpoint."""
     
     video_id: str = Field(..., description="Video ID to resume")
+    generate_avatar: bool = Field(
+        default=False,
+        description="Whether to generate a talking head avatar. Defaults to False."
+    )
+    avatar_image_url: Optional[str] = Field(
+        default=None,
+        description="URL of a face/portrait image for the speaking avatar. If not provided, a default teacher image is used."
+    )
     
     class Config:
         json_schema_extra = {
             "example": {
-                "video_id": "quantum-entanglement-101"
+                "video_id": "quantum-entanglement-101",
+                "avatar_image_url": None
             }
         }
 
@@ -152,6 +170,7 @@ class VideoUrlsResponse(BaseModel):
     html_url: Optional[str] = Field(None, description="URL to HTML timeline file (time_based_frame.json)")
     audio_url: Optional[str] = Field(None, description="URL to audio file (narration.mp3)")
     words_url: Optional[str] = Field(None, description="URL to time-synced words JSON for captions")
+    avatar_url: Optional[str] = Field(None, description="URL to avatar talking-head video (MP4)")
     status: str = Field(..., description="Current video generation status")
     current_stage: str = Field(..., description="Current generation stage")
     
@@ -162,6 +181,7 @@ class VideoUrlsResponse(BaseModel):
                 "html_url": "https://bucket.s3.amazonaws.com/ai-videos/quantum-entanglement-101/timeline/time_based_frame.json",
                 "audio_url": "https://bucket.s3.amazonaws.com/ai-videos/quantum-entanglement-101/audio/narration.mp3",
                 "words_url": "https://bucket.s3.amazonaws.com/ai-videos/quantum-entanglement-101/audio/words.json",
+                "avatar_url": None,
                 "status": "COMPLETED",
                 "current_stage": "HTML"
             }

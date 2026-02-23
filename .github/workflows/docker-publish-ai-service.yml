@@ -64,6 +64,8 @@ jobs:
               AWS_BUCKET_NAME=${{ secrets.AWS_S3_PUBLIC_BUCKET }} \
               GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
               YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }} \
+              RUNPOD_API_KEY=${{ secrets.RUNPOD_API_KEY }} \
+              RUNPOD_ENDPOINT_ID=${{ secrets.RUNPOD_ENDPOINT_ID }} \
               LLM_DEFAULT_MODEL=google/gemini-2.5-flash \
               DB_USERNAME=${{ secrets.DB_USERNAME }} \
               DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
@@ -71,6 +73,26 @@ jobs:
               DB_HOST=pgbouncer \
               DB_PORT=6432 \
               GOOGLE_APPLICATION_CREDENTIALS_JSON='${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}'
+
+            # Apply resource limits from deployment YAML (helm upgrade not used in CI,
+            # so patch directly to keep requests/limits in sync with the checked-in values).
+            kubectl patch deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" --type=strategic \
+              --patch '{
+                "spec": {
+                  "template": {
+                    "spec": {
+                      "containers": [{
+                        "name": "ai-service",
+                        "resources": {
+                          "requests": { "cpu": "500m", "memory": "1Gi" },
+                          "limits":   { "cpu": "1500m", "memory": "3Gi" }
+                        }
+                      }]
+                    }
+                  }
+                }
+              }'
+
             kubectl rollout restart deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE"
           else
             echo "Deployment $DEPLOYMENT_NAME not found in namespace $NAMESPACE. Skipping restart."

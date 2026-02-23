@@ -86,7 +86,8 @@ async def generate_till_script(
             content_type=payload.content_type,
             db_session=db,
             institute_id=payload.institute_id,
-            user_id=payload.user_id
+            user_id=payload.user_id,
+            avatar_image_url=payload.avatar_image_url,
         ):
             yield f"data: {event}\n\n"
     
@@ -143,7 +144,8 @@ async def generate_till_mp3(
             content_type=payload.content_type,
             db_session=db,
             institute_id=payload.institute_id,
-            user_id=payload.user_id
+            user_id=payload.user_id,
+            avatar_image_url=payload.avatar_image_url,
         ):
             yield f"data: {event}\n\n"
     
@@ -198,7 +200,7 @@ async def generate_till_html(
         async for event in service.generate_till_stage(
             video_id=video_id,
             prompt=payload.prompt,
-            target_stage="HTML",
+            target_stage="AVATAR" if payload.generate_avatar else "HTML",
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,
@@ -208,7 +210,9 @@ async def generate_till_html(
             content_type=payload.content_type,
             db_session=db,
             institute_id=payload.institute_id,
-            user_id=payload.user_id
+            user_id=payload.user_id,
+            avatar_image_url=payload.avatar_image_url,
+            generate_avatar=payload.generate_avatar,
         ):
             yield f"data: {event}\n\n"
     
@@ -268,7 +272,8 @@ async def generate_till_render(
             content_type=payload.content_type,
             db_session=db,
             institute_id=payload.institute_id,
-            user_id=payload.user_id
+            user_id=payload.user_id,
+            avatar_image_url=payload.avatar_image_url,
         ):
             yield f"data: {event}\n\n"
     
@@ -306,7 +311,9 @@ async def resume_after_script(
             prompt="",  # Not needed for resume
             target_stage=target_stage,
             language="English",  # Will use existing from DB
-            resume=True
+            resume=True,
+            generate_avatar=payload.generate_avatar,
+            avatar_image_url=payload.avatar_image_url
         ):
             yield f"data: {event}\n\n"
     
@@ -343,7 +350,9 @@ async def resume_after_mp3(
             prompt="",
             target_stage=target_stage,
             language="English",
-            resume=True
+            resume=True,
+            generate_avatar=payload.generate_avatar,
+            avatar_image_url=payload.avatar_image_url
         ):
             yield f"data: {event}\n\n"
     
@@ -378,7 +387,9 @@ async def resume_after_html(
             prompt="",
             target_stage="RENDER",
             language="English",
-            resume=True
+            resume=True,
+            generate_avatar=payload.generate_avatar,
+            avatar_image_url=payload.avatar_image_url
         ):
             yield f"data: {event}\n\n"
     
@@ -448,6 +459,7 @@ async def get_video_urls(
         html_url=s3_urls.get("timeline"),  # HTML timeline file
         audio_url=s3_urls.get("audio"),     # Audio file
         words_url=s3_urls.get("words"),     # Time-synced words for captions
+        avatar_url=s3_urls.get("avatar"),   # Avatar talking-head video
         status=status.get("status", "UNKNOWN"),
         current_stage=status.get("current_stage", "UNKNOWN")
     )

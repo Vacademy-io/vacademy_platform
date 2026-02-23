@@ -394,7 +394,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
 
     @Query(value = """
                 WITH filtered_activity_log AS (
-                    SELECT al.*
+                    SELECT DISTINCT al.id, al.user_id, al.start_time, al.end_time
                     FROM activity_log al
                     JOIN slide s ON s.id = al.slide_id
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
@@ -418,25 +418,23 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 activity_duration AS (
                     SELECT
                         al.user_id,
-                        COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
+                        COALESCE(SUM(
+                            CASE
+                                WHEN al.start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60, 1440)
+                            END
+                        ), 0) AS total_time_spent_minutes
                     FROM filtered_activity_log al
                     GROUP BY al.user_id
                 ),
                 batch_time_spent AS (
                     SELECT
-                        ssig.package_session_id,
-                        SUM(COALESCE(ad.total_time_spent_minutes, 0)) AS total_time_spent,
-                        COUNT(DISTINCT ssig.user_id) AS total_learners
-                    FROM student_session_institute_group_mapping ssig
-                    LEFT JOIN activity_duration ad ON ssig.user_id = ad.user_id
-                    WHERE
-                        ssig.package_session_id = :packageSessionId
-                        AND ssig.status IN :statusList
-                    GROUP BY ssig.package_session_id
+                        (SELECT SUM(COALESCE(ad.total_time_spent_minutes, 0)) FROM activity_duration ad) AS total_time_spent,
+                        (SELECT COUNT(DISTINCT user_id) FROM student_session_institute_group_mapping WHERE package_session_id = :packageSessionId AND status IN :statusList) AS total_learners
                 )
                 SELECT
                     CASE
-                        WHEN total_learners > 0 THEN total_time_spent / total_learners
+                        WHEN total_learners > 0 THEN COALESCE(total_time_spent, 0) / total_learners
                         ELSE 0
                     END AS avg_time_spent_minutes
                 FROM batch_time_spent
@@ -453,24 +451,26 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("slideStatusList") List<String> slideStatusList);
 
     @Query(value = """
-           WITH total_time_spent AS (
-    SELECT
-       
-        SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60) AS total_minutes_spent
-    FROM activity_log al
-    JOIN student_session_institute_group_mapping ssig
-        ON al.user_id = ssig.user_id
-    WHERE
-        ssig.package_session_id = :packageSessionId
-        AND ssig.status IN :statusList
-        AND al.created_at BETWEEN :startDate AND :endDate
-   
-)
-SELECT
-    slide_id,
-    COALESCE(total_minutes_spent, 0)
-      / (DATE(:endDate) - DATE(:startDate) + 1) AS avg_daily_minutes_spent
-FROM total_time_spent;
+            WITH total_time_spent AS (
+                SELECT
+                    SUM(
+                        CASE
+                            WHEN al.start_time < '2023-01-01' THEN 0
+                            ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60, 1440)
+                        END
+                    ) AS total_minutes_spent
+                FROM activity_log al
+                WHERE al.user_id IN (
+                    SELECT DISTINCT user_id
+                    FROM student_session_institute_group_mapping
+                    WHERE package_session_id = :packageSessionId AND status IN :statusList
+                )
+                AND al.created_at BETWEEN :startDate AND :endDate
+            )
+            SELECT
+                slide_id,
+                COALESCE(total_minutes_spent, 0) / NULLIF((DATE(:endDate) - DATE(:startDate) + 1), 0) AS avg_daily_minutes_spent
+            FROM total_time_spent;
             """, nativeQuery = true)
     Double findAverageDailyTimeSpentByBatch(
             @Param("startDate") Date startDate,
@@ -479,27 +479,45 @@ FROM total_time_spent;
             @Param("statusList") List<String> statusList);
 
     @Query(value = """
+                WITH valid_users AS (
+                    SELECT DISTINCT user_id
+                    FROM student_session_institute_group_mapping
+                    WHERE package_session_id = :packageSessionId
+                    AND status IN (:statusList)
+                )
                 SELECT
                     s.user_id AS userId,
                     s.full_name AS fullName,
                     s.email AS email,
                     COALESCE(AVG(cs.concentration_score), 0) AS avgConcentration,
-                    COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))), 0) AS totalTime,
-                    COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) / NULLIF(COUNT(DISTINCT DATE(a.start_time)), 0), 0) AS dailyAvgTime,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN a.start_time < '2023-01-01' THEN 0
+                            ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)), 86400)
+                        END
+                    ), 0) AS totalTime,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN a.start_time < '2023-01-01' THEN 0
+                            ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)), 86400)
+                        END
+                    ) / NULLIF(COUNT(DISTINCT DATE(a.start_time)), 0), 0) AS dailyAvgTime,
                     DENSE_RANK() OVER (ORDER BY
-                        COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))), 0) DESC,
+                        COALESCE(SUM(
+                            CASE
+                                WHEN a.start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)), 86400)
+                            END
+                        ), 0) DESC,
                         COALESCE(AVG(cs.concentration_score), 0) DESC
                     ) AS rank
                 FROM student s
-                JOIN student_session_institute_group_mapping ssig
-                    ON s.user_id = ssig.user_id
+                JOIN valid_users vu ON s.user_id = vu.user_id
                 LEFT JOIN activity_log a
-                    ON ssig.user_id = a.user_id
+                    ON vu.user_id = a.user_id
                     AND a.start_time BETWEEN :startTime AND :endTime
                 LEFT JOIN concentration_score cs
                     ON a.id = cs.activity_id
-                WHERE ssig.package_session_id = :packageSessionId
-                AND ssig.status IN (:statusList)
                 GROUP BY s.user_id, s.full_name, s.email
             """, countQuery = """
                 SELECT COUNT(DISTINCT s.user_id)
@@ -523,25 +541,32 @@ FROM total_time_spent;
                         CAST(:endDate AS DATE),
                         INTERVAL '1 day'
                     ) AS activity_date
+                ),
+                active_users AS (
+                    SELECT DISTINCT user_id
+                    FROM student_session_institute_group_mapping
+                    WHERE package_session_id = :packageSessionId AND status IN (:statusList)
                 )
                 SELECT
                     ds.activity_date,
                     COALESCE(
                         CASE
-                            WHEN COUNT(DISTINCT ssig.user_id) > 0
-                            THEN SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) / 60 / COUNT(DISTINCT ssig.user_id)
+                            WHEN (SELECT COUNT(*) FROM active_users) > 0
+                            THEN SUM(
+                                CASE
+                                    WHEN a.start_time < '2023-01-01' THEN 0
+                                    ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                                END
+                            ) / (SELECT COUNT(*) FROM active_users)
                             ELSE 0
                         END,
                         0
                     ) AS avg_time_spent_per_student
                 FROM date_series ds
-                LEFT JOIN student_session_institute_group_mapping ssig
-                    ON ssig.package_session_id = :packageSessionId
-                    AND ssig.status IN (:statusList)
                 LEFT JOIN activity_log a
-                    ON ssig.user_id = a.user_id
-                    AND DATE(a.created_at) BETWEEN CAST(:startDate AS DATE) AND CAST(:endDate AS DATE)  -- Ensure logs fall within the range
-                    AND DATE(a.created_at) = ds.activity_date  -- Ensure logs are mapped correctly to each generated date
+                    ON DATE(a.created_at) = ds.activity_date
+                    AND DATE(a.created_at) BETWEEN CAST(:startDate AS DATE) AND CAST(:endDate AS DATE)
+                    AND a.user_id IN (SELECT user_id FROM active_users)
                 GROUP BY ds.activity_date
                 ORDER BY ds.activity_date
             """, nativeQuery = true)
@@ -754,7 +779,12 @@ FROM total_time_spent;
                 LearnerTimeScore AS (
                     SELECT
                         slide_id,
-                        (EXTRACT(EPOCH FROM SUM(end_time - start_time)) / 60) AS avg_time_spent,
+                        SUM(
+                            CASE
+                                WHEN start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (end_time - start_time)) / 60, 1440)
+                            END
+                        ) AS avg_time_spent,
                         MAX(created_at) AS last_active_date
                     FROM LearnerActivity
                     GROUP BY slide_id
@@ -770,7 +800,12 @@ FROM total_time_spent;
                 BatchTimeScore AS (
                     SELECT
                         slide_id,
-                        (EXTRACT(EPOCH FROM SUM(end_time - start_time)) / 60) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent_by_batch
+                        SUM(
+                            CASE
+                                WHEN start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (end_time - start_time)) / 60, 1440)
+                            END
+                        ) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent_by_batch
                     FROM BatchActivity
                     GROUP BY slide_id
                 ),
@@ -1309,85 +1344,85 @@ FROM total_time_spent;
             @Param("statusList") List<String> statusList);
 
     @Query(value = """
-            WITH Chapters AS (
+                        WITH Chapters AS (
+                            SELECT
+                                mc.chapter_id,
+                                ch.chapter_name AS chapter_name
+                            FROM module_chapter_mapping mc
+                            JOIN chapter_package_session_mapping cps ON mc.chapter_id = cps.chapter_id
+                                AND cps.status IN (:chapterPackageStatusList)
+                            JOIN chapter ch ON mc.chapter_id = ch.id
+                                AND ch.status IN (:chapterStatusList)
+                            WHERE mc.module_id = :moduleId
+                        ),
+                        Slides AS (
+                            SELECT
+                                csm.chapter_id,
+                                s.id AS slide_id,
+                                s.title AS slide_title,
+                                s.source_type AS slide_source_type
+                            FROM chapter_to_slides csm
+                            JOIN Chapters c ON csm.chapter_id = c.chapter_id
+                            JOIN slide s ON csm.slide_id = s.id
+                                AND s.status IN (:slideStatusList)
+                            WHERE csm.status IN (:chapterSlideStatusList)
+                        ),
+                ActivityLogs AS (
                 SELECT
-                    mc.chapter_id,
-                    ch.chapter_name AS chapter_name
-                FROM module_chapter_mapping mc
-                JOIN chapter_package_session_mapping cps ON mc.chapter_id = cps.chapter_id
-                    AND cps.status IN (:chapterPackageStatusList)
-                JOIN chapter ch ON mc.chapter_id = ch.id
-                    AND ch.status IN (:chapterStatusList)
-                WHERE mc.module_id = :moduleId
-            ),
-            Slides AS (
-                SELECT
-                    csm.chapter_id,
-                    s.id AS slide_id,
-                    s.title AS slide_title,
-                    s.source_type AS slide_source_type
-                FROM chapter_to_slides csm
-                JOIN Chapters c ON csm.chapter_id = c.chapter_id
-                JOIN slide s ON csm.slide_id = s.id
-                    AND s.status IN (:slideStatusList)
-                WHERE csm.status IN (:chapterSlideStatusList)
-            ),
-    ActivityLogs AS (
-    SELECT 
-        al.id AS activity_id,
-        al.slide_id,
-        al.start_time,
-        al.end_time,
-        al.user_id
-    FROM activity_log al
-    JOIN Slides s ON al.slide_id = s.slide_id
-),
-            StudentCount AS (
-                SELECT COUNT(DISTINCT ssigm.user_id) AS distinct_users
-                FROM student_session_institute_group_mapping ssigm
-                WHERE ssigm.package_session_id = :packageSessionId
-                  AND ssigm.status IN (:learnerStatusList)
-            ),
-            AvgTimeSpent AS (
-                SELECT
+                    al.id AS activity_id,
                     al.slide_id,
-                   (EXTRACT(EPOCH FROM SUM(
-  CASE
-    WHEN al.end_time > al.start_time
-     AND al.start_time > TIMESTAMP '2000-01-01'
-    THEN (al.end_time - al.start_time)
-    ELSE INTERVAL '0 seconds'
-  END
-)) / 60) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
-  FROM ActivityLogs al
-                GROUP BY al.slide_id
+                    al.start_time,
+                    al.end_time,
+                    al.user_id
+                FROM activity_log al
+                JOIN Slides s ON al.slide_id = s.slide_id
             ),
-            AvgConcentrationScore AS (
-                SELECT
-                    al.slide_id,
-                    SUM(cs.concentration_score) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
-                FROM concentration_score cs
-                JOIN ActivityLogs al ON cs.activity_id = al.activity_id
-                GROUP BY al.slide_id
-            )
-            SELECT
-                c.chapter_id AS chapterId,
-                c.chapter_name AS chapterName,
-                JSON_AGG(
-                    JSON_BUILD_OBJECT(
-                        'slide_id', s.slide_id,
-                        'slide_title', s.slide_title,
-                        'slide_source_type', s.slide_source_type,
-                        'avg_time_spent', COALESCE(a.avg_time_spent, 0.0),
-                        'avg_concentration_score', COALESCE(cscore.avg_concentration_score, 0.0)
-                    )
-                ) AS slides
-            FROM Chapters c
-            JOIN Slides s ON c.chapter_id = s.chapter_id
-            LEFT JOIN AvgTimeSpent a ON s.slide_id = a.slide_id
-            LEFT JOIN AvgConcentrationScore cscore ON s.slide_id = cscore.slide_id
-            GROUP BY c.chapter_id, c.chapter_name
-            """, nativeQuery = true)
+                        StudentCount AS (
+                            SELECT COUNT(DISTINCT ssigm.user_id) AS distinct_users
+                            FROM student_session_institute_group_mapping ssigm
+                            WHERE ssigm.package_session_id = :packageSessionId
+                              AND ssigm.status IN (:learnerStatusList)
+                        ),
+                        AvgTimeSpent AS (
+                            SELECT
+                                al.slide_id,
+                               (EXTRACT(EPOCH FROM SUM(
+              CASE
+                WHEN al.end_time > al.start_time
+                 AND al.start_time > TIMESTAMP '2000-01-01'
+                THEN (al.end_time - al.start_time)
+                ELSE INTERVAL '0 seconds'
+              END
+            )) / 60) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
+              FROM ActivityLogs al
+                            GROUP BY al.slide_id
+                        ),
+                        AvgConcentrationScore AS (
+                            SELECT
+                                al.slide_id,
+                                SUM(cs.concentration_score) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
+                            FROM concentration_score cs
+                            JOIN ActivityLogs al ON cs.activity_id = al.activity_id
+                            GROUP BY al.slide_id
+                        )
+                        SELECT
+                            c.chapter_id AS chapterId,
+                            c.chapter_name AS chapterName,
+                            JSON_AGG(
+                                JSON_BUILD_OBJECT(
+                                    'slide_id', s.slide_id,
+                                    'slide_title', s.slide_title,
+                                    'slide_source_type', s.slide_source_type,
+                                    'avg_time_spent', COALESCE(a.avg_time_spent, 0.0),
+                                    'avg_concentration_score', COALESCE(cscore.avg_concentration_score, 0.0)
+                                )
+                            ) AS slides
+                        FROM Chapters c
+                        JOIN Slides s ON c.chapter_id = s.chapter_id
+                        LEFT JOIN AvgTimeSpent a ON s.slide_id = a.slide_id
+                        LEFT JOIN AvgConcentrationScore cscore ON s.slide_id = cscore.slide_id
+                        GROUP BY c.chapter_id, c.chapter_name
+                        """, nativeQuery = true)
     List<ChapterSlideProgressProjection> getChapterSlideProgress(
             @Param("moduleId") String moduleId,
             @Param("packageSessionId") String packageSessionId,

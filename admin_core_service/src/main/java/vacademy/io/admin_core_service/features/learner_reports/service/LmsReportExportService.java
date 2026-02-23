@@ -123,6 +123,46 @@ public class LmsReportExportService {
         }
     }
 
+    /**
+     * Generates PDF for learner Subject-wise Progress Report with all columns
+     * (Subject, Module, Module Completed, Module completed by batch,
+     * Daily Time spent by batch (Avg), Daily Time spent (Avg)).
+     * Requires packageSessionId and userId in ReportFilterDTO.
+     */
+    public byte[] generateLearnerSubjectWiseProgressReportFull(ReportFilterDTO reportFilterDTO, CustomUserDetails userDetails) {
+        try {
+            if (reportFilterDTO.getUserId() == null || reportFilterDTO.getUserId().isBlank()) {
+                throw new VacademyException("userId is required for learner subject-wise progress report");
+            }
+            if (reportFilterDTO.getPackageSessionId() == null || reportFilterDTO.getPackageSessionId().isBlank()) {
+                throw new VacademyException("packageSessionId is required");
+            }
+
+            BatchInstituteProjection projection = fetchBatchAndInstitute(reportFilterDTO);
+            Student student = fetchStudent(reportFilterDTO.getUserId());
+
+            List<LearnerSubjectWiseProgressReportDTO> subjectWiseProgress =
+                    learnerReportService.getSubjectProgressReport(
+                            reportFilterDTO.getPackageSessionId(),
+                            reportFilterDTO.getUserId(),
+                            userDetails
+                    );
+
+            String html = HtmlBuilderService.getLearnerSubjectWiseProgressReportFullHtml(
+                    subjectWiseProgress,
+                    student.getFullName(),
+                    projection.getBatchName(),
+                    projection.getInstituteName()
+            );
+            return convertHtmlToPdf(html);
+        } catch (VacademyException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new VacademyException("PDF generation failed: " + e.getMessage());
+        }
+    }
+
     public byte[] generateChapterWiseBatchReport(ReportFilterDTO reportFilterDTO, CustomUserDetails userDetails) {
         try {
             // Fetch chapter-wise slide progress for the given module and batch

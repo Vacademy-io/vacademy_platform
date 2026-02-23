@@ -37,6 +37,9 @@ public class LearnerModuleDetailsService {
     }
 
     private List<LearnerModuleDTOWithDetails> mapToLearnerModuleDTOWithDetails(String rawJson) {
+        if (rawJson == null || rawJson.trim().isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
         try {
             return objectMapper.readValue(
                     rawJson,

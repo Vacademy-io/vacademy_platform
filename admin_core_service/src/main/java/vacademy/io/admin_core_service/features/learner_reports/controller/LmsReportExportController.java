@@ -45,16 +45,29 @@ public class LmsReportExportController {
         return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
     }
 
+    /**
+     * Exports Subject-wise Progress Report as PDF.
+     * - If payload has only package_session_id: returns Batch Subject-wise Progress.
+     * - If payload has package_session_id AND user_id: returns full learner Subject-wise Progress with all columns.
+     */
     @PostMapping(value = "/learner-subject-wise-report", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadSubjectWiseProgress(@RequestBody ReportFilterDTO reportFilterDTO,
                                                               @RequestAttribute("user") CustomUserDetails userDetails) {
-        byte[] pdfBytes = lmsReportExportService.generateSubjectWiseLearnerProgressReport(reportFilterDTO, userDetails);
+        byte[] pdfBytes;
+        String filename;
+        if (reportFilterDTO.getUserId() != null && !reportFilterDTO.getUserId().isBlank()) {
+            pdfBytes = lmsReportExportService.generateLearnerSubjectWiseProgressReportFull(reportFilterDTO, userDetails);
+            filename = "Subject_Wise_Progress_Report.pdf";
+        } else {
+            pdfBytes = lmsReportExportService.generateSubjectWiseLearnerProgressReport(reportFilterDTO, userDetails);
+            filename = "Batch_Subject_Wise_Progress.pdf";
+        }
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_PDF);
         headers.setContentDisposition(ContentDisposition
                 .builder("attachment")
-                .filename("Learner_Report.pdf")
+                .filename(filename)
                 .build());
 
         return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);

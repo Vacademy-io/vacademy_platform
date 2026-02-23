@@ -299,7 +299,7 @@ const EnrollmentPolicyDialog = ({
                         Re-enrollment Not Available
                     </DialogTitle>
                     <DialogDescription className="text-gray-600 text-sm sm:text-base leading-relaxed">
-                     Upgrade to our Paid plan
+                     Your free trial has ended. If you would like to continue regular practice, you can register for a membership by clicking the button below.
                     </DialogDescription>
                 </div>
             </DialogHeader>

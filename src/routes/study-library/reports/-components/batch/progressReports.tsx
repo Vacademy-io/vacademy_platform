@@ -23,7 +23,7 @@ import { useMutation } from '@tanstack/react-query';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyTable } from '@/components/design-system/table';
 import { usePacageDetails } from '../../-store/usePacageDetails';
-import { formatToTwoDecimalPlaces } from '../../-services/helper';
+import { formatToTwoDecimalPlaces, convertMinutesToTimeFormat } from '../../-services/helper';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { convertCapitalToTitleCase } from '@/lib/utils';
@@ -69,8 +69,12 @@ export default function ProgressReports() {
                 subject: subject.subject_name, // Show subject name in every row
                 module: module.module_name,
                 module_id: module.module_id,
-                module_completed_by_batch: `${formatToTwoDecimalPlaces(module.module_completion_percentage)}%`,
-                average_time_spent_by_batch: `${formatToTwoDecimalPlaces(module.avg_time_spent_minutes)} min`,
+                module_completed_by_batch: `${formatToTwoDecimalPlaces(
+                    module.module_completion_percentage_by_batch
+                )}%`,
+                average_time_spent_by_batch: convertMinutesToTimeFormat(
+                    module.avg_time_spent_minutes_by_batch ?? 0
+                ),
             }));
         });
     };

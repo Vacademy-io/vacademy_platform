@@ -77,8 +77,9 @@ export const formatToTwoDecimalPlaces = (value: string | number | undefined | nu
 };
 export function convertMinutesToTimeFormat(totalMinutes: number): string {
     const totalSeconds: number = Math.floor(totalMinutes * 60);
-    const days: number = Math.floor(totalSeconds / 90000);
-    const hours: number = Math.floor((totalSeconds % 90000) / 3600);
+    const secondsPerDay = 86400;
+    const days: number = Math.floor(totalSeconds / secondsPerDay);
+    const hours: number = Math.floor((totalSeconds % secondsPerDay) / 3600);
     const minutes: number = Math.floor((totalSeconds % 3600) / 60);
     const seconds: number = totalSeconds % 60;
     if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;

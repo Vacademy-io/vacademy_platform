@@ -116,6 +116,8 @@ interface Module {
     module_name: string;
     module_completion_percentage: number;
     avg_time_spent_minutes: number;
+    module_completion_percentage_by_batch?: number;
+    avg_time_spent_minutes_by_batch?: number;
 }
 
 interface SubjectProgress {

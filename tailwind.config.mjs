@@ -8,7 +8,8 @@ module.exports = {
         './components/**/*.{ts,tsx}',
         './app/**/*.{ts,tsx}',
         './src/**/*.{ts,tsx}',
-        ".flowbite-react/class-list.json"
+        ".flowbite-react/class-list.json",
+        ".flowbite-react\\class-list.json"
     ],
     prefix: '',
     theme: {

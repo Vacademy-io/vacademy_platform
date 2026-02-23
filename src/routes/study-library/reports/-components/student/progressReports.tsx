@@ -198,11 +198,11 @@ export default function ProgressReports() {
                 module_id: module.module_id,
                 module_completed: `${formatToTwoDecimalPlaces(module.module_completion_percentage)}%`,
                 module_completed_by_batch: `${formatToTwoDecimalPlaces(
-                    module.module_completion_percentage
+                    module.module_completion_percentage_by_batch
                 )}%`,
                 average_time_spent: `${convertMinutesToTimeFormat(module.avg_time_spent_minutes)}`,
                 average_time_spent_by_batch: `${convertMinutesToTimeFormat(
-                    module.avg_time_spent_minutes
+                    module.avg_time_spent_minutes_by_batch ?? 0
                 )}`,
                 user_id,
             }))

@@ -207,3 +207,6 @@ export const USER_LINKED_DATA = `${BASE_URL}/admin-core-service/v1/student-analy
 
 export const USER_AI_KEY = `${BASE_URL}/ai-service/api-keys/v1/user`;
 export const USER_TOKEN_USAGE = `${BASE_URL}/ai-service/token-usage/v1/user`;
+
+// AI service base url
+export const AI_SERVICE_URL = `${BASE_URL}/ai-service`;

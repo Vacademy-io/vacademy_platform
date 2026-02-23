@@ -138,11 +138,7 @@ function RouteComponent() {
 
 
   useLayoutEffect(() => {
-    setNavHeading(
-      <div className="flex items-center gap-2">
-        <div>Live Classes</div>
-      </div>
-    );
+    setNavHeading(getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession));
   }, [setNavHeading]);
   const hasNextPage = (sessions?.totalReturned ?? 0) === 10;
 
@@ -270,7 +266,10 @@ function RouteComponent() {
         ) {
           (navigate as any)({
             to: "/study-library/live-class/embed",
-            search: { sessionId: session.schedule_id },
+            search: {
+              sessionId: session.schedule_id,
+              learnerButtonConfig: session.learner_button_config ?? undefined,
+            },
           });
         } else {
           window.open(session.meeting_link, "_blank", "noopener,noreferrer");
@@ -286,7 +285,10 @@ function RouteComponent() {
         ) {
           (navigate as any)({
             to: "/study-library/live-class/embed",
-            search: { sessionId: session.schedule_id },
+            search: {
+              sessionId: session.schedule_id,
+              learnerButtonConfig: session.learner_button_config ?? undefined,
+            },
           });
         } else {
           window.open(session.meeting_link, "_blank", "noopener,noreferrer");
@@ -496,7 +498,7 @@ function RouteComponent() {
               </div>
             </div>
           </div>
-
+          <div className="flex flex-col items-end gap-2 shrink-0">
           {isLive && session.meeting_link && (
             <Button
               variant="default"
@@ -512,6 +514,7 @@ function RouteComponent() {
                   : "Join Session"}
             </Button>
           )}
+          </div>
         </div>
 
         {/* Mobile Layout: Button at the bottom */}
@@ -601,7 +604,7 @@ function RouteComponent() {
               </span>
             </div>
           </div>
-
+          <div className="space-y-2">
           {isLive && session.meeting_link && (
             <Button
               variant="default"
@@ -617,6 +620,7 @@ function RouteComponent() {
                   : "Join Session"}
             </Button>
           )}
+        </div>
         </div>
       </div>
     );
@@ -664,7 +668,9 @@ function RouteComponent() {
 
 
   const handleDayClick = (date: Date, sessionsForDay: SessionDetails[]) => {
-    if (sessionsForDay.length > 0) {
+    const isToday = date.toDateString() === new Date().toDateString();
+    const hasDefaultClass = !!(sessions as any)?.defaultDayConfig?.defaultClassLink;
+    if (sessionsForDay.length > 0 || (isToday && hasDefaultClass)) {
       setSelectedDayData({ date, sessions: sessionsForDay });
       setDayModalOpen(true);
     }
@@ -680,6 +686,10 @@ function RouteComponent() {
       sessions?.upcoming_sessions?.includes(session)
     );
 
+    const isToday = selectedDayData.date.toDateString() === new Date().toDateString();
+    const defaultDayConfig = (sessions as any)?.defaultDayConfig;
+    const showDefaultClass = isToday && defaultDayConfig?.defaultClassLink && liveSessions.length === 0;
+
     return (
       <Dialog open={dayModalOpen} onOpenChange={setDayModalOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -694,7 +704,7 @@ function RouteComponent() {
               <div>
                 <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 mb-3 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-danger-600 animate-pulse"></div>
-                  Live Sessions
+                  {getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}s
                 </h3>
                 <div className="space-y-3">
                   {liveSessions
@@ -746,6 +756,7 @@ function RouteComponent() {
                               )}
                             </div>
                           </div>
+                          <div className="flex flex-col items-end gap-2 shrink-0 ml-4">
                           {session.meeting_link && (
                             <Button
                               size="sm"
@@ -759,6 +770,7 @@ function RouteComponent() {
                               Join
                             </Button>
                           )}
+                        </div>
                         </div>
                       </div>
                     ))}
@@ -886,7 +898,9 @@ function RouteComponent() {
       const hasLive = sessionsForDay.some((session) =>
         sessions?.live_sessions?.includes(session)
       );
+      const hasDefaultClass = isToday && !!(sessions as any)?.defaultDayConfig?.defaultClassLink && !hasLive;
       const sessionCount = sessionsForDay.length;
+      const isClickable = sessionCount > 0 || hasDefaultClass;
 
       days.push(
         <div
@@ -894,7 +908,7 @@ function RouteComponent() {
           className={`h-24 border border-neutral-200 dark:border-neutral-800 p-1 transition-all duration-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer ${isToday
             ? "bg-primary-50/50 border-primary-200 dark:bg-primary-950/30 dark:border-primary-700"
             : "bg-white dark:bg-neutral-900"
-            } ${sessionCount > 0 ? "hover:shadow-sm" : ""}`}
+            } ${isClickable ? "hover:shadow-sm" : ""}`}
           onClick={() => handleDayClick(currentDate, sessionsForDay)}
         >
           <div
@@ -946,6 +960,16 @@ function RouteComponent() {
                 </div>
               );
             })}
+
+            {/* Default class indicator for today */}
+            {hasDefaultClass && sessionCount === 0 && (
+              <div
+                className="text-xs p-1 rounded truncate transition-all duration-200 bg-green-100 text-green-700 border border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-900"
+                title={(sessions as any)?.defaultDayConfig?.defaultClassName || "Session"}
+              >
+                {(sessions as any)?.defaultDayConfig?.defaultClassName || "Session"}
+              </div>
+            )}
 
             {sessionCount > 1 && (
               <div
@@ -1017,7 +1041,7 @@ function RouteComponent() {
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-200 dark:from-red-900/40 dark:to-red-800/40 dark:border-red-900"></div>
             <span className="text-neutral-600 dark:text-neutral-300">
-              Live Sessions
+              {getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}s
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1163,7 +1187,6 @@ function RouteComponent() {
                   <div className="w-full">
                     <DefaultClassCard
                       defaultClassLink={(sessions as any)?.defaultDayConfig?.defaultClassLink}
-                      learnerButtonConfig={(sessions as any)?.defaultDayConfig?.learnerButtonConfig}
                       defaultClassName={(sessions as any)?.defaultDayConfig?.defaultClassName}
                     />
                   </div>

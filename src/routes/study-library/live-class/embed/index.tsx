@@ -224,19 +224,20 @@ function EmbedComponent() {
             enableConcentrationScore={false}
           />
           {learnerButtonConfig?.visible && (
-            <div className="flex justify-center mt-4">
+            <div className="flex justify-end w-full mt-2">
               <Button
                 variant="default"
-                size="lg"
-                className="shadow-md hover:shadow-lg transition-all duration-200"
+                size="sm"
+                className="h-9 px-6 text-sm font-medium shadow-sm hover:shadow transition-all duration-200 rounded-full"
                 style={{
                   backgroundColor: learnerButtonConfig.background_color,
                   color: learnerButtonConfig.text_color,
+                  border: `1px solid ${learnerButtonConfig.background_color}20`,
                 }}
                 onClick={() => window.open(learnerButtonConfig.url, "_blank")}
               >
-                {learnerButtonConfig.text}
-                <ArrowSquareOut size={20} className="ml-2" />
+                <span>{learnerButtonConfig.text}</span>
+                <ArrowSquareOut size={14} weight="bold" className="ml-2 opacity-90" />
               </Button>
             </div>
           )}
@@ -253,19 +254,20 @@ function EmbedComponent() {
         <div className="w-full h-full flex flex-col gap-4">
           <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />
           {learnerButtonConfig?.visible && (
-            <div className="flex justify-center mt-4">
+            <div className="flex justify-end w-full mt-2">
               <Button
                 variant="default"
-                size="lg"
-                className="shadow-md hover:shadow-lg transition-all duration-200"
+                size="sm"
+                className="h-9 px-6 text-sm font-medium shadow-sm hover:shadow transition-all duration-200 rounded-full"
                 style={{
                   backgroundColor: learnerButtonConfig.background_color,
                   color: learnerButtonConfig.text_color,
+                  border: `1px solid ${learnerButtonConfig.background_color}20`,
                 }}
                 onClick={() => window.open(learnerButtonConfig.url, "_blank")}
               >
-                {learnerButtonConfig.text}
-                <ArrowSquareOut size={20} className="ml-2" />
+                <span>{learnerButtonConfig.text}</span>
+                <ArrowSquareOut size={14} weight="bold" className="ml-2 opacity-90" />
               </Button>
             </div>
           )}
@@ -300,7 +302,7 @@ function EmbedComponent() {
           <div className="flex justify-center p-4">
             <DefaultClassCard
               defaultClassLink={(sessions as any)?.defaultDayConfig?.defaultClassLink}
-              learnerButtonConfig={(sessions as any)?.defaultDayConfig?.learnerButtonConfig}
+              // learnerButtonConfig={(sessions as any)?.defaultDayConfig?.learnerButtonConfig}
               defaultClassName={(sessions as any)?.defaultDayConfig?.defaultClassName}
             />
           </div>

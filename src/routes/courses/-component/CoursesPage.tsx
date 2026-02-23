@@ -148,11 +148,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     instructors={
                       course.instructors?.length
                         ? course.instructors.map((instructor) => ({
-                            id: instructor.id,
-                            full_name:
-                              instructor.full_name || "Unknown Instructor",
-                            image_url: undefined,
-                          }))
+                          id: instructor.id,
+                          full_name:
+                            instructor.full_name || "Unknown Instructor",
+                          image_url: undefined,
+                        }))
                         : []
                     }
                     rating={course.rating || 5}
@@ -162,11 +162,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     tags={
                       course.comma_separeted_tags
                         ? course.comma_separeted_tags
-                            .split(",")
-                            .map((tag: string) => tag.trim())
+                          .split(",")
+                          .map((tag: string) => toTitleCase(tag.trim()))
                         : fallbackTags
-                            .split(",")
-                            .map((tag: string) => tag.trim())
+                          .split(",")
+                          .map((tag: string) => toTitleCase(tag.trim()))
                     }
                     previewImageUrl={course.course_preview_image_media_id}
                     instituteId={instituteId}

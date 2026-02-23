@@ -2,35 +2,47 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Rewind, 
-  FastForward, 
-  Volume2, 
-  VolumeX, 
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  Rewind,
+  FastForward,
+  Volume2,
+  VolumeX,
   Settings,
   ChevronLeft,
   ChevronRight,
   Printer,
+  Maximize,
+  Minimize,
 } from "lucide-react";
-import type { 
-  ContentType, 
-  NavigationType, 
-  TimelineMeta, 
-  TimelineData, 
+import type {
+  ContentType,
+  NavigationType,
+  TimelineMeta,
+  TimelineData,
   Frame,
 } from "./types";
-import { CONTENT_TYPE_LABELS, DEFAULT_ENTRY_LABELS } from "./types";
+import { CONTENT_TYPE_LABELS, CONTENT_TYPE_ENTRY_LABELS } from "./types";
 import { getLibraryScriptTags } from "./library-loader";
-import { 
-  createNavigationController, 
+import {
+  createNavigationController,
   type NavigationController,
 } from "./navigation-controller";
+import { processHtmlContent, fixHtmlContent } from "./html-processor";
 
 // Re-export types for backward compatibility
 export type { Frame, TimelineMeta, TimelineData, ContentType, NavigationType };
+
+/**
+ * Format time in seconds to MM:SS format
+ */
+const formatTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
 
 export interface AIVideoPlayerProps {
   timelineUrl: string;
@@ -52,229 +64,8 @@ const DEFAULT_META: TimelineMeta = {
   dimensions: { width: 1920, height: 1080 },
 };
 
-const fixHtmlContent = (html: string, includeLibs = true, contentType: ContentType = "VIDEO") => {
-    // Get libraries for the specific content type
-    const libsScripts = includeLibs ? getLibraryScriptTags(contentType) : "";
-    
-    // Inject required libraries + Interaction Script
-    const libs = `
-        ${libsScripts}
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
-        <style>
-            /* Visual cues for interactive elements */
-            .hover-target:hover {
-                outline: 2px dashed #3b82f6;
-                cursor: grab;
-            }
-            .is-dragging {
-                outline: 2px solid #3b82f6;
-                cursor: grabbing;
-                user-select: none;
-            }
-            [contenteditable="true"] {
-                outline: 2px solid #22c55e;
-                cursor: text;
-                min-width: 10px;
-            }
-            /* Print styles for WORKSHEET content */
-            @media print {
-                #nav-controls, .no-print { display: none !important; }
-                .worksheet-container { max-width: 100%; padding: 0; }
-            }
-        </style>
-        <script>
-            try {
-                window.addEventListener('load', () => {
-                    // Initialize Libraries
-                    if(window.gsap && window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
-                    if(window.mermaid) mermaid.initialize({startOnLoad:true});
-
-                    // --- Interaction Logic ---
-                    const postUpdate = () => {
-                        // Robust serialization to preserve styles (which might move to HEAD) and content
-                        let result = "";
-
-                        const isInjection = (node) => {
-                            // Check scripts
-                            if (node.tagName === 'SCRIPT') {
-                                if (node.src && (node.src.includes('gsap') || node.src.includes('mermaid'))) return true;
-                                if (node.innerHTML.includes('Interaction Logic')) return true;
-                                if (node.innerHTML.includes('gsap.registerPlugin(MotionPathPlugin)')) return true; 
-                            }
-                            // Check interaction style
-                            if (node.tagName === 'STYLE') {
-                                if (node.innerHTML.includes('Visual cues for interactive elements')) return true;
-                            }
-                            return false;
-                        }
-
-                        // 1. Process HEAD (Styles often end up here)
-                        if (document.head) {
-                            Array.from(document.head.childNodes).forEach(node => {
-                                if (!isInjection(node)) {
-                                    result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
-                                }
-                            });
-                        }
-
-                        // 2. Process BODY
-                        // Clone body to clean up interaction markers on elements (classes/attributes)
-                        const bodyClone = document.body.cloneNode(true);
-                        
-                        // Clean attributes
-                        bodyClone.querySelectorAll('*').forEach(el => {
-                            el.classList.remove('hover-target', 'is-dragging');
-                            el.removeAttribute('contenteditable');
-                        });
-                        
-                        Array.from(bodyClone.childNodes).forEach(node => {
-                             if (!isInjection(node)) {
-                                 result += (node.nodeType === 3 ? node.nodeValue : node.outerHTML) || "";
-                             }
-                        });
 
 
-                        const parent = window.parent || window.top;
-                        if (parent && parent.postMessage) {
-                            parent.postMessage({
-                                type: 'HTML_UPDATE',
-                                html: result 
-                            }, '*');
-                        }
-                    };
-
-                    // Add hover effects to everything reasonable
-                    document.body.addEventListener('mouseover', (e) => {
-                        if (e.target !== document.body && !e.target.classList.contains('hover-target')) {
-                            // e.target.classList.add('hover-target');
-                        }
-                    });
-                    
-                    // Helper to find a "movable" block (divs, imgs, etc)
-                    const getMovable = (target) => {
-                        let current = target;
-                        let depth = 0;
-                        while (current && current !== document.body && depth < 50) {
-                            const style = window.getComputedStyle(current);
-                            if (style.display === 'block' || style.display === 'flex' || current.tagName === 'IMG') {
-                                return current;
-                            }
-                            current = current.parentElement;
-                            depth++;
-                        }
-                        return null;
-                    }
-
-                    // Drag Logic
-                    let draggedEl = null;
-                    let startX = 0, startY = 0;
-                    let initialTransform = {x: 0, y: 0};
-                    let hasMoved = false;
-
-                    const getTranslate = (el) => {
-                        const style = window.getComputedStyle(el);
-                        const matrix = new WebKitCSSMatrix(style.transform);
-                        return {x: matrix.m41, y: matrix.m42};
-                    }
-
-                    document.addEventListener('mousedown', (e) => {
-                        if (e.target.isContentEditable) return; // Don't drag if editing text
-                        
-                        const target = getMovable(e.target);
-                        if (!target) return;
-
-                        draggedEl = target;
-                        startX = e.clientX;
-                        startY = e.clientY;
-                        initialTransform = getTranslate(draggedEl);
-                        hasMoved = false;
-                        
-                        // Don't add class yet, wait for move
-                        e.preventDefault(); 
-                    });
-
-                    document.addEventListener('mousemove', (e) => {
-                        if (!draggedEl) return;
-                        e.preventDefault();
-                        
-                        const dx = e.clientX - startX;
-                        const dy = e.clientY - startY;
-                        
-                        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-                             hasMoved = true;
-                             draggedEl.classList.add('is-dragging');
-                        }
-
-                        if (!hasMoved) return;
-                        
-                        // Apply translate
-                        draggedEl.style.transform = \`translate3d(\${initialTransform.x + dx}px, \${initialTransform.y + dy}px, 0)\`;
-                    });
-
-                    document.addEventListener('mouseup', () => {
-                        if (draggedEl) {
-                            draggedEl.classList.remove('is-dragging');
-                            draggedEl = null; 
-                            if (hasMoved) {
-                                postUpdate(); // Only save if actually moved
-                            }
-                        }
-                    });
-
-                    // Text Edit Logic
-                    document.addEventListener('dblclick', (e) => {
-                        const target = e.target;
-                        // Relaxed check: Allow text editing on anything that isn't the root containers
-                        // and has some text content.
-                        if (target !== document.body && target !== document.documentElement) {
-                            e.stopPropagation(); // Only edit the specific clicked element
-                            
-                            target.setAttribute('contenteditable', 'true');
-                            target.focus();
-                            
-                            // Select all text
-                            // Use try-catch as execCommand can be flaky in some contexts
-                            try {
-                                document.execCommand('selectAll', false, null);
-                            } catch(err) {}
-                            
-                            // Prevent drag while editing
-                            const stopProp = (k) => k.stopPropagation();
-                            target.addEventListener('keydown', stopProp);
-                            target.addEventListener('mousedown', stopProp); // Stop drag start
-                            
-                            // Save on blur
-                            target.addEventListener('blur', () => {
-                                target.removeAttribute('contenteditable');
-                                target.removeEventListener('keydown', stopProp);
-                                target.removeEventListener('mousedown', stopProp);
-                                postUpdate();
-                            }, {once: true});
-                        }
-                    });
-
-                    // CONVERSATION content type: Text-to-speech for dialogue bubbles
-                    document.querySelectorAll('.audio-btn').forEach(btn => {
-                        btn.addEventListener('click', () => {
-                            const text = btn.closest('.message-content')?.querySelector('.speech-text')?.textContent;
-                            if (text && window.speechSynthesis) {
-                                const utterance = new SpeechSynthesisUtterance(text);
-                                utterance.lang = document.documentElement.lang || 'en-US';
-                                speechSynthesis.speak(utterance);
-                            }
-                        });
-                    });
-                });
-            } catch(e) { console.error("Error in interactive script", e); }
-        </script>
-    `;
-
-    // Replace absolute file paths with valid Vite src paths and prepend libraries
-    // Use non-greedy match to avoid backtracking issues on large strings
-    const fixedPathHtml = html.replace(/file:\/\/\/[^"'\n]*\/runs\/dna_gene_editing\/generated_images\//g, '/src/routes/ai-video-studio/runs/dna_gene_editing/generated_images/');
-
-    return (includeLibs ? libs : '') + fixedPathHtml;
-};
 
 export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   timelineUrl,
@@ -283,14 +74,13 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   width: propWidth,
   height: propHeight,
   onEntryChange,
-  onContentComplete,
-}) => {
+  onContentComplete, }) => {
   // Core state
   const [frames, setFrames] = useState<Frame[]>([]);
   const [meta, setMeta] = useState<TimelineMeta>(DEFAULT_META);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Use dimensions from meta or props
   const width = propWidth || meta.dimensions?.width || 1920;
   const height = propHeight || meta.dimensions?.height || 1080;
@@ -300,10 +90,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioStarted, setAudioStarted] = useState(false);
-  
+
   // User-driven state (for QUIZ, STORYBOOK, etc.)
   const [currentEntryIndex, setCurrentEntryIndex] = useState(0);
-  
+
   // Display state
   const [activeFrames, setActiveFrames] = useState<Frame[]>([]);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -311,6 +101,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [showPlaybackSpeedMenu, setShowPlaybackSpeedMenu] = useState(false);
   const [scale, setScale] = useState(0.8);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -347,7 +138,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   // Derived values
   const contentType = meta.content_type || "VIDEO";
   const navigationMode = meta.navigation || "time_driven";
-  const entryLabel = meta.entry_label || DEFAULT_ENTRY_LABELS[contentType] || "segment";
+  const entryLabel = meta.entry_label || CONTENT_TYPE_ENTRY_LABELS[contentType] || "segment";
   const isTimeDriven = navigationMode === "time_driven";
   const isUserDriven = navigationMode === "user_driven";
   const isSelfContained = navigationMode === "self_contained";
@@ -368,7 +159,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         console.log("[AIVideoPlayer] Loading timeline from:", timelineUrl);
         const response = await fetch(timelineUrl);
         if (!response.ok) {
-          throw new Error(`Failed to load timeline: ${response.statusText}`);
+          throw new Error(`Failed to load timeline: ${response.statusText} `);
         }
 
         const timelineData: TimelineData | Frame[] = await response.json();
@@ -382,29 +173,29 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         // Parse new structure with backward compatibility
         let framesArray: Frame[];
         let timelineMeta: TimelineMeta;
-        
+
         if (Array.isArray(timelineData)) {
           // Old format: just an array of frames (backward compatibility)
           framesArray = timelineData;
-          timelineMeta = { 
+          timelineMeta = {
             ...DEFAULT_META,
-            audio_start_at: 0, 
-            total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0 
+            audio_start_at: 0,
+            total_duration: framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0
           };
         } else {
-          // New format: { meta, entries }
-          framesArray = timelineData.entries || [];
+          // New format: { meta, entries}
+          framesArray = (timelineData.entries as Frame[]) || [];
           timelineMeta = {
             ...DEFAULT_META,
             ...timelineData.meta,
           };
-          
+
           // Ensure total_duration is set
           if (!timelineMeta.total_duration && framesArray.length > 0) {
             timelineMeta.total_duration = framesArray[framesArray.length - 1].exitTime;
           }
         }
-        
+
         console.log("[AIVideoPlayer] Parsed timeline:", {
           framesCount: framesArray.length,
           meta: timelineMeta,
@@ -418,10 +209,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         setMeta(timelineMeta);
 
         // Use meta.total_duration if available, otherwise calculate from last frame
-        const videoDuration = timelineMeta.total_duration || 
+        const videoDuration = timelineMeta.total_duration ||
           (framesArray.length > 0 ? framesArray[framesArray.length - 1].exitTime : 0);
         setDuration(videoDuration);
-        
+
         // Initialize navigation controller with stable callback
         const nav = createNavigationController(
           timelineMeta,
@@ -449,7 +240,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         navigationRef.current = null;
       }
     };
-  }, [timelineUrl, handleNavChange]); 
+  }, [timelineUrl, handleNavChange]);
 
   // Initialize audio (only for time-driven content or content with audio)
   useEffect(() => {
@@ -466,7 +257,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
     // Set crossOrigin for S3 URLs to handle CORS
     audio.crossOrigin = "anonymous";
-    
+
     // Set preload to allow metadata loading
     audio.preload = "auto";
 
@@ -505,14 +296,14 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         src: audio.src,
         audioUrl: audioUrl,
       });
-      
+
       let errorMessage = "Failed to load audio";
       if (audio.error) {
         const MEDIA_ERR_ABORTED = 1;
         const MEDIA_ERR_NETWORK = 2;
         const MEDIA_ERR_DECODE = 3;
         const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
-        
+
         switch (audio.error.code) {
           case MEDIA_ERR_ABORTED:
             errorMessage = "Audio loading aborted";
@@ -532,7 +323,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     });
 
     audio.src = audioUrl;
-    
+
     try {
       audio.load();
     } catch (err) {
@@ -559,7 +350,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       const active = frames.filter(
         (frame) => currentTime >= frame.inTime && currentTime <= frame.exitTime
       );
-      
+
       let framesToShow = active;
       if (framesToShow.length === 0) {
         const framesAtOrBefore = frames.filter((frame) => frame.inTime <= currentTime);
@@ -569,7 +360,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           framesToShow = [frames[0]];
         }
       }
-      
+
       // OPTIMIZATION: Only update state if the frames have actually changed
       setActiveFrames(prev => {
         if (prev.length === framesToShow.length && prev.every((f, i) => f.id === framesToShow[i].id)) {
@@ -577,27 +368,25 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         }
         return framesToShow;
       });
-
     } else if (isUserDriven) {
       // User-driven: show current entry
       const currentEntry = frames[currentEntryIndex];
       const newFrames = currentEntry ? [currentEntry] : [frames[0]];
-      
-      setActiveFrames(prev => {
-         if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
-             return prev;
-         }
-         return newFrames;
-      });
 
+      setActiveFrames(prev => {
+        if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
+          return prev;
+        }
+        return newFrames;
+      });
     } else if (isSelfContained) {
       // Self-contained: show first (and only) entry
       const newFrames = [frames[0]];
       setActiveFrames(prev => {
-          if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
-              return prev;
-          }
-          return newFrames;
+        if (prev.length === newFrames.length && prev[0]?.id === newFrames[0]?.id) {
+          return prev;
+        }
+        return newFrames;
       });
     }
   }, [frames, currentTime, currentEntryIndex, isTimeDriven, isUserDriven, isSelfContained]);
@@ -606,23 +395,27 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   useEffect(() => {
     const calculateScale = () => {
       if (!containerRef.current) return;
-      
+
       const container = containerRef.current;
       const rect = container.getBoundingClientRect();
       const containerWidth = rect.width;
       const containerHeight = rect.height;
-      
+
       if (containerWidth <= 0 || containerHeight <= 0) {
         console.warn("[AIVideoPlayer] Invalid container dimensions:", { containerWidth, containerHeight });
+        console.warn("[AIVideoPlayer] Invalid container dimensions:", {
+          containerWidth,
+          containerHeight
+        });
         return;
       }
-      
+
       const scaleX = containerWidth / width;
       const scaleY = containerHeight / height;
       const newScale = Math.min(scaleX, scaleY);
-      const zoomedOutScale = newScale * 0.95;
-      const finalScale = Math.min(zoomedOutScale, 1);
-      
+      // Add a small buffer (0.98 multiplier) to ensure it doesn't hit edges in default view
+      const finalScale = isFullscreen ? Math.min(newScale, 1) : Math.min(newScale * 0.98, 1);
+
       // Prevent infinite loops by only updating if change is significant (> 0.001)
       setScale(prev => Math.abs(prev - finalScale) > 0.001 ? finalScale : prev);
     };
@@ -637,7 +430,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       if (!entry) return;
 
       const { width: newWidth, height: newHeight } = entry.contentRect;
-      
+
       // Only trigger if change is significant (> 1px) to avoid sub-pixel layout loops on iOS
       if (Math.abs(newWidth - lastWidth) < 1 && Math.abs(newHeight - lastHeight) < 1) {
         return;
@@ -649,12 +442,12 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       cancelAnimationFrame(frameId);
       frameId = requestAnimationFrame(() => calculateScale());
     };
-    
+
     const resizeObserver = new ResizeObserver(observerCallback);
-    
+
     // Initial calculation
     calculateScale();
-    
+
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }
@@ -668,154 +461,29 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     };
   }, [width, height]);
 
-  // Update iframe content with active frames
-  useEffect(() => {
-    if (!iframeRef.current) return;
 
-    // Check if we need to update at all
-    // If the iframe already has content and the frames are the same, skip
-    // We attach lastRenderedFrames to the iframe element to track this
-    const iframe = iframeRef.current as HTMLIFrameElement & { __lastRenderedIds?: string };
-    const lastRenderedIds = iframe.__lastRenderedIds;
-    const currentIds = activeFrames.map(f => f.id).join(',');
-    
-    if (lastRenderedIds === currentIds && iframe.contentDocument?.body?.innerHTML) {
-        return;
-    }
-
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!iframeDoc) {
-      console.warn("[AIVideoPlayer] Cannot access iframe document");
-      return;
-    }
-
-    // Mark as rendered
-    iframe.__lastRenderedIds = currentIds;
-
-    if (activeFrames.length === 0) {
-      iframeDoc.body.innerHTML = "";
-      return;
-    }
-
-    console.log("[AIVideoPlayer] Rendering frames:", {
-      count: activeFrames.length,
-      contentType,
-      frames: activeFrames.map((f) => ({ id: f.id, inTime: f.inTime, exitTime: f.exitTime })),
-    });
-
-    const sortedFrames = [...activeFrames].sort((a, b) => a.z - b.z);
-
-    let htmlContent = `
-      <!DOCTYPE html>
-      <html lang="${meta.target_language || 'en'}">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            body {
-              width: ${width}px;
-              height: ${height}px;
-              overflow: hidden;
-              position: relative;
-              background: #000000;
-              margin: 0;
-              padding: 0;
-            }
-            .frame {
-              position: absolute;
-              width: 100%;
-              height: 100%;
-            }
-          </style>
-        </head>
-        <body>
-          ${fixHtmlContent("", true, contentType)}
-    `;
-
-    sortedFrames.forEach((frame) => {
-      const frameStyle = frame.htmlStartX !== undefined ? `
-        left: ${frame.htmlStartX}px;
-        top: ${frame.htmlStartY}px;
-        width: ${(frame.htmlEndX || width) - (frame.htmlStartX || 0)}px;
-        height: ${(frame.htmlEndY || height) - (frame.htmlStartY || 0)}px;
-        z-index: ${frame.z};
-      ` : `
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        z-index: ${frame.z};
-      `;
-
-      htmlContent += `
-        <div class="frame" style="${frameStyle}">
-          ${fixHtmlContent(frame.html, false, contentType)}
-        </div>
-      `;
-    });
-
-    htmlContent += `
-        </body>
-      </html>
-    `;
-
-    iframeDoc.open();
-    iframeDoc.write(htmlContent);
-    iframeDoc.close();
-  }, [activeFrames, width, height, contentType, meta.target_language, isSelfContained]);
-
-  // ✅ Separate effect for script re-execution (iOS stability)
-  // Only re-execute scripts for truly self-contained content when frames or iframe change
-  useEffect(() => {
-    if (!isSelfContained || !iframeRef.current || frames.length === 0) return;
-
-    const iframeDoc = iframeRef.current.contentDocument || iframeRef.current.contentWindow?.document;
-    if (!iframeDoc) return;
-
-    // We only want to do this once when the content is first loaded or significant segments change
-    // Using a ref to track what was last script-executed
-    const iframe = iframeRef.current as HTMLIFrameElement & { __lastScriptIds?: string };
-    const lastScriptIds = iframe.__lastScriptIds;
-    const currentIds = frames.map(f => f.id).join(',');
-    if (lastScriptIds === currentIds) return;
-    iframe.__lastScriptIds = currentIds;
-
-    const scripts = iframeDoc.querySelectorAll('script');
-    scripts.forEach((oldScript) => {
-      if (!oldScript.src) {
-        const newScript = iframeDoc.createElement('script');
-        newScript.textContent = oldScript.textContent;
-        oldScript.parentNode?.replaceChild(newScript, oldScript);
-      }
-    });
-  }, [isSelfContained, frames]);
 
   // Animation loop for time-driven content
   useEffect(() => {
     if (!isTimeDriven) return;
 
     let lastTimestamp: number | null = null;
-    
+
     const updateTime = (timestamp: number) => {
       if (!isPlaying) return;
-      
+
       const deltaTime = lastTimestamp ? (timestamp - lastTimestamp) / 1000 * playbackRate : 0;
       lastTimestamp = timestamp;
-      
+
       setCurrentTime(prevTime => {
         let newTime = prevTime;
         const audioStartAt = meta.audio_start_at || 0;
         const totalDuration = meta.total_duration || duration;
-        
+
         // INTRO PHASE
         if (prevTime < audioStartAt) {
           newTime = prevTime + deltaTime;
-          
+
           if (newTime >= audioStartAt && audioRef.current && !audioStarted) {
             console.log("[AIVideoPlayer] Intro complete, starting audio");
             audioRef.current.currentTime = 0;
@@ -833,7 +501,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         // OUTRO PHASE
         else if (audioRef.current && audioRef.current.ended) {
           newTime = prevTime + deltaTime;
-          
+
           if (newTime >= totalDuration) {
             console.log("[AIVideoPlayer] Video complete (including outro)");
             setIsPlaying(false);
@@ -842,10 +510,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             return totalDuration;
           }
         }
-        
+
         return Math.min(newTime, totalDuration);
       });
-      
+
       animationFrameRef.current = requestAnimationFrame(updateTime);
     };
 
@@ -871,7 +539,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       setIsPlaying(false);
     } else {
       const audioStartAt = meta.audio_start_at || 0;
-      
+
       if (currentTime >= audioStartAt && audioRef.current) {
         const audioTime = currentTime - audioStartAt;
         audioRef.current.currentTime = Math.max(0, audioTime);
@@ -883,7 +551,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
           setAudioStarted(true);
         }
       }
-      
+
       setIsPlaying(true);
     }
   }, [isPlaying, meta, currentTime, audioStarted, isTimeDriven, audioUrl]);
@@ -905,12 +573,12 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
   const handleSeek = useCallback((value: number[]) => {
     if (!isTimeDriven) return;
-    
+
     const newTimelineTime = value[0];
     const audioStartAt = meta.audio_start_at || 0;
-    
+
     setCurrentTime(newTimelineTime);
-    
+
     if (audioRef.current) {
       if (newTimelineTime < audioStartAt) {
         audioRef.current.pause();
@@ -919,7 +587,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       } else {
         const audioTime = newTimelineTime - audioStartAt;
         audioRef.current.currentTime = Math.max(0, audioTime);
-        
+
         if (isPlaying && newTimelineTime < (meta.content_ends_at || duration)) {
           if (!audioStarted) {
             setAudioStarted(true);
@@ -946,7 +614,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   // Navigation controls for user-driven content
   const handlePrevEntry = useCallback(() => {
     if (!isUserDriven || !navigationRef.current) return;
-    
+
     const entry = navigationRef.current.prev();
     if (entry) {
       setCurrentEntryIndex(navigationRef.current.currentIndex);
@@ -955,7 +623,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
 
   const handleNextEntry = useCallback(() => {
     if (!isUserDriven || !navigationRef.current) return;
-    
+
     const entry = navigationRef.current.next();
     if (entry) {
       setCurrentEntryIndex(navigationRef.current.currentIndex);
@@ -1003,6 +671,30 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     }
   }, []);
 
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  const handleToggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      // Use the root element of the player for fullscreen
+      rootRef.current?.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message} `);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
   const playbackSpeeds = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
   // Close playback speed menu when clicking outside
@@ -1022,19 +714,13 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     };
   }, [showPlaybackSpeedMenu]);
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
   // Get progress display
   const progressDisplay = useMemo(() => {
     if (isUserDriven || isSelfContained) {
       const label = entryLabel.charAt(0).toUpperCase() + entryLabel.slice(1);
       const current = currentEntryIndex + 1;
       const total = frames.length;
-      return `${label} ${current} of ${total}`;
+      return `${label} ${current} of ${total} `;
     }
     return null;
   }, [isUserDriven, isSelfContained, entryLabel, currentEntryIndex, frames.length]);
@@ -1062,7 +748,11 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   }
 
   return (
-    <div className={`bg-black rounded-lg overflow-hidden flex flex-col ${className}`} style={{ aspectRatio: "16/9", maxHeight: "calc(100vh - 150px)" }}>
+    <div
+      ref={rootRef}
+      className={`bg-black rounded-lg overflow-hidden flex flex-col ${className} ${isFullscreen ? 'fixed inset-0 z-50 rounded-none w-screen h-screen' : ''} `}
+      style={isFullscreen ? { maxHeight: '100vh' } : { maxHeight: "calc(100vh - 150px)" }}
+    >
       {/* Content Type Badge */}
       <div className="bg-gray-900 px-4 py-2 flex items-center justify-between border-b border-gray-800">
         <span className="text-white text-sm font-medium">{contentTypeBadge}</span>
@@ -1085,10 +775,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       </div>
 
       {/* Video Frame */}
-      <div 
+      <div
         ref={containerRef}
-        className="relative w-full flex-1 bg-black overflow-hidden flex items-center justify-center" 
-        style={{ minHeight: 0, position: 'relative' }}
+        className="relative w-full flex-1 bg-black overflow-hidden"
+        style={{ minHeight: 0, position: 'relative', aspectRatio: isFullscreen ? 'auto' : '16/9' }}
       >
         <div
           style={{
@@ -1096,25 +786,54 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             height: `${height}px`,
             transform: `scale(${scale})`,
             transformOrigin: "center center",
-            position: 'relative',
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            marginTop: `-${height / 2}px`,
+            marginLeft: `-${width / 2}px`,
           }}
         >
-          <iframe
-            ref={iframeRef}
-            className="border-0 bg-black"
-            sandbox="allow-scripts allow-same-origin allow-modals"
-            title="AI Video Player"
-            style={{
-              width: `${width}px`,
-              height: `${height}px`,
-              display: "block",
-              backgroundColor: "#000000",
-            }}
-          />
+          {activeFrames.length > 0 ? (
+            [...activeFrames].sort((a, b) => (a.z || 0) - (b.z || 0)).map((frame, index) => {
+              const htmlDoc = contentType === 'VIDEO' ? processHtmlContent(
+                frame.html,
+                contentType,
+                index > 0
+              ) : frame.html;
+
+              const frameStyle = {
+                left: 0,
+                top: 0,
+                width: '100%',
+                height: '100%',
+                zIndex: frame.z || 0,
+              };
+
+              return (
+                <iframe
+                  ref={index === 0 ? iframeRef : null}
+                  key={`frame-${frame.id}-${index}`}
+                  srcDoc={htmlDoc}
+                  className="border-0 bg-transparent absolute"
+                  sandbox="allow-scripts allow-same-origin allow-modals"
+                  title={`AI Video Layer ${frame.id}`}
+                  style={{
+                    backgroundColor: index === 0 ? "#ffffff" : "transparent",
+                    pointerEvents: frame.id?.startsWith('branding-watermark') ? 'none' : 'auto',
+                    ...frameStyle
+                  }}
+                />
+              );
+            })
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-gray-500">
+              No frame content available
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Controls - Different layout based on navigation mode */}
+      {/* Controls -Different layout based on navigation mode */}
       <div className="bg-gray-900 p-4 space-y-3 flex-shrink-0">
         {/* Time-Driven Controls (VIDEO) */}
         {isTimeDriven && (
@@ -1134,7 +853,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             </div>
 
             {/* Control Buttons */}
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
               {/* Left Side: Playback Controls */}
               <div className="flex items-center gap-3">
                 <Button
@@ -1184,9 +903,9 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               </div>
 
               {/* Right Side: Volume and Speed Controls */}
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
                 {/* Volume Control */}
-                <div className="flex items-center gap-3 min-w-[120px] max-w-[180px]">
+                <div className="flex items-center gap-3 min-w-[80px] max-w-[120px]">
                   <Button
                     variant="outline"
                     size="icon"
@@ -1215,7 +934,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => setShowPlaybackSpeedMenu(!showPlaybackSpeedMenu)}
-                    className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 px-3"
+                    className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8px-3"
                     title="Playback speed"
                   >
                     <Settings className="h-3 w-3 mr-1" />
@@ -1227,9 +946,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                         <button
                           key={speed}
                           onClick={() => handlePlaybackRateChange(speed)}
-                          className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg ${
-                            playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"
-                          }`}
+                          className={`w-fullpx-4 py-2 text-left text-sm hover: bg-gray -700 first: rounded-t -lg last: rounded-b -lg ${playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"} `}
                         >
                           {speed}x
                         </button>
@@ -1237,6 +954,21 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Fullscreen Toggle */}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleToggleFullscreen}
+                  className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 w-8"
+                  title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                >
+                  {isFullscreen ? (
+                    <Minimize className="h-4 w-4" />
+                  ) : (
+                    <Maximize className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
             </div>
           </>
@@ -1258,11 +990,11 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 <ChevronLeft className="h-4 w-4 mr-1" />
                 Previous
               </Button>
-              
-              <span className="text-white text-sm px-3">
+
+              <span className="text-white text-smpx-3">
                 {progressDisplay}
               </span>
-              
+
               <Button
                 variant="outline"
                 size="sm"

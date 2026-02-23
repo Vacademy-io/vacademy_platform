@@ -3,11 +3,16 @@ import { Preferences } from "@capacitor/preferences";
 import axios from "axios";
 import { getUserBasicDetails } from "./getBasicUserDetails";
 import { QuizSubmission } from "@/components/chatbot/types";
-
-const AI_SERVICE_BASE_URL = "https://backend-stage.vacademy.io/ai-service";
+import { AI_SERVICE_URL } from "@/constants/urls";
 
 export type ContextType = "slide" | "course_details" | "general";
-export type MessageType = "user" | "assistant" | "tool_call" | "tool_result" | "quiz" | "quiz_feedback";
+export type MessageType =
+  | "user"
+  | "assistant"
+  | "tool_call"
+  | "tool_result"
+  | "quiz"
+  | "quiz_feedback";
 export type AIStatus = "idle" | "thinking" | "generating_quiz";
 export type SessionStatus = "ACTIVE" | "CLOSED";
 export type MessageIntent = "doubt" | "practice" | "general";
@@ -106,7 +111,7 @@ class ChatbotAPIService {
   private userId: string | null = null;
 
   constructor() {
-    this.baseUrl = AI_SERVICE_BASE_URL;
+    this.baseUrl = AI_SERVICE_URL;
   }
 
   private async getInstituteId(): Promise<string> {
@@ -137,7 +142,7 @@ class ChatbotAPIService {
   async initSession(
     initialMessage?: string,
     contextType?: ContextType,
-    contextMeta?: ContextMeta
+    contextMeta?: ContextMeta,
   ): Promise<InitSessionResponse> {
     const userId = await this.getUserId();
     const userDetails = await getUserBasicDetails([userId]);
@@ -163,7 +168,7 @@ class ChatbotAPIService {
           "Content-Type": "application/json",
         },
         timeout: 30000, // 30 second timeout
-      }
+      },
     );
 
     console.log("Session initialized:", response.data);
@@ -188,9 +193,9 @@ class ChatbotAPIService {
     sessionId: string,
     message: string,
     intent?: MessageIntent,
-    quizSubmission?: QuizSubmission
+    quizSubmission?: QuizSubmission,
   ): Promise<SendMessageResponse> {
-    const request: SendMessageRequest = { 
+    const request: SendMessageRequest = {
       message,
       ...(intent && { intent }),
       ...(quizSubmission && { quiz_submission: quizSubmission }),
@@ -198,7 +203,7 @@ class ChatbotAPIService {
 
     const response = await axios.post<SendMessageResponse>(
       `${this.baseUrl}/chat-agent/session/${sessionId}/message`,
-      request
+      request,
     );
 
     return response.data;
@@ -206,7 +211,7 @@ class ChatbotAPIService {
 
   async closeSession(sessionId: string): Promise<CloseSessionResponse> {
     const response = await axios.post<CloseSessionResponse>(
-      `${this.baseUrl}/chat-agent/session/${sessionId}/close`
+      `${this.baseUrl}/chat-agent/session/${sessionId}/close`,
     );
 
     return response.data;
@@ -215,7 +220,7 @@ class ChatbotAPIService {
   async updateContext(
     sessionId: string,
     contextType: ContextType,
-    contextMeta: ContextMeta
+    contextMeta: ContextMeta,
   ): Promise<UpdateContextResponse> {
     const request: UpdateContextRequest = {
       context_type: contextType,
@@ -229,7 +234,7 @@ class ChatbotAPIService {
         headers: {
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     return response.data;

@@ -6,6 +6,7 @@ import {
     VideoSlidePayload,
     QuizSlidePayload,
     AudioSlidePayload,
+    ScormSlidePayload,
 } from '../../-hooks/use-slides';
 import { UseMutateAsyncFunction } from '@tanstack/react-query';
 import { SlideQuestionsDataInterface } from '@/types/study-library/study-library-slides-type';
@@ -50,6 +51,7 @@ export const handleUnpublishSlide = async (
     >,
     addUpdateQuizSlide: UseMutateAsyncFunction<SlideResponse, Error, QuizSlidePayload, unknown>,
     addUpdateAudioSlide: UseMutateAsyncFunction<SlideResponse, Error, AudioSlidePayload, unknown>,
+    addUpdateScormSlide: UseMutateAsyncFunction<SlideResponse, Error, ScormSlidePayload, unknown>,
     SaveDraft: (activeItem: Slide) => Promise<void>,
     playerRef?: RefObject<YTPlayer> // Optional: in case needed for recalculating duration
 ) => {
@@ -233,6 +235,36 @@ export const handleUnpublishSlide = async (
             setIsOpen(false);
         } catch {
             toast.error('Error in unpublishing the slide');
+        }
+    }
+
+    if (activeItem?.source_type === 'SCORM') {
+        if (!activeItem.scorm_slide) {
+            toast.error('SCORM slide data is missing.');
+            return;
+        }
+
+        try {
+            await addUpdateScormSlide({
+                id: activeItem.id,
+                title: activeItem.title,
+                description: activeItem.description || '',
+                image_file_id: activeItem.image_file_id || '',
+                status: 'DRAFT',
+                slide_order: activeItem.slide_order,
+                notify: notify,
+                new_slide: false,
+                scorm_slide: {
+                    id: activeItem.scorm_slide.id,
+                    original_file_id: activeItem.scorm_slide.original_file_id || '',
+                    launch_path: activeItem.scorm_slide.launch_path || '',
+                    scorm_version: activeItem.scorm_slide.scorm_version || '',
+                },
+            });
+            toast.success('SCORM slide unpublished successfully!');
+            setIsOpen(false);
+        } catch {
+            toast.error('Error in unpublishing the SCORM slide');
         }
     }
 };

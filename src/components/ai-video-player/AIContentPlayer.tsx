@@ -83,6 +83,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     timelineUrl,
     audioUrl,
     wordsUrl,
+    avatarUrl,
     className = '',
     width = 1920,
     height = 1080,
@@ -101,6 +102,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [playbackRate, setPlaybackRate] = useState(1);
 
     // Engagement & Focus state
     const [isPausedForEngagement, setIsPausedForEngagement] = useState(false);
@@ -113,6 +115,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
 
     // Refs
     const audioRef = useRef<HTMLAudioElement>(null);
+    const avatarRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const playerRef = useRef<HTMLDivElement>(null);
     const audioStartedRef = useRef(false);
@@ -437,6 +440,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
             isPlayingRef.current = false; // Update ref immediately
             if (audioStartedRef.current && audioRef.current) {
                 audioRef.current.pause();
+                if (avatarRef.current) avatarRef.current.pause();
             }
             if (animationFrameRef.current) {
                 cancelAnimationFrame(animationFrameRef.current);
@@ -461,6 +465,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     const audioTime = currentTime - meta.audio_start_at;
                     audioRef.current.currentTime = Math.max(0, audioTime);
                     audioRef.current.play().catch(console.error);
+                    if (avatarRef.current) avatarRef.current.play().catch(() => {});
                     audioStartedRef.current = true;
                 }
             } else {
@@ -503,6 +508,17 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
 
             setCurrentTime(time);
 
+            // Sync avatar video with audio
+            if (avatarRef.current && avatarUrl) {
+                const drift = Math.abs(avatarRef.current.currentTime - audioRef.current.currentTime);
+                if (drift > 0.3) {
+                    avatarRef.current.currentTime = audioRef.current.currentTime;
+                }
+                if (avatarRef.current.playbackRate !== audioRef.current.playbackRate) {
+                    avatarRef.current.playbackRate = audioRef.current.playbackRate;
+                }
+            }
+
             // Educational features for Time-Driven Video
             if (navigationMode === 'time_driven') {
                 const active = entries.filter((entry) => {
@@ -536,10 +552,10 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             e.html.includes('RoughNotation')
                         );
                         // Slow down to 0.75x if complex diagram is drawing, else normal speed
-                        audioRef.current.playbackRate = hasComplexVisuals ? 0.75 : 1.0;
-                    } else if (audioRef.current && audioRef.current.playbackRate !== 1.0) {
+                        audioRef.current.playbackRate = hasComplexVisuals ? playbackRate * 0.75 : playbackRate;
+                    } else if (audioRef.current && audioRef.current.playbackRate !== playbackRate) {
                         // Reset back to normal if focus mode is off
-                        audioRef.current.playbackRate = 1.0;
+                        audioRef.current.playbackRate = playbackRate;
                     }
                 }
             }
@@ -555,6 +571,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         entries,
         lastEngagedEntryId,
         isFocusMode,
+        playbackRate,
         handleNext,
         onComplete,
     ]);
@@ -637,6 +654,23 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     // =====================================================
     // COMMON HANDLERS
     // =====================================================
+
+    const handleSpeedChange = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        const nextSpeeds: Record<number, number> = {
+            1: 1.25,
+            1.25: 1.5,
+            1.5: 2,
+            2: 0.5,
+            0.5: 0.75,
+            0.75: 1,
+        };
+        const nextSpeed = nextSpeeds[playbackRate] || 1;
+        setPlaybackRate(nextSpeed);
+        if (audioRef.current && !isFocusMode) {
+            audioRef.current.playbackRate = nextSpeed;
+        }
+    }, [playbackRate, isFocusMode]);
 
     const handleReset = useCallback(() => {
         if (navigationMode === 'time_driven') {
@@ -980,6 +1014,30 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     )}
                 </div>
 
+                {/* Avatar Video Overlay */}
+                    {avatarUrl && navigationMode === 'time_driven' && (
+                        <video
+                            ref={avatarRef}
+                            src={avatarUrl}
+                            muted
+                            playsInline
+                            crossOrigin="anonymous"
+                            style={{
+                                position: 'absolute',
+                                bottom: '20px',
+                                right: '20px',
+                                width: '200px',
+                                height: '200px',
+                                borderRadius: '50%',
+                                objectFit: 'cover',
+                                zIndex: 50,
+                                border: '3px solid rgba(255, 255, 255, 0.3)',
+                                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+                                pointerEvents: 'none',
+                            }}
+                        />
+                    )}
+
                 {/* Center Play Button (only for time_driven and when paused) */}
                 {navigationMode === 'time_driven' && !isPlaying && (
                     <div
@@ -1092,53 +1150,24 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 className="progress-bar-container"
                                 style={{
                                     height: '6px',
-                                    display: 'flex',
-                                    gap: '2px', // Separation between concept segments
                                     width: '100%',
+                                    background: 'rgba(255, 255, 255, 0.2)',
+                                    borderRadius: '3px',
+                                    overflow: 'hidden',
+                                    position: 'relative',
                                 }}
                             >
-                                {entries.filter(e => e.end || e.exitTime).map((entry, idx, arr) => {
-                                    const start = entry.inTime ?? entry.start ?? 0;
-                                    const end = entry.exitTime ?? entry.end ?? duration;
-                                    const segmentDuration = end - start;
-                                    if (segmentDuration <= 0 || duration === 0) return null;
-
-                                    const segmentWidth = (segmentDuration / duration) * 100;
-
-                                    // Calculate fill within this specific segment
-                                    let fillWidth = 0;
-                                    if (currentTime > end) {
-                                        fillWidth = 100; // Passed it completely
-                                    } else if (currentTime > start) {
-                                        fillWidth = ((currentTime - start) / segmentDuration) * 100; // Partially inside
-                                    }
-
-                                    return (
-                                        <div
-                                            key={`seg-${idx}`}
-                                            style={{
-                                                width: `${segmentWidth}%`,
-                                                height: '100%',
-                                                background: 'rgba(255, 255, 255, 0.2)',
-                                                borderRadius: '3px',
-                                                overflow: 'hidden',
-                                                position: 'relative'
-                                            }}
-                                        >
-                                            <div
-                                                style={{
-                                                    position: 'absolute',
-                                                    left: 0,
-                                                    top: 0,
-                                                    bottom: 0,
-                                                    width: `${fillWidth}%`,
-                                                    background: '#ef4444',
-                                                    transition: 'width 0.1s linear'
-                                                }}
-                                            />
-                                        </div>
-                                    );
-                                })}
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        left: 0,
+                                        top: 0,
+                                        bottom: 0,
+                                        width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+                                        background: '#ef4444',
+                                        transition: 'width 0.1s linear'
+                                    }}
+                                />
                             </div>
                         </div>
                     )}
@@ -1172,6 +1201,23 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 <span style={timeStyle}>
                                     {formatTime(currentTime)} / {formatTime(duration)}
                                 </span>
+                                <button
+                                    onClick={handleSpeedChange}
+                                    style={{
+                                        ...btnStyle,
+                                        marginLeft: '4px',
+                                        padding: '2px 8px',
+                                        borderRadius: '4px',
+                                        background: 'rgba(255, 255, 255, 0.15)',
+                                        color: 'white',
+                                        fontSize: '12px',
+                                        fontWeight: 'bold',
+                                        border: '1px solid rgba(255, 255, 255, 0.3)',
+                                    }}
+                                    title="Playback Speed"
+                                >
+                                    {playbackRate}x
+                                </button>
                             </>
                         )}
 

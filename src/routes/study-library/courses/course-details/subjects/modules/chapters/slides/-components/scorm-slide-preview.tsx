@@ -10,8 +10,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { Route } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/index';
 
 // SCORM Tracking endpoints
-const SCORM_TRACKING_INITIALIZE = `${BASE_URL}/admin-core-service/scorm/tracking/v1`;
-const SCORM_TRACKING_COMMIT = `${BASE_URL}/admin-core-service/scorm/tracking/v1/commit`;
+const SCORM_TRACKING_BASE = `${BASE_URL}/admin-core-service/scorm/tracking/v1`;
 
 interface ScormSlidePreviewProps {
     activeItem: Slide;
@@ -59,7 +58,7 @@ const ScormSlidePreview = ({ activeItem, isLearnerView = false }: ScormSlidePrev
 
         try {
             const response = await authenticatedAxiosInstance.get(
-                `${SCORM_TRACKING_INITIALIZE}/${activeItem.id}/initialize?packageSessionId=${packageSessionId}`
+                `${SCORM_TRACKING_BASE}/${activeItem.id}/initialize?packageSessionId=${packageSessionId}`
             );
             cmiDataRef.current = response.data || {};
         } catch (err) {
@@ -73,11 +72,14 @@ const ScormSlidePreview = ({ activeItem, isLearnerView = false }: ScormSlidePrev
         if (!isLearnerView || !scormSlide?.id) return;
 
         try {
-            await authenticatedAxiosInstance.post(SCORM_TRACKING_COMMIT, {
-                scorm_slide_id: scormSlide.id,
-                package_session_id: packageSessionId,
-                ...cmiDataRef.current,
-            });
+            await authenticatedAxiosInstance.post(
+                `${SCORM_TRACKING_BASE}/${scormSlide.id}/commit`,
+                {
+                    scorm_slide_id: scormSlide.id,
+                    package_session_id: packageSessionId,
+                    ...cmiDataRef.current,
+                }
+            );
         } catch (err) {
             console.error('SCORM commit failed:', err);
         }

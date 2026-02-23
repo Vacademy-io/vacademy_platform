@@ -965,7 +965,6 @@ class VideoGenerationService:
                                         if "server closed the connection" in str(db_error) or "OperationalError" in str(type(db_error).__name__):
                                             if retry < max_db_retries - 1:
                                                 logger.warning(f"[VideoGenService] Database connection error (attempt {retry + 1}/{max_db_retries}): {db_error}. Retrying...")
-                                                import time
                                                 time.sleep(1)  # Wait 1 second before retry
                                                 continue
                                             else:

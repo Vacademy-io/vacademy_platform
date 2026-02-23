@@ -634,7 +634,7 @@ class VideoGenerationService:
                             api_key=_settings.runpod_api_key,
                             endpoint_id=_settings.runpod_endpoint_id,
                         )
-                        deadline = time.time() + 900  # 15-min timeout matches RunPodAvatarProvider
+                        deadline = time.time() + 3600  # 60-min timeout (cold start + chunked inference)
                         avatar_succeeded = False
                         while time.time() < deadline:
                             await asyncio.sleep(10)

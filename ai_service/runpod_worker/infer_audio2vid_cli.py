@@ -61,10 +61,10 @@ def run_cli():
             self.wav2vec_model_dir   = "models/wav2vec2-base-960h"
             self.save_path           = save_dir
             self.enable_teacache     = True
-            self.teacache_threshold  = 0.1
-            # 10 steps is ideal for talking-head (README recommends 5 steps for
-            # talking head, 15-25 for talking body — 10 is a quality/speed balance)
-            self.num_inference_steps = 10
+            self.teacache_threshold  = 0.2   # higher = more caching = faster (was 0.1)
+            # 5 steps: minimum for talking-head per README. With chunked inference
+            # (9 chunks per ~20s video), total passes = 5×9=45 vs 10×9=90 before.
+            self.num_inference_steps = 5
             self.sample_size         = [512, 512]
             # EchoMimic V3 built-in sliding window for long video generation.
             # partial_video_length sets the window size (65 frames ≈ 2.6s at 25fps).

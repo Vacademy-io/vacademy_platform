@@ -3,10 +3,10 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { Slide, ScormSlide } from '@/hooks/study-library/use-slides';
+import { getPackageSessionId } from '@/utils/study-library/get-list-from-stores/getPackageSessionId';
 
 // SCORM Tracking endpoints
-const SCORM_TRACKING_INITIALIZE = `${BASE_URL}/admin-core-service/scorm/tracking/v1`;
-const SCORM_TRACKING_COMMIT = `${BASE_URL}/admin-core-service/scorm/tracking/v1/commit`;
+const SCORM_TRACKING_BASE = `${BASE_URL}/admin-core-service/scorm/tracking/v1`;
 
 interface ScormTrackingData {
     [key: string]: string;
@@ -19,16 +19,28 @@ interface ScormSlideComponentProps {
 
 const ScormSlideComponent = ({
     slide,
-    packageSessionId = '',
+    packageSessionId: propPackageSessionId = '',
 }: ScormSlideComponentProps) => {
     const [launchUrl, setLaunchUrl] = useState<string>('');
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [resolvedPackageSessionId, setResolvedPackageSessionId] = useState<string>(
+        propPackageSessionId
+    );
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const cmiDataRef = useRef<ScormTrackingData>({});
     const { getPublicUrl } = useFileUpload();
 
     const scormSlide = slide.scorm_slide as ScormSlide | undefined;
+
+    // Fetch packageSessionId if not provided
+    useEffect(() => {
+        if (!propPackageSessionId) {
+            getPackageSessionId().then((id) => {
+                if (id) setResolvedPackageSessionId(id);
+            });
+        }
+    }, [propPackageSessionId]);
 
     // Reset state when switching slides
     useEffect(() => {
@@ -43,7 +55,7 @@ const ScormSlideComponent = ({
 
         try {
             const response = await authenticatedAxiosInstance.get(
-                `${SCORM_TRACKING_INITIALIZE}/${slide.id}/initialize?packageSessionId=${packageSessionId}`
+                `${SCORM_TRACKING_BASE}/${slide.id}/initialize?packageSessionId=${resolvedPackageSessionId}`
             );
             cmiDataRef.current = response.data || {};
         } catch (err) {
@@ -53,22 +65,25 @@ const ScormSlideComponent = ({
             );
             cmiDataRef.current = {};
         }
-    }, [slide.id, packageSessionId]);
+    }, [slide.id, resolvedPackageSessionId]);
 
     // Commit tracking data to backend
     const commitScormData = useCallback(async () => {
         if (!scormSlide?.id) return;
 
         try {
-            await authenticatedAxiosInstance.post(SCORM_TRACKING_COMMIT, {
-                scorm_slide_id: scormSlide.id,
-                package_session_id: packageSessionId,
-                ...cmiDataRef.current,
-            });
+            await authenticatedAxiosInstance.post(
+                `${SCORM_TRACKING_BASE}/${scormSlide.id}/commit`,
+                {
+                    scorm_slide_id: scormSlide.id,
+                    package_session_id: resolvedPackageSessionId,
+                    ...cmiDataRef.current,
+                }
+            );
         } catch (err) {
             console.error('SCORM commit failed:', err);
         }
-    }, [scormSlide?.id, packageSessionId]);
+    }, [scormSlide?.id, resolvedPackageSessionId]);
 
     // Listen for postMessage events from the SCORM wrapper on S3
     useEffect(() => {

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CheckCircle2, Copy, Check, Code2, Link2, Share2 } from 'lucide-react';
+import { CheckCircle2, Copy, Check, Code2, Link2 } from 'lucide-react';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import { ContentType, getContentTypeLabel } from '../-services/video-generation';
 import { LatexRenderer } from './LatexRenderer';
@@ -67,57 +67,73 @@ export function VideoResult({
     const contentLabel = getContentTypeLabel(contentType);
 
     return (
-        <div className="mx-auto w-full max-w-4xl space-y-2">
-            {/* Prompt Display */}
-            <Card className="bg-muted/30">
-                <CardContent className="p-2">
-                    <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                            <p className="mb-1 text-sm text-muted-foreground">Prompt</p>
-                            <div className="text-foreground">
-                                <LatexRenderer text={prompt} className="whitespace-pre-wrap" />
-                            </div>
-                        </div>
-                        <Badge variant="secondary" className="shrink-0">
-                            {contentLabel}
-                        </Badge>
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Content Player */}
-            <div className="overflow-hidden rounded-xl border shadow-lg">
-                <AIContentPlayer
-                    timelineUrl={htmlUrl}
-                    audioUrl={audioUrl}
-                    wordsUrl={wordsUrl}
-                    width={1920}
-                    height={1080}
-                />
+        <div className="flex flex-col lg:flex-row gap-6 w-full items-start">
+            {/* Left Column: Content Player */}
+            <div className="flex-grow w-full lg:w-[70%]">
+                <div
+                    className="flex overflow-hidden rounded-xl border-2 bg-black shadow-lg w-full"
+                    style={{
+                        aspectRatio: '16/9',
+                        maxHeight: 'calc(100vh - 200px)' // Optional safety constraint
+                    }}
+                >
+                    <AIContentPlayer
+                        timelineUrl={htmlUrl}
+                        audioUrl={audioUrl}
+                        wordsUrl={wordsUrl}
+                        width={1920}
+                        height={1080}
+                    />
+                </div>
             </div>
 
-            {/* Share Actions */}
-            <Card>
-                <CardContent className="p-2">
-                    <div className="space-y-2">
-                        {/* Shareable URL */}
-                        <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-sm font-medium">
-                                <Link2 className="size-4" />
+            {/* Right Column: Prompt, Status & Actions */}
+            <div className="w-full lg:w-[30%] shrink-0 space-y-4">
+                <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm">
+                    {/* Status & Content Label */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary" className="shrink-0 text-xs font-medium">
+                            {contentLabel}
+                        </Badge>
+                        <Badge variant="outline" className="h-5 gap-1 bg-green-50 text-green-700 border-green-200">
+                            <CheckCircle2 className="size-3" />
+                            Ready
+                        </Badge>
+                    </div>
+
+                    {/* Prompt Text */}
+                    <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Origin Prompt
+                        </p>
+                        <div className="text-sm text-foreground bg-muted/30 p-3 rounded-lg border border-border/50">
+                            <LatexRenderer text={prompt} className="whitespace-pre-wrap max-h-48 overflow-y-auto" />
+                        </div>
+                    </div>
+
+                    <hr className="border-border" />
+
+                    {/* Actions Form */}
+                    <div className="space-y-3">
+                        {/* Share URL */}
+                        <div className="space-y-1.5">
+                            <label className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                <Link2 className="size-3.5" />
                                 Shareable URL
                             </label>
-                            <div className="flex gap-2">
+                            <div className="flex items-center w-full rounded-md border bg-background px-2 py-0.5 shadow-sm">
                                 <Input
                                     value={shareableUrl}
                                     readOnly
-                                    className="font-mono text-xs"
+                                    className="h-8 flex-1 border-0 bg-transparent p-0 text-xs font-mono focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none outline-none"
                                     onClick={(e) => e.currentTarget.select()}
                                 />
                                 <Button
-                                    variant="outline"
+                                    variant="ghost"
                                     size="icon"
                                     onClick={handleCopyUrl}
-                                    className="shrink-0"
+                                    className="size-7 ml-1 shrink-0"
+                                    title="Copy Link"
                                 >
                                     {copiedUrl ? (
                                         <Check className="size-4 text-green-600" />
@@ -128,25 +144,23 @@ export function VideoResult({
                             </div>
                         </div>
 
-                        {/* Embed Code */}
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Share2 className="size-4 text-muted-foreground" />
-                                <span className="text-sm text-muted-foreground">
-                                    Share or embed this content
-                                </span>
-                            </div>
+                        {/* Embed Code Trigger */}
+                        <div className="space-y-1.5">
+                            <label className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                <Code2 className="size-3.5" />
+                                Embed Content
+                            </label>
                             <Popover>
                                 <PopoverTrigger asChild>
-                                    <Button variant="outline" size="sm" className="gap-2">
+                                    <Button variant="outline" size="sm" className="w-full h-9 gap-2 shadow-sm justify-start">
                                         <Code2 className="size-4" />
-                                        Embed Code
+                                        Get Embed Code
                                     </Button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-96" align="end">
+                                <PopoverContent className="w-80 sm:w-96" align="end" side="left">
                                     <div className="space-y-3">
                                         <div className="flex items-center justify-between">
-                                            <h4 className="font-medium">Embed Code</h4>
+                                            <h4 className="font-medium text-sm">Embed Code</h4>
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
@@ -166,7 +180,7 @@ export function VideoResult({
                                                 )}
                                             </Button>
                                         </div>
-                                        <pre className="max-h-48 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs">
+                                        <pre className="max-h-48 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs text-muted-foreground border">
                                             {embedCode}
                                         </pre>
                                         <p className="text-xs text-muted-foreground">
@@ -177,15 +191,7 @@ export function VideoResult({
                             </Popover>
                         </div>
                     </div>
-                </CardContent>
-            </Card>
-
-            {/* Status Badge */}
-            <div className="flex justify-center">
-                <Badge className="gap-1 bg-green-100 text-green-800 hover:bg-green-100">
-                    <CheckCircle2 className="size-3" />
-                    Content Ready
-                </Badge>
+                </div>
             </div>
         </div>
     );

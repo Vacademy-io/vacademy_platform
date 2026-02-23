@@ -110,6 +110,7 @@ export interface AIContentPlayerProps {
     timelineUrl: string;
     audioUrl?: string; // Optional - not needed for user_driven/self_contained
     wordsUrl?: string; // Optional - for captions/subtitles
+    avatarUrl?: string; // Optional - talking head avatar video
     className?: string;
     width?: number;
     height?: number;

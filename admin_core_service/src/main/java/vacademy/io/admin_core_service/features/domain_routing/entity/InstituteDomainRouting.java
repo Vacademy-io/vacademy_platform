@@ -75,6 +75,9 @@ public class InstituteDomainRouting {
     @Column(name = "allow_email_otp_auth")
     private Boolean allowEmailOtpAuth;
 
+    @Column(name = "allow_phone_auth")
+    private Boolean allowPhoneAuth;
+
     @Column(name = "allow_username_password_auth")
     private Boolean allowUsernamePasswordAuth;
 

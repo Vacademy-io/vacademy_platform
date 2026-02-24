@@ -71,6 +71,13 @@ const ScormSlideComponent = ({
     const commitScormData = useCallback(async () => {
         if (!scormSlide?.id) return;
 
+        console.log('[SCORM] Committing data to backend:', {
+            scorm_slide_id: scormSlide.id,
+            slide_id: slide.id,
+            package_session_id: resolvedPackageSessionId,
+            cmiKeys: Object.keys(cmiDataRef.current),
+        });
+
         try {
             await authenticatedAxiosInstance.post(
                 `${SCORM_TRACKING_BASE}/${scormSlide.id}/commit`,
@@ -80,10 +87,11 @@ const ScormSlideComponent = ({
                     ...cmiDataRef.current,
                 }
             );
+            console.log('[SCORM] Commit successful');
         } catch (err) {
             console.error('SCORM commit failed:', err);
         }
-    }, [scormSlide?.id, resolvedPackageSessionId]);
+    }, [scormSlide?.id, slide.id, resolvedPackageSessionId]);
 
     // Listen for postMessage events from the SCORM wrapper on S3
     useEffect(() => {
@@ -215,14 +223,18 @@ const ScormSlideComponent = ({
     }
 
     return (
-        <div className="relative h-full w-full" style={{ minHeight: '600px' }}>
+        <div
+            className="relative w-full"
+            style={{ height: 'calc(100vh - 120px)', minHeight: '600px' }}
+        >
             <iframe
                 ref={iframeRef}
                 src={launchUrl}
-                className="h-full w-full border-0"
+                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
                 title={slide.title || 'SCORM Content'}
                 allow="fullscreen"
                 onLoad={() => {
+                    console.log('[SCORM] iframe loaded, sending init data');
                     // Send saved tracking data to the wrapper for resume
                     if (iframeRef.current?.contentWindow) {
                         iframeRef.current.contentWindow.postMessage(

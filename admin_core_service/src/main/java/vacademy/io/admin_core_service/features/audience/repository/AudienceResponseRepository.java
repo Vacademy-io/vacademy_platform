@@ -18,177 +18,188 @@ import java.util.Optional;
 @Repository
 public interface AudienceResponseRepository extends JpaRepository<AudienceResponse, String> {
 
-        /**
-         * Find all leads for a specific campaign
-         */
-        List<AudienceResponse> findByAudienceId(String audienceId);
+  /**
+   * Find all leads for a specific campaign
+   */
+  List<AudienceResponse> findByAudienceId(String audienceId);
 
-        /**
-         * Find all leads for a campaign with pagination
-         */
-        Page<AudienceResponse> findByAudienceId(String audienceId, Pageable pageable);
+  /**
+   * Find all leads for a campaign with pagination
+   */
+  Page<AudienceResponse> findByAudienceId(String audienceId, Pageable pageable);
 
-        /**
-         * Find audience response by enquiry ID
-         */
-        Optional<AudienceResponse> findByEnquiryId(String enquiryId);
+  /**
+   * Find audience response by enquiry ID
+   */
+  Optional<AudienceResponse> findByEnquiryId(String enquiryId);
 
-        /**
-         * Find audience responses by multiple enquiry IDs (batch fetch)
-         */
-        List<AudienceResponse> findByEnquiryIdIn(List<String> enquiryIds);
+  /**
+   * Find audience responses by multiple enquiry IDs (batch fetch)
+   */
+  List<AudienceResponse> findByEnquiryIdIn(List<String> enquiryIds);
 
-        /**
-         * Find audience responses by multiple applicant IDs (batch fetch)
-         */
-        List<AudienceResponse> findByApplicantIdIn(java.util.Collection<String> applicantIds);
+  /**
+   * Find audience responses by multiple applicant IDs (batch fetch)
+   */
+  List<AudienceResponse> findByApplicantIdIn(java.util.Collection<String> applicantIds);
 
-        /**
-         * Find lead by ID and audience ID (for security/isolation)
-         */
-        Optional<AudienceResponse> findByIdAndAudienceId(String id, String audienceId);
+  /**
+   * Find lead by ID and audience ID (for security/isolation)
+   */
+  Optional<AudienceResponse> findByIdAndAudienceId(String id, String audienceId);
 
-        /**
-         * Find all converted leads (with user_id)
-         */
-        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL")
-        List<AudienceResponse> findConvertedLeads(@Param("audienceId") String audienceId);
+  /**
+   * Find all converted leads (with user_id)
+   */
+  @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL")
+  List<AudienceResponse> findConvertedLeads(@Param("audienceId") String audienceId);
 
-        /**
-         * Find all unconverted leads (without user_id)
-         */
-        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NULL")
-        List<AudienceResponse> findUnconvertedLeads(@Param("audienceId") String audienceId);
+  /**
+   * Find all unconverted leads (without user_id)
+   */
+  @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NULL")
+  List<AudienceResponse> findUnconvertedLeads(@Param("audienceId") String audienceId);
 
-        /**
-         * Find leads by source type
-         */
-        List<AudienceResponse> findByAudienceIdAndSourceType(String audienceId, String sourceType);
+  /**
+   * Find leads by source type
+   */
+  List<AudienceResponse> findByAudienceIdAndSourceType(String audienceId, String sourceType);
 
-        /**
-         * Find leads with filters and pagination
-         */
-        @Query(value = """
-                            SELECT * FROM audience_response ar
-                            WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
-                              AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
-                              AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
-                              AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
-                            ORDER BY ar.submitted_at DESC
-                        """, countQuery = """
-                            SELECT COUNT(*) FROM audience_response ar
-                            WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
-                              AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
-                              AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
-                              AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
-                        """, nativeQuery = true)
-        Page<AudienceResponse> findLeadsWithFilters(
-                        @Param("audienceId") String audienceId,
-                        @Param("sourceType") String sourceType,
-                        @Param("sourceId") String sourceId,
-                        @Param("submittedFrom") Timestamp submittedFrom,
-                        @Param("submittedTo") Timestamp submittedTo,
-                        Pageable pageable);
+  /**
+   * Find leads with filters and pagination
+   */
+  @Query(value = """
+          SELECT * FROM audience_response ar
+          WHERE ar.audience_id = :audienceId
+            AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
+            AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
+            AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
+            AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+          ORDER BY ar.submitted_at DESC
+      """, countQuery = """
+          SELECT COUNT(*) FROM audience_response ar
+          WHERE ar.audience_id = :audienceId
+            AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
+            AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
+            AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
+            AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+      """, nativeQuery = true)
+  Page<AudienceResponse> findLeadsWithFilters(
+      @Param("audienceId") String audienceId,
+      @Param("sourceType") String sourceType,
+      @Param("sourceId") String sourceId,
+      @Param("submittedFrom") Timestamp submittedFrom,
+      @Param("submittedTo") Timestamp submittedTo,
+      Pageable pageable);
 
-        /**
-         * Find all leads for an institute (across all campaigns)
-         */
-        @Query("""
-                            SELECT ar FROM AudienceResponse ar
-                            JOIN Audience a ON a.id = ar.audienceId
-                            WHERE a.instituteId = :instituteId
-                            ORDER BY ar.submittedAt DESC
-                        """)
-        Page<AudienceResponse> findAllLeadsForInstitute(
-                        @Param("instituteId") String instituteId,
-                        Pageable pageable);
+  /**
+   * Find all leads for an institute (across all campaigns)
+   */
+  @Query("""
+          SELECT ar FROM AudienceResponse ar
+          JOIN Audience a ON a.id = ar.audienceId
+          WHERE a.instituteId = :instituteId
+          ORDER BY ar.submittedAt DESC
+      """)
+  Page<AudienceResponse> findAllLeadsForInstitute(
+      @Param("instituteId") String instituteId,
+      Pageable pageable);
 
-        /**
-         * Count total leads for a campaign
-         */
-        Long countByAudienceId(String audienceId);
+  /**
+   * Count total leads for a campaign
+   */
+  Long countByAudienceId(String audienceId);
 
-        /**
-         * Count converted leads for a campaign
-         */
-        @Query("SELECT COUNT(ar) FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL")
-        Long countConvertedLeads(@Param("audienceId") String audienceId);
+  /**
+   * Count converted leads for a campaign
+   */
+  @Query("SELECT COUNT(ar) FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL")
+  Long countConvertedLeads(@Param("audienceId") String audienceId);
 
-        /**
-         * Count leads by source type
-         */
-        Long countByAudienceIdAndSourceType(String audienceId, String sourceType);
+  /**
+   * Count leads by source type
+   */
+  Long countByAudienceIdAndSourceType(String audienceId, String sourceType);
 
-        /**
-         * Check if a user has already submitted a response for this audience
-         */
-        boolean existsByAudienceIdAndUserId(String audienceId, String userId);
+  /**
+   * Check if a user has already submitted a response for this audience
+   */
+  boolean existsByAudienceIdAndUserId(String audienceId, String userId);
 
-        /**
-         * Check if a child (student) has already been submitted for this audience campaign.
-         * Used for parent+child flows where the same parent can submit for multiple children.
-         */
-        boolean existsByAudienceIdAndStudentUserId(String audienceId, String studentUserId);
+  /**
+   * Check if a child (student) has already been submitted for this audience
+   * campaign.
+   * Used for parent+child flows where the same parent can submit for multiple
+   * children.
+   */
+  boolean existsByAudienceIdAndStudentUserId(String audienceId, String studentUserId);
 
-        /**
-         * Find all audience responses for a specific user
-         */
-        List<AudienceResponse> findByUserId(String userId);
+  /**
+   * Find all audience responses for a specific user
+   */
+  List<AudienceResponse> findByUserId(String userId);
 
-        /**
-         * Find all audience responses where user is parent OR student
-         * Used for fetching all applications related to a parent/child
-         */
-        List<AudienceResponse> findByUserIdOrStudentUserId(String userId, String studentUserId);
+  /**
+   * Find all audience responses where user is parent OR student
+   * Used for fetching all applications related to a parent/child
+   */
+  List<AudienceResponse> findByUserIdOrStudentUserId(String userId, String studentUserId);
 
-        /**
-         * Find audience response by parent mobile number for pre-fill lookup
-         */
-        Optional<AudienceResponse> findFirstByParentMobileOrderByCreatedAtDesc(String parentMobile);
+  /**
+   * Find all audience responses where user is parent OR student and destination
+   * package session matches
+   * Used for fetching applications related to a parent/child filtered by session
+   */
+  @Query("SELECT ar FROM AudienceResponse ar WHERE (ar.userId = :userId OR ar.studentUserId = :studentUserId) AND ar.destinationPackageSessionId = :sessionId")
+  List<AudienceResponse> findByUserIdOrStudentUserIdAndSessionId(@Param("userId") String userId,
+      @Param("studentUserId") String studentUserId, @Param("sessionId") String sessionId);
 
-        /**
-         * Find audience response by applicant ID
-         */
-        Optional<AudienceResponse> findByApplicantId(String applicantId);
+  /**
+   * Find audience response by parent mobile number for pre-fill lookup
+   */
+  Optional<AudienceResponse> findFirstByParentMobileOrderByCreatedAtDesc(String parentMobile);
 
-        /**
-         * Find all distinct user IDs from audience responses for given audience IDs
-         */
-        @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
-                        "WHERE ar.audienceId IN :audienceIds AND ar.userId IS NOT NULL")
-        List<String> findDistinctUserIdsByAudienceIds(@Param("audienceIds") List<String> audienceIds);
+  /**
+   * Find audience response by applicant ID
+   */
+  Optional<AudienceResponse> findByApplicantId(String applicantId);
 
-        /**
-         * Find all audience response IDs for given user IDs
-         */
-        @Query("SELECT ar.id FROM AudienceResponse ar WHERE ar.userId IN :userIds AND ar.userId IS NOT NULL")
-        List<String> findResponseIdsByUserIds(@Param("userIds") List<String> userIds);
+  /**
+   * Find all distinct user IDs from audience responses for given audience IDs
+   */
+  @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
+      "WHERE ar.audienceId IN :audienceIds AND ar.userId IS NOT NULL")
+  List<String> findDistinctUserIdsByAudienceIds(@Param("audienceIds") List<String> audienceIds);
 
-        /**
-         * Find all distinct user IDs from audience responses for given audience IDs and
-         * user IDs
-         * Used for filtering audience respondents by specific audiences
-         */
-        @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
-                        "WHERE ar.audienceId IN :audienceIds AND ar.userId IN :userIds AND ar.userId IS NOT NULL")
-        List<String> findDistinctUserIdsByAudienceIdsAndUserIds(
-                        @Param("audienceIds") List<String> audienceIds,
-                        @Param("userIds") List<String> userIds);
+  /**
+   * Find all audience response IDs for given user IDs
+   */
+  @Query("SELECT ar.id FROM AudienceResponse ar WHERE ar.userId IN :userIds AND ar.userId IS NOT NULL")
+  List<String> findResponseIdsByUserIds(@Param("userIds") List<String> userIds);
 
-        @Query("""
-                            SELECT ar FROM AudienceResponse ar
-                            JOIN Audience a ON a.id = ar.audienceId
-                            WHERE a.instituteId = :instituteId
-                            AND ar.audienceId = :audienceId
-                            AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
-                        """)
-        List<AudienceResponse> findLeadsByAudienceAndDateRange(
-                        @Param("instituteId") String instituteId,
-                        @Param("audienceId") String audienceId,
-                        @Param("startDate") Timestamp startDate,
-                        @Param("endDate") Timestamp endDate);
+  /**
+   * Find all distinct user IDs from audience responses for given audience IDs and
+   * user IDs
+   * Used for filtering audience respondents by specific audiences
+   */
+  @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
+      "WHERE ar.audienceId IN :audienceIds AND ar.userId IN :userIds AND ar.userId IS NOT NULL")
+  List<String> findDistinctUserIdsByAudienceIdsAndUserIds(
+      @Param("audienceIds") List<String> audienceIds,
+      @Param("userIds") List<String> userIds);
 
-        Optional<AudienceResponse> findFirstByStudentUserIdAndApplicantIdIsNotNull(String studentUserId);
+  @Query("""
+          SELECT ar FROM AudienceResponse ar
+          JOIN Audience a ON a.id = ar.audienceId
+          WHERE a.instituteId = :instituteId
+          AND ar.audienceId = :audienceId
+          AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
+      """)
+  List<AudienceResponse> findLeadsByAudienceAndDateRange(
+      @Param("instituteId") String instituteId,
+      @Param("audienceId") String audienceId,
+      @Param("startDate") Timestamp startDate,
+      @Param("endDate") Timestamp endDate);
+
+  Optional<AudienceResponse> findFirstByStudentUserIdAndApplicantIdIsNotNull(String studentUserId);
 }

@@ -64,9 +64,12 @@ public class ApplicantPublicController {
     }
 
     @GetMapping("/parent/{parentUserId}")
-    public ResponseEntity<ParentWithChildrenResponseDTO> getParentWithChildren(@PathVariable String parentUserId) {
-        logger.info("Request to fetch parent details with children for parentUserId: {}", parentUserId);
-        ParentWithChildrenResponseDTO response = applicantService.getParentWithChildren(parentUserId);
+    public ResponseEntity<ParentWithChildrenResponseDTO> getParentWithChildren(
+            @PathVariable String parentUserId,
+            @RequestParam(required = false) String sessionId) {
+        logger.info("Request to fetch parent details with children for parentUserId: {}, sessionId: {}", parentUserId,
+                sessionId);
+        ParentWithChildrenResponseDTO response = applicantService.getParentWithChildren(parentUserId, sessionId);
         return ResponseEntity.ok(response);
     }
 

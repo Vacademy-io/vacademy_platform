@@ -1568,7 +1568,8 @@ public class ApplicantService {
 
         /**
          * Admin manual move to next stage
-         * Updates applicant, creates new applicant_stage entry, and updates audience_response if workflow type completed
+         * Updates applicant, creates new applicant_stage entry, and updates
+         * audience_response if workflow type completed
          */
         @Transactional
         public void moveApplicantToNextStage(String applicantId) {
@@ -1609,7 +1610,8 @@ public class ApplicantService {
                 applicant.setApplicationStageStatus("INITIATED");
                 applicantRepository.save(applicant);
 
-                // Step 5: UPDATE current applicant_stage (mark COMPLETED) and CREATE new applicant_stage row
+                // Step 5: UPDATE current applicant_stage (mark COMPLETED) and CREATE new
+                // applicant_stage row
                 Optional<ApplicantStage> currentApplicantStageOpt = applicantStageRepository
                                 .findTopByApplicantIdOrderByCreatedAtDesc(applicantId);
 
@@ -1633,7 +1635,8 @@ public class ApplicantService {
                                 .build();
                 applicantStageRepository.save(newApplicantStage);
 
-                // Step 6: UPDATE audience_response if current stage had is_last = 1 (workflow type completed)
+                // Step 6: UPDATE audience_response if current stage had is_last = 1 (workflow
+                // type completed)
                 Optional<AudienceResponse> audienceResponseOpt = audienceResponseRepository
                                 .findByApplicantId(applicantId);
 
@@ -1643,7 +1646,8 @@ public class ApplicantService {
                         if (Boolean.TRUE.equals(currentStageDef.getIsLast())) {
                                 audienceResponse.setOverallStatus("CHANGED");
                                 audienceResponseRepository.save(audienceResponse);
-                                logger.info("Updated audience_response.overall_status to CHANGED for applicant {} (workflow type completed)", applicantId);
+                                logger.info("Updated audience_response.overall_status to CHANGED for applicant {} (workflow type completed)",
+                                                applicantId);
                         }
                 }
 
@@ -1745,7 +1749,7 @@ public class ApplicantService {
          * Get Parent with Children Details
          * Fetches parent info, linked children, and their applications/enrollments
          */
-        public ParentWithChildrenResponseDTO getParentWithChildren(String parentUserId) {
+        public ParentWithChildrenResponseDTO getParentWithChildren(String parentUserId, String sessionId) {
 
                 // 1. Get Parent User Info from Auth Service
                 UserDTO parentUser = null;
@@ -1781,11 +1785,24 @@ public class ApplicantService {
                 for (UserDTO child : childrenUsers) {
 
                         // Get applications for child (student) or if child was the submitter (user)
-                        List<AudienceResponse> applications = audienceResponseRepository
-                                        .findByUserIdOrStudentUserId(child.getId(), child.getId());
+                        List<AudienceResponse> applications;
+                        if (sessionId != null && !sessionId.isEmpty()) {
+                                applications = audienceResponseRepository
+                                                .findByUserIdOrStudentUserIdAndSessionId(child.getId(), child.getId(),
+                                                                sessionId);
+                        } else {
+                                applications = audienceResponseRepository
+                                                .findByUserIdOrStudentUserId(child.getId(), child.getId());
+                        }
 
                         // Get enrollments for child
-                        List<Student> enrollments = instituteStudentRepository.findByUserId(child.getId());
+                        List<Student> enrollments;
+                        if (sessionId != null && !sessionId.isEmpty()) {
+                                enrollments = instituteStudentRepository.findByUserIdAndPackageSessionId(child.getId(),
+                                                sessionId);
+                        } else {
+                                enrollments = instituteStudentRepository.findByUserId(child.getId());
+                        }
 
                         childDetailsList.add(
                                         ChildDetailsDTO.builder()

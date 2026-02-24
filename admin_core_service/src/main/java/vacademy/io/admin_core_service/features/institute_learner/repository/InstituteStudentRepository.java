@@ -153,6 +153,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
 
   Optional<Student> findTopByUserIdOrderByCreatedAtDesc(String userId);
 
+  @Query("SELECT s FROM Student s JOIN StudentSessionInstituteGroupMapping m ON s.userId = m.userId WHERE s.userId = :userId AND m.packageSession.id = :sessionId")
+  List<Student> findByUserIdAndPackageSessionId(@Param("userId") String userId, @Param("sessionId") String sessionId);
+
   Optional<Student> findTopByUserId(String userId);
 
   @Query(value = "SELECT * FROM student WHERE parents_mobile_number = :parentMobile AND full_name = :childFullName ORDER BY created_at DESC LIMIT 1", nativeQuery = true)

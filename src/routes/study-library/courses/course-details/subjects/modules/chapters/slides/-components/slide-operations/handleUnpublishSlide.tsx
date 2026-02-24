@@ -256,9 +256,6 @@ export const handleUnpublishSlide = async (
                 new_slide: false,
                 scorm_slide: {
                     id: activeItem.scorm_slide.id,
-                    original_file_id: activeItem.scorm_slide.original_file_id || '',
-                    launch_path: activeItem.scorm_slide.launch_path || '',
-                    scorm_version: activeItem.scorm_slide.scorm_version || '',
                 },
             });
             toast.success('SCORM slide unpublished successfully!');

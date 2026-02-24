@@ -13,14 +13,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { LockKey } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -35,6 +28,7 @@ export const CollapsibleItem = ({
     const [hover, setHover] = useState<boolean>(false);
     const { state } = useSidebar();
     const [isOpen, setIsOpen] = useState(false);
+    const [isHoverOpen, setIsHoverOpen] = useState(false);
     const navigate = useNavigate();
 
     const toggleHover = () => setHover(!hover);
@@ -127,58 +121,71 @@ export const CollapsibleItem = ({
 
     if (state === 'collapsed' && !isMobile) {
         return (
-            <DropdownMenu>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <DropdownMenuTrigger asChild>
-                            <div
-                                className={cn(
-                                    'flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg px-2 py-2 outline-none transition-colors hover:bg-white focus:bg-white',
-                                    hover || routeMatches ? colors.bg : 'bg-none'
-                                )}
-                                onMouseEnter={toggleHover}
-                                onMouseLeave={toggleHover}
-                            >
-                                {icon &&
-                                    React.createElement(icon, {
-                                        className: cn(
-                                            isCompact ? 'size-5' : 'size-6',
-                                            hover || routeMatches ? colors.text : 'text-neutral-400'
-                                        ),
-                                        weight: 'duotone',
-                                    })}
-                            </div>
-                        </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">{title}</TooltipContent>
-                </Tooltip>
-
-                <DropdownMenuContent side="right" align="start" className="ml-2 min-w-[200px]">
-                    <DropdownMenuLabel>{title}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {subItems?.map((obj, key) => (
-                        <DropdownMenuItem key={key} asChild>
+            <Popover open={isHoverOpen} onOpenChange={setIsHoverOpen}>
+                <PopoverTrigger asChild>
+                    <div
+                        className={cn(
+                            'flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg px-2 py-2 outline-none transition-colors hover:bg-white focus:bg-white',
+                            hover || routeMatches ? colors.bg : 'bg-none'
+                        )}
+                        onMouseEnter={() => {
+                            setHover(true);
+                            setIsHoverOpen(true);
+                        }}
+                        onMouseLeave={() => {
+                            setHover(false);
+                            setIsHoverOpen(false);
+                        }}
+                    >
+                        {icon &&
+                            React.createElement(icon, {
+                                className: cn(
+                                    isCompact ? 'size-5' : 'size-6',
+                                    hover || routeMatches ? colors.text : 'text-neutral-400'
+                                ),
+                                weight: 'duotone',
+                            })}
+                    </div>
+                </PopoverTrigger>
+                <PopoverContent
+                    side="right"
+                    align="start"
+                    className="ml-1 w-auto min-w-[200px] p-0"
+                    onMouseEnter={() => setIsHoverOpen(true)}
+                    onMouseLeave={() => setIsHoverOpen(false)}
+                    onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                    <div className="px-3 py-2">
+                        <p className={cn('text-sm font-semibold', colors.text)}>
+                            {title}
+                        </p>
+                    </div>
+                    <div className="border-t px-1 py-1">
+                        {subItems?.map((obj, key) => (
                             <Link
+                                key={key}
                                 to={obj.subItemLink}
                                 className={cn(
-                                    'flex w-full cursor-pointer items-center',
+                                    'flex w-full cursor-pointer items-center rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted',
                                     obj.subItemLink &&
-                                        currentRoute.includes(obj.subItemLink) &&
-                                        cn(colors.text, 'font-medium')
+                                        currentRoute.includes(obj.subItemLink)
+                                        ? cn(colors.text, 'font-medium')
+                                        : 'text-foreground'
                                 )}
-                                onClick={(e) =>
-                                    handleLockedSubItemClick(e, obj.subItem || '', obj.locked)
-                                }
+                                onClick={(e) => {
+                                    handleLockedSubItemClick(e, obj.subItem || '', obj.locked);
+                                    setIsHoverOpen(false);
+                                }}
                             >
                                 {obj.subItem}
                                 {obj.locked && (
-                                    <LockKey size={12} className="ml-2 text-neutral-400" />
+                                    <LockKey size={12} className="ml-auto text-neutral-400" />
                                 )}
                             </Link>
-                        </DropdownMenuItem>
-                    ))}
-                </DropdownMenuContent>
-            </DropdownMenu>
+                        ))}
+                    </div>
+                </PopoverContent>
+            </Popover>
         );
     }
 

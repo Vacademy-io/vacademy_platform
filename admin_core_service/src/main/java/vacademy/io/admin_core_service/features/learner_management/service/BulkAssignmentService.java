@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -13,14 +14,18 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSe
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.notification.LearnerEnrollmentNotificationService;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.learner.service.LearnerService;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
+import vacademy.io.common.common.dto.CustomFieldValueDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -46,6 +51,8 @@ public class BulkAssignmentService {
     private final StudentSessionRepository studentSessionRepository;
     private final AuthService authService;
     private final LearnerEnrollmentNotificationService learnerEnrollmentNotificationService;
+    private final LearnerService learnerService;
+    private final CustomFieldValueService customFieldValueService;
 
     private static final String DUPLICATE_SKIP = "SKIP";
     private static final String DUPLICATE_ERROR = "ERROR";
@@ -70,11 +77,15 @@ public class BulkAssignmentService {
         // 1. Create new users (if any) and collect their IDs
         Set<String> allUserIds = resolveUserIds(request);
         List<BulkAssignResultItemDTO> newUserFailures = new ArrayList<>();
+        // Track userId → NewUserDTO so we can save extra details/custom fields after
+        // enrollment
+        Map<String, NewUserDTO> newUserDataMap = new HashMap<>();
         if (!CollectionUtils.isEmpty(request.getNewUsers()) && !dryRun) {
             for (NewUserDTO newUser : request.getNewUsers()) {
                 try {
                     String createdUserId = createNewUser(newUser, request.getInstituteId());
                     allUserIds.add(createdUserId);
+                    newUserDataMap.put(createdUserId, newUser);
                     log.info("Created new user: email={}, userId={}", newUser.getEmail(), createdUserId);
                 } catch (Exception e) {
                     log.error("Failed to create new user email={}: {}", newUser.getEmail(), e.getMessage());
@@ -152,7 +163,12 @@ public class BulkAssignmentService {
             }
         }
 
-        // 4. Send notifications (async, fire-and-forget)
+        // 4. Post-process: Save learner extra details and custom fields for new users
+        if (!dryRun) {
+            saveNewUserExtraData(newUserDataMap, results, request);
+        }
+
+        // 5. Send notifications (async, fire-and-forget)
         if (notifyLearners && !dryRun && !enrolledStudentsForNotification.isEmpty()) {
             try {
                 learnerEnrollmentNotificationService.sendLearnerEnrollmentNotification(
@@ -165,7 +181,7 @@ public class BulkAssignmentService {
             }
         }
 
-        // 5. Build summary
+        // 6. Build summary
         return buildResponse(dryRun, results);
     }
 
@@ -213,9 +229,10 @@ public class BulkAssignmentService {
 
     /**
      * Creates a new user via AuthService and returns the created user's ID.
+     * Maps all available profile fields (address, DOB, etc.) to UserDTO.
      */
     private String createNewUser(NewUserDTO newUser, String instituteId) {
-        UserDTO userDTO = UserDTO.builder()
+        UserDTO.UserDTOBuilder builder = UserDTO.builder()
                 .email(newUser.getEmail())
                 .fullName(newUser.getFullName())
                 .mobileNumber(newUser.getMobileNumber())
@@ -226,8 +243,32 @@ public class BulkAssignmentService {
                 .gender(newUser.getGender())
                 .roles(CollectionUtils.isEmpty(newUser.getRoles())
                         ? List.of("STUDENT")
-                        : newUser.getRoles())
-                .build();
+                        : newUser.getRoles());
+
+        // Map additional profile fields (new — all optional)
+        if (StringUtils.hasText(newUser.getAddressLine())) {
+            builder.addressLine(newUser.getAddressLine());
+        }
+        if (StringUtils.hasText(newUser.getCity())) {
+            builder.city(newUser.getCity());
+        }
+        if (StringUtils.hasText(newUser.getRegion())) {
+            builder.region(newUser.getRegion());
+        }
+        if (StringUtils.hasText(newUser.getPinCode())) {
+            builder.pinCode(newUser.getPinCode());
+        }
+        if (StringUtils.hasText(newUser.getDateOfBirth())) {
+            try {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+                builder.dateOfBirth(sdf.parse(newUser.getDateOfBirth()));
+            } catch (Exception e) {
+                log.warn("Could not parse date_of_birth='{}' for user {}: {}",
+                        newUser.getDateOfBirth(), newUser.getEmail(), e.getMessage());
+            }
+        }
+
+        UserDTO userDTO = builder.build();
 
         UserDTO created = authService.createUserFromAuthServiceForLearnerEnrollment(
                 userDTO, instituteId, false);
@@ -533,5 +574,157 @@ public class BulkAssignmentService {
                         .build())
                 .results(results)
                 .build();
+    }
+
+    // ========================= EXTRA DATA POST-PROCESSING
+    // =========================
+
+    /**
+     * After all enrollments are processed, saves learner extra details
+     * (parent/guardian info)
+     * and custom field values for new users. This is done as a post-processing step
+     * so that
+     * the main enrollment loop remains unchanged.
+     * <p>
+     * - Learner extra details are saved once per user (not per mapping).
+     * - Custom fields are merged: user-level (from NewUserDTO) + assignment-level
+     * (from AssignmentItemDTO), with assignment-level taking precedence.
+     */
+    private void saveNewUserExtraData(
+            Map<String, NewUserDTO> newUserDataMap,
+            List<BulkAssignResultItemDTO> results,
+            BulkAssignRequestDTO request) {
+
+        if (newUserDataMap.isEmpty() && !hasAnyAssignmentCustomFields(request)) {
+            return; // Nothing to post-process
+        }
+
+        // Build a quick lookup: packageSessionId → assignment-level custom fields
+        Map<String, List<CustomFieldValueDTO>> assignmentCustomFieldsMap = new HashMap<>();
+        if (!CollectionUtils.isEmpty(request.getAssignments())) {
+            for (AssignmentItemDTO assignment : request.getAssignments()) {
+                if (!CollectionUtils.isEmpty(assignment.getCustomFieldValues())) {
+                    assignmentCustomFieldsMap.put(
+                            assignment.getPackageSessionId(),
+                            assignment.getCustomFieldValues());
+                }
+            }
+        }
+
+        // Track which users we've already saved extra details for (once per user)
+        Set<String> extraDetailsSavedForUsers = new HashSet<>();
+
+        for (BulkAssignResultItemDTO result : results) {
+            if (!"SUCCESS".equals(result.getStatus()))
+                continue;
+
+            String userId = result.getUserId();
+            String mappingId = result.getMappingId();
+            if (!StringUtils.hasText(mappingId))
+                continue;
+
+            // Save learner extra details (once per user, for new users only)
+            NewUserDTO newUserData = (userId != null) ? newUserDataMap.get(userId) : null;
+            if (newUserData != null && !extraDetailsSavedForUsers.contains(userId)) {
+                saveLearnerExtraDetails(newUserData, userId);
+                extraDetailsSavedForUsers.add(userId);
+            }
+
+            // Save custom fields: merge user-level + assignment-level
+            List<CustomFieldValueDTO> userCustomFields = (newUserData != null) ? newUserData.getCustomFieldValues()
+                    : null;
+            List<CustomFieldValueDTO> assignmentCustomFields = assignmentCustomFieldsMap
+                    .get(result.getPackageSessionId());
+
+            List<CustomFieldValueDTO> merged = mergeCustomFields(userCustomFields, assignmentCustomFields);
+            if (!merged.isEmpty()) {
+                try {
+                    customFieldValueService.addCustomFieldValue(
+                            merged, "STUDENT_SESSION_MAPPING", mappingId);
+                    log.debug("Saved {} custom field values for mapping={}",
+                            merged.size(), mappingId);
+                } catch (Exception e) {
+                    log.warn("Failed to save custom field values for mapping={}: {}",
+                            mappingId, e.getMessage());
+                    // Non-blocking: custom field save failure doesn't fail the enrollment
+                }
+            }
+        }
+    }
+
+    /**
+     * Saves learner extra details (parent/guardian info, college name) for a new
+     * user.
+     * Uses LearnerService.updateLearnerExtraDetails which handles create/update.
+     */
+    private void saveLearnerExtraDetails(NewUserDTO newUser, String userId) {
+        boolean hasExtraDetails = StringUtils.hasText(newUser.getFathersName()) ||
+                StringUtils.hasText(newUser.getMothersName()) ||
+                StringUtils.hasText(newUser.getParentsMobileNumber()) ||
+                StringUtils.hasText(newUser.getParentsEmail()) ||
+                StringUtils.hasText(newUser.getParentsToMotherMobileNumber()) ||
+                StringUtils.hasText(newUser.getParentsToMotherEmail()) ||
+                StringUtils.hasText(newUser.getLinkedInstituteName());
+
+        if (!hasExtraDetails)
+            return;
+
+        try {
+            LearnerExtraDetails extraDetails = new LearnerExtraDetails();
+            extraDetails.setFathersName(newUser.getFathersName());
+            extraDetails.setMothersName(newUser.getMothersName());
+            extraDetails.setParentsMobileNumber(newUser.getParentsMobileNumber());
+            extraDetails.setParentsEmail(newUser.getParentsEmail());
+            extraDetails.setParentsToMotherMobileNumber(newUser.getParentsToMotherMobileNumber());
+            extraDetails.setParentsToMotherEmail(newUser.getParentsToMotherEmail());
+            extraDetails.setLinkedInstituteName(newUser.getLinkedInstituteName());
+
+            learnerService.updateLearnerExtraDetails(extraDetails, userId);
+            log.debug("Saved learner extra details for userId={}", userId);
+        } catch (Exception e) {
+            log.warn("Failed to save learner extra details for userId={}: {}",
+                    userId, e.getMessage());
+            // Non-blocking: extra details save failure doesn't fail the enrollment
+        }
+    }
+
+    /**
+     * Merges user-level and assignment-level custom field values.
+     * Assignment-level values take precedence for duplicate custom_field_ids.
+     */
+    private List<CustomFieldValueDTO> mergeCustomFields(
+            List<CustomFieldValueDTO> userLevel,
+            List<CustomFieldValueDTO> assignmentLevel) {
+
+        if (CollectionUtils.isEmpty(userLevel) && CollectionUtils.isEmpty(assignmentLevel)) {
+            return Collections.emptyList();
+        }
+
+        // Start with user-level, then override with assignment-level
+        Map<String, CustomFieldValueDTO> merged = new LinkedHashMap<>();
+
+        if (!CollectionUtils.isEmpty(userLevel)) {
+            for (CustomFieldValueDTO dto : userLevel) {
+                if (dto != null && StringUtils.hasText(dto.getCustomFieldId())) {
+                    merged.put(dto.getCustomFieldId(), dto);
+                }
+            }
+        }
+        if (!CollectionUtils.isEmpty(assignmentLevel)) {
+            for (CustomFieldValueDTO dto : assignmentLevel) {
+                if (dto != null && StringUtils.hasText(dto.getCustomFieldId())) {
+                    merged.put(dto.getCustomFieldId(), dto); // overrides user-level
+                }
+            }
+        }
+
+        return new ArrayList<>(merged.values());
+    }
+
+    private boolean hasAnyAssignmentCustomFields(BulkAssignRequestDTO request) {
+        if (CollectionUtils.isEmpty(request.getAssignments()))
+            return false;
+        return request.getAssignments().stream()
+                .anyMatch(a -> !CollectionUtils.isEmpty(a.getCustomFieldValues()));
     }
 }

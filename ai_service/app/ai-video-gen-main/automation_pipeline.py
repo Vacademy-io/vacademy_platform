@@ -2104,7 +2104,10 @@ class VideoGenerationPipeline:
                         elif html[end_str] == '\\':
                             escaped = True
                         elif html[end_str] == '"':
-                            break
+                            # Look ahead to verify this is the actual end of the JSON value
+                            remaining = html[end_str+1:].lstrip()
+                            if not remaining or remaining[0] in "}],":
+                                break
                         end_str += 1
                     
                     val = html[start_str:end_str]

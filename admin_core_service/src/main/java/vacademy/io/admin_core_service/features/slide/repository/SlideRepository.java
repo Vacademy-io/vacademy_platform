@@ -1084,6 +1084,41 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
 
                 UNION ALL
 
+                -- SCORM SLIDES
+                SELECT DISTINCT ON (s.id)
+                    s.created_at,
+                    cs.slide_order,
+                    json_build_object(
+                        'id', s.id,
+                        'title', s.title,
+                        'status', s.status,
+                        'is_loaded', true,
+                        'new_slide', true,
+                        'source_id', s.source_id,
+                        'description', s.description,
+                        'slide_order', cs.slide_order,
+                        'source_type', s.source_type,
+                        'drip_condition', s.drip_condition_json,
+                        'progress_marker', NULL,
+                        'percentage_completed', NULL,
+                        'scorm_slide', json_build_object(
+                            'id', sc.id,
+                            'launch_path', sc.launch_path,
+                            'launch_url', sc.launch_url,
+                            'scorm_version', sc.scorm_version,
+                            'original_file_id', sc.original_file_id
+                        )
+                    ) AS slide_data
+                FROM slide s
+                JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                JOIN chapter c ON c.id = cs.chapter_id
+                JOIN scorm_slide sc ON sc.id = s.source_id
+                WHERE s.source_type = 'SCORM' AND c.id = :chapterId
+                AND s.status IN (:slideStatus)
+                AND cs.status IN (:chapterToSlidesStatus)
+
+                UNION ALL
+
                 -- AUDIO SLIDES
                 SELECT DISTINCT ON (s.id)
                     s.created_at,

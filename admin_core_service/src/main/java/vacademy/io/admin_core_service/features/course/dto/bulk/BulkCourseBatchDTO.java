@@ -40,4 +40,9 @@ public class BulkCourseBatchDTO {
      * If null, uses the course-level or global payment config.
      */
     private BulkCoursePaymentConfigDTO paymentConfig;
+
+    /** Optional: whether this batch is a parent. Backward compatible: not sent = false. */
+    private Boolean isParent;
+    /** Optional: parent batch id if this is a child batch. */
+    private String parentId;
 }

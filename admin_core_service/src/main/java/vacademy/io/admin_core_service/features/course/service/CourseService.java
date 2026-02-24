@@ -376,6 +376,8 @@ public class CourseService {
                         .startDate(packageSession.getSession().getStartDate())
                         .build())
                 .readTimeInMinutes(0)
+                .isParent(packageSession.getIsParent())
+                .parentId(packageSession.getParentId())
                 .build())
                 .collect(Collectors.toList());
     }

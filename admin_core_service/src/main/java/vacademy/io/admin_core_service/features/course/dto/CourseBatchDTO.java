@@ -19,6 +19,8 @@ public class CourseBatchDTO {
     private MiniLevelDTO level;
     private MiniSessionDTO session;
     private Integer readTimeInMinutes;
+    private Boolean isParent;
+    private String parentId;
 
     @Data
     @Builder

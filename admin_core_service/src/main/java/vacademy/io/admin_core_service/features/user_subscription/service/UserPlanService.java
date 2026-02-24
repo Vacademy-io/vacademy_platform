@@ -1005,6 +1005,8 @@ public class UserPlanService {
                                 .levelName(ps.getLevel() != null ? ps.getLevel().getLevelName() : null)
                                 .startTime(ps.getStartTime())
                                 .status(ps.getStatus())
+                                .isParent(ps.getIsParent())
+                                .parentId(ps.getParentId())
                                 .build();
                     }).collect(Collectors.toList())));
         }

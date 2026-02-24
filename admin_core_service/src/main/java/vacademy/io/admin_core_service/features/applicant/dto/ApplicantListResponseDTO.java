@@ -95,5 +95,7 @@ public class ApplicantListResponseDTO {
         private String groupName;
         private Date startTime;
         private String status;
+        private Boolean isParent;
+        private String parentId;
     }
 }

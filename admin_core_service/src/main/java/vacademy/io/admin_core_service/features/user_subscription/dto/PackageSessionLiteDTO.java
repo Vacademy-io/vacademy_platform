@@ -17,4 +17,6 @@ public class PackageSessionLiteDTO {
     private String levelName;
     private Date startTime;
     private String status;
+    private Boolean isParent;
+    private String parentId;
 }

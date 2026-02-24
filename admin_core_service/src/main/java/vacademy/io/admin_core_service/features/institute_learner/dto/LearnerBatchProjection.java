@@ -10,4 +10,6 @@ public interface LearnerBatchProjection {
     String getBatchName();
 
     Integer getEnrolledStudents();
+    Boolean getIsParent();
+    String getParentId();
 }

@@ -324,6 +324,8 @@ public class BulkCourseService {
         packageSession.setSession(session);
         packageSession.setStatus(PackageSessionStatusEnum.ACTIVE.name());
         packageSession.setStartTime(new java.util.Date());
+        packageSession.setIsParent(batch.getIsParent() != null ? batch.getIsParent() : false);
+        packageSession.setParentId(batch.getParentId());
 
         // Set inventory if provided
         if (inventoryConfig != null && inventoryConfig.getMaxSlots() != null) {

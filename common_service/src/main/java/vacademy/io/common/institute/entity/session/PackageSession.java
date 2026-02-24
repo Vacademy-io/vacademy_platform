@@ -66,6 +66,19 @@ public class PackageSession {
     @Column(name = "max_seats")
     private Integer maxSeats;
 
+    /**
+     * Whether this batch is a parent batch (has child batches).
+     * Optional; backward compatible: null treated as false.
+     */
+    @Column(name = "is_parent")
+    private Boolean isParent;
+
+    /**
+     * ID of the parent batch if this is a child batch. Optional.
+     */
+    @Column(name = "parent_id")
+    private String parentId;
+
     @Version
     private Long version;
 
@@ -73,6 +86,9 @@ public class PackageSession {
     public void prePersist() {
         if (isOrgAssociated == null) {
             isOrgAssociated = false;
+        }
+        if (isParent == null) {
+            isParent = false;
         }
     }
 }

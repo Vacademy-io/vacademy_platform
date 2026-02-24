@@ -181,7 +181,9 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                 ps.status AS batchStatus,
                 ps.start_time AS startDate,
                 COUNT(ssigm.id) AS countStudents,
-                ei.invite_code AS inviteCode
+                ei.invite_code AS inviteCode,
+                ps.is_parent AS isParent,
+                ps.parent_id AS parentId
             FROM package_session ps
             JOIN level l ON l.id = ps.level_id
             JOIN package p ON p.id = ps.package_id
@@ -197,7 +199,7 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                 AND ei.status = 'ACTIVE'
             WHERE p.id = :packageId
               AND ps.status IN (:packageSessionStatuses)
-            GROUP BY ps.id, batchName, ps.status, ps.start_time, ei.invite_code
+            GROUP BY ps.id, batchName, ps.status, ps.start_time, ei.invite_code, ps.is_parent, ps.parent_id
             ORDER BY ps.start_time DESC
             """, nativeQuery = true)
     List<BatchProjection> findBatchDetailsWithLatestInviteCode(

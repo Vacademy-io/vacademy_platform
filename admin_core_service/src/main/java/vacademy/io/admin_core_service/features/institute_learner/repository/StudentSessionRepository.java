@@ -98,7 +98,9 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
   @Query(value = """
                 SELECT ps.id AS packageSessionId,
                        CONCAT(l.level_name, ' ', p.package_name) AS batchName,
-                       COUNT(DISTINCT ssigm.user_id) AS enrolledStudents
+                       COUNT(DISTINCT ssigm.user_id) AS enrolledStudents,
+                       ps.is_parent AS isParent,
+                       ps.parent_id AS parentId
                 FROM package_session ps
                 JOIN package p ON ps.package_id = p.id
                 JOIN level l ON ps.level_id = l.id
@@ -107,7 +109,7 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
                     AND ssigm.institute_id = :instituteId
                     AND ssigm.status IN (:status)
                 WHERE ps.status != 'DELETED'
-                GROUP BY ps.id, l.level_name, p.package_name
+                GROUP BY ps.id, l.level_name, p.package_name, ps.is_parent, ps.parent_id
             """, nativeQuery = true)
   List<LearnerBatchProjection> getPackageSessionsWithEnrollment(
           @Param("instituteId") String instituteId,

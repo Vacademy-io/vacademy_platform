@@ -20,11 +20,15 @@ public class LevelDTOWithPackageSession {
     private String packageSessionId;
     private String packageSessionStatus;
     private Date startDate;
+    private Boolean isParent;
+    private String parentId;
 
     public LevelDTOWithPackageSession(Level level, PackageSession packageSession) {
         this.levelDTO = new LevelDTO(level);
         this.packageSessionStatus = packageSession.getStatus();
         this.packageSessionId = String.valueOf(packageSession.getId());
         this.startDate = packageSession.getStartTime();
+        this.isParent = packageSession.getIsParent();
+        this.parentId = packageSession.getParentId();
     }
 }

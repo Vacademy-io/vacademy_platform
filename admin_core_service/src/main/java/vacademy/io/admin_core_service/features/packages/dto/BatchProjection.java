@@ -15,4 +15,6 @@ public interface BatchProjection {
 
     Long getCountStudents();
     String getInviteCode();
+    Boolean getIsParent();
+    String getParentId();
 }

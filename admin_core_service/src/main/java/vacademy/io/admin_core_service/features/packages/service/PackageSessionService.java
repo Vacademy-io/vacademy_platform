@@ -41,12 +41,19 @@ public class PackageSessionService {
             Date startTime, String instituteId, CustomUserDetails userDetails,
             List<AddFacultyToCourseDTO> addFacultyToCourseDTOS) {
         createPackageSession(level, session, packageEntity, group, startTime, instituteId, userDetails,
-                addFacultyToCourseDTOS, null);
+                addFacultyToCourseDTOS, null, null, null);
     }
 
     public void createPackageSession(Level level, Session session, PackageEntity packageEntity, Group group,
             Date startTime, String instituteId, CustomUserDetails userDetails,
             List<AddFacultyToCourseDTO> addFacultyToCourseDTOS, Integer maxSeats) {
+        createPackageSession(level, session, packageEntity, group, startTime, instituteId, userDetails,
+                addFacultyToCourseDTOS, maxSeats, null, null);
+    }
+
+    public void createPackageSession(Level level, Session session, PackageEntity packageEntity, Group group,
+            Date startTime, String instituteId, CustomUserDetails userDetails,
+            List<AddFacultyToCourseDTO> addFacultyToCourseDTOS, Integer maxSeats, Boolean isParent, String parentId) {
         PackageSession packageSession = new PackageSession();
         packageSession.setSession(session);
         packageSession.setLevel(level);
@@ -54,6 +61,8 @@ public class PackageSessionService {
         packageSession.setStatus(PackageStatusEnum.ACTIVE.name());
         packageSession.setStartTime(startTime);
         packageSession.setGroup(group);
+        packageSession.setIsParent(isParent != null ? isParent : false);
+        packageSession.setParentId(parentId);
 
         if (maxSeats != null) {
             packageSession.setMaxSeats(maxSeats);

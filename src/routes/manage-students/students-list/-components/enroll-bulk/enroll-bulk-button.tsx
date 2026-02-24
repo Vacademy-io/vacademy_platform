@@ -1,32 +1,28 @@
-import { MyButton } from '@/components/design-system/button';
-import { Share } from '@phosphor-icons/react';
-import { EnrollBulkDialog } from './enroll-bulk-dialog';
-import { MyDialog } from '@/components/design-system/dialog';
 import { useState } from 'react';
+import { MyButton } from '@/components/design-system/button';
+import { UsersThree } from '@phosphor-icons/react';
+import { BulkAssignDialog } from './bulk-assign-dialog/BulkAssignDialog';
 
-export const EnrollBulkButton = () => {
-    const [isOpen, setIsOpen] = useState(false);
+interface Props {
+    onSuccess?: () => void;
+}
 
-    const handleOpenChange = (open: boolean) => setIsOpen(open);
-
-    const bulkTrigger = (
-        <MyButton buttonType="primary" scale="large" layoutVariant="default">
-            <span>
-                <Share />
-            </span>
-            Enroll in Bulk
-        </MyButton>
-    );
+export const EnrollBulkButton = ({ onSuccess }: Props) => {
+    const [open, setOpen] = useState(false);
 
     return (
-        <MyDialog
-            heading="Enroll in Bulk"
-            trigger={bulkTrigger}
-            dialogId="enroll-bulk-dialog"
-            onOpenChange={handleOpenChange}
-            open={isOpen}
-        >
-            <EnrollBulkDialog />
-        </MyDialog>
+        <>
+            <MyButton
+                buttonType="secondary"
+                scale="medium"
+                layoutVariant="default"
+                onClick={() => setOpen(true)}
+            >
+                <UsersThree size={16} className="mr-1.5" />
+                Enroll in Bulk
+            </MyButton>
+
+            <BulkAssignDialog open={open} onOpenChange={setOpen} onSuccess={onSuccess} />
+        </>
     );
 };

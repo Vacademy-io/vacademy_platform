@@ -23,6 +23,8 @@ interface LevelWithStatus {
     package_session_id: string;
     package_session_status: string;
     start_date: string;
+    is_parent?: boolean;
+    parent_id?: string | null;
 }
 
 export interface Package {

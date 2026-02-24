@@ -35,6 +35,8 @@ export const BatchForSessionSchema = z.object({
     package_dto: PackageSchema,
     is_org_associated: z.boolean().optional(),
     group: z.any().nullable().optional(),
+    is_parent: z.boolean().optional(),
+    parent_id: z.string().nullable().optional(),
 });
 
 const SubjectSchema = z.object({
@@ -148,6 +150,8 @@ export type levelWithDetails = {
     package_session_id: string;
     package_session_status: string;
     start_date: string;
+    is_parent?: boolean;
+    parent_id?: string | null;
 };
 export type levelsWithPackageDetails = Array<levelWithDetails>;
 export type InstituteType = z.infer<typeof InstituteTypeSchema>;

@@ -45,6 +45,8 @@ interface LevelDetails {
     package_session_status?: string;
     package_session_id?: string;
     new_package_session?: boolean;
+    is_parent?: boolean;
+    parent_id?: string | null;
     add_faculty_to_course: AddFacultyToCourse[];
     group: GroupDetails;
 }
@@ -153,6 +155,8 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
                         duration_in_days: 0,
                         thumbnail_file_id: '',
                         package_id: '',
+                        is_parent: false,
+                        parent_id: null,
                         add_faculty_to_course: [
                             ...(Array.isArray(allUsers) ? allUsers.map(mapUser) : []),
                         ],
@@ -183,6 +187,8 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
                           duration_in_days: 0,
                           thumbnail_file_id: '',
                           package_id: '',
+                          is_parent: false,
+                          parent_id: null,
                           add_faculty_to_course: [
                               ...(session.levels?.[0]?.userIds?.map(mapUser) ?? []),
                           ],
@@ -211,6 +217,8 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
                     duration_in_days: 0,
                     thumbnail_file_id: '',
                     package_id: '',
+                    is_parent: (level as { is_parent?: boolean }).is_parent,
+                    parent_id: (level as { parent_id?: string | null }).parent_id ?? null,
                     add_faculty_to_course: [...(level.userIds?.map(mapUser) ?? [])],
                     group: {
                         id: '',
@@ -389,6 +397,8 @@ export const convertToApiCourseFormatUpdate = (
                         levelId: level?.id || '',
                     }) || '',
                 new_package_session: isNewLevel ? true : false,
+                is_parent: (level as { is_parent?: boolean } | undefined)?.is_parent,
+                parent_id: (level as { parent_id?: string | null } | undefined)?.parent_id ?? null,
                 add_faculty_to_course,
                 group: {
                     id: '',

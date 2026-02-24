@@ -6,6 +6,8 @@ export interface BatchConfig {
     session_id: string | null;
     level_name?: string;
     session_name?: string;
+    is_parent?: boolean;
+    parent_id?: string | null;
     inventory_config?: InventoryConfig;
     payment_config?: PaymentConfig;
 }

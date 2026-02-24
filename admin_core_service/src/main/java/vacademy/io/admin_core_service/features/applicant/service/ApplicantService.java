@@ -610,6 +610,8 @@ public class ApplicantService {
                                                                                                 : null)
                                                                                 .startTime(ps.getStartTime())
                                                                                 .status(ps.getStatus())
+                                                                                .isParent(ps.getIsParent())
+                                                                                .parentId(ps.getParentId())
                                                                                 .build());
                                         }
                                 }

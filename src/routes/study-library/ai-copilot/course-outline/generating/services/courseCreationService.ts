@@ -10,6 +10,7 @@ import {
     ADD_UPDATE_VIDEO_SLIDE,
     ADD_UPDATE_HTML_VIDEO_SLIDE,
     ADD_UPDATE_QUIZ_SLIDE,
+    GET_COURSE_BATCHES,
 } from '@/constants/urls';
 import { SlideGeneration, SessionProgress } from '../../../shared/types';
 import { fetchInstituteDetails } from '@/services/student-list-section/getInstituteDetails';
@@ -282,58 +283,78 @@ export async function createCourseWithContent(
             throw new Error('Failed to create course: No course ID returned');
         }
 
-        // Step 2: Get Institute Details to find batches_for_sessions
-        // Try to get from store first (if already loaded), otherwise fetch from API
+        // Step 2: Get Package Session IDs for the created course
         if (setCreationProgress) {
             setCreationProgress('Fetching course details...');
         }
 
-        let batchesForSessions: BatchForSessionType[] = [];
+        let packageSessionIds = '';
 
         try {
-            // Try to get from store first
-            const storeState = useInstituteDetailsStore.getState();
-            if (storeState.instituteDetails?.batches_for_sessions) {
-                batchesForSessions = storeState.instituteDetails.batches_for_sessions;
-            } else {
-                // If not in store, fetch from API
-                const instituteDetails = await fetchInstituteDetails();
-                batchesForSessions = instituteDetails?.batches_for_sessions || [];
+            // First try to directly fetch the batches for the created course
+            // The course creation might process asynchronously, so a small delay helps
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            const batchesResponse = await authenticatedAxiosInstance.get(
+                `${GET_COURSE_BATCHES}/${courseId}/batches`
+            );
+
+            if (batchesResponse.data && batchesResponse.data.length > 0) {
+                packageSessionIds = batchesResponse.data.map((batch: any) => batch.id).join(',');
+                console.log('[Course Creation] Got packageSessionIds directly from course batches API:', packageSessionIds);
             }
         } catch (error) {
-            console.warn('Failed to fetch institute details, trying alternative approach:', error);
-            // If fetch fails, try to get from store as fallback
-            const storeState = useInstituteDetailsStore.getState();
-            batchesForSessions = storeState.instituteDetails?.batches_for_sessions || [];
+            console.warn('[Course Creation] Failed to get course batches directly, falling back to institute details:', error);
         }
 
-        if (!batchesForSessions || batchesForSessions.length === 0) {
-            throw new Error('Institute details not loaded. Please refresh the page and try again.');
-        }
-
-        // Step 3: Find Package Session IDs for the created course
-        let packageSessionIds = findIdByPackageId(batchesForSessions, courseId);
-
+        // Fallback logic if direct fetching fails
         if (!packageSessionIds) {
-            // If not found immediately, wait a bit and retry (course might need a moment to be fully created)
-            if (setCreationProgress) {
-                setCreationProgress('Waiting for course to be fully created...');
-            }
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            let batchesForSessions: BatchForSessionType[] = [];
 
-            // Try fetching again to get updated batches
             try {
-                const instituteDetails = await fetchInstituteDetails();
-                const updatedBatches = instituteDetails?.batches_for_sessions || batchesForSessions;
-                packageSessionIds = findIdByPackageId(updatedBatches, courseId);
+                // Try to get from store first
+                const storeState = useInstituteDetailsStore.getState();
+                if (storeState.instituteDetails?.batches_for_sessions) {
+                    batchesForSessions = storeState.instituteDetails.batches_for_sessions;
+                } else {
+                    // If not in store, fetch from API
+                    const instituteDetails = await fetchInstituteDetails();
+                    batchesForSessions = instituteDetails?.batches_for_sessions || [];
+                }
             } catch (error) {
-                console.warn('Failed to refetch institute details:', error);
+                console.warn('Failed to fetch institute details, trying alternative approach:', error);
+                // If fetch fails, try to get from store as fallback
+                const storeState = useInstituteDetailsStore.getState();
+                batchesForSessions = storeState.instituteDetails?.batches_for_sessions || [];
             }
+
+            if (!batchesForSessions || batchesForSessions.length === 0) {
+                throw new Error('Institute details not loaded. Please refresh the page and try again.');
+            }
+
+            // Step 3: Find Package Session IDs for the created course
+            packageSessionIds = findIdByPackageId(batchesForSessions, courseId);
 
             if (!packageSessionIds) {
-                throw new Error(
-                    'Package session IDs not found for the created course. The course may need a moment to be fully created. Please try again in a few seconds.'
-                );
+                // If not found immediately, wait a bit and retry (course might need a moment to be fully created)
+                if (setCreationProgress) {
+                    setCreationProgress('Waiting for course to be fully created...');
+                }
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+
+                // Try fetching again to get updated batches
+                try {
+                    const instituteDetails = await fetchInstituteDetails();
+                    const updatedBatches = instituteDetails?.batches_for_sessions || batchesForSessions;
+                    packageSessionIds = findIdByPackageId(updatedBatches, courseId);
+                } catch (error) {
+                    console.warn('Failed to refetch institute details:', error);
+                }
+
+                if (!packageSessionIds) {
+                    throw new Error(
+                        'Package session IDs not found for the created course. The course may need a moment to be fully created. Please try again in a few seconds.'
+                    );
+                }
             }
         }
 

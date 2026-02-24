@@ -222,11 +222,11 @@ export const MySidebar = ({
                     <img
                       src={instituteLogoFileUrl}
                       alt="Logo"
-                      className="size-8 object-contain rounded-md"
+                      className="size-8 object-contain rounded-md bg-white border border-neutral-100 dark:border-neutral-800"
                     />
                   ) : (
-                    <div className="bg-primary-50 border border-primary-200 rounded-md flex items-center justify-center w-8 h-8 [.ui-vibrant_&]:bg-indigo-100 [.ui-vibrant_&]:border-indigo-200">
-                      <div className="bg-primary-500 rounded-sm w-4 h-2"></div>
+                    <div className="h-8 w-8 rounded-md bg-primary-100 dark:bg-neutral-800 border border-primary-200 dark:border-neutral-700 flex items-center justify-center text-sm font-semibold text-primary-700 dark:text-neutral-200 [.ui-vibrant_&]:bg-indigo-100 [.ui-vibrant_&]:border-indigo-200 [.ui-vibrant_&]:text-indigo-700">
+                      {(instituteName?.[0] || "I").toUpperCase()}
                     </div>
                   )}
                 </div>

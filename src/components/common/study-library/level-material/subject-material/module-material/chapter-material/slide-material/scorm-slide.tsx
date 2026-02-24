@@ -12,6 +12,22 @@ interface ScormTrackingData {
     [key: string]: string;
 }
 
+/** Matches the backend ScormTrackingDTO exactly */
+interface ScormTrackingCommitPayload {
+    scorm_slide_id: string;
+    package_session_id: string;
+    cmi_suspend_data?: string | null;
+    cmi_location?: string | null;
+    cmi_exit?: string | null;
+    completion_status?: string | null;
+    success_status?: string | null;
+    score_raw?: number | null;
+    score_min?: number | null;
+    score_max?: number | null;
+    total_time?: string | null;
+    cmi_json?: Record<string, string> | null;
+}
+
 interface ScormSlideComponentProps {
     slide: Slide;
     packageSessionId?: string;
@@ -68,24 +84,41 @@ const ScormSlideComponent = ({
     }, [slide.id, resolvedPackageSessionId]);
 
     // Commit tracking data to backend
+    // NOTE: Both initialize and commit MUST use slide.id (the parent Slide entity's ID)
+    // because scorm_learner_progress is indexed by slide_id (not scorm_slide.id)
     const commitScormData = useCallback(async () => {
-        if (!scormSlide?.id) return;
+        if (!slide.id) return;
 
-        console.log('[SCORM] Committing data to backend:', {
-            scorm_slide_id: scormSlide.id,
-            slide_id: slide.id,
+        const cmi = cmiDataRef.current;
+
+        // Map well-known SCORM 1.2 keys to typed DTO fields.
+        // All remaining raw cmi.* keys go into cmi_json for backend storage.
+        const knownFields: ScormTrackingCommitPayload = {
+            scorm_slide_id: scormSlide?.id || '',
             package_session_id: resolvedPackageSessionId,
-            cmiKeys: Object.keys(cmiDataRef.current),
-        });
+            cmi_location: cmi['cmi.core.lesson_location'] ?? cmi['cmi.location'] ?? null,
+            cmi_exit:     cmi['cmi.core.exit']            ?? cmi['cmi.exit']     ?? null,
+            cmi_suspend_data: cmi['cmi.suspend_data']    ?? null,
+            completion_status: cmi['cmi.completion_status']
+                ?? cmi['cmi.core.lesson_status']
+                ?? null,
+            success_status: cmi['cmi.success_status'] ?? null,
+            score_raw: cmi['cmi.core.score.raw']  != null ? Number(cmi['cmi.core.score.raw'])  : null,
+            score_min: cmi['cmi.core.score.min']  != null ? Number(cmi['cmi.core.score.min'])  : null,
+            score_max: cmi['cmi.core.score.max']  != null ? Number(cmi['cmi.core.score.max'])  : null,
+            total_time: cmi['cmi.core.session_time'] ?? cmi['cmi.session_time'] ?? null,
+            // Store EVERYTHING as cmi_json for full fidelity
+            cmi_json: Object.keys(cmi).length > 0 ? cmi : null,
+        };
+
+        console.log('[SCORM] Committing to slide.id:', slide.id, '| payload:', knownFields);
 
         try {
             await authenticatedAxiosInstance.post(
-                `${SCORM_TRACKING_BASE}/${scormSlide.id}/commit`,
-                {
-                    scorm_slide_id: scormSlide.id,
-                    package_session_id: resolvedPackageSessionId,
-                    ...cmiDataRef.current,
-                }
+                // Use slide.id — same ID used in /initialize — so the backend
+                // findTopByUserIdAndSlideId query matches the initialized session.
+                `${SCORM_TRACKING_BASE}/${slide.id}/commit`,
+                knownFields
             );
             console.log('[SCORM] Commit successful');
         } catch (err) {

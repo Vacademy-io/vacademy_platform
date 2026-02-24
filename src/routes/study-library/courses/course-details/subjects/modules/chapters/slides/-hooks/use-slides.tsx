@@ -384,9 +384,11 @@ export interface ScormSlidePayload {
     id?: string | null;
     title: string;
     description?: string | null;
+    image_file_id?: string | null;
     status: 'DRAFT' | 'PUBLISHED';
     slide_order?: number | null;
     new_slide: boolean;
+    notify?: boolean;
     scorm_slide: {
         id: string; // The ScormSlide id returned from upload
     };

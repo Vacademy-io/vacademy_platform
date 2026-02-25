@@ -23,6 +23,9 @@ public class StudentFeePayment {
     @UuidGenerator
     private String id;
 
+    @Column(name = "user_id", nullable = false)
+    private String userId;
+
     @Column(name = "user_plan_id", nullable = false)
     private String userPlanId;
 

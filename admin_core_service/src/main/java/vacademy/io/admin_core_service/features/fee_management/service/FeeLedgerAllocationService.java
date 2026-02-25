@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeA
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeeAllocationLedgerRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -21,6 +23,9 @@ public class FeeLedgerAllocationService {
 
     @Autowired
     private StudentFeeAllocationLedgerRepository studentFeeAllocationLedgerRepository;
+
+    @Autowired
+    private PaymentLogRepository paymentLogRepository;
 
     @Transactional
     public void allocatePayment(String paymentLogId, BigDecimal totalPaymentAmount, String userPlanId) {
@@ -74,5 +79,34 @@ public class FeeLedgerAllocationService {
             // Optionally: create a dummy ledger entry for "OVERPAYMENT" or hold it in user
             // wallet.
         }
+    }
+
+    /**
+     * Convenience API used by admin/other services:
+     *  - Fetches the PaymentLog by ID
+     *  - Uses its amount and linked UserPlan to allocate across installments
+     *  - Marks the PaymentLog as PAID after successful allocation
+     */
+    @Transactional
+    public void allocatePaymentForLog(String paymentLogId) {
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId)
+                .orElseThrow(() -> new IllegalArgumentException("PaymentLog not found for id: " + paymentLogId));
+
+        if (paymentLog.getUserPlan() == null) {
+            throw new IllegalStateException("PaymentLog has no associated user plan for id: " + paymentLogId);
+        }
+
+        Double rawAmount = paymentLog.getPaymentAmount();
+        if (rawAmount == null || rawAmount <= 0) {
+            throw new IllegalStateException("Payment amount must be positive for PaymentLog id: " + paymentLogId);
+        }
+
+        BigDecimal totalPaymentAmount = BigDecimal.valueOf(rawAmount);
+
+        allocatePayment(paymentLogId, totalPaymentAmount, paymentLog.getUserPlan().getId());
+
+        // Update payment log status to reflect allocation completion
+        paymentLog.setPaymentStatus("PAID");
+        paymentLogRepository.save(paymentLog);
     }
 }

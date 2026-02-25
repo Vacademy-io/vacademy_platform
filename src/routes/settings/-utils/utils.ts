@@ -12,6 +12,7 @@ import CustomFieldsSettings from '@/components/settings/CustomFieldsSettings';
 import CertificatesSettings from '../-components/Certificates/CertificatesSettings';
 import { TemplateSettings } from '@/components/templates';
 import AiSettings from '../-components/AiSettings';
+import FeeManagementMain from '../fee-management/-components/FeeManagementMain';
 
 export const getAvailableSettingsTabs = () => {
     return [
@@ -79,6 +80,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.AiSettings,
             value: 'AI Settings',
             component: AiSettings,
+        },
+        {
+            tab: SettingsTabs.FeeManagement,
+            value: 'Fee Management',
+            component: FeeManagementMain,
         },
     ];
 };

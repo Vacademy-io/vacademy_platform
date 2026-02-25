@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { convertCapitalToTitleCase } from '@/lib/utils';
+import DateRangeFilter from '@/components/design-system/date-range-filter';
 
 const formSchema = z
     .object({
@@ -85,6 +86,7 @@ export default function TimelineReports() {
     const [loading, setLoading] = useState(false);
     const [currPage, setCurrPage] = useState<number>(0);
     const [totalPage, setTotalPage] = useState<number>(0);
+    const [appliedDateRange, setAppliedDateRange] = useState<{start: string, end: string} | null>(null);
     const [defaultSessionLevels, setDefaultSessionLevels] = useState(false);
 
     const selectRef = useRef<HTMLDivElement | null>(null);
@@ -94,6 +96,7 @@ export default function TimelineReports() {
         handleSubmit,
         setValue,
         watch,
+        clearErrors,
         formState: { errors },
     } = useForm<FormValues>({
         resolver: zodResolver(formSchema),
@@ -148,8 +151,8 @@ export default function TimelineReports() {
         leaderboardMutation.mutate(
             {
                 body: {
-                    start_date: startDate || '',
-                    end_date: endDate || '',
+                    start_date: appliedDateRange?.start || startDate || '',
+                    end_date: appliedDateRange?.end || endDate || '',
                     package_session_id: pacageSessionId,
                 },
                 param: { pageNo: currPage, pageSize: 10 },
@@ -171,8 +174,8 @@ export default function TimelineReports() {
     const getBatchReportDataPDF = useMutation({
         mutationFn: () =>
             exportBatchReport({
-                startDate: startDate || '',
-                endDate: endDate || '',
+                startDate: appliedDateRange?.start || startDate || '',
+                endDate: appliedDateRange?.end || endDate || '',
                 packageSessionId:
                     getPackageSessionId({
                         courseId: selectedCourse || '',
@@ -203,6 +206,7 @@ export default function TimelineReports() {
 
     const onSubmit = (data: FormValues) => {
         setLoading(true);
+        setAppliedDateRange({ start: data.startDate, end: data.endDate });
         generateReportMutation.mutate(
             {
                 start_date: data.startDate,
@@ -417,31 +421,28 @@ export default function TimelineReports() {
                     </div>
 
                     {/* Second Row - Dates and Generate Button */}
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-end w-full">
                         <div className="flex-1">
-                            <label className="text-xs font-medium text-neutral-700 mb-1 block">
-                                Start Date <span className="text-red-500 ml-1">*</span>
-                            </label>
-                            <input
-                                className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                                type="date"
-                                {...register('startDate')}
+                            <DateRangeFilter
+                                onChange={(res) => {
+                                    if (res) {
+                                        const [sDay, sMonth, sYear] = res.startDate.split('/');
+                                        const [eDay, eMonth, eYear] = res.endDate.split('/');
+                                        setValue('startDate', `${sYear}-${sMonth}-${sDay}`);
+                                        setValue('endDate', `${eYear}-${eMonth}-${eDay}`);
+                                        clearErrors('startDate');
+                                        clearErrors('endDate');
+                                    } else {
+                                        setValue('startDate', '');
+                                        setValue('endDate', '');
+                                    }
+                                }}
                             />
                         </div>
-                        <div className="flex-1">
-                            <label className="text-xs font-medium text-neutral-700 mb-1 block">
-                                End Date <span className="text-red-500 ml-1">*</span>
-                            </label>
-                            <input
-                                className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                                type="date"
-                                {...register('endDate')}
-                            />
-                        </div>
-                        <div className="sm:ml-3">
-                            <MyButton 
-                                type="submit" 
-                                buttonType="primary" 
+                        <div className="sm:mb-1">
+                            <MyButton
+                                type="submit"
+                                buttonType="primary"
                                 className="h-9 px-4 text-sm font-medium focus:!bg-primary-600 focus:!border-primary-600 focus:!text-white active:!bg-primary-600 active:!border-primary-600 active:!text-white focus:!outline-none focus:!ring-0"
                             >
                                 Generate Report
@@ -479,11 +480,11 @@ export default function TimelineReports() {
                                 <div className="flex items-center gap-2 text-sm">
                                     <span className="text-neutral-600">Duration:</span>
                                     <span className="rounded-md bg-primary-50 px-2 py-1 text-xs font-medium text-black">
-                                        {dayjs(startDate).format('DD MMM YYYY')}
+                                        {dayjs(appliedDateRange?.start || startDate).format('DD MMM YYYY')}
                                     </span>
                                     <span className="text-neutral-400">—</span>
                                     <span className="rounded-md bg-primary-50 px-2 py-1 text-xs font-medium text-black">
-                                        {dayjs(endDate).format('DD MMM YYYY')}
+                                        {dayjs(appliedDateRange?.end || endDate).format('DD MMM YYYY')}
                                     </span>
                                 </div>
                             </div>

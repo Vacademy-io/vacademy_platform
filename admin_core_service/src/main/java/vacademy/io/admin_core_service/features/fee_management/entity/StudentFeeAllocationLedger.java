@@ -22,6 +22,9 @@ public class StudentFeeAllocationLedger {
     @UuidGenerator
     private String id;
 
+    @Column(name = "user_id", nullable = false)
+    private String userId;
+
     @Column(name = "payment_log_id", nullable = false)
     private String paymentLogId;
 
@@ -31,7 +34,8 @@ public class StudentFeeAllocationLedger {
     @Column(name = "amount_allocated", nullable = false)
     private BigDecimal amountAllocated;
 
-    @Column(name = "allocation_type", nullable = false)
+    // Map Java allocationType -> DB column transaction_type
+    @Column(name = "transaction_type", nullable = false)
     private String allocationType; // e.g., PAYMENT, OVERPAYMENT, REFUND, ROLLOVER
 
     @Column(name = "remarks")
@@ -40,23 +44,10 @@ public class StudentFeeAllocationLedger {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
-        }
-        if (updatedAt == null) {
-            updatedAt = LocalDateTime.now();
-        }
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        if (updatedAt == null) {
-            updatedAt = LocalDateTime.now();
         }
     }
 }

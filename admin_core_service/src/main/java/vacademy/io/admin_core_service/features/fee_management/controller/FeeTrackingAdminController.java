@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllo
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
+import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
 
@@ -35,19 +36,25 @@ public class FeeTrackingAdminController {
     }
 
     /**
-     * Trigger allocation of a captured payment (PaymentLog) across the student's
-     * fee installments.
+     * Allocate an offline/admin payment for a user across all their unpaid
+     * installments.
      *
-     * This:
-     *  - looks up the PaymentLog
-     *  - allocates its amount across unpaid StudentFeePayment rows (FIFO by due date)
-     *  - updates installment statuses and amounts
-     *  - appends entries in student_fee_allocation_ledger
-     *  - marks the PaymentLog as PAID
+     * Input:
+     *  - userId (path) - the student whose installments are to be updated
+     *  - amount (query param) representing the payment amount
+     *
+     * Behavior:
+     *  - Creates a NEW PaymentLog row with status PAID for this amount
+     *  - Allocates that amount across all unpaid student_fee_payment rows (FIFO)
+     *  - Creates separate ledger rows per student_fee_payment_id for this payment
      */
-    @PostMapping("/payment-log/{paymentLogId}/allocate")
-    public ResponseEntity<Void> allocatePaymentForLog(@PathVariable("paymentLogId") String paymentLogId) {
-        feeLedgerAllocationService.allocatePaymentForLog(paymentLogId);
+    @PostMapping("/{userId}/allocate")
+    public ResponseEntity<Void> allocatePaymentForLog(
+            @PathVariable("userId") String userId,
+            @RequestParam("amount") java.math.BigDecimal amount,
+            @RequestAttribute("user") CustomUserDetails user) {
+        feeLedgerAllocationService.allocatePaymentForUser(userId, amount);
         return ResponseEntity.noContent().build();
     }
+
 }

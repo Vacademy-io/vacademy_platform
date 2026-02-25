@@ -17,8 +17,8 @@ import { Input } from "@/components/ui/input";
 import { VscError } from "react-icons/vsc";
 
 import {
-    getTokenDecodedData,
-    setTokenInStorage,
+  getTokenDecodedData,
+  setTokenInStorage,
 } from "@/lib/auth/sessionUtility";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
@@ -29,433 +29,443 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 type FormValues = z.infer<typeof loginSchema>;
 
 interface UsernameLoginProps {
-    onSwitchToEmail: () => void;
-    type?: string;
-    courseId?: string;
-    allowEmailOtpAuth?: boolean;
-    initialUsername?: string;
-    initialPassword?: string;
+  onSwitchToEmail: () => void;
+  type?: string;
+  courseId?: string;
+  allowEmailOtpAuth?: boolean;
+  initialUsername?: string;
+  initialPassword?: string;
 }
 export function UsernameLogin({
-    onSwitchToEmail,
-    type,
-    courseId,
-    onSwitchToSignup,
-    onSwitchToForgotPassword,
-    allowEmailOtpAuth,
-    initialUsername,
-    initialPassword,
+  onSwitchToEmail,
+  type,
+  courseId,
+  onSwitchToSignup,
+  onSwitchToForgotPassword,
+  allowEmailOtpAuth,
+  initialUsername,
+  initialPassword,
 }: UsernameLoginProps & {
-    onSwitchToSignup?: () => void;
-    onSwitchToForgotPassword?: () => void;
+  onSwitchToSignup?: () => void;
+  onSwitchToForgotPassword?: () => void;
 }) {
-    const navigate = useNavigate();
-    const [isLoading, setIsLoading] = useState(false);
-    const [showPassword, setShowPassword] = useState(false);
-    const { setInstituteId } = useInstituteFeatureStore();
-    const domainRouting = useDomainRouting();
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const { setInstituteId } = useInstituteFeatureStore();
+  const domainRouting = useDomainRouting();
 
-    const redirect = useRouterState({
-        select: (s) =>
-            (s.location.search as Record<string, unknown>).redirect ?? "/login/",
-    });
-    const { setPrimaryColor } = useTheme();
+  const redirect = useRouterState({
+    select: (s) =>
+      (s.location.search as Record<string, unknown>).redirect ?? "/login/",
+  });
+  const { setPrimaryColor } = useTheme();
 
-    const form = useForm<FormValues>({
-        resolver: zodResolver(loginSchema),
-        defaultValues: {
-            username: initialUsername ?? "",
-            password: initialPassword ?? "",
-        },
-        mode: "onTouched",
-    });
+  const form = useForm<FormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      username: initialUsername ?? "",
+      password: initialPassword ?? "",
+    },
+    mode: "onTouched",
+  });
 
-    useEffect(() => {
-        if (initialUsername || initialPassword) {
-            form.reset({
-                username: initialUsername ?? "",
-                password: initialPassword ?? "",
-            });
-        }
-    }, [initialUsername, initialPassword, form]);
-
-    const mutation = useMutation({
-        mutationFn: (values: FormValues) =>
-            loginUser(
-                values.username,
-                values.password,
-                domainRouting.convertUsernamePasswordToLowercase
-            ),
-        onMutate: () => {
-            setIsLoading(true);
-        },
-        onSuccess: async (response) => {
-            if (response) {
-                try {
-                    // Store tokens in Capacitor Storage
-                    await setTokenInStorage(
-                        TokenKey.accessToken,
-                        response.accessToken
-                    );
-                    await setTokenInStorage(
-                        TokenKey.refreshToken,
-                        response.refreshToken
-                    );
-
-                    // Decode token to get user data
-                    const decodedData = await getTokenDecodedData(
-                        response.accessToken
-                    );
-
-                    // Check authorities in decoded data
-                    const authorities = decodedData?.authorities;
-                    const userId = decodedData?.user;
-                    const authorityKeys = authorities
-                        ? Object.keys(authorities)
-                        : [];
-
-                    if (authorityKeys.length > 1) {
-                        // Redirect to InstituteSelection if multiple authorities are found
-                        navigate({
-                            to: "/institute-selection",
-                            search: { redirect: redirect || "/dashboard/", type, courseId },
-                        });
-                    } else {
-                        // Get the single institute ID
-                        const instituteId = authorities
-                            ? Object.keys(authorities)[0]
-                            : undefined;
-
-                        if (instituteId && userId) {
-                            try {
-                                const details =
-                                    await fetchAndStoreInstituteDetails(
-                                        instituteId,
-                                        userId
-                                    );
-                                setInstituteId(instituteId);
-                                if (instituteId === HOLISTIC_INSTITUTE_ID) {
-                                    setPrimaryColor("holistic");
-                                } else {
-                                    setPrimaryColor(
-                                        details?.institute_theme_code ??
-                                            "primary"
-                                    );
-                                }
-                            } catch (error) {
-                                console.error(
-                                    "Error fetching institute details:",
-                                    error
-                                );
-                            }
-                        } else {
-                            console.error(
-                                "Institute ID or User ID is undefined"
-                            );
-                        }
-
-                        if (instituteId && userId) {
-                            try {
-                                await fetchAndStoreStudentDetails(
-                                    instituteId,
-                                    userId
-                                );
-                            } catch {
-                                toast.error("Failed to fetch details");
-                            }
-                        } else {
-                            console.error(
-                                "Institute ID or User ID is undefined"
-                            );
-                        }
-
-                        // Determine redirect URL based on type and courseId
-                        let redirectUrl = "/dashboard";
-                        
-                        if (type === "courseDetailsPage" && courseId) {
-                            redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
-                        } else if (type === "courseDetailsPage") {
-                            redirectUrl = "/study-library/courses";
-                        }
-                        
-                                                                           // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
-                        if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
-                            // For course-related pages, redirect to the appropriate study library page
-                            if (redirectUrl !== "/dashboard") {
-                                navigate({
-                                    to: redirectUrl as never,
-                                });
-                            } else {
-                                navigate({
-                                    to: "/dashboard",
-                                });
-                            }
-                        } else {
-                            // Always navigate to dashboard for page login
-                            navigate({
-                                to: "/dashboard",
-                            });
-                        }
-                    }
-                } catch (error) {
-                    console.error("Error processing decoded data:", error);
-                }
-            } else {
-                form.reset();
-            }
-        },
-        onError: () => {
-            setIsLoading(false);
-            toast.error(
-                "Login failed. Please check your username and password and try again."
-            );
-        },
-    });
-
-    function onSubmit(values: FormValues) {
-        mutation.mutate(values);
+  useEffect(() => {
+    if (initialUsername || initialPassword) {
+      form.reset({
+        username: initialUsername ?? "",
+        password: initialPassword ?? "",
+      });
     }
+  }, [initialUsername, initialPassword, form]);
 
-    return (
-        <div className="w-full space-y-5">
-            <Form {...form}>
-                <form
-                    onSubmit={form.handleSubmit(onSubmit)}
-                    className="space-y-4"
-                >
-                    {/* Username Field */}
-                    <motion.div
-                        initial={{ y: 10, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.1 }}
-                        className="space-y-2"
-                    >
-                        <FormField
-                            control={form.control}
-                            name="username"
-                            render={({
-                                field: { onChange, value, ...field },
-                            }) => (
-                                <FormItem>
-                                    <FormControl>
-                                        <div className="flex flex-col gap-1">
-                                            <Label className="text-subtitle font-regular">
-                                                Username
-                                                <span className="text-subtitle text-danger-600">*</span>
-                                            </Label>
+  const mutation = useMutation({
+    mutationFn: (values: FormValues) =>
+      loginUser(
+        values.username,
+        values.password,
+        domainRouting.convertUsernamePasswordToLowercase,
+      ),
+    onMutate: () => {
+      setIsLoading(true);
+    },
+    onSuccess: async (response) => {
+      if (response) {
+        try {
+          // Store tokens in Capacitor Storage
+          await setTokenInStorage(TokenKey.accessToken, response.accessToken);
+          await setTokenInStorage(TokenKey.refreshToken, response.refreshToken);
 
-                                            <div className="relative">
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Enter your username"
-                                                    value={value}
-                                                    onChange={onChange}
-                                                    required
-                                                    {...field}
-                                                    className="h-10 py-2 px-3 text-subtitle w-full border-gray-200
+          // Decode token to get user data
+          const decodedData = await getTokenDecodedData(response.accessToken);
+
+          // Check authorities in decoded data
+          const authorities = decodedData?.authorities;
+          const userId = decodedData?.user;
+          const authorityKeys = authorities ? Object.keys(authorities) : [];
+
+          // Check if user has PARENT role by examining authorities
+          let isParent = false;
+          const allRoles: string[] = [];
+
+          if (authorities && typeof authorities === "object") {
+            for (const [, instAuthority] of Object.entries(authorities)) {
+              if (instAuthority && typeof instAuthority === "object") {
+                const instRoles = (instAuthority as { roles?: string[] }).roles;
+                if (Array.isArray(instRoles)) {
+                  allRoles.push(...instRoles);
+                }
+              }
+            }
+          }
+
+          const upperRoles = allRoles.map((r) => r.toUpperCase());
+          isParent = upperRoles.includes("PARENT");
+
+          console.log("[UsernameLogin] Token decoded:", {
+            user: userId,
+            authorities: authorities,
+            allRoles: allRoles,
+            upperRoles: upperRoles,
+            isParent: isParent,
+          });
+
+          // Redirect parent users to parent portal
+          if (isParent) {
+            console.log(
+              "[UsernameLogin] ✅ PARENT role detected - redirecting to /parent",
+            );
+
+            const instituteId = authorities
+              ? Object.keys(authorities)[0]
+              : undefined;
+            if (instituteId && userId) {
+              try {
+                await fetchAndStoreInstituteDetails(instituteId, userId);
+              } catch (error) {
+                console.error(
+                  "Error fetching institute details for parent:",
+                  error,
+                );
+              }
+            }
+            setIsLoading(false);
+            navigate({ to: "/parent" });
+            return;
+          }
+
+          if (authorityKeys.length > 1) {
+            // Redirect to InstituteSelection if multiple authorities are found
+            navigate({
+              to: "/institute-selection",
+              search: { redirect: redirect || "/dashboard/", type, courseId },
+            });
+          } else {
+            // Get the single institute ID
+            const instituteId = authorities
+              ? Object.keys(authorities)[0]
+              : undefined;
+
+            if (instituteId && userId) {
+              try {
+                const details = await fetchAndStoreInstituteDetails(
+                  instituteId,
+                  userId,
+                );
+                setInstituteId(instituteId);
+                if (instituteId === HOLISTIC_INSTITUTE_ID) {
+                  setPrimaryColor("holistic");
+                } else {
+                  setPrimaryColor(details?.institute_theme_code ?? "primary");
+                }
+              } catch (error) {
+                console.error("Error fetching institute details:", error);
+              }
+            } else {
+              console.error("Institute ID or User ID is undefined");
+            }
+
+            if (instituteId && userId) {
+              try {
+                await fetchAndStoreStudentDetails(instituteId, userId);
+              } catch {
+                toast.error("Failed to fetch details");
+              }
+            } else {
+              console.error("Institute ID or User ID is undefined");
+            }
+
+            // Determine redirect URL based on type and courseId
+            let redirectUrl = "/dashboard";
+
+            if (type === "courseDetailsPage" && courseId) {
+              redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+            } else if (type === "courseDetailsPage") {
+              redirectUrl = "/study-library/courses";
+            }
+
+            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
+            if (
+              type === "courseDetailsPage" ||
+              (type && type !== "mainLogin")
+            ) {
+              // For course-related pages, redirect to the appropriate study library page
+              if (redirectUrl !== "/dashboard") {
+                navigate({
+                  to: redirectUrl as never,
+                });
+              } else {
+                navigate({
+                  to: "/dashboard",
+                });
+              }
+            } else {
+              // Always navigate to dashboard for page login
+              navigate({
+                to: "/dashboard",
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Error processing decoded data:", error);
+        }
+      } else {
+        form.reset();
+      }
+    },
+    onError: () => {
+      setIsLoading(false);
+      toast.error(
+        "Login failed. Please check your username and password and try again.",
+      );
+    },
+  });
+
+  function onSubmit(values: FormValues) {
+    mutation.mutate(values);
+  }
+
+  return (
+    <div className="w-full space-y-5">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {/* Username Field */}
+          <motion.div
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="space-y-2"
+          >
+            <FormField
+              control={form.control}
+              name="username"
+              render={({ field: { onChange, value, ...field } }) => (
+                <FormItem>
+                  <FormControl>
+                    <div className="flex flex-col gap-1">
+                      <Label className="text-subtitle font-regular">
+                        Username
+                        <span className="text-subtitle text-danger-600">*</span>
+                      </Label>
+
+                      <div className="relative">
+                        <Input
+                          type="text"
+                          placeholder="Enter your username"
+                          value={value}
+                          onChange={onChange}
+                          required
+                          {...field}
+                          className="h-10 py-2 px-3 text-subtitle w-full border-gray-200
                                                         focus:border-gray-300 focus:ring-0 focus-visible:ring-0
                                                         rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white
                                                         font-normal pr-10 text-neutral-600 shadow-none
                                                         placeholder:text-body placeholder:font-regular
                                                         hover:border-primary-200 focus:border-primary-500"
-                                                />
-
-                                                {/* User icon */}
-                                                <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                            </div>
-                                        </div>
-                                    </FormControl>
-                                </FormItem>
-                            )}
                         />
-                    </motion.div>
 
-                    {/* Password Field */}
-                    <motion.div
-                        initial={{ y: 10, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="space-y-2"
-                    >
-                        <FormField
-                            control={form.control}
-                            name="password"
-                            render={({
-                                field: { onChange, value, ...field },
-                            }) => (
-                                <FormItem>
-                                    <FormControl>
-                                        <div className="relative">
-                                            <div className="relative">
-                                                {/* Custom input wrapper to override MyInput's password behavior */}
-                                                <div className="flex flex-col gap-1">
-                                                    <Label className="text-subtitle font-regular">
-                                                        Password
-                                                        <span className="text-subtitle text-danger-600">
-                                                            *
-                                                        </span>
-                                                    </Label>
-                                                    <div className="relative">
-                                                        <Input
-                                                            type={
-                                                                showPassword
-                                                                    ? "text"
-                                                                    : "password"
-                                                            }
-                                                            placeholder="Enter your password"
-                                                            className="h-10 py-2 px-3 text-subtitle w-full border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-20 text-neutral-600 shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500"
-                                                            value={value}
-                                                            onChange={onChange}
-                                                            required
-                                                            {...field}
-                                                        />
-                                                        {/* Custom password toggle and lock icon */}
-                                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-2">
-                                                            <motion.button
-                                                                type="button"
-                                                                whileHover={{
-                                                                    scale: 1.1,
-                                                                }}
-                                                                whileTap={{
-                                                                    scale: 0.9,
-                                                                }}
-                                                                onClick={() =>
-                                                                    setShowPassword(
-                                                                        !showPassword
-                                                                    )
-                                                                }
-                                                                className="text-gray-400 hover:text-gray-600 transition-colors duration-200 z-10"
-                                                            >
-                                                                {showPassword ? (
-                                                                    <EyeOff className="w-4 h-4" />
-                                                                ) : (
-                                                                    <Eye className="w-4 h-4" />
-                                                                )}
-                                                            </motion.button>
-                                                            <Lock className="w-4 h-4 text-gray-400" />
-                                                        </div>
-                                                    </div>
-                                                    {form.formState.errors
-                                                        .password?.message && (
-                                                        <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
-                                                            <VscError />
-                                                            <span className="mt-[3px]">
-                                                                {
-                                                                    form
-                                                                        .formState
-                                                                        .errors
-                                                                        .password
-                                                                        .message
-                                                                }
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </FormControl>
-                                </FormItem>
-                            )}
-                        />
-                        <div className="flex justify-end">
-                            <motion.button
+                        {/* User icon */}
+                        <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      </div>
+                    </div>
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </motion.div>
+
+          {/* Password Field */}
+          <motion.div
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="space-y-2"
+          >
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field: { onChange, value, ...field } }) => (
+                <FormItem>
+                  <FormControl>
+                    <div className="relative">
+                      <div className="relative">
+                        {/* Custom input wrapper to override MyInput's password behavior */}
+                        <div className="flex flex-col gap-1">
+                          <Label className="text-subtitle font-regular">
+                            Password
+                            <span className="text-subtitle text-danger-600">
+                              *
+                            </span>
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              type={showPassword ? "text" : "password"}
+                              placeholder="Enter your password"
+                              className="h-10 py-2 px-3 text-subtitle w-full border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-20 text-neutral-600 shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500"
+                              value={value}
+                              onChange={onChange}
+                              required
+                              {...field}
+                            />
+                            {/* Custom password toggle and lock icon */}
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                              <motion.button
                                 type="button"
-                                whileHover={{ scale: 1.02 }}
-                                className="text-xs text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
-                                onClick={onSwitchToForgotPassword || (() => navigate({ to: "/login/forgot-password" }))}
-                            >
-                                Forgot password?
-                            </motion.button>
+                                whileHover={{
+                                  scale: 1.1,
+                                }}
+                                whileTap={{
+                                  scale: 0.9,
+                                }}
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="text-gray-400 hover:text-gray-600 transition-colors duration-200 z-10"
+                              >
+                                {showPassword ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </motion.button>
+                              <Lock className="w-4 h-4 text-gray-400" />
+                            </div>
+                          </div>
+                          {form.formState.errors.password?.message && (
+                            <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
+                              <VscError />
+                              <span className="mt-[3px]">
+                                {form.formState.errors.password.message}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                    </motion.div>
+                      </div>
+                    </div>
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end">
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.02 }}
+                className="text-xs text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
+                onClick={
+                  onSwitchToForgotPassword ||
+                  (() => navigate({ to: "/login/forgot-password" }))
+                }
+              >
+                Forgot password?
+              </motion.button>
+            </div>
+          </motion.div>
 
-                    {/* Login Button */}
-                    <motion.div
-                        initial={{ y: 10, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.3 }}
-                        className="pt-1"
-                    >
-                        <motion.button
-                            type="submit"
-                            disabled={isLoading}
-                            whileHover={{ scale: 1.01 }}
-                            whileTap={{ scale: 0.99 }}
-                            className="w-full bg-blue-600 hover:bg-blue-500 bg-primary-500 hover:bg-primary-400 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
-                        >
-                            {isLoading ? (
-                                <div className="flex items-center justify-center space-x-2">
-                                    <motion.div
-                                        animate={{ rotate: 360 }}
-                                        transition={{
-                                            duration: 1,
-                                            repeat: Infinity,
-                                            ease: "linear",
-                                        }}
-                                    >
-                                        <RefreshCw className="w-4 h-4" />
-                                    </motion.div>
-                                    <span className="text-sm">
-                                        Signing in...
-                                    </span>
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-center space-x-2">
-                                    <Shield className="w-4 h-4" />
-                                    <span className="text-sm">Sign In</span>
-                                </div>
-                            )}
-                        </motion.button>
-                    </motion.div>
-                </form>
-            </Form>
-
-            {/* Switch to Email Login */}
-            <motion.div
-                initial={{ y: 10, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="text-center pt-3 space-y-2"
+          {/* Login Button */}
+          <motion.div
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="pt-1"
+          >
+            <motion.button
+              type="submit"
+              disabled={isLoading}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              className="w-full bg-blue-600 hover:bg-blue-500 bg-primary-500 hover:bg-primary-400 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
             >
-                {(allowEmailOtpAuth ?? true) && (
-                    <motion.button
-                        type="button"
-                        whileHover={{ scale: 1.02 }}
-                        className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
-                        onClick={onSwitchToEmail}
-                    >
-                        Use email OTP instead?
-                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
-                    </motion.button>
-                )}
- 
-                {(() => {
-                    try {
-                        const raw = localStorage.getItem("InstituteId");
-                        const instituteId = raw || "";
-                        if (!instituteId) return null;
-                        const stored = localStorage.getItem(`LEARNER_${instituteId}`);
-                        if (!stored) return null;
-                        const parsed = JSON.parse(stored);
-                        if (parsed?.allowSignup === false) return null;
-                    } catch {
-                        return null;
-                    }
-                    return (
-                        <div className="text-xs text-gray-600">
-                            Don't have an account?{" "}
-                            <motion.button
-                                type="button"
-                                whileHover={{ scale: 1.02 }}
-                                onClick={onSwitchToSignup || (() => navigate({ to: "/signup" }))}
-                                className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
-                            >
-                                Sign up here
-                            </motion.button>
-                        </div>
-                    );
-                })()}
-            </motion.div>
-        </div>
-    );
+              {isLoading ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{
+                      duration: 1,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </motion.div>
+                  <span className="text-sm">Signing in...</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center space-x-2">
+                  <Shield className="w-4 h-4" />
+                  <span className="text-sm">Sign In</span>
+                </div>
+              )}
+            </motion.button>
+          </motion.div>
+        </form>
+      </Form>
+
+      {/* Switch to Email Login */}
+      <motion.div
+        initial={{ y: 10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.4 }}
+        className="text-center pt-3 space-y-2"
+      >
+        {(allowEmailOtpAuth ?? true) && (
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.02 }}
+            className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
+            onClick={onSwitchToEmail}
+          >
+            Use email OTP instead?
+            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+          </motion.button>
+        )}
+
+        {(() => {
+          try {
+            const raw = localStorage.getItem("InstituteId");
+            const instituteId = raw || "";
+            if (!instituteId) return null;
+            const stored = localStorage.getItem(`LEARNER_${instituteId}`);
+            if (!stored) return null;
+            const parsed = JSON.parse(stored);
+            if (parsed?.allowSignup === false) return null;
+          } catch {
+            return null;
+          }
+          return (
+            <div className="text-xs text-gray-600">
+              Don't have an account?{" "}
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.02 }}
+                onClick={
+                  onSwitchToSignup || (() => navigate({ to: "/signup" }))
+                }
+                className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
+              >
+                Sign up here
+              </motion.button>
+            </div>
+          );
+        })()}
+      </motion.div>
+    </div>
+  );
 }

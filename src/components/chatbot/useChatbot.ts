@@ -12,6 +12,7 @@ import {
 } from "@/services/chatbot-api";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
+import { useParentPortalStore } from "@/stores/parent-portal-store";
 import { useCourseDetailsStore } from "@/stores/study-library/useCourseDetailsStore";
 import {
   ChatbotSettingsData,
@@ -21,13 +22,15 @@ import {
 import { isChatbotVisibleOnRoute } from "@/config/chatbot-routes";
 
 export const useChatbot = () => {
+  // Check if parent portal is active
+  const parentPortal = useParentPortalStore();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [chatbotSettings, setChatbotSettings] = useState<ChatbotSettingsData>(
-    DEFAULT_CHATBOT_SETTINGS
+    DEFAULT_CHATBOT_SETTINGS,
   );
   const [instituteName, setInstituteName] = useState<string>("Vacademy");
   const [isExpanded, setIsExpanded] = useState(false);
@@ -45,10 +48,10 @@ export const useChatbot = () => {
   // Subscribe to stores for reactive context
   const activeSlide = useContentStore((state) => state.activeItem);
   const instituteDetails = useInstituteDetailsStore(
-    (state) => state.instituteDetails
+    (state) => state.instituteDetails,
   );
   const getCourseDetails = useCourseDetailsStore(
-    (state) => state.getCourseDetails
+    (state) => state.getCourseDetails,
   );
 
   const scrollToBottom = () => {
@@ -97,9 +100,10 @@ export const useChatbot = () => {
   }, []);
 
   const shouldShowChatbot = () => {
+    // Restrict chatbot for parent portal users
+    if (parentPortal.selectedChild) return false;
     // Check global visibility setting first
     if (!chatbotSettings.enable) return false;
-
     // Check centralized route configuration
     return isChatbotVisibleOnRoute(location.pathname);
   };
@@ -165,7 +169,7 @@ export const useChatbot = () => {
             questions = [activeSlide.question_slide.text_data?.content];
             options =
               activeSlide.question_slide.options?.map(
-                (opt) => opt.text?.content || ""
+                (opt) => opt.text?.content || "",
               ) || [];
           }
         } else if (activeSlide.source_type === "QUIZ") {
@@ -180,7 +184,7 @@ export const useChatbot = () => {
               // send like [["option1","option2"],["option1","option2"]]
               //@ts-expect-error : options type issue
               options = quizQuestions.map((q) =>
-                q.options?.map((opt) => opt.text?.content || "")
+                q.options?.map((opt) => opt.text?.content || ""),
               ) as string[][];
             }
           }
@@ -197,9 +201,8 @@ export const useChatbot = () => {
           let matches = instituteDetails?.batches_for_sessions || [];
           if (!matches || matches.length === 0) {
             try {
-              const { fetchBatchesForCourse } = await import(
-                "@/services/courseBatches"
-              );
+              const { fetchBatchesForCourse } =
+                await import("@/services/courseBatches");
               matches = await fetchBatchesForCourse(context.courseId);
             } catch (e) {
               console.error(e);
@@ -207,7 +210,7 @@ export const useChatbot = () => {
           }
 
           const batch = matches?.find(
-            (b) => b.package_dto.id === context.courseId
+            (b) => b.package_dto.id === context.courseId,
           );
           courseName = batch?.package_dto?.package_name || "";
         }
@@ -254,9 +257,8 @@ export const useChatbot = () => {
         let matches = instituteDetails?.batches_for_sessions || [];
         if (!matches || matches.length === 0) {
           try {
-            const { fetchBatchesForCourse } = await import(
-              "@/services/courseBatches"
-            );
+            const { fetchBatchesForCourse } =
+              await import("@/services/courseBatches");
             matches = await fetchBatchesForCourse(context.courseId);
           } catch (e) {
             console.error(e);
@@ -264,7 +266,7 @@ export const useChatbot = () => {
         }
 
         const batch = matches?.find(
-          (b) => b.package_dto.id === context.courseId
+          (b) => b.package_dto.id === context.courseId,
         );
 
         if (courseDetails?.package_name) {
@@ -302,8 +304,6 @@ export const useChatbot = () => {
       };
     }
 
-
-
     return {};
   }, [
     getContextType,
@@ -334,7 +334,7 @@ export const useChatbot = () => {
         } catch (error) {
           console.warn(
             "Failed to fetch course details, will use basic info:",
-            error
+            error,
           );
         }
       }
@@ -345,7 +345,7 @@ export const useChatbot = () => {
       const response = await chatbotAPI.initSession(
         undefined,
         contextType,
-        contextMeta
+        contextMeta,
       );
 
       setSessionId(response.session_id);
@@ -515,7 +515,15 @@ export const useChatbot = () => {
     };
 
     updateContextAsync();
-  }, [sessionId, isOpen, isInitializing, getContextType, buildContextMeta, location.pathname, activeSlide]);
+  }, [
+    sessionId,
+    isOpen,
+    isInitializing,
+    getContextType,
+    buildContextMeta,
+    location.pathname,
+    activeSlide,
+  ]);
 
   const sendMessage = async (content: string, intent?: MessageIntent) => {
     if (!content.trim() || !sessionId) return;
@@ -564,7 +572,7 @@ export const useChatbot = () => {
         sessionId,
         "Quiz completed",
         undefined,
-        submission
+        submission,
       );
       // Response will come through SSE as quiz_feedback
     } catch (error) {
@@ -573,8 +581,7 @@ export const useChatbot = () => {
       const errorMessage: ChatMessage = {
         id: Date.now(),
         role: "assistant",
-        content:
-          "I'm sorry, I couldn't submit your quiz. Please try again.",
+        content: "I'm sorry, I couldn't submit your quiz. Please try again.",
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -647,7 +654,8 @@ export const useChatbot = () => {
     isOpen,
     setIsOpen,
     messages,
-    isLoading: isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz",
+    isLoading:
+      isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz",
     inputValue,
     setInputValue,
     sendMessage,

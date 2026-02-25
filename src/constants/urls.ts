@@ -44,6 +44,7 @@ export const LOGIN_BY_USERNAME_TRUSTED = `${BASE_URL}/auth-service/learner/v1/lo
 
 export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/learner/v1/refresh-token`;
 export const INSTITUTE_DETAIL = `${BASE_URL}/admin-core-service/learner/v1/details-without-batches`;
+export const INSTITUTE_COMPLETE_DETAILS = `${BASE_URL}/admin-core-service/learner/v1/details`;
 export const STUDENT_DETAIL = `${BASE_URL}/admin-core-service/learner/info/v1/details`;
 
 export const Assessment_List_Filter = `${BASE_URL}/assessment-service/assessment/learner/assessment-list-filter`;
@@ -208,5 +209,24 @@ export const USER_LINKED_DATA = `${BASE_URL}/admin-core-service/v1/student-analy
 export const USER_AI_KEY = `${BASE_URL}/ai-service/api-keys/v1/user`;
 export const USER_TOKEN_USAGE = `${BASE_URL}/ai-service/token-usage/v1/user`;
 
+export const GET_PARENT_DATA = `${BASE_URL}/admin-core-service/v1/applicant/parent`;
+
+// Parent Portal API endpoints
+export const SEARCH_ENQUIRY = `${BASE_URL}/admin-core-service/applicant/v1/enquiry/details`;
+export const SUBMIT_APPLICATION = `${BASE_URL}/admin-core-service/v1/applicant/apply`;
+export const GET_APPLICATION_STAGES = `${BASE_URL}/admin-core-service/v1/application/stages`;
+export const GET_APPLICANT_STAGES = (applicantId: string) =>
+  `${BASE_URL}/admin-core-service/v1/applicant/${applicantId}/stages`;
+
+export const SUBMIT_ADMISSION = `${BASE_URL}/admin-core-service/v1/admission/submit`;
+
+// Admission payment flow
+// GET_ADMISSION_PAYMENT_OPTIONS: fetch available payment options for this institute
+export const GET_ADMISSION_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/v1/payment-option/get-payment-options`;
+// INITIATE_APPLICANT_PAYMENT: POST /v1/applicant/{applicantId}/payment/initiate?paymentOptionId={id}
+// body: { vendor, amount, currency, razorpay_request: {} }
+// returns razorpay order details (razorpayKeyId, razorpayOrderId, amount, currency)
+export const INITIATE_APPLICANT_PAYMENT = (applicantId: string) =>
+  `${BASE_URL}/admin-core-service/v1/applicant/${applicantId}/payment/initiate`;
 // AI service base url
 export const AI_SERVICE_URL = `${BASE_URL}/ai-service`;

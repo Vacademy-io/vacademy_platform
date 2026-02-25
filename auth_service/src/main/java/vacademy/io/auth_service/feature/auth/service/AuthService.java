@@ -101,12 +101,15 @@ public class AuthService {
         String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
         Optional<User> optionalUser = Optional.empty();
 
+        if (StringUtils.hasText(registerRequest.getMobileNumber())) {
+            registerRequest.setMobileNumber(registerRequest.getMobileNumber().replaceAll("[^0-9]", ""));
+        }
+
         String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
 
         if ("PHONE".equalsIgnoreCase(userIdentifier) && StringUtils.hasText(registerRequest.getMobileNumber())) {
-            String digitsOnly = registerRequest.getMobileNumber().replaceAll("[^0-9]", "");
-            if (!digitsOnly.isEmpty()) {
-                optionalUser = userRepository.findLatestUserByMobileNumber(digitsOnly);
+            if (!registerRequest.getMobileNumber().isEmpty()) {
+                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
             }
         }
 
@@ -369,12 +372,15 @@ public class AuthService {
         String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
         Optional<User> optionalUser = Optional.empty();
 
+        if (StringUtils.hasText(registerRequest.getMobileNumber())) {
+            registerRequest.setMobileNumber(registerRequest.getMobileNumber().replaceAll("[^0-9]", ""));
+        }
+
         String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
 
         if ("PHONE".equalsIgnoreCase(userIdentifier) && StringUtils.hasText(registerRequest.getMobileNumber())) {
-            String digitsOnly = registerRequest.getMobileNumber().replaceAll("[^0-9]", "");
-            if (!digitsOnly.isEmpty()) {
-                optionalUser = userRepository.findLatestUserByMobileNumber(digitsOnly);
+            if (!registerRequest.getMobileNumber().isEmpty()) {
+                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
             }
         }
 

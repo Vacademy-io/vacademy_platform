@@ -831,7 +831,7 @@ class VideoGenerationPipeline:
             style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type)
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
-            interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION"]
+            interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "SIMULATION", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION", "MAP_EXPLORATION"]
             
             if content_type in interactive_types:
                 print(f"🎮 Processing interactive content type: {content_type}")
@@ -904,6 +904,7 @@ class VideoGenerationPipeline:
                 html_segments, run_dir, self._current_branding, self._current_content_type,
                 chapters=getattr(self, '_current_chapters', None),
                 glossary=getattr(self, '_current_glossary', None),
+                language=language,
             )
         
         avatar_video_path = None
@@ -1084,11 +1085,10 @@ class VideoGenerationPipeline:
             # Games/simulations may have minimal or no narration
             script_text = data.get("title", content_type) + ". " + data.get("instructions", data.get("description", ""))
         elif content_type == "FLASHCARDS":
-            # Read cards: front, then back
+            # Read all cards so word timestamps cover the full deck (needed for per-page audio seek)
             cards = data.get("cards", [])
             script_parts = [data.get("deck_title", "Flashcard Deck")]
-            for card in cards[:5]:  # Limit audio to first 5 cards for demo
-                # Simplified extraction
+            for card in cards:
                 script_parts.append(f"Card. {card.get('front_text', 'Question')}. Answer. {card.get('back_text', 'Answer')}")
             script_text = "\n\n".join(script_parts)
         elif content_type == "WORKSHEET":
@@ -1121,13 +1121,13 @@ class VideoGenerationPipeline:
                 script_parts.append(first_ex.get("instructions", ""))
             script_text = "\n\n".join(script_parts)
         elif content_type == "TIMELINE":
-            # Read timeline events for narration
+            # Read all events so word timestamps cover every entry (needed for per-entry audio seek)
             script_parts = [data.get("title", "Timeline")]
             description = data.get("description", "")
             if description:
                 script_parts.append(description)
             events = data.get("events", [])
-            for event in events[:5]:  # Limit to first 5 events
+            for event in events:
                 date_display = event.get("date_display", event.get("date", ""))
                 title = event.get("title", "")
                 desc = event.get("description", "")
@@ -1135,13 +1135,13 @@ class VideoGenerationPipeline:
                     script_parts.append(f"{date_display}. {title}. {desc}")
             script_text = "\n\n".join(script_parts)
         elif content_type == "CONVERSATION":
-            # Read dialogue exchanges for TTS
+            # Read all exchanges so word timestamps cover the full dialogue
             script_parts = [data.get("title", "Conversation Practice")]
             scenario = data.get("scenario", "")
             if scenario:
                 script_parts.append(f"Scenario: {scenario}")
             exchanges = data.get("exchanges", [])
-            for ex in exchanges[:5]:  # Limit to first 5 exchanges
+            for ex in exchanges:
                 speaker_name = ex.get("speaker_name", "Speaker")
                 speech = ex.get("audio_text", ex.get("speech_text", ""))
                 if speech:
@@ -1774,12 +1774,16 @@ class VideoGenerationPipeline:
                 
                 # Fallback: If LLM forgot the data-img-prompt in HTML but provided it in JSON, inject it
                 if "illustration_prompt" in p and "data-img-prompt" not in html:
-                    # Simple injection into the first <img> tag
+                    safe_prompt = p["illustration_prompt"].replace('"', '&quot;')
                     if "<img" in html:
-                         # Escape quotes in prompt for HTML attribute
-                         safe_prompt = p["illustration_prompt"].replace('"', '&quot;')
-                         html = html.replace("<img", f'<img data-img-prompt="{safe_prompt}"', 1)
-                         print(f"    🔧 Auto-injected missing data-img-prompt for page {i+1}")
+                        # Inject into the first existing <img> tag
+                        html = html.replace("<img", f'<img data-img-prompt="{safe_prompt}"', 1)
+                        print(f"    🔧 Auto-injected missing data-img-prompt for page {i+1}")
+                    else:
+                        # No <img> at all — append a hidden placeholder so _process_generated_images
+                        # can still find and replace it with a generated image
+                        html = html + f'<img data-img-prompt="{safe_prompt}" style="display:none" alt="illustration">'
+                        print(f"    🔧 Appended hidden img placeholder with data-img-prompt for page {i+1}")
                 
                 segments.append(create_segment(html, i+1, f"page-{p.get('page_number', i+1)}", extra_meta=p))
                 
@@ -1808,23 +1812,60 @@ class VideoGenerationPipeline:
             for i, e in enumerate(events):
                 html = e.get("html", f"<div>Event {i+1}</div>")
                 segments.append(create_segment(html, i+1, e.get("id", f"event-{i+1}"), extra_meta=e))
-                
-        # Default fallback for others (WORKSHEET, CODE_PLAYGROUND, CONVERSATION)
-        # Assuming they follow a similar pattern or single entry
+
+        elif content_type == "MAP_EXPLORATION":
+            # Each region is a separate user_driven entry
+            regions = plan_data.get("regions", [])
+            for i, r in enumerate(regions):
+                html = r.get("html", f"<div>Region {i+1}</div>")
+                segments.append(create_segment(html, i+1, r.get("id", f"region-{i+1}"), extra_meta=r))
+
+        elif content_type == "SIMULATION":
+            # Simulations are self_contained — one single HTML entry with all interactivity
+            html = plan_data.get("html", "<div>Simulation</div>")
+            segments.append(create_segment(html, 1, "simulation-container", extra_meta=plan_data))
+
+        elif content_type == "WORKSHEET":
+            sections = plan_data.get("sections", [])
+            for i, s in enumerate(sections):
+                html = s.get("html", f"<div>Exercise {i+1}</div>")
+                segments.append(create_segment(html, i+1, s.get("id", f"exercise-{i+1}"), extra_meta=s))
+            if not sections:
+                # Single-page worksheet fallback
+                html = plan_data.get("html", "<div>Worksheet</div>")
+                segments.append(create_segment(html, 1, "worksheet-main", extra_meta=plan_data))
+
+        elif content_type == "CODE_PLAYGROUND":
+            exercises = plan_data.get("exercises", [])
+            for i, ex in enumerate(exercises):
+                html = ex.get("html", f"<div>Exercise {i+1}</div>")
+                segments.append(create_segment(html, i+1, ex.get("id", f"exercise-{i+1}"), extra_meta=ex))
+            if not exercises:
+                html = plan_data.get("html", "<div>Code Playground</div>")
+                segments.append(create_segment(html, 1, "playground-main", extra_meta=plan_data))
+
+        elif content_type == "CONVERSATION":
+            exchanges = plan_data.get("exchanges", [])
+            for i, ex in enumerate(exchanges):
+                html = ex.get("html", f"<div>Exchange {i+1}</div>")
+                segments.append(create_segment(html, i+1, ex.get("id", f"exchange-{i+1}"), extra_meta=ex))
+            if not exchanges:
+                html = plan_data.get("html", "<div>Conversation</div>")
+                segments.append(create_segment(html, 1, "conversation-main", extra_meta=plan_data))
+
         else:
-            # Try to find a list like 'items', 'sections', 'exercises'
+            # Generic fallback: try common list keys, then single entry
             found_list = False
-            for key in ["items", "sections", "exercises", "exchanges"]:
+            for key in ["items", "sections", "exercises", "exchanges", "regions"]:
                 if key in plan_data and isinstance(plan_data[key], list):
                     items = plan_data[key]
                     for i, item in enumerate(items):
-                         html = item.get("html", f"<div>Item {i+1}</div>")
-                         segments.append(create_segment(html, i+1, item.get("id", f"item-{i+1}"), extra_meta=item))
+                        html = item.get("html", f"<div>Item {i+1}</div>")
+                        segments.append(create_segment(html, i+1, item.get("id", f"item-{i+1}"), extra_meta=item))
                     found_list = True
                     break
-            
+
             if not found_list:
-                # Fallback: single entry using 'html' field if present
                 html = plan_data.get("html", f"<div>Content for {content_type}</div>")
                 segments.append(create_segment(html, 1, "main-content", extra_meta=plan_data))
                 
@@ -3332,6 +3373,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         content_type: str = "VIDEO",
         chapters: Optional[List[Dict[str, Any]]] = None,
         glossary: Optional[List[Dict[str, Any]]] = None,
+        language: str = "English",
     ) -> Path:
         """
         Write timeline JSON with branding support.
@@ -3571,6 +3613,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "content_type": content_type,              # Tells frontend what type of content
             "navigation": navigation,                  # "time_driven", "user_driven", or "self_contained"
             "entry_label": entry_label,                # Label for entries (question, page, segment)
+            "language": language,                      # Content language (used by frontend TTS, captions)
             "audio_start_at": content_starts_at,       # Audio should start playing at this time
             "total_duration": final_duration,
             "intro_duration": intro_duration,

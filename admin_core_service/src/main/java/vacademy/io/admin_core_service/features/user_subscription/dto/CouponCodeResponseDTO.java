@@ -27,6 +27,7 @@ public class CouponCodeResponseDTO {
     private Long usageLimit;
     private boolean canBeAdded;
     private String shortUrl;
+    private String shortReferralLink;
 
     public static CouponCodeResponseDTO fromEntity(CouponCode couponCode) {
         return CouponCodeResponseDTO.builder()
@@ -44,6 +45,7 @@ public class CouponCodeResponseDTO {
                 .usageLimit(couponCode.getUsageLimit())
                 .canBeAdded(couponCode.isCanBeAdded())
                 .shortUrl(couponCode.getShortUrl())
+                .shortReferralLink(couponCode.getShortUrl())
                 .build();
     }
 }

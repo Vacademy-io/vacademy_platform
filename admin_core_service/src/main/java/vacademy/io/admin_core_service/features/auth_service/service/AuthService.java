@@ -324,4 +324,30 @@ public class AuthService {
         }
     }
 
+    public void updateInstituteSettings(String instituteId, String userIdentifier) {
+        try {
+            String endpoint = AuthServiceRoutes.UPDATE_INSTITUTE_SETTINGS;
+
+            // Create a payload similar to UpdateInstituteSettingsDTO from auth_service
+            java.util.Map<String, Object> payload = new java.util.HashMap<>();
+            payload.put("instituteId", instituteId);
+            payload.put("userIdentifier", userIdentifier);
+            // Intentionally not setting settingsJson here so it remains null in the DTO,
+            // preventing accidental overwrites of existing institute settings in
+            // auth_service.
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.PUT.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    payload);
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new VacademyException("Failed to update institute settings in auth_service.");
+            }
+        } catch (Exception e) {
+            throw new VacademyException("Failed to update institute settings: " + e.getMessage());
+        }
+    }
 }

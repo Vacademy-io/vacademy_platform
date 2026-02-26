@@ -88,6 +88,29 @@ public class InstituteSettingManager {
             throw new VacademyException("Institute Not Found");
 
         instituteSettingService.saveGenericSetting(institute.get(), settingKey, request);
+
+        if ("USER_IDENTIFIER".equals(settingKey)) {
+            try {
+                Object data = request.getSettingData();
+                String userIdentifier = "EMAIL";
+                if (data instanceof String) {
+                    userIdentifier = (String) data;
+                } else if (data instanceof java.util.Map) {
+                    java.util.Map<?, ?> map = (java.util.Map<?, ?>) data;
+                    if (map.containsKey("userIdentifier")) {
+                        userIdentifier = map.get("userIdentifier").toString();
+                    } else if (map.containsKey("value")) {
+                        userIdentifier = map.get("value").toString();
+                    }
+                }
+                instituteSettingService.syncUserIdentifier(instituteId, userIdentifier);
+            } catch (Exception e) {
+                // We shouldn't fail the entire request if sync fails, but we want it to be
+                // caught
+                e.printStackTrace();
+            }
+        }
+
         return ResponseEntity.ok("Setting saved successfully");
     }
 

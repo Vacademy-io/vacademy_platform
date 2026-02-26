@@ -39,6 +39,9 @@ import {
     generateStorybookHtml,
     generateQuizHtml,
     generateConversationHtml,
+    generateWorksheetHtml,
+    generatePuzzleHtml,
+    generateMapRegionHtml,
 } from './html-processor';
 import { initializeLibraries } from './library-loader';
 import { useCaptions } from './hooks/useCaptions';
@@ -128,6 +131,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const playStartTimeRef = useRef(0);
     const introStartTimeRef = useRef(0);
     const isPlayingRef = useRef(false); // Ref to avoid stale closure issues
+    const contentIframeRef = useRef<HTMLIFrameElement>(null); // Ref to the primary content iframe (for print)
 
     const scaleCalculator = useMemo(() => new ScaleCalculator(width, height), [width, height]);
 
@@ -720,17 +724,46 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         }
     }, []);
 
-    // Print handler for WORKSHEET
+    // Print handler for WORKSHEET — prints only the content iframe, not the whole page
     const handlePrint = useCallback(() => {
-        window.print();
+        const iframe = contentIframeRef.current;
+        if (iframe?.contentWindow) {
+            iframe.contentWindow.print();
+        } else {
+            window.print();
+        }
     }, []);
 
-    // Text-to-speech for CONVERSATION
-    const handleSpeak = useCallback((text: string) => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
-        speechSynthesis.speak(utterance);
-    }, []);
+    // Text-to-speech for CONVERSATION — language resolved from timeline meta
+    const handleSpeak = useCallback(
+        (text: string) => {
+            const LANGUAGE_TO_BCP47: Record<string, string> = {
+                english: 'en-US',
+                'english (us)': 'en-US',
+                'english (uk)': 'en-GB',
+                'english (india)': 'en-IN',
+                hindi: 'hi-IN',
+                bengali: 'bn-IN',
+                tamil: 'ta-IN',
+                telugu: 'te-IN',
+                marathi: 'mr-IN',
+                kannada: 'kn-IN',
+                gujarati: 'gu-IN',
+                malayalam: 'ml-IN',
+                french: 'fr-FR',
+                spanish: 'es-ES',
+                german: 'de-DE',
+                japanese: 'ja-JP',
+                chinese: 'zh-CN',
+            };
+            const langKey = (meta.language || 'English').toLowerCase().trim();
+            const bcp47 = LANGUAGE_TO_BCP47[langKey] || 'en-US';
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = bcp47;
+            speechSynthesis.speak(utterance);
+        },
+        [meta.language]
+    );
 
     // Fullscreen change listener
     useEffect(() => {
@@ -791,22 +824,38 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     htmlContent = generateTimelineHtml(entry, currentIndex, entries);
                 }
             } else if (contentType === 'FLASHCARDS') {
-                // Always generate premium flashcard HTML from metadata to ensure consistent UI
-                // unless it's already using our specific class structure
-                if (!htmlContent || !htmlContent.includes('flashcard-stage')) {
+                // Fall back to client-side generator only when the HTML is clearly a placeholder
+                // (empty, very short, or the stock backend fallback). Preserve real LLM HTML.
+                const isPlaceholder =
+                    !htmlContent ||
+                    htmlContent.length < 80 ||
+                    htmlContent.includes('<div>Card');
+                if (isPlaceholder) {
                     htmlContent = generateFlashcardHtml(entry, currentIndex, entries);
                 }
             } else if (contentType === 'STORYBOOK') {
-                if (!htmlContent || !htmlContent.includes('storybook-page')) {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Page')) {
                     htmlContent = generateStorybookHtml(entry, currentIndex, entries);
                 }
             } else if (contentType === 'QUIZ') {
-                if (!htmlContent || !htmlContent.includes('quiz-container')) {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Question')) {
                     htmlContent = generateQuizHtml(entry, currentIndex, entries);
                 }
             } else if (contentType === 'CONVERSATION') {
-                if (!htmlContent || !htmlContent.includes('conversation-container')) {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Exchange')) {
                     htmlContent = generateConversationHtml(entry, currentIndex, entries);
+                }
+            } else if (contentType === 'WORKSHEET') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Exercise')) {
+                    htmlContent = generateWorksheetHtml(entry, currentIndex, entries);
+                }
+            } else if (contentType === 'PUZZLE_BOOK') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Puzzle')) {
+                    htmlContent = generatePuzzleHtml(entry, currentIndex, entries);
+                }
+            } else if (contentType === 'MAP_EXPLORATION') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Region')) {
+                    htmlContent = generateMapRegionHtml(entry, currentIndex, entries);
                 }
             }
 
@@ -854,6 +903,10 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     break;
                 case 'NAVIGATE_PREV':
                     handlePrev();
+                    break;
+                case 'SPEAK':
+                    // TTS request from within an iframe (e.g. per-bubble audio buttons in CONVERSATION)
+                    if (payload?.text) handleSpeak(payload.text);
                     break;
             }
         };
@@ -948,12 +1001,15 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     position: 'relative',
                 }}
                 onMouseEnter={(e) => {
+                    // Only manage opacity for time_driven — user_driven/self_contained controls are always visible
+                    if (navigationMode !== 'time_driven') return;
                     const controls = e.currentTarget.querySelector(
                         '.video-controls-overlay'
                     ) as HTMLElement;
                     if (controls) controls.style.opacity = '1';
                 }}
                 onMouseLeave={(e) => {
+                    if (navigationMode !== 'time_driven') return;
                     const controls = e.currentTarget.querySelector(
                         '.video-controls-overlay'
                     ) as HTMLElement;
@@ -993,6 +1049,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             {activeEntries.map((entry, index) => (
                                 <iframe
                                     key={`entry-${entry.id}-${index}`}
+                                    ref={index === 0 ? contentIframeRef : undefined}
                                     srcDoc={entry.processedHtml}
                                     style={{
                                         width: '100%',
@@ -1010,7 +1067,14 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                                 : 'auto',
                                     }}
                                     title={`Content Layer ${entry.id}`}
-                                    sandbox="allow-scripts allow-same-origin"
+                                    sandbox={
+                                        // CODE_PLAYGROUND must NOT have allow-same-origin together with allow-scripts
+                                        // (that combination defeats the sandbox). Scripts-only is sufficient for code execution.
+                                        // All other types keep allow-same-origin so their CDN libraries and inline scripts work.
+                                        contentType === 'CODE_PLAYGROUND'
+                                            ? 'allow-scripts'
+                                            : 'allow-scripts allow-same-origin'
+                                    }
                                 />
                             ))}
                         </div>
@@ -1200,13 +1264,45 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             ? 'linear-gradient(transparent, rgba(0,0,0,0.8))'
                             : 'linear-gradient(rgba(0,0,0,0.8), transparent)',
                         padding: isFullscreen ? '40px 16px 16px 16px' : '16px 16px 40px 16px',
-                        opacity: isFullscreen ? 1 : 0,
+                        // For user_driven/self_contained, controls are always visible (no hover needed — navigation IS the UI)
+                        // For time_driven, controls fade in on hover (standard video player behaviour)
+                        opacity: isFullscreen || navigationMode !== 'time_driven' ? 1 : 0,
                         transition: 'opacity 0.3s ease',
                         zIndex: 10,
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    {/* Progress Bar (only for time_driven) */}
+                    {/* Progress Bar — time scrubber for time_driven, step dots for user_driven */}
+                    {navigationMode === 'user_driven' && entries.length > 1 && (
+                        <div
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                marginBottom: '12px',
+                                padding: '4px 0',
+                            }}
+                        >
+                            {entries.map((_, i) => (
+                                <div
+                                    key={i}
+                                    onClick={() => {
+                                        setCurrentIndex(i);
+                                        onEntryChange?.(i, entries[i]!);
+                                    }}
+                                    title={`${meta.entry_label} ${i + 1}`}
+                                    style={{
+                                        flex: 1,
+                                        height: '4px',
+                                        borderRadius: '2px',
+                                        background: i <= currentIndex ? '#ef4444' : 'rgba(255,255,255,0.25)',
+                                        cursor: 'pointer',
+                                        transition: 'background 0.2s ease',
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    )}
                     {navigationMode === 'time_driven' && (
                         <div
                             className="video-progress"
@@ -1343,41 +1439,51 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     )}
                                 </span>
 
-                                {/* STORYBOOK: Read Page Button */}
-                                {contentType === 'STORYBOOK' &&
-                                    pageAudioRanges.has(currentIndex) && (
-                                        <button
-                                            onClick={handleReadPage}
+                                {/* STORYBOOK: Read Page Button — always visible, disabled when audio not available */}
+                                {contentType === 'STORYBOOK' && (
+                                    <button
+                                        onClick={pageAudioRanges.has(currentIndex) ? handleReadPage : undefined}
+                                        disabled={!pageAudioRanges.has(currentIndex)}
+                                        style={{
+                                            ...btnStyle,
+                                            background: isPlaying
+                                                ? 'rgba(255, 255, 255, 0.2)'
+                                                : 'transparent',
+                                            borderRadius: '4px',
+                                            border: '1px solid rgba(255, 255, 255, 0.4)',
+                                            padding: '4px 12px',
+                                            margin: '0 8px',
+                                            display: 'flex',
+                                            gap: '6px',
+                                            opacity: pageAudioRanges.has(currentIndex) ? 1 : 0.35,
+                                            cursor: pageAudioRanges.has(currentIndex) ? 'pointer' : 'not-allowed',
+                                        }}
+                                        title={
+                                            !wordsUrl
+                                                ? 'Narration unavailable (no audio words provided)'
+                                                : !pageAudioRanges.has(currentIndex)
+                                                ? 'No narration for this page'
+                                                : isPlaying
+                                                ? 'Pause Narration'
+                                                : 'Read Page Aloud'
+                                        }
+                                    >
+                                        {isPlaying ? (
+                                            <Pause className="size-4 text-white" />
+                                        ) : (
+                                            <Volume2 className="size-4 text-white" />
+                                        )}
+                                        <span
                                             style={{
-                                                ...btnStyle,
-                                                background: isPlaying
-                                                    ? 'rgba(255, 255, 255, 0.2)'
-                                                    : 'transparent',
-                                                borderRadius: '4px',
-                                                border: '1px solid rgba(255, 255, 255, 0.4)',
-                                                padding: '4px 12px',
-                                                margin: '0 8px',
-                                                display: 'flex',
-                                                gap: '6px',
+                                                fontSize: '12px',
+                                                fontWeight: 600,
+                                                color: 'white',
                                             }}
-                                            title={isPlaying ? 'Pause Narration' : 'Read Page'}
                                         >
-                                            {isPlaying ? (
-                                                <Pause className="size-4 text-white" />
-                                            ) : (
-                                                <Volume2 className="size-4 text-white" />
-                                            )}
-                                            <span
-                                                style={{
-                                                    fontSize: '12px',
-                                                    fontWeight: 600,
-                                                    color: 'white',
-                                                }}
-                                            >
-                                                {isPlaying ? 'PAUSE' : 'READ ME'}
-                                            </span>
-                                        </button>
-                                    )}
+                                            {isPlaying ? 'PAUSE' : 'READ ME'}
+                                        </span>
+                                    </button>
+                                )}
 
                                 <button
                                     onClick={handleNext}

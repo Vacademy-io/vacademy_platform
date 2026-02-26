@@ -1590,7 +1590,8 @@ function getHelperScripts(): string {
                                     {left: '\\\\(', right: '\\\\)', display: false},
                                     {left: '\\\\[', right: '\\\\]', display: true}
                                 ],
-                                throwOnError: false
+                                throwOnError: false,
+                                strict: false
                             });
                         } catch (e) {
                             console.warn('KaTeX render error:', e);
@@ -1608,25 +1609,26 @@ function getHelperScripts(): string {
 
             // SVG drawing animation
             window.animateSVG = function(svgId, duration, callback) {
-                if (window.Vivus) {
-                    var cb = typeof callback === 'function' ? callback : undefined;
-                    try {
-                        let target = svgId;
-                        if (typeof svgId === 'string' && !svgId.startsWith('#') && !document.getElementById(svgId)) {
-                            new Vivus(svgId, {
-                                duration: duration || 100,
-                                type: 'oneByOne',
-                                animTimingFunction: Vivus.EASE_OUT
-                            }, cb);
-                        } else {
-                            new Vivus(svgId, {
-                                duration: duration || 100,
-                                type: 'oneByOne',
-                                animTimingFunction: Vivus.EASE_OUT
-                            }, cb);
+                if (!window.Vivus) return;
+                var cb = typeof callback === 'function' ? callback : undefined;
+                var dur = duration || 100;
+                function tryInit(attemptsLeft) {
+                    var el = document.getElementById(svgId);
+                    if (!el) {
+                        if (attemptsLeft > 0) {
+                            setTimeout(function() { tryInit(attemptsLeft - 1); }, 100);
                         }
+                        return;
+                    }
+                    try {
+                        new Vivus(svgId, {
+                            duration: dur,
+                            type: 'oneByOne',
+                            animTimingFunction: Vivus.EASE_OUT
+                        }, cb);
                     } catch(e) { console.warn('Vivus init error', e); }
                 }
+                tryInit(10);
             };
 
             // Hand-drawn annotation
@@ -1845,7 +1847,10 @@ function getQuizScripts(): string {
                     feedback.classList.add('show');
                     feedback.classList.add(isCorrect ? 'correct' : 'incorrect');
 
-                    // You can populate text dynamicallly here if needed
+                    const titleEl = feedback.querySelector('.quiz-feedback-title');
+                    if (titleEl) {
+                        titleEl.textContent = isCorrect ? '🎉 Correct!' : '❌ Not quite...';
+                    }
                 }
 
                 // 5. Notify Parent Player
@@ -2179,11 +2184,11 @@ export function generateFlashcardHtml(entry: Entry, index: number, entries: Entr
                     });
                 }
             }
-        </script>
 
             // Add keyboard support (Space to flip)
             document.addEventListener('keydown', (e) => {
                 if(e.code === 'Space') {
+                    e.preventDefault();
                     const card = document.querySelector('.flashcard-container');
                     if(card) card.classList.toggle('flipped');
                 }
@@ -2280,11 +2285,11 @@ export function generateQuizHtml(entry: Entry, index: number, entries: Entry[] =
     const optionsHtml = options
         .map(
             (opt: any, i: number) => `
-        <div class="quiz-option" onclick="window.handleOptionClick(this, '${opt.text.replace(/'/g, "\\'")}', ${opt.isCorrect}, '${opt.explanation.replace(/'/g, "\\'")}')" data-correct="${opt.isCorrect}">
-            <div class="option-marker">${String.fromCharCode(65 + i)}</div>
-            <div class="option-text">${opt.text}</div>
-            <div class="feedback-icon correct">✓</div>
-            <div class="feedback-icon incorrect">✕</div>
+        <div class="quiz-option" onclick="window.handleOptionClick(this, '${opt.text.replace(/'/g, "\\'")}', ${opt.isCorrect}, '${(opt.explanation || '').replace(/'/g, "\\'")}')" data-correct="${opt.isCorrect}">
+            <div class="quiz-option-letter">${String.fromCharCode(65 + i)}</div>
+            <div class="quiz-option-text">${opt.text}</div>
+            <div class="quiz-option-icon correct-icon">✓</div>
+            <div class="quiz-option-icon incorrect-icon">✕</div>
         </div>
     `
         )
@@ -2302,9 +2307,9 @@ export function generateQuizHtml(entry: Entry, index: number, entries: Entry[] =
             </div>
 
             <div class="quiz-feedback">
-                <div class="feedback-title"></div>
-                <div class="feedback-text">${explanation}</div>
-                <button class="next-btn" onclick="window.parent.postMessage({ type: 'NAVIGATE_NEXT' }, '*')">Continue</button>
+                <div class="quiz-feedback-title"></div>
+                <div class="quiz-feedback-text">${explanation}</div>
+                <button class="quiz-submit-btn" style="margin-top:24px" onclick="window.parent.postMessage({ type: 'NAVIGATE_NEXT' }, '*')">Continue →</button>
             </div>
         </div>
     `;
@@ -2374,6 +2379,158 @@ export function generateConversationHtml(
 }
 
 /**
+ * Fallback generator for WORKSHEET entries
+ * Renders a section with its title, instructions, and questions list
+ */
+export function generateWorksheetHtml(
+    entry: Entry,
+    index: number,
+    entries: Entry[] = []
+): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+
+    const title = meta.section_title || entryAny.section_title || meta.title || entryAny.title || `Section ${index + 1}`;
+    const instructions = meta.section_instructions || entryAny.section_instructions || meta.instructions || entryAny.instructions || '';
+    const questions = meta.questions || entryAny.questions || [];
+    const total = entries.length;
+
+    const questionsHtml = questions
+        .map((q: any, i: number) => {
+            const qText = q.question || q.text || q.prompt || '';
+            const lines = q.answer_lines || 3;
+            return `
+            <div class="ws-question">
+                <div class="ws-question-text">${i + 1}. ${qText}</div>
+                ${Array.from({ length: lines })
+                    .map(() => `<div class="ws-answer-line"></div>`)
+                    .join('')}
+            </div>`;
+        })
+        .join('');
+
+    return `
+        <div class="worksheet-container">
+            <div class="ws-header">
+                <div class="ws-section-number">Section ${index + 1} of ${total}</div>
+                <div class="ws-title">${title}</div>
+                ${instructions ? `<div class="ws-instructions">${instructions}</div>` : ''}
+            </div>
+            <div class="ws-body">
+                ${questionsHtml || '<div class="ws-no-content">Complete the exercises in this section.</div>'}
+            </div>
+            <style>
+                .worksheet-container { font-family: 'Georgia', serif; background: #fff; padding: 40px; min-height: 100%; color: #1a1a1a; box-sizing: border-box; }
+                .ws-header { border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 24px; }
+                .ws-section-number { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #666; margin-bottom: 6px; }
+                .ws-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+                .ws-instructions { font-size: 14px; color: #444; font-style: italic; }
+                .ws-body { display: flex; flex-direction: column; gap: 20px; }
+                .ws-question { }
+                .ws-question-text { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+                .ws-answer-line { border-bottom: 1px solid #aaa; height: 24px; margin-bottom: 4px; }
+                .ws-no-content { color: #888; font-style: italic; }
+                @media print { .worksheet-container { padding: 20px; } }
+            </style>
+        </div>
+    `;
+}
+
+/**
+ * Fallback generator for PUZZLE_BOOK entries
+ * Renders a puzzle card with title, instructions, and puzzle area
+ */
+export function generatePuzzleHtml(
+    entry: Entry,
+    index: number,
+    entries: Entry[] = []
+): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+
+    const title = meta.title || entryAny.title || `Puzzle ${index + 1}`;
+    const puzzleType = meta.puzzle_type || entryAny.puzzle_type || 'puzzle';
+    const instructions = meta.instructions || entryAny.instructions || 'Solve the puzzle below.';
+    const total = entries.length;
+
+    return `
+        <div class="puzzle-container">
+            <div class="puzzle-header">
+                <div class="puzzle-badge">${puzzleType.replace(/_/g, ' ').toUpperCase()}</div>
+                <div class="puzzle-number">Puzzle ${index + 1} of ${total}</div>
+            </div>
+            <div class="puzzle-title">${title}</div>
+            <div class="puzzle-instructions">${instructions}</div>
+            <div class="puzzle-area">
+                <p style="color:#94a3b8; font-style:italic; text-align:center;">
+                    Read the instructions above and use your notebook to solve this puzzle.<br>
+                    <span style="font-size:12px; opacity:0.6;">Interactive puzzle content could not be loaded.</span>
+                </p>
+            </div>
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { background: #0f172a; }
+                .puzzle-container { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); min-height: 100vh; padding: 40px; color: #f1f5f9; }
+                .puzzle-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+                .puzzle-badge { background: #7c3aed; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; }
+                .puzzle-number { font-size: 13px; color: #94a3b8; }
+                .puzzle-title { font-size: 26px; font-weight: 800; margin-bottom: 12px; color: #f8fafc; }
+                .puzzle-instructions { font-size: 14px; color: #94a3b8; margin-bottom: 28px; line-height: 1.6; }
+                .puzzle-area { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 32px; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+            </style>
+        </div>
+    `;
+}
+
+/**
+ * Fallback generator for MAP_EXPLORATION entries
+ * Renders a region detail card with name, description, and facts
+ */
+export function generateMapRegionHtml(
+    entry: Entry,
+    index: number,
+    entries: Entry[] = []
+): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+
+    const name = meta.name || entryAny.name || meta.region_name || entryAny.region_name || `Region ${index + 1}`;
+    const description = meta.description || entryAny.description || '';
+    const facts = meta.facts || entryAny.facts || [];
+    const category = meta.category || entryAny.category || '';
+    const total = entries.length;
+
+    const factsHtml = facts
+        .map((f: any) => {
+            const label = f.label || f.key || '';
+            const value = f.value || f.text || f;
+            return `<div class="region-fact"><span class="fact-label">${label}</span><span class="fact-value">${value}</span></div>`;
+        })
+        .join('');
+
+    return `
+        <div class="map-region-container">
+            <div class="region-nav">Region ${index + 1} of ${total}${category ? ` · ${category}` : ''}</div>
+            <div class="region-name">${name}</div>
+            ${description ? `<div class="region-description">${description}</div>` : ''}
+            ${factsHtml ? `<div class="region-facts">${factsHtml}</div>` : ''}
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { background: #0c1a2e; }
+                .map-region-container { font-family: 'Inter', sans-serif; background: linear-gradient(160deg, #0c1a2e 0%, #162032 100%); min-height: 100vh; padding: 48px 40px; color: #e2e8f0; }
+                .region-nav { font-size: 12px; font-weight: 600; color: #60a5fa; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+                .region-name { font-size: 36px; font-weight: 900; color: #f8fafc; margin-bottom: 16px; line-height: 1.1; }
+                .region-description { font-size: 16px; color: #94a3b8; line-height: 1.7; margin-bottom: 28px; }
+                .region-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .region-fact { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 14px 16px; }
+                .fact-label { display: block; font-size: 11px; font-weight: 700; color: #60a5fa; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+                .fact-value { display: block; font-size: 15px; color: #f1f5f9; }
+            </style>
+        </div>
+    `;
+}
+
+/**
  * Process HTML content based on content type
  */
 export function processHtmlContent(
@@ -2382,9 +2539,6 @@ export function processHtmlContent(
     isOverlay: boolean = false
 ): string {
     let processedHtml = html;
-
-    // Fix any absolute file paths
-    processedHtml = processedHtml.replace(/file:\/\/\/.*\/generated_images\//g, '');
 
     // Only strip opacity:0 if there's no <script> tag to animate it back
     const hasScript = /<script[\s>]/i.test(processedHtml);

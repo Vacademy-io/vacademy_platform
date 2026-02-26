@@ -157,9 +157,12 @@ public class PaymentLogService {
 
         log.debug("Payment log updated successfully for ID={}", paymentLogId);
 
-        // When payment is PAID (e.g. synchronous Stripe success), run sync-only post-payment logic:
-        // cleanup + invoice generation (and invoice email if enabled). Do NOT call applicant service
-        // (that is for applicant flow). applyOperationsOnFirstPayment is run by the enroll flow after
+        // When payment is PAID (e.g. synchronous Stripe success), run sync-only
+        // post-payment logic:
+        // cleanup + invoice generation (and invoice email if enabled). Do NOT call
+        // applicant service
+        // (that is for applicant flow). applyOperationsOnFirstPayment is run by the
+        // enroll flow after
         // handlePayment returns.
         if (PaymentStatusEnum.PAID.name().equals(paymentStatus)) {
             String instituteId = resolveInstituteIdForPaymentLog(paymentLog);
@@ -172,18 +175,47 @@ public class PaymentLogService {
                     SentryLogger.logError(e, "Post-payment logic failed after 4-arg updatePaymentLog", Map.of(
                             "payment.log.id", paymentLogId,
                             "operation", "handlePostPaymentLogicForSyncPayment"));
-                    // Do not rethrow: payment is already recorded as PAID; enrollment flow continues
+                    // Do not rethrow: payment is already recorded as PAID; enrollment flow
+                    // continues
                 }
             } else {
-                log.warn("Could not resolve instituteId for payment log {}, skipping post-payment logic (e.g. invoice generation)", paymentLogId);
+                log.warn(
+                        "Could not resolve instituteId for payment log {}, skipping post-payment logic (e.g. invoice generation)",
+                        paymentLogId);
             }
         }
     }
 
     /**
-     * Post-payment logic for the 4-arg updatePaymentLog path (synchronous payment, e.g. Stripe same-request success).
-     * Runs only cleanup and invoice generation (and invoice email when institute setting is on).
-     * Does NOT call applicant service (different use case) or applyOperationsOnFirstPayment (done by enroll flow).
+     * Updates payment log status WITHOUT triggering post-payment logic
+     * (no invoice generation, no abandoned-cart cleanup).
+     * Used by school enrollment where receipt is handled separately
+     * by SchoolFeeReceiptService.
+     */
+
+    // for school system
+    public void updatePaymentLogOnly(String paymentLogId, String status,
+            String paymentStatus, String paymentSpecificData) {
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId)
+                .orElseThrow(() -> new RuntimeException("Payment log not found: " + paymentLogId));
+
+        paymentLog.setStatus(status);
+        if (StringUtils.hasText(paymentStatus)) {
+            paymentLog.setPaymentStatus(paymentStatus);
+        }
+        paymentLog.setPaymentSpecificData(paymentSpecificData);
+        paymentLogRepository.save(paymentLog);
+
+        log.info("Payment log updated (no post-payment logic) for ID={}", paymentLogId);
+    }
+
+    /**
+     * Post-payment logic for the 4-arg updatePaymentLog path (synchronous payment,
+     * e.g. Stripe same-request success).
+     * Runs only cleanup and invoice generation (and invoice email when institute
+     * setting is on).
+     * Does NOT call applicant service (different use case) or
+     * applyOperationsOnFirstPayment (done by enroll flow).
      */
     private void handlePostPaymentLogicForSyncPayment(PaymentLog paymentLog, String instituteId) {
         handlePaymentSuccessEntryCleanup(paymentLog, instituteId);
@@ -211,7 +243,8 @@ public class PaymentLogService {
     }
 
     /**
-     * Resolve institute ID from payment log's user plan and enroll invite (for post-payment logic).
+     * Resolve institute ID from payment log's user plan and enroll invite (for
+     * post-payment logic).
      */
     private String resolveInstituteIdForPaymentLog(PaymentLog paymentLog) {
         if (paymentLog == null || paymentLog.getUserPlan() == null) {
@@ -403,7 +436,8 @@ public class PaymentLogService {
                 }
             }
 
-            // Applicant sync: only when paying user is an applicant (audience_response.student_user_id + applicant_id).
+            // Applicant sync: only when paying user is an applicant
+            // (audience_response.student_user_id + applicant_id).
             // Avoids expensive applicant_stage JSON query on every payment.
             String payingUserId = paymentLog.getUserId();
             boolean isApplicantPayment = false;
@@ -531,7 +565,8 @@ public class PaymentLogService {
     }
 
     /**
-     * Runs applicant sync in a new transaction so that failure (e.g. no applicant stage
+     * Runs applicant sync in a new transaction so that failure (e.g. no applicant
+     * stage
      * for learner payments) does not mark the webhook transaction rollback-only.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)

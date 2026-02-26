@@ -28,6 +28,22 @@ public class LearnerCouponService {
      * @param userId The learner's user ID
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void generateCouponCodeForLearner(String userId) {
+        generateCouponCodeForLearner(userId, null, null);
+    }
+
+    /**
+     * Generates a coupon code for a learner if they don't already have one.
+     * Uses a separate transaction to ensure coupon is saved even if main enrollment
+     * fails.
+     *
+     * @param userId      The learner's user ID
+     * @param instituteId The institute ID (may be null for admin-side
+     *                    registrations)
+     * @param inviteCode  The enroll invite code (may be null for admin-side
+     *                    registrations)
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void generateCouponCodeForLearner(String userId, String instituteId, String inviteCode) {
         try {
             // Check if user already has a coupon code

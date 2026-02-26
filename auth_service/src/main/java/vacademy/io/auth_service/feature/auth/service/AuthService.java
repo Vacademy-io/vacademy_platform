@@ -14,6 +14,7 @@ import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
 import vacademy.io.auth_service.feature.institute.InstituteInternalService;
+import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;

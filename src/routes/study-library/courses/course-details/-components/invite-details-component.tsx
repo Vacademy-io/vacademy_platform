@@ -11,7 +11,7 @@ import { InviteLink } from '@/routes/manage-students/-components/InviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useNavigate, useRouter } from '@tanstack/react-router';
-import { ArrowRight, Plus, Users } from '@phosphor-icons/react';
+import { ArrowRight, Copy, Check, Link as LinkIcon, Plus, Users } from '@phosphor-icons/react';
 import { handleFetchInviteLinks, handleMakeInviteLinkDefault } from '../-services/get-invite-links';
 import { MyPagination } from '@/components/design-system/pagination';
 import { usePaginationState } from '@/hooks/pagination';
@@ -23,6 +23,14 @@ import { UseFormReturn } from 'react-hook-form';
 import { CourseDetailsFormValues } from './course-details-schema';
 import { useState } from 'react';
 import GenerateInviteLinkDialog from '@/routes/manage-students/invite/-components/create-invite/GenerateInviteLinkDialog';
+import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey, Authority } from '@/constants/auth/tokens';
+import {
+    ADMIN_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY,
+    type DisplaySettingsData,
+} from '@/types/display-settings';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
 const InviteDetailsComponent = ({ form }: { form: UseFormReturn<CourseDetailsFormValues> }) => {
     const sessionsData = form.getValues('courseData.sessions');
@@ -35,6 +43,29 @@ const InviteDetailsComponent = ({ form }: { form: UseFormReturn<CourseDetailsFor
     const selectedCourse = {
         id: courseId || '',
         name: form.getValues('courseData.packageName') || '',
+    };
+
+    // Read display settings to check viewShortInviteLinks toggle
+    const accessToken = getTokenFromCookie(TokenKey.accessToken);
+    const tokenData = getTokenDecodedData(accessToken);
+    const isAdmin =
+        tokenData?.authorities &&
+        Object.values(tokenData.authorities).some(
+            (auth: Authority) => Array.isArray(auth?.roles) && auth.roles.includes('ADMIN')
+        );
+    const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+    const roleDisplay: DisplaySettingsData | null = getDisplaySettingsFromCache(roleKey);
+    const showShortInviteLinks = roleDisplay?.coursePage?.viewShortInviteLinks !== false;
+
+    const [copiedShortUrl, setCopiedShortUrl] = useState<string | null>(null);
+    const handleCopyShortUrl = (url: string) => {
+        navigator.clipboard
+            .writeText(url)
+            .then(() => {
+                setCopiedShortUrl(url);
+                setTimeout(() => setCopiedShortUrl(null), 2000);
+            })
+            .catch(() => toast.error('Copy failed'));
     };
 
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -287,6 +318,45 @@ const InviteDetailsComponent = ({ form }: { form: UseFormReturn<CourseDetailsFor
                                                                         </MyButton>
                                                                     )}
                                                                 </div>
+                                                                {showShortInviteLinks &&
+                                                                    inviteLink.short_url && (
+                                                                        <div className="mt-2 flex items-center gap-3">
+                                                                            <a
+                                                                                href={
+                                                                                    inviteLink.short_url
+                                                                                }
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="text-body text-neutral-600 underline hover:text-primary-500"
+                                                                            >
+                                                                                {inviteLink.short_url.replace(
+                                                                                    /^https?:\/\//,
+                                                                                    ''
+                                                                                )}
+                                                                            </a>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <MyButton
+                                                                                    buttonType="secondary"
+                                                                                    scale="medium"
+                                                                                    layoutVariant="icon"
+                                                                                    type="button"
+                                                                                    onClick={() =>
+                                                                                        handleCopyShortUrl(
+                                                                                            inviteLink.short_url!
+                                                                                        )
+                                                                                    }
+                                                                                >
+                                                                                    <Copy />
+                                                                                </MyButton>
+                                                                                {copiedShortUrl ===
+                                                                                    inviteLink.short_url && (
+                                                                                        <div className="text-primary-500">
+                                                                                            <Check />
+                                                                                        </div>
+                                                                                    )}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                             </div>
                                                         );
                                                     }

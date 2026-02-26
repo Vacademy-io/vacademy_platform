@@ -169,6 +169,7 @@ export interface DisplaySettingsData {
     // 9) Course page level visibility toggles
     coursePage?: {
         viewInviteLinks: boolean;
+        viewShortInviteLinks: boolean;
         viewCourseConfiguration: boolean;
         viewCourseOverviewItem: boolean;
         viewContentNumbering: boolean;

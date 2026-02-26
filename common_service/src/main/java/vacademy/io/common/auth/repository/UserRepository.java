@@ -62,6 +62,42 @@ public interface UserRepository extends CrudRepository<User, String> {
                         @Param("roleStatus") List<String> roleStatus,
                         @Param("roleNames") List<String> roleNames);
 
+        // For institutes with user_identifier=PHONE: find user by email where phone is
+        // also present
+        @Query(value = """
+                        SELECT u.* FROM users u
+                        JOIN user_role ur ON u.id = ur.user_id
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE LOWER(u.email) = LOWER(:email)
+                          AND u.mobile_number IS NOT NULL
+                          AND ur.status IN (:roleStatus)
+                          AND r.role_name IN (:roleNames)
+                        ORDER BY u.created_at DESC
+                        LIMIT 1
+                        """, nativeQuery = true)
+        Optional<User> findUserByEmailWithPhoneNotNull(
+                        @Param("email") String email,
+                        @Param("roleStatus") List<String> roleStatus,
+                        @Param("roleNames") List<String> roleNames);
+
+        // For institutes with user_identifier=EMAIL: find user by phone where email is
+        // also present
+        @Query(value = """
+                        SELECT u.* FROM users u
+                        JOIN user_role ur ON u.id = ur.user_id
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE u.mobile_number = :mobileNumber
+                          AND u.email IS NOT NULL
+                          AND ur.status IN (:roleStatus)
+                          AND r.role_name IN (:roleNames)
+                        ORDER BY u.created_at DESC
+                        LIMIT 1
+                        """, nativeQuery = true)
+        Optional<User> findUserByPhoneWithEmailNotNull(
+                        @Param("mobileNumber") String mobileNumber,
+                        @Param("roleStatus") List<String> roleStatus,
+                        @Param("roleNames") List<String> roleNames);
+
         List<User> findByIdIn(List<String> userIds);
 
         /**

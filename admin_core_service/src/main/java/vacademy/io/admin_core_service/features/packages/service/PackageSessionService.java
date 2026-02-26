@@ -1,19 +1,20 @@
 package vacademy.io.admin_core_service.features.packages.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.course.dto.AddFacultyToCourseDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.service.DefaultEnrollInviteService;
 import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.learner_invitation.dto.AddLearnerInvitationDTO;
 import vacademy.io.admin_core_service.features.learner_invitation.services.LearnerInvitationService;
 import vacademy.io.admin_core_service.features.learner_invitation.util.LearnerInvitationDefaultFormGenerator;
+import vacademy.io.admin_core_service.features.packages.dto.ParentChildBatchMappingResponseDTO;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
-import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Group;
@@ -24,8 +25,10 @@ import vacademy.io.common.institute.entity.session.Session;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -211,5 +214,69 @@ public class PackageSessionService {
         packageSession.setPackageEntity(packageEntity);
         packageSession.setStatus(PackageSessionStatusEnum.INVITED.name());
         packageRepository.save(packageSession);
+    }
+
+    /**
+     * Mark a package session as parent and assign one or more children by setting their parent_id.
+     *
+     * This is intentionally conservative:
+     * - Validates that parent + children all belong to the given institute.
+     * - Ensures parent is marked isParent = true and parentId = null.
+     * - Sets parentId = parentPackageSessionId for each selected child.
+     * - Does NOT automatically clear parentId from non-selected children.
+     */
+    @Transactional
+    public ParentChildBatchMappingResponseDTO mapParentAndChildren(
+            String instituteId,
+            String parentPackageSessionId,
+            List<String> childPackageSessionIds) {
+
+        if (parentPackageSessionId == null || parentPackageSessionId.isBlank()) {
+            throw new VacademyException("parentPackageSessionId is required");
+        }
+
+        // Normalize child IDs (allow null/empty list)
+        List<String> safeChildIds = childPackageSessionIds != null ? childPackageSessionIds : List.of();
+
+        // Build full set of IDs (parent + children), ensuring uniqueness
+        Set<String> allIds = new HashSet<>();
+        allIds.add(parentPackageSessionId);
+        allIds.addAll(safeChildIds);
+
+        // Fetch all sessions for this institute in a single query
+        List<PackageSession> sessions = packageRepository
+                .findPackageSessionsByInstituteIdAndIds(instituteId, new ArrayList<>(allIds));
+
+        if (sessions.size() != allIds.size()) {
+            throw new VacademyException("One or more package sessions not found for institute " + instituteId);
+        }
+
+        // Locate parent
+        PackageSession parent = sessions.stream()
+                .filter(ps -> ps.getId().equals(parentPackageSessionId))
+                .findFirst()
+                .orElseThrow(() -> new VacademyException("Parent package session not found"));
+
+        // Mark parent
+        parent.setIsParent(true);
+        parent.setParentId(null);
+
+        // Assign children
+        for (PackageSession ps : sessions) {
+            if (safeChildIds.contains(ps.getId())) {
+                if (ps.getId().equals(parentPackageSessionId)) {
+                    continue; // skip if someone accidentally selected parent as child
+                }
+                ps.setParentId(parentPackageSessionId);
+            }
+        }
+
+        packageRepository.saveAll(sessions);
+
+        return new ParentChildBatchMappingResponseDTO(
+                parentPackageSessionId,
+                safeChildIds.size(),
+                safeChildIds
+        );
     }
 }

@@ -56,6 +56,7 @@ public class DomainRoutingService {
                 .allowGoogleAuth(mapping.getAllowGoogleAuth())
                 .allowGithubAuth(mapping.getAllowGithubAuth())
                 .allowEmailOtpAuth(mapping.getAllowEmailOtpAuth())
+                .allowPhoneAuth(mapping.getAllowPhoneAuth())
                 .allowUsernamePasswordAuth(mapping.getAllowUsernamePasswordAuth())
                 .playStoreAppLink(mapping.getPlayStoreAppLink())
                 .appStoreAppLink(mapping.getAppStoreAppLink())

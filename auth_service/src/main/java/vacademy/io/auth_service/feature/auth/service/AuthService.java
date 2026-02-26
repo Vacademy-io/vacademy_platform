@@ -14,6 +14,7 @@ import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.RegisterRequest;
 import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
 import vacademy.io.auth_service.feature.institute.InstituteInternalService;
+import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
@@ -58,6 +59,8 @@ public class AuthService {
     private UserRoleRepository userRoleRepository;
     @Autowired
     private InstituteInternalService instituteInternalService;
+    @Autowired
+    private InstituteSettingsService instituteSettingsService;
     @Value("${default.learner.portal.url}")
     private String defaultLearnerPortalUrl;
 
@@ -97,7 +100,23 @@ public class AuthService {
     @Transactional
     public User createUser(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail) {
         String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
-        Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+        Optional<User> optionalUser = Optional.empty();
+
+        if (StringUtils.hasText(registerRequest.getMobileNumber())) {
+            registerRequest.setMobileNumber(registerRequest.getMobileNumber().replaceAll("[^0-9]", ""));
+        }
+
+        String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
+
+        if ("PHONE".equalsIgnoreCase(userIdentifier) && StringUtils.hasText(registerRequest.getMobileNumber())) {
+            if (!registerRequest.getMobileNumber().isEmpty()) {
+                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            }
+        }
+
+        if (optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
+            optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+        }
 
         if (optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
             optionalUser = userRepository.findByUsername(registerRequest.getUsername());
@@ -352,7 +371,23 @@ public class AuthService {
     @Transactional
     public User createUserForLearnerEnrollment(UserDTO registerRequest, String instituteId, boolean sendWelcomeMail) {
         String normalizedEmail = registerRequest.getEmail() != null ? registerRequest.getEmail().toLowerCase() : null;
-        Optional<User> optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+        Optional<User> optionalUser = Optional.empty();
+
+        if (StringUtils.hasText(registerRequest.getMobileNumber())) {
+            registerRequest.setMobileNumber(registerRequest.getMobileNumber().replaceAll("[^0-9]", ""));
+        }
+
+        String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
+
+        if ("PHONE".equalsIgnoreCase(userIdentifier) && StringUtils.hasText(registerRequest.getMobileNumber())) {
+            if (!registerRequest.getMobileNumber().isEmpty()) {
+                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
+            }
+        }
+
+        if (optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
+            optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
+        }
 
         if (optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
             optionalUser = userRepository.findByUsername(registerRequest.getUsername());

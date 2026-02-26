@@ -40,6 +40,12 @@ public class SendUniqueLinkService {
     @Autowired
     private TemplateRepository templateRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.service.CouponCodeService couponCodeService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.learner.service.LearnerInvitationLinkService learnerInvitationLinkService;
+
     /**
      * Convert NotificationTemplateVariables to a generic map for template
      * placeholders
@@ -237,6 +243,9 @@ public class SendUniqueLinkService {
             // Referral template variables
             if (isEmpty(mergedParams.get("referral_link"))) {
                 mergedParams.put("referral_link", userParams.getOrDefault("referralLink", ""));
+            }
+            if (isEmpty(mergedParams.get("short_referral_link"))) {
+                mergedParams.put("short_referral_link", userParams.getOrDefault("shortReferralLink", ""));
             }
             if (isEmpty(mergedParams.get("invite_code"))) {
                 mergedParams.put("invite_code", userParams.getOrDefault("inviteCode", ""));

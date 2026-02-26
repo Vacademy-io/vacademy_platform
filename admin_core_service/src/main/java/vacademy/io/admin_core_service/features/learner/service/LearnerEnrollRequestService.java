@@ -93,6 +93,9 @@ public class LearnerEnrollRequestService {
     @Autowired
     private WorkflowEngineService workflowEngineService;
 
+    @Autowired
+    private LearnerInvitationLinkService learnerInvitationLinkService;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         return recordLearnerRequest(learnerEnrollRequestDTO, Map.of());
@@ -109,8 +112,10 @@ public class LearnerEnrollRequestService {
             UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
             learnerEnrollRequestDTO.setUser(user);
+            EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
             // Generate coupon code for new learner enrollment
-            learnerCouponService.generateCouponCodeForLearner(user.getId());
+            learnerCouponService.generateCouponCodeForLearner(user.getId(), learnerEnrollRequestDTO.getInstituteId(),
+                    enrollInvite.getInviteCode());
         }
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
@@ -289,6 +294,23 @@ public class LearnerEnrollRequestService {
                                         : learnerEnrollRequestDTO.getUser().getId());
                                 userMap.put("user_id", learnerEnrollRequestDTO.getUser().getId());
                                 userMap.put("email", learnerEnrollRequestDTO.getUser().getEmail());
+
+                                // Populating referral variables for workflow emails
+                                String invitationLink = learnerInvitationLinkService
+                                        .generateLearnerInvitationResponseLink(
+                                                learnerEnrollRequestDTO.getInstituteId(), enrollInvite,
+                                                learnerEnrollRequestDTO.getUser().getId());
+                                String shortRefLink = learnerInvitationLinkService
+                                        .generateShortLearnerInvitationResponseLink(
+                                                learnerEnrollRequestDTO.getInstituteId(), enrollInvite,
+                                                learnerEnrollRequestDTO.getUser().getId());
+                                String refCode = learnerInvitationLinkService
+                                        .getRefFromUserCoupon(learnerEnrollRequestDTO.getUser().getId());
+
+                                userMap.put("referral_link", invitationLink);
+                                userMap.put("short_referral_link", shortRefLink);
+                                userMap.put("ref_code", refCode);
+                                userMap.put("invite_code", enrollInvite != null ? enrollInvite.getInviteCode() : "");
 
                                 workflowContext.put("users", List.of(userMap));
 

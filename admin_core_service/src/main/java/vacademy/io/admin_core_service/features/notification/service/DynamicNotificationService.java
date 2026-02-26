@@ -206,9 +206,13 @@ public class DynamicNotificationService {
             // Get institute details
             Institute institute = getInstituteFromId(instituteId);
 
-            // Generate learner invitation response link
+            // Generate learner invitation response links (long link)
             String invitationLink = learnerInvitationLinkService
                     .generateLearnerInvitationResponseLink(instituteId, enrollInvite, user.getId());
+
+            // Generate short invitation link
+            String shortRefLink = learnerInvitationLinkService
+                    .generateShortLearnerInvitationResponseLink(instituteId, enrollInvite, user.getId());
 
             // Get theme color from institute (default to orange if not set)
             String themeColor = getThemeColorFromInstitute(institute);
@@ -216,6 +220,7 @@ public class DynamicNotificationService {
             // Create template variables for referral invitation
             NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
                     // User details
+                    .userId(user.getId())
                     .userName(user.getUsername())
                     .userEmail(user.getEmail())
                     .userMobile(user.getMobileNumber())
@@ -238,6 +243,7 @@ public class DynamicNotificationService {
                     // Referral template variables
                     .name(user.getFullName() != null ? user.getFullName() : user.getUsername())
                     .referralLink(invitationLink)
+                    .shortReferralLink(shortRefLink) // Generate and pass exactly what we need
                     .inviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "")
                     .themeColor(themeColor)
                     .build();

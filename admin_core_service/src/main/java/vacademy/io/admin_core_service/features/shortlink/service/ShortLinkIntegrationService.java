@@ -19,7 +19,7 @@ public class ShortLinkIntegrationService {
     @Value("${media.server.baseurl:http://media-service:8075}")
     private String mediaServiceBaseUrl;
 
-    @Value("${short.link.base.url:https://backend-stage.vacademy.io}")
+    @Value("${short.link.base.url:https://u.vacademy.io}")
     private String shortLinkBaseUrl;
 
     @Value("${spring.application.name}")

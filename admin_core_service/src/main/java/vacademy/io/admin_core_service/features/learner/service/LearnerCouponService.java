@@ -28,11 +28,12 @@ public class LearnerCouponService {
      * @param userId The learner's user ID
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void generateCouponCodeForLearner(String userId) {
+    public void generateCouponCodeForLearner(String userId, String instituteId, String inviteCode) {
         try {
             // Check if user already has a coupon code
             if (!couponCodeService.hasExistingCouponCode(userId, CouponSourceType.USER)) {
-                couponCodeService.createCouponCodeForStudent(userId, CouponSourceType.USER);
+                couponCodeService.createCouponCodeForStudent(userId, CouponSourceType.USER.getValue(), instituteId,
+                        inviteCode);
             } else {
                 log.info("User {} already has a coupon code, skipping generation", userId);
             }

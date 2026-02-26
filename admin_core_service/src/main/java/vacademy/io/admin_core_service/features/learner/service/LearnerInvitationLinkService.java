@@ -9,6 +9,8 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.user_subscription.entity.CouponCode;
 import vacademy.io.admin_core_service.features.user_subscription.service.CouponCodeService;
 
+import vacademy.io.admin_core_service.features.shortlink.service.ShortUrlManagementService;
+
 import java.util.Optional;
 
 @Slf4j
@@ -18,6 +20,7 @@ public class LearnerInvitationLinkService {
 
     private final InstituteDomainRoutingRepository domainRoutingRepository;
     private final CouponCodeService couponCodeService;
+    private final ShortUrlManagementService shortUrlManagementService;
 
     public String generateLearnerInvitationResponseLink(String instituteId, EnrollInvite enrollInvite, String userId) {
         try {
@@ -51,6 +54,30 @@ public class LearnerInvitationLinkService {
             log.error("Error generating learner invitation response link for institute {}: {}", 
                     instituteId, e.getMessage(), e);
             return generateDefaultLink(instituteId, enrollInvite, userId);
+        }
+    }
+
+    public String generateShortLearnerInvitationResponseLink(String instituteId, EnrollInvite enrollInvite,
+            String userId) {
+        try {
+            Optional<CouponCode> couponCode = couponCodeService.getCouponCodeBySource(userId, "USER");
+            if (couponCode.isPresent() && couponCode.get().getShortUrl() != null
+                    && !couponCode.get().getShortUrl().isBlank()) {
+                return couponCode.get().getShortUrl();
+            }
+        } catch (Exception e) {
+            log.warn("Error getting short URL from coupon for user {}: {}", userId, e.getMessage());
+        }
+
+        String longUrl = generateLearnerInvitationResponseLink(instituteId, enrollInvite, userId);
+
+        try {
+            String sourceId = userId + "_" + (enrollInvite != null ? enrollInvite.getId() : "default");
+            String shortUrl = shortUrlManagementService.createShortUrl(longUrl, "REFERRAL_LINK", sourceId);
+            return shortUrl != null ? shortUrl : longUrl;
+        } catch (Exception e) {
+            log.error("Error creating short URL for referral link: {}", e.getMessage());
+            return longUrl;
         }
     }
 

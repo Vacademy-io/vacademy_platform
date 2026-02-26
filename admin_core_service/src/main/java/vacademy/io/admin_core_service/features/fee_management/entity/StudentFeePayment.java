@@ -29,8 +29,17 @@ public class StudentFeePayment {
     @Column(name = "user_plan_id", nullable = false)
     private String userPlanId;
 
+    @Column(name = "package_session_ids")
+    private String packageSessionIds;
+
     @Column(name = "cpo_id", nullable = false)
     private String cpoId;
+
+    @Column(name = "asv_id", nullable = false)
+    private String asvId;
+
+    @Column(name = "i_id", nullable = false)
+    private String iId;
 
     @Column(name = "amount_expected", nullable = false)
     private BigDecimal amountExpected;

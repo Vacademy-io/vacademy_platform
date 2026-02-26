@@ -42,6 +42,7 @@ import vacademy.io.common.institute.dto.InstituteIdAndNameDTO;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
 
 import java.util.*;
 
@@ -88,6 +89,9 @@ public class AuthManager {
 
     @Autowired
     private OAuth2VendorToUserDetailService oAuth2VendorToUserDetailService;
+
+    @Autowired
+    private InstituteSettingsService instituteSettingsService;
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthManager.class);
 
@@ -221,24 +225,38 @@ public class AuthManager {
 
     public String requestOtp(AuthRequestDto authRequestDTO) {
         Optional<User> user = null;
+
+        // Determine the user identifier strategy for the institute
+        String userIdentifier = resolveUserIdentifier(authRequestDTO.getInstituteId());
+
         if (authRequestDTO.getClientName() != null
                 && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
-            user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
-                    List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                    AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+                user = userRepository.findUserByEmailWithPhoneNotNull(authRequestDTO.getEmail(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            } else {
+                user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            }
         } else {
-            user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
-                    List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                    AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+                user = userRepository.findUserByEmailWithPhoneNotNull(authRequestDTO.getEmail(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            } else {
+                user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            }
         }
         if (user.isEmpty()) {
             throw new UsernameNotFoundException("invalid user request..!!");
         } else {
-            // todo: generate OTP for
             notificationService.sendOtp(makeOtp(authRequestDTO.getEmail()), authRequestDTO.getInstituteId());
             return "OTP sent to " + authRequestDTO.getEmail();
         }
-
     }
 
     private EmailOTPRequest makeOtp(String email) {
@@ -249,19 +267,37 @@ public class AuthManager {
     public JwtResponseDto loginViaOtp(AuthRequestDto authRequestDTO) {
         validateOtp(authRequestDTO);
         User user = null;
+
+        // Determine the user identifier strategy for the institute
+        String userIdentifier = resolveUserIdentifier(authRequestDTO.getInstituteId());
+
         if (authRequestDTO.getClientName() != null
                 && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
-            Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
-                    authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                    AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            Optional<User> userOptional;
+            if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+                userOptional = userRepository.findUserByEmailWithPhoneNotNull(
+                        authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            } else {
+                userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
+                        authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            }
             if (userOptional.isEmpty()) {
                 throw new VacademyException("invalid user request..!!");
             }
             user = userOptional.get();
         } else {
-            Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
-                    authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                    AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            Optional<User> userOptional;
+            if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+                userOptional = userRepository.findUserByEmailWithPhoneNotNull(
+                        authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            } else {
+                userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
+                        authRequestDTO.getEmail(), List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            }
             if (userOptional.isEmpty()) {
                 throw new VacademyException("invalid user request..!!");
             }
@@ -302,17 +338,35 @@ public class AuthManager {
     public String requestWhatsAppOtp(AuthRequestDto authRequestDTO) {
         // Validate user exists with phone number
         Optional<User> user = null;
+
+        // Determine the user identifier strategy for the institute
+        String userIdentifier = resolveUserIdentifier(authRequestDTO.getInstituteId());
+
         if (authRequestDTO.getClientName() != null
                 && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
-            user = userRepository.findUserByMobileNumberAndRoleStatusAndRoleNames(
-                    authRequestDTO.getPhoneNumber(),
-                    List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                    AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            if ("EMAIL".equalsIgnoreCase(userIdentifier)) {
+                user = userRepository.findUserByPhoneWithEmailNotNull(
+                        authRequestDTO.getPhoneNumber(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            } else {
+                user = userRepository.findUserByMobileNumberAndRoleStatusAndRoleNames(
+                        authRequestDTO.getPhoneNumber(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            }
         } else {
-            user = userRepository.findUserByMobileNumberAndRoleStatusAndRoleNames(
-                    authRequestDTO.getPhoneNumber(),
-                    List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                    AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            if ("EMAIL".equalsIgnoreCase(userIdentifier)) {
+                user = userRepository.findUserByPhoneWithEmailNotNull(
+                        authRequestDTO.getPhoneNumber(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            } else {
+                user = userRepository.findUserByMobileNumberAndRoleStatusAndRoleNames(
+                        authRequestDTO.getPhoneNumber(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            }
         }
 
         if (user.isEmpty()) {
@@ -321,8 +375,7 @@ public class AuthManager {
 
         // Fetch template config from admin service
         NotificationTemplateConfigDTO templateConfig = notificationService
-                .getTemplateConfig("OTP_REQUEST", authRequestDTO.getInstituteId(), "WHATSAPP"); // here hardcoded you
-                                                                                                // can use it anything
+                .getTemplateConfig("OTP_REQUEST", authRequestDTO.getInstituteId(), "WHATSAPP");
 
         // Send WhatsApp OTP via notification service
         WhatsAppOTPRequest whatsAppOTPRequest = WhatsAppOTPRequest.builder()
@@ -343,21 +396,41 @@ public class AuthManager {
 
         // Find user by phone number
         User user = null;
+
+        // Determine the user identifier strategy for the institute
+        String userIdentifier = resolveUserIdentifier(authRequestDTO.getInstituteId());
+
         if (authRequestDTO.getClientName() != null
                 && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
-            Optional<User> userOptional = userRepository.findUserByMobileNumberAndRoleStatusAndRoleNames(
-                    authRequestDTO.getPhoneNumber(),
-                    List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                    AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            Optional<User> userOptional;
+            if ("EMAIL".equalsIgnoreCase(userIdentifier)) {
+                userOptional = userRepository.findUserByPhoneWithEmailNotNull(
+                        authRequestDTO.getPhoneNumber(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            } else {
+                userOptional = userRepository.findUserByMobileNumberAndRoleStatusAndRoleNames(
+                        authRequestDTO.getPhoneNumber(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+            }
             if (userOptional.isEmpty()) {
                 throw new VacademyException("User not found with phone number: " + authRequestDTO.getPhoneNumber());
             }
             user = userOptional.get();
         } else {
-            Optional<User> userOptional = userRepository.findUserByMobileNumberAndRoleStatusAndRoleNames(
-                    authRequestDTO.getPhoneNumber(),
-                    List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                    AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            Optional<User> userOptional;
+            if ("EMAIL".equalsIgnoreCase(userIdentifier)) {
+                userOptional = userRepository.findUserByPhoneWithEmailNotNull(
+                        authRequestDTO.getPhoneNumber(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            } else {
+                userOptional = userRepository.findUserByMobileNumberAndRoleStatusAndRoleNames(
+                        authRequestDTO.getPhoneNumber(),
+                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+            }
             if (userOptional.isEmpty()) {
                 throw new VacademyException("User not found with phone number: " + authRequestDTO.getPhoneNumber());
             }
@@ -429,4 +502,12 @@ public class AuthManager {
         return notificationService.verifyWhatsAppOTP(verifyRequest);
     }
 
+    /**
+     * Resolves the user identifier strategy for the given institute.
+     * Returns "EMAIL" (default) if institute is not found or user_identifier is
+     * null.
+     */
+    private String resolveUserIdentifier(String instituteId) {
+        return instituteSettingsService.getUserIdentifier(instituteId);
+    }
 }

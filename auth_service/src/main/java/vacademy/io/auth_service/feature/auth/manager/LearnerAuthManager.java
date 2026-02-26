@@ -21,8 +21,10 @@ import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.enums.ClientNameEnum;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
+
 import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
 import vacademy.io.auth_service.feature.institute.InstituteInternalService;
+import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
 import vacademy.io.auth_service.feature.notification.service.NotificationEmailBody;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.util.UsernameGenerator;
@@ -104,6 +106,9 @@ public class LearnerAuthManager {
         @Autowired
         private InstituteInternalService instituteInternalService;
 
+        @Autowired
+        private InstituteSettingsService instituteSettingsService;
+
         public JwtResponseDto registerLearner(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
                 if (learnerEnrollRequestDTO == null) {
                         throw new VacademyException("Invalid Request");
@@ -147,15 +152,15 @@ public class LearnerAuthManager {
                         log.debug("Resolved deliverPassword={} (policy), isOauth2Signup={}", deliverPassword,
                                         isOauth2Signup);
 
-                        //user = authService.createUser(userDTO, instituteId, deliverPassword);
-                        user=authService.createUserForLearnerEnrollment(userDTO,instituteId,deliverPassword);
+                        // user = authService.createUser(userDTO, instituteId, deliverPassword);
+                        user = authService.createUserForLearnerEnrollment(userDTO, instituteId, deliverPassword);
                         log.debug("User createUser completed: userId={}, username={} (may be null if creation failed)",
                                         user != null ? user.getId() : null,
                                         user != null ? user.getUsername() : null);
                 } else {
                         log.debug("No instituteId provided. Creating user with notifications enabled by default");
-                        //user = authService.createUser(userDTO, null, true);
-                        user=authService.createUserForLearnerEnrollment(userDTO,instituteId,true);
+                        // user = authService.createUser(userDTO, null, true);
+                        user = authService.createUserForLearnerEnrollment(userDTO, instituteId, true);
                         log.debug("User createUser (no institute) completed: userId={}, username={}",
                                         user != null ? user.getId() : null,
                                         user != null ? user.getUsername() : null);
@@ -312,17 +317,35 @@ public class LearnerAuthManager {
 
         public String requestOtp(AuthRequestDto authRequestDTO) {
                 Optional<User> user = null;
+
+                // Determine the user identifier strategy for the institute
+                String userIdentifier = resolveUserIdentifier(authRequestDTO.getInstituteId());
+
                 if (authRequestDTO.getClientName() != null
                                 && authRequestDTO.getClientName().equals(ClientNameEnum.ADMIN.name())) {
-                        user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
-                                        authRequestDTO.getEmail(),
-                                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                                        AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+                        if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+                                user = userRepository.findUserByEmailWithPhoneNotNull(
+                                                authRequestDTO.getEmail(),
+                                                List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                                                AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+                        } else {
+                                user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
+                                                authRequestDTO.getEmail(),
+                                                List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                                                AuthConstants.VALID_ROLES_FOR_ADMIN_PORTAL);
+                        }
                 } else {
-                        user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
-                                        authRequestDTO.getEmail(),
-                                        List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+                        if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+                                user = userRepository.findUserByEmailWithPhoneNotNull(
+                                                authRequestDTO.getEmail(),
+                                                List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                                                AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+                        } else {
+                                user = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
+                                                authRequestDTO.getEmail(),
+                                                List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                                                AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+                        }
                 }
 
                 if (user.isEmpty())
@@ -342,11 +365,25 @@ public class LearnerAuthManager {
                 if (!isValid)
                         throw new UsernameNotFoundException("Invalid OTP!");
 
-                User user = userRepository
-                                .findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
-                                                List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                                                AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
-                                .orElseThrow(() -> new VacademyException("User not found!!!"));
+                // Determine the user identifier strategy for the institute
+                String userIdentifier = resolveUserIdentifier(authRequestDTO.getInstituteId());
+
+                User user;
+                if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+                        user = userRepository
+                                        .findUserByEmailWithPhoneNotNull(authRequestDTO.getEmail(),
+                                                        List.of(UserRoleStatus.ACTIVE.name(),
+                                                                        UserRoleStatus.INVITED.name()),
+                                                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
+                                        .orElseThrow(() -> new VacademyException("User not found!!!"));
+                } else {
+                        user = userRepository
+                                        .findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
+                                                        List.of(UserRoleStatus.ACTIVE.name(),
+                                                                        UserRoleStatus.INVITED.name()),
+                                                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
+                                        .orElseThrow(() -> new VacademyException("User not found!!!"));
+                }
 
                 refreshTokenService.deleteAllRefreshToken(user);
 
@@ -398,11 +435,25 @@ public class LearnerAuthManager {
                 if (!isValid)
                         throw new UsernameNotFoundException("Invalid OTP!");
 
-                User user = userRepository
-                                .findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
-                                                List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                                                AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
-                                .orElseThrow(() -> new VacademyException("User not found!!!"));
+                // Determine the user identifier strategy for the institute
+                String userIdentifier = resolveUserIdentifier(authRequestDTO.getInstituteId());
+
+                User user;
+                if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+                        user = userRepository
+                                        .findUserByEmailWithPhoneNotNull(authRequestDTO.getEmail(),
+                                                        List.of(UserRoleStatus.ACTIVE.name(),
+                                                                        UserRoleStatus.INVITED.name()),
+                                                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
+                                        .orElseThrow(() -> new VacademyException("User not found!!!"));
+                } else {
+                        user = userRepository
+                                        .findMostRecentUserByEmailAndRoleStatusAndRoleNames(authRequestDTO.getEmail(),
+                                                        List.of(UserRoleStatus.ACTIVE.name(),
+                                                                        UserRoleStatus.INVITED.name()),
+                                                        AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
+                                        .orElseThrow(() -> new VacademyException("User not found!!!"));
+                }
 
                 refreshTokenService.deleteAllRefreshToken(user);
 
@@ -547,5 +598,14 @@ public class LearnerAuthManager {
          */
         public boolean isTrustedLoginEnabled() {
                 return trustedLoginEnabled;
+        }
+
+        /**
+         * Resolves the user identifier strategy for the given institute.
+         * Returns "EMAIL" (default) if institute is not found or user_identifier is
+         * null.
+         */
+        private String resolveUserIdentifier(String instituteId) {
+                return instituteSettingsService.getUserIdentifier(instituteId);
         }
 }

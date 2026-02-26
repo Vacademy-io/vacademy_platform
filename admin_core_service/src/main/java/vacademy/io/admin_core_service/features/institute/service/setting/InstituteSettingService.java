@@ -144,7 +144,8 @@ public class InstituteSettingService {
 
     /**
      * Adds INVOICE_SETTING key-value to institute settings if not already present.
-     * Default: sendInvoiceEmail=false, plus tax/currency defaults. Does not overwrite existing.
+     * Default: sendInvoiceEmail=false, plus tax/currency defaults. Does not
+     * overwrite existing.
      */
     public void createDefaultInvoiceSetting(Institute institute) {
         if (getSpecificSetting(institute, "INVOICE_SETTING") != null) {
@@ -668,5 +669,9 @@ public class InstituteSettingService {
         Institute institute = instituteRepository.findById(instituteId)
                 .orElseThrow(() -> new VacademyException("Institute Not Found"));
         return getSettingData(institute, settingKey);
+    }
+
+    public void syncUserIdentifier(String instituteId, String userIdentifier) {
+        authService.updateInstituteSettings(instituteId, userIdentifier);
     }
 }

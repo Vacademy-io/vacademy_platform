@@ -75,6 +75,9 @@ export interface TimelineMeta {
     navigation: NavigationType;
     entry_label: string;
 
+    // Language of the content (e.g. "English", "French") — used by TTS and captions
+    language?: string;
+
     // Audio/timing information
     audio_start_at: number;
     total_duration: number | null;
@@ -178,7 +181,7 @@ export const CONTENT_TYPE_ENTRY_LABELS: Record<ContentType, string> = {
     PUZZLE_BOOK: 'puzzle',
     SIMULATION: 'simulation',
     FLASHCARDS: 'card',
-    MAP_EXPLORATION: 'location',
+    MAP_EXPLORATION: 'region',
     WORKSHEET: 'exercise',
     CODE_PLAYGROUND: 'exercise',
     TIMELINE: 'event',

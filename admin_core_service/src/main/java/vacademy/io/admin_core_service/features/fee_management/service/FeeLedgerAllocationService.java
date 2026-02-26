@@ -23,9 +23,9 @@ public class FeeLedgerAllocationService {
     private StudentFeeAllocationLedgerRepository studentFeeAllocationLedgerRepository;
 
     @Transactional
-    public void allocatePayment(String paymentLogId, BigDecimal totalPaymentAmount, String userPlanId, String userId) {
-        log.info("Starting ledger allocation for PaymentLog: {}, Amount: {}, UserPlan: {}, User: {}", paymentLogId,
-                totalPaymentAmount, userPlanId, userId);
+    public void allocatePayment(String paymentLogId, BigDecimal totalPaymentAmount, String userPlanId) {
+        log.info("Starting ledger allocation for PaymentLog: {}, Amount: {}, UserPlan: {}", paymentLogId,
+                totalPaymentAmount, userPlanId);
 
         // Fetch unpaid bills ordered by due date ascending (FIFO)
         List<StudentFeePayment> unpaidBills = studentFeePaymentRepository
@@ -58,7 +58,7 @@ public class FeeLedgerAllocationService {
 
             // Record this allocation in the Ledger
             StudentFeeAllocationLedger ledger = new StudentFeeAllocationLedger();
-            ledger.setUserId(userId);
+            ledger.setUserId(bill.getUserId());
             ledger.setPaymentLogId(paymentLogId);
             ledger.setStudentFeePaymentId(bill.getId());
             ledger.setAmountAllocated(allocatedAmount);

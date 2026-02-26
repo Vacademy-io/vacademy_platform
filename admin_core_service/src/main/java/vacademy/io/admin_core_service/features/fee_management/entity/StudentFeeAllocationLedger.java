@@ -34,8 +34,9 @@ public class StudentFeeAllocationLedger {
     @Column(name = "amount_allocated", nullable = false)
     private BigDecimal amountAllocated;
 
+    // Map Java allocationType -> DB column transaction_type
     @Column(name = "transaction_type", nullable = false)
-    private String allocationType; // e.g., INSTALLMENT_PAYMENT, ADVANCE_ROLLOVER, REFUND, BOUNCE_REVERSAL
+    private String allocationType; // e.g., PAYMENT, OVERPAYMENT, REFUND, ROLLOVER
 
     @Column(name = "remarks")
     private String remarks;

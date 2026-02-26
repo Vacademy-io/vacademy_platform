@@ -255,8 +255,7 @@ public class SchoolEnrollService {
         feeLedgerAllocationService.allocatePayment(
                 paymentLogId,
                 payment.getAmount(),
-                userPlan.getId(),
-                user.getId());
+                userPlan.getId());
 
         log.info("Offline payment of {} allocated to fee bills for UserPlan: {}", payment.getAmount(),
                 userPlan.getId());

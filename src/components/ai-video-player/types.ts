@@ -93,6 +93,12 @@ export interface TimelineMeta {
     outro_duration?: number;
     content_starts_at?: number;
     content_ends_at?: number;
+
+    // Chapter markers for progress bar navigation
+    chapters?: Array<{ time: number; label: string }>;
+
+    // Glossary terms with the video time they were first introduced
+    glossary?: Array<{ term: string; time: number }>;
 }
 
 /**

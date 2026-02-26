@@ -229,6 +229,76 @@ function getKenBurnsStyles(): string {
               to   { transform: translateX(0); opacity: 1; }
             }
 
+            /* ANNOTATION_MAP: Full-screen image with SVG annotation overlay */
+            .annotation-map-container {
+              position: relative;
+              width: 100%; height: 100%;
+              overflow: hidden;
+            }
+            .annotation-map-container .annotation-map-bg {
+              position: absolute;
+              top: 0; left: 0;
+              width: 100%; height: 100%;
+              object-fit: cover;
+              will-change: transform;
+              animation-duration: var(--kb-duration, 12s);
+              animation-timing-function: linear;
+              animation-fill-mode: both;
+            }
+            .annotation-overlay {
+              position: absolute;
+              top: 0; left: 0;
+              width: 100%; height: 100%;
+              pointer-events: none;
+              z-index: 5;
+            }
+
+            /* PROCESS_STEPS: Sequential numbered step flow */
+            .process-flow {
+              display: flex; flex-direction: column;
+              align-items: center; width: 80%; max-width: 960px;
+            }
+            .process-node {
+              display: flex; align-items: center; gap: 24px;
+              background: var(--card-bg, rgba(30,41,59,0.6));
+              border: 2px solid var(--primary-color, #3b82f6);
+              border-radius: 12px; padding: 20px 32px; width: 100%;
+            }
+            .node-num {
+              width: 52px; height: 52px; border-radius: 50%;
+              background: var(--primary-color, #3b82f6); color: #fff;
+              font-size: 24px; font-weight: 800; flex-shrink: 0;
+              display: flex; align-items: center; justify-content: center;
+              font-family: 'Montserrat', sans-serif;
+            }
+            .node-body { display: flex; flex-direction: column; gap: 4px; }
+            .node-title {
+              font-size: 22px; font-weight: 700;
+              font-family: 'Montserrat', sans-serif;
+              color: var(--text-color, #fff);
+            }
+            .node-desc {
+              font-size: 16px; font-family: 'Inter', sans-serif;
+              color: var(--text-secondary, #94a3b8);
+            }
+            .process-connector {
+              width: 20px; height: 40px; flex-shrink: 0;
+              color: var(--primary-color, #3b82f6);
+            }
+
+            /* EQUATION_BUILD: Term-by-term KaTeX reveal */
+            .equation-build-row {
+              display: flex; align-items: center;
+              justify-content: center; flex-wrap: wrap;
+              gap: 8px; margin: 48px 0 32px;
+            }
+            .equation-build-row .eq-term,
+            .equation-build-row .eq-sep {
+              display: inline-flex; align-items: center;
+              font-size: 3.5rem;
+            }
+            .equation-build-row .eq-sep { font-size: 3rem; margin: 0 4px; }
+
             /* Ken Burns motion keyframes */
             .kb-zoom-in     { animation-name: kbZoomIn; }
             .kb-zoom-out    { animation-name: kbZoomOut; }

@@ -18,6 +18,7 @@ const LIBRARY_CONFIG: Record<ContentType, string[]> = {
         'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js',
         'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js',
         'https://cdn.jsdelivr.net/npm/prismjs@1.29/prism.min.js',
+        'https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js',
     ],
     QUIZ: [
         'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js',

@@ -22,6 +22,7 @@ import {
     Volume2,
     Subtitles,
     Repeat,
+    BookOpen,
 } from 'lucide-react';
 import {
     Entry,
@@ -108,6 +109,10 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const [isPausedForEngagement, setIsPausedForEngagement] = useState(false);
     const [lastEngagedEntryId, setLastEngagedEntryId] = useState<string | null>(null);
     const [isFocusMode, setIsFocusMode] = useState(false);
+
+    // Glossary panel state
+    const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
+    const [seenGlossaryTerms, setSeenGlossaryTerms] = useState<Array<{ term: string; time: number }>>([]);
 
     // User-driven state (for QUIZ, STORYBOOK, etc.)
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -414,6 +419,17 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     useEffect(() => {
         isPlayingRef.current = isPlaying;
     }, [isPlaying]);
+
+    // Accumulate glossary terms as video time passes their introduction point
+    useEffect(() => {
+        if (!meta.glossary || navigationMode !== 'time_driven') return;
+        const newTerms = meta.glossary.filter(
+            (g) => g.time <= currentTime && !seenGlossaryTerms.some((s) => s.term === g.term)
+        );
+        if (newTerms.length > 0) {
+            setSeenGlossaryTerms((prev) => [...prev, ...newTerms]);
+        }
+    }, [currentTime, meta.glossary, navigationMode]);
 
     const animateIntro = useCallback(() => {
         // Use ref instead of state to avoid stale closure issues
@@ -1115,6 +1131,62 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     />
                 )}
 
+                {/* Glossary Panel — slides in from right when open */}
+                {isGlossaryOpen && seenGlossaryTerms.length > 0 && (
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'absolute',
+                            top: '12px',
+                            right: '12px',
+                            width: '260px',
+                            maxHeight: '65%',
+                            background: 'rgba(10, 15, 25, 0.92)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            zIndex: 35,
+                            overflowY: 'auto',
+                            backdropFilter: 'blur(10px)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            boxSizing: 'border-box',
+                        }}
+                    >
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
+                            Key Terms
+                        </div>
+                        {seenGlossaryTerms.map((item, i) => (
+                            <div
+                                key={i}
+                                title={`Jump to ${formatTime(item.time)}`}
+                                onClick={() => {
+                                    setCurrentTime(item.time);
+                                    if (item.time >= meta.audio_start_at && audioRef.current) {
+                                        audioRef.current.currentTime = item.time - meta.audio_start_at;
+                                        audioStartedRef.current = true;
+                                        if (isPlaying) audioRef.current.play().catch(console.error);
+                                    }
+                                }}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '7px 10px',
+                                    marginBottom: '5px',
+                                    borderRadius: '7px',
+                                    background: 'rgba(59, 130, 246, 0.12)',
+                                    border: '1px solid rgba(59, 130, 246, 0.25)',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <span style={{ color: '#e2e8f0', fontSize: '13px', fontWeight: 600 }}>{item.term}</span>
+                                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', fontFamily: 'monospace', marginLeft: '8px', flexShrink: 0 }}>
+                                    {formatTime(item.time)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 {/* Controls Overlay */}
                 <div
                     className="video-controls-overlay"
@@ -1153,7 +1225,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     width: '100%',
                                     background: 'rgba(255, 255, 255, 0.2)',
                                     borderRadius: '3px',
-                                    overflow: 'hidden',
+                                    overflow: 'visible',
                                     position: 'relative',
                                 }}
                             >
@@ -1165,9 +1237,37 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                         bottom: 0,
                                         width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
                                         background: '#ef4444',
-                                        transition: 'width 0.1s linear'
+                                        transition: 'width 0.1s linear',
+                                        borderRadius: '3px',
                                     }}
                                 />
+                                {/* Chapter tick marks */}
+                                {meta.chapters && duration > 0 && meta.chapters.map((chapter, i) => (
+                                    <div
+                                        key={i}
+                                        title={chapter.label}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCurrentTime(chapter.time);
+                                            if (chapter.time >= meta.audio_start_at && audioRef.current) {
+                                                audioRef.current.currentTime = chapter.time - meta.audio_start_at;
+                                                audioStartedRef.current = true;
+                                                if (isPlaying) audioRef.current.play().catch(console.error);
+                                            }
+                                        }}
+                                        style={{
+                                            position: 'absolute',
+                                            left: `${(chapter.time / duration) * 100}%`,
+                                            top: '-4px',
+                                            bottom: '-4px',
+                                            width: '2px',
+                                            background: 'rgba(255, 255, 255, 0.7)',
+                                            cursor: 'pointer',
+                                            zIndex: 2,
+                                            transform: 'translateX(-1px)',
+                                        }}
+                                    />
+                                ))}
                             </div>
                         </div>
                     )}
@@ -1316,6 +1416,36 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             >
                                 <span style={{ marginRight: '6px', fontSize: '14px' }}>🧠</span>
                                 FOCUS {isFocusMode ? 'ON' : 'OFF'}
+                            </button>
+                        )}
+
+                        {/* Glossary Toggle (only when video has glossary terms) */}
+                        {navigationMode === 'time_driven' && meta.glossary && meta.glossary.length > 0 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsGlossaryOpen(!isGlossaryOpen); }}
+                                style={{
+                                    ...btnStyle,
+                                    marginLeft: '8px',
+                                    padding: '4px 10px',
+                                    borderRadius: '16px',
+                                    border: `1px solid ${isGlossaryOpen ? '#60a5fa' : 'rgba(255,255,255,0.3)'}`,
+                                    background: isGlossaryOpen ? 'rgba(96, 165, 250, 0.2)' : 'transparent',
+                                    color: isGlossaryOpen ? '#60a5fa' : 'white',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.2s ease',
+                                }}
+                                title={`Key Terms Glossary (${seenGlossaryTerms.length}/${meta.glossary?.length ?? 0})`}
+                            >
+                                <BookOpen className="size-4" />
+                                {seenGlossaryTerms.length > 0 && (
+                                    <span style={{ background: '#3b82f6', borderRadius: '50%', width: '16px', height: '16px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        {seenGlossaryTerms.length}
+                                    </span>
+                                )}
                             </button>
                         )}
 

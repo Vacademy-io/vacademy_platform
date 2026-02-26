@@ -34,10 +34,14 @@ const formSchema = z.object({
                 duration_in_days: z.number().nullable(),
                 thumbnail_file_id: z.string().nullable(),
                 package_id: z.string(), // Moved package_id into level_dto
+                is_parent: z.boolean().optional(),
+                parent_id: z.string().nullable().optional(),
             }),
             package_session_id: z.string(),
             package_session_status: z.string(),
             start_date: z.string(),
+            is_parent: z.boolean().optional(),
+            parent_id: z.string().nullable().optional(),
         })
     ),
 });
@@ -90,9 +94,13 @@ export const AddSessionForm = ({
                                 duration_in_days: levelWithStatus.level_dto.duration_in_days,
                                 thumbnail_file_id: levelWithStatus.level_dto.thumbnail_id,
                                 package_id: packageItem.package_dto.id,
+                                is_parent: levelWithStatus.is_parent,
+                                parent_id: levelWithStatus.parent_id ?? null,
                             },
                             package_session_id: levelWithStatus.package_session_id,
                             package_session_status: levelWithStatus.package_session_status,
+                            is_parent: levelWithStatus.is_parent,
+                            parent_id: levelWithStatus.parent_id ?? null,
                         });
                     }
                 });
@@ -161,10 +169,14 @@ export const AddSessionForm = ({
                                 duration_in_days: level.level_dto.duration_in_days,
                                 thumbnail_file_id: level.level_dto.thumbnail_id,
                                 package_id: packageId,
+                                is_parent: level.is_parent,
+                                parent_id: level.parent_id ?? null,
                             },
                             package_session_id: level.package_session_id,
                             package_session_status: level.package_session_status,
                             start_date: level.start_date,
+                            is_parent: level.is_parent,
+                            parent_id: level.parent_id ?? null,
                         }));
                 }) || [],
         },

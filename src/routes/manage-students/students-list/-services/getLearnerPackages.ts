@@ -26,6 +26,8 @@ export interface PackageDetailDTO {
     level_ids: string[];
     read_time_in_minutes: number;
     package_type: string;
+    is_parent?: boolean;
+    parent_id?: string | null;
 }
 
 export interface LearnerPackagesResponse {

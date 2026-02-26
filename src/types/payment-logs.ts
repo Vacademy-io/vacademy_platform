@@ -187,6 +187,8 @@ export interface BatchForSession {
     start_time: string | null;
     status: string;
     is_org_associated?: boolean; // New field to check if batch is org associated
+    is_parent?: boolean;
+    parent_id?: string | null;
     package_dto: {
         id: string;
         package_name: string;

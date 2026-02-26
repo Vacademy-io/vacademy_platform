@@ -40,6 +40,8 @@ export interface PackageSessionDTO {
     group: GroupDTO | null;
     read_time_in_minutes: number;
     is_org_associated: boolean;
+    is_parent?: boolean;
+    parent_id?: string | null;
 }
 
 export interface PaginatedBatchesResponse {

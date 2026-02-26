@@ -158,6 +158,19 @@ export const SidebarItemsData: SidebarItemsType[] = [
         ],
     },
     {
+        icon: AddressBook, // Can reuse AddressBook icon or import a new one like Users
+        title: 'Admissions',
+        id: 'admissions',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'Admission Form',
+                subItemLink: '/admissions/admission-form',
+                subItemId: 'admission-form',
+            },
+        ],
+    },
+    {
         icon: CreditCard,
         title: 'Membership',
         id: 'membership-management',

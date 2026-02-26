@@ -17,6 +17,8 @@ const formSchema = z.object({
     level_name: z.string(),
     duration_in_days: z.number(),
     thumbnail_file_id: z.string().nullable(),
+    is_parent: z.boolean().optional(),
+    parent_id: z.string().nullable().optional(),
     sessions: z.array(
         z.object({
             id: z.string(),
@@ -94,6 +96,8 @@ export const AddCourseDetailsForm = ({
             new_level: initialValues?.new_level || true,
             duration_in_days: initialValues?.duration_in_days || 0,
             thumbnail_file_id: null,
+            is_parent: initialValues?.is_parent ?? false,
+            parent_id: initialValues?.parent_id ?? null,
             sessions: [],
         },
     });

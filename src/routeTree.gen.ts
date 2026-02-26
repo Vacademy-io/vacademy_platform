@@ -55,6 +55,7 @@ import { Route as StudyLibraryAttendanceTrackerIndexRouteImport } from "./routes
 import { Route as StudyLibraryAiCourseBuilderIndexRouteImport } from "./routes/study-library/ai-course-builder/index"
 import { Route as StudyLibraryAiCopilotIndexRouteImport } from "./routes/study-library/ai-copilot/index"
 import { Route as SignupOnboardingIndexRouteImport } from "./routes/signup/onboarding/index"
+import { Route as SettingsFeeManagementIndexRouteImport } from "./routes/settings/fee-management/index"
 import { Route as PlanningPlanningIndexRouteImport } from "./routes/planning/planning/index"
 import { Route as PlanningActivityLogsIndexRouteImport } from "./routes/planning/activity-logs/index"
 import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/manage-students/students-list/index"
@@ -84,6 +85,7 @@ import { Route as AnnouncementCreateIndexRouteImport } from "./routes/announceme
 import { Route as AnnouncementApprovalIndexRouteImport } from "./routes/announcement/approval/index"
 import { Route as AiCenterMyResourcesIndexRouteImport } from "./routes/ai-center/my-resources/index"
 import { Route as AiCenterAiToolsIndexRouteImport } from "./routes/ai-center/ai-tools/index"
+import { Route as AdmissionsAdmissionFormIndexRouteImport } from "./routes/admissions/admission-form/index"
 import { Route as AdminPackageManagementBulkCreateIndexRouteImport } from "./routes/admin-package-management/bulk-create/index"
 import { Route as TemplatesEditTemplateIdRouteImport } from "./routes/templates/edit/$templateId"
 import { Route as SignupOauthCallbackRouteImport } from "./routes/signup/oauth/callback"
@@ -472,6 +474,14 @@ const SignupOnboardingIndexRoute = SignupOnboardingIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/signup/onboarding/index.lazy").then((d) => d.Route),
 )
+const SettingsFeeManagementIndexRoute =
+  SettingsFeeManagementIndexRouteImport.update({
+    id: "/fee-management/",
+    path: "/fee-management/",
+    getParentRoute: () => SettingsRoute,
+  } as any).lazy(() =>
+    import("./routes/settings/fee-management/index.lazy").then((d) => d.Route),
+  )
 const PlanningPlanningIndexRoute = PlanningPlanningIndexRouteImport.update({
   id: "/planning/planning/",
   path: "/planning/planning/",
@@ -715,6 +725,16 @@ const AiCenterAiToolsIndexRoute = AiCenterAiToolsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/ai-center/ai-tools/index.lazy").then((d) => d.Route),
 )
+const AdmissionsAdmissionFormIndexRoute =
+  AdmissionsAdmissionFormIndexRouteImport.update({
+    id: "/admissions/admission-form/",
+    path: "/admissions/admission-form/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/admissions/admission-form/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const AdminPackageManagementBulkCreateIndexRoute =
   AdminPackageManagementBulkCreateIndexRouteImport.update({
     id: "/admin-package-management/bulk-create/",
@@ -1105,7 +1125,7 @@ const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTy
 export interface FileRoutesByFullPath {
   "/agent-chat": typeof AgentChatRoute
   "/locked-feature": typeof LockedFeatureRoute
-  "/settings": typeof SettingsRoute
+  "/settings": typeof SettingsRouteWithChildren
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
@@ -1144,6 +1164,7 @@ export interface FileRoutesByFullPath {
   "/signup/oauth/callback": typeof SignupOauthCallbackRoute
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
+  "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/ai-center/ai-tools/": typeof AiCenterAiToolsIndexRoute
   "/ai-center/my-resources/": typeof AiCenterMyResourcesIndexRoute
   "/announcement/approval/": typeof AnnouncementApprovalIndexRoute
@@ -1173,6 +1194,7 @@ export interface FileRoutesByFullPath {
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
+  "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
   "/signup/onboarding/": typeof SignupOnboardingIndexRoute
   "/study-library/ai-copilot/": typeof StudyLibraryAiCopilotIndexRoute
   "/study-library/ai-course-builder/": typeof StudyLibraryAiCourseBuilderIndexRoute
@@ -1230,7 +1252,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   "/agent-chat": typeof AgentChatRoute
   "/locked-feature": typeof LockedFeatureRoute
-  "/settings": typeof SettingsRoute
+  "/settings": typeof SettingsRouteWithChildren
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
   "/pricing": typeof PricingLazyRoute
@@ -1268,6 +1290,7 @@ export interface FileRoutesByTo {
   "/signup/oauth/callback": typeof SignupOauthCallbackRoute
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/admin-package-management/bulk-create": typeof AdminPackageManagementBulkCreateIndexRoute
+  "/admissions/admission-form": typeof AdmissionsAdmissionFormIndexRoute
   "/ai-center/ai-tools": typeof AiCenterAiToolsIndexRoute
   "/ai-center/my-resources": typeof AiCenterMyResourcesIndexRoute
   "/announcement/approval": typeof AnnouncementApprovalIndexRoute
@@ -1297,6 +1320,7 @@ export interface FileRoutesByTo {
   "/manage-students/students-list": typeof ManageStudentsStudentsListIndexRoute
   "/planning/activity-logs": typeof PlanningActivityLogsIndexRoute
   "/planning/planning": typeof PlanningPlanningIndexRoute
+  "/settings/fee-management": typeof SettingsFeeManagementIndexRoute
   "/signup/onboarding": typeof SignupOnboardingIndexRoute
   "/study-library/ai-copilot": typeof StudyLibraryAiCopilotIndexRoute
   "/study-library/ai-course-builder": typeof StudyLibraryAiCourseBuilderIndexRoute
@@ -1355,7 +1379,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/agent-chat": typeof AgentChatRoute
   "/locked-feature": typeof LockedFeatureRoute
-  "/settings": typeof SettingsRoute
+  "/settings": typeof SettingsRouteWithChildren
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
@@ -1394,6 +1418,7 @@ export interface FileRoutesById {
   "/signup/oauth/callback": typeof SignupOauthCallbackRoute
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
+  "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/ai-center/ai-tools/": typeof AiCenterAiToolsIndexRoute
   "/ai-center/my-resources/": typeof AiCenterMyResourcesIndexRoute
   "/announcement/approval/": typeof AnnouncementApprovalIndexRoute
@@ -1423,6 +1448,7 @@ export interface FileRoutesById {
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
+  "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
   "/signup/onboarding/": typeof SignupOnboardingIndexRoute
   "/study-library/ai-copilot/": typeof StudyLibraryAiCopilotIndexRoute
   "/study-library/ai-course-builder/": typeof StudyLibraryAiCourseBuilderIndexRoute
@@ -1521,6 +1547,7 @@ export interface FileRouteTypes {
     | "/signup/oauth/callback"
     | "/templates/edit/$templateId"
     | "/admin-package-management/bulk-create/"
+    | "/admissions/admission-form/"
     | "/ai-center/ai-tools/"
     | "/ai-center/my-resources/"
     | "/announcement/approval/"
@@ -1550,6 +1577,7 @@ export interface FileRouteTypes {
     | "/manage-students/students-list/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
+    | "/settings/fee-management/"
     | "/signup/onboarding/"
     | "/study-library/ai-copilot/"
     | "/study-library/ai-course-builder/"
@@ -1645,6 +1673,7 @@ export interface FileRouteTypes {
     | "/signup/oauth/callback"
     | "/templates/edit/$templateId"
     | "/admin-package-management/bulk-create"
+    | "/admissions/admission-form"
     | "/ai-center/ai-tools"
     | "/ai-center/my-resources"
     | "/announcement/approval"
@@ -1674,6 +1703,7 @@ export interface FileRouteTypes {
     | "/manage-students/students-list"
     | "/planning/activity-logs"
     | "/planning/planning"
+    | "/settings/fee-management"
     | "/signup/onboarding"
     | "/study-library/ai-copilot"
     | "/study-library/ai-course-builder"
@@ -1770,6 +1800,7 @@ export interface FileRouteTypes {
     | "/signup/oauth/callback"
     | "/templates/edit/$templateId"
     | "/admin-package-management/bulk-create/"
+    | "/admissions/admission-form/"
     | "/ai-center/ai-tools/"
     | "/ai-center/my-resources/"
     | "/announcement/approval/"
@@ -1799,6 +1830,7 @@ export interface FileRouteTypes {
     | "/manage-students/students-list/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
+    | "/settings/fee-management/"
     | "/signup/onboarding/"
     | "/study-library/ai-copilot/"
     | "/study-library/ai-course-builder/"
@@ -1857,7 +1889,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AgentChatRoute: typeof AgentChatRoute
   LockedFeatureRoute: typeof LockedFeatureRoute
-  SettingsRoute: typeof SettingsRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
   ExploreAiLazyRoute: typeof ExploreAiLazyRoute
   LandingLazyRoute: typeof LandingLazyRoute
   LearnerInsightsLazyRoute: typeof LearnerInsightsLazyRouteWithChildren
@@ -1895,6 +1927,7 @@ export interface RootRouteChildren {
   SignupOauthCallbackRoute: typeof SignupOauthCallbackRoute
   TemplatesEditTemplateIdRoute: typeof TemplatesEditTemplateIdRoute
   AdminPackageManagementBulkCreateIndexRoute: typeof AdminPackageManagementBulkCreateIndexRoute
+  AdmissionsAdmissionFormIndexRoute: typeof AdmissionsAdmissionFormIndexRoute
   AiCenterAiToolsIndexRoute: typeof AiCenterAiToolsIndexRoute
   AiCenterMyResourcesIndexRoute: typeof AiCenterMyResourcesIndexRoute
   AnnouncementApprovalIndexRoute: typeof AnnouncementApprovalIndexRoute
@@ -2324,6 +2357,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof SignupOnboardingIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/settings/fee-management/": {
+      id: "/settings/fee-management/"
+      path: "/fee-management"
+      fullPath: "/settings/fee-management/"
+      preLoaderRoute: typeof SettingsFeeManagementIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     "/planning/planning/": {
       id: "/planning/planning/"
       path: "/planning/planning"
@@ -2525,6 +2565,13 @@ declare module "@tanstack/react-router" {
       path: "/ai-center/ai-tools"
       fullPath: "/ai-center/ai-tools/"
       preLoaderRoute: typeof AiCenterAiToolsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admissions/admission-form/": {
+      id: "/admissions/admission-form/"
+      path: "/admissions/admission-form"
+      fullPath: "/admissions/admission-form/"
+      preLoaderRoute: typeof AdmissionsAdmissionFormIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admin-package-management/bulk-create/": {
@@ -2845,6 +2892,18 @@ declare module "@tanstack/react-router" {
   }
 }
 
+interface SettingsRouteChildren {
+  SettingsFeeManagementIndexRoute: typeof SettingsFeeManagementIndexRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsFeeManagementIndexRoute: SettingsFeeManagementIndexRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
+
 interface LearnerInsightsLazyRouteChildren {
   LearnerInsightsIndexRoute: typeof LearnerInsightsIndexRoute
 }
@@ -2859,7 +2918,7 @@ const LearnerInsightsLazyRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   AgentChatRoute: AgentChatRoute,
   LockedFeatureRoute: LockedFeatureRoute,
-  SettingsRoute: SettingsRoute,
+  SettingsRoute: SettingsRouteWithChildren,
   ExploreAiLazyRoute: ExploreAiLazyRoute,
   LandingLazyRoute: LandingLazyRoute,
   LearnerInsightsLazyRoute: LearnerInsightsLazyRouteWithChildren,
@@ -2898,6 +2957,7 @@ const rootRouteChildren: RootRouteChildren = {
   TemplatesEditTemplateIdRoute: TemplatesEditTemplateIdRoute,
   AdminPackageManagementBulkCreateIndexRoute:
     AdminPackageManagementBulkCreateIndexRoute,
+  AdmissionsAdmissionFormIndexRoute: AdmissionsAdmissionFormIndexRoute,
   AiCenterAiToolsIndexRoute: AiCenterAiToolsIndexRoute,
   AiCenterMyResourcesIndexRoute: AiCenterMyResourcesIndexRoute,
   AnnouncementApprovalIndexRoute: AnnouncementApprovalIndexRoute,

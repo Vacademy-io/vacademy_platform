@@ -3017,17 +3017,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             if entry_id in replacements:
                 for rep in replacements[entry_id]:
                     old_tag = rep["full_tag"]
-                    # Convert path to string and normalize for file:// URL (use forward slashes)
-                    path_str = str(rep['new_src']).replace('\\', '/')  # Normalize Windows paths to forward slashes
-                    new_src = f"file://{path_str}"
-                    
+                    # Embed image as base64 data: URL so HTML is self-contained
+                    # (file:// URLs don't work in browser iframes rendered via srcdoc)
+                    try:
+                        img_bytes = Path(rep['new_src']).read_bytes()
+                        b64 = base64.b64encode(img_bytes).decode('utf-8')
+                        new_src = f"data:image/png;base64,{b64}"
+                    except Exception as e:
+                        print(f"    ⚠️  Could not read image for base64 encoding: {e}")
+                        continue
+
                     # Strategy 1: Direct tag replacement (most reliable)
                     if old_tag in html:
                         # Replace src attribute in the tag
                         new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', old_tag)
                         html = html.replace(old_tag, new_tag)
                         replacements_applied += 1
-                        print(f"    ✅ Replaced image tag in entry {entry_id}: {old_tag[:50]}... -> {new_src[:50]}...")
+                        print(f"    ✅ Embedded image (base64) in entry {entry_id}: {old_tag[:50]}...")
                     else:
                         # Strategy 2: Find by data-img-prompt value (fallback)
                         prompt_match = re.search(r'data-img-prompt=(["\'])(.*?)\1', old_tag)
@@ -3041,7 +3047,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                                 new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', matched_tag)
                                 html = html.replace(matched_tag, new_tag)
                                 replacements_applied += 1
-                                print(f"    ✅ Replaced image tag by prompt match: {prompt_value[:30]}... -> {new_src[:50]}...")
+                                print(f"    ✅ Embedded image (base64, prompt match): {prompt_value[:30]}...")
             
             if html != original_html:
                 entry["html"] = html

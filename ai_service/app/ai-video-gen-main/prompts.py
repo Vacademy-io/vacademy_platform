@@ -178,6 +178,7 @@ JSON shape:
   "audience": "...",
   "target_grade": "...",
   "subject_domain": "coding | history | science | math | language | general",
+  "visual_style": "realistic cinematic photograph | flat vector illustration | watercolor painting | scientific diagram illustration | documentary photography",
   "script": "Full narration text...",
   "key_takeaway": "One sentence summary of the main concept",
   "common_mistake": "A typical misconception or error students make",
@@ -202,6 +203,13 @@ JSON shape:
 - "math": Arithmetic, algebra, geometry, calculus, statistics
 - "language": Grammar, literature, vocabulary, writing, foreign languages
 - "general": Business, life skills, art, music, mixed topics
+
+**visual_style classification** (choose ONE for the entire video — all AI images will use this style):
+- "realistic cinematic photograph": For history, social studies, real-world science (cinematic, DSLR-quality look)
+- "documentary photography": For history/geography (journalistic, authentic feel)
+- "scientific diagram illustration": For biology, chemistry, anatomy (clean white-bg technical illustrations)
+- "watercolor painting": For language arts, literature, young learners (soft, artistic feel)
+- "flat vector illustration": For coding, math, general/business (clean, minimal, icon-like)
 
 **visual_type guide for beat_outline**:
 - Use IMAGE_HERO for hooks, real-world scene-setters, topic introductions
@@ -331,7 +339,152 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "  </div>\n"
     "</div>\n"
     "```\n\n"
-    
+
+    "**SHOT TYPE 4: ANNOTATION_MAP** — Full-screen image with animated SVG arrows + labels drawn on top.\n"
+    "USE FOR: Anatomy, geography, architecture, 'parts of X' — any labeled visual where arrows point to specific regions.\n"
+    "Image prompt must include 'unlabeled, no text overlay' so external SVG labels are readable.\n"
+    "```html\n"
+    "<div class='annotation-map-container'>\n"
+    "  <img class='generated-image annotation-map-bg'\n"
+    "       data-img-prompt='cross-section of human heart, unlabeled, no text overlay, clinical illustration style, vibrant colors, 16:9'\n"
+    "       data-ken-burns='zoom-in'\n"
+    "       src='placeholder.png' />\n"
+    "  <svg id='anno-svg' class='annotation-overlay' viewBox='0 0 1920 1080'>\n"
+    "    <defs>\n"
+    "      <marker id='ah1' markerWidth='10' markerHeight='7' refX='9' refY='3.5' orient='auto'>\n"
+    "        <polygon points='0 0,10 3.5,0 7' fill='#ffffff'/>\n"
+    "      </marker>\n"
+    "      <marker id='ah2' markerWidth='10' markerHeight='7' refX='9' refY='3.5' orient='auto'>\n"
+    "        <polygon points='0 0,10 3.5,0 7' fill='#38bdf8'/>\n"
+    "      </marker>\n"
+    "    </defs>\n"
+    "    <path id='a1' d='M750,420 L600,580' stroke='#ffffff' stroke-width='3' fill='none' marker-end='url(#ah1)'/>\n"
+    "    <text id='l1' x='760' y='410' fill='#ffffff' font-size='30' font-family='Montserrat' font-weight='700' opacity='0'>Left Ventricle</text>\n"
+    "    <path id='a2' d='M1050,310 L900,470' stroke='#38bdf8' stroke-width='3' fill='none' marker-end='url(#ah2)'/>\n"
+    "    <text id='l2' x='1060' y='300' fill='#38bdf8' font-size='30' font-family='Montserrat' font-weight='700' opacity='0'>Aorta</text>\n"
+    "  </svg>\n"
+    "</div>\n"
+    "<script>\n"
+    "animateSVG('anno-svg', 80);\n"
+    "setTimeout(() => fadeIn('#l1', 0.4, 0), 900);\n"
+    "setTimeout(() => fadeIn('#l2', 0.4, 0), 1600);\n"
+    "</script>\n"
+    "```\n\n"
+
+    "**SHOT TYPE 5: DATA_STORY** — Animated D3.js bar/line chart that builds during narration.\n"
+    "USE FOR: Historical population data, scientific measurements, statistics with real numbers in narration.\n"
+    "Only use when narration explicitly mentions numbers/data worth visualizing.\n"
+    "```html\n"
+    "<div class='full-screen-center'>\n"
+    "  <div class='layout-hero'>\n"
+    "    <h2 id='chart-title' style='opacity:0'>Population Growth Over Time</h2>\n"
+    "    <svg id='d3-chart' width='1400' height='480' style='margin-top:24px; overflow:visible;'></svg>\n"
+    "  </div>\n"
+    "</div>\n"
+    "<script>\n"
+    "fadeIn('#chart-title', 0.5, 0);\n"
+    "const data = [\n"
+    "  {label:'1800', value:1},\n"
+    "  {label:'1900', value:1.6},\n"
+    "  {label:'1950', value:2.5},\n"
+    "  {label:'2000', value:6.1}\n"
+    "];\n"
+    "const svgEl = d3.select('#d3-chart');\n"
+    "const m = {top:20, right:30, bottom:50, left:70};\n"
+    "const W = 1400 - m.left - m.right, H = 480 - m.top - m.bottom;\n"
+    "const g = svgEl.append('g').attr('transform', `translate(${m.left},${m.top})`);\n"
+    "const x = d3.scaleBand().domain(data.map(d=>d.label)).range([0,W]).padding(0.35);\n"
+    "const y = d3.scaleLinear().domain([0, d3.max(data,d=>d.value)*1.15]).range([H,0]);\n"
+    "g.append('g').attr('transform',`translate(0,${H})`).call(d3.axisBottom(x))\n"
+    "  .selectAll('text,line,path').style('stroke','currentColor').style('fill','currentColor');\n"
+    "g.append('g').call(d3.axisLeft(y).ticks(5))\n"
+    "  .selectAll('text,line,path').style('stroke','currentColor').style('fill','currentColor');\n"
+    "g.selectAll('.bar').data(data).enter().append('rect')\n"
+    "  .attr('x',d=>x(d.label)).attr('width',x.bandwidth())\n"
+    "  .attr('y',H).attr('height',0).attr('rx',6)\n"
+    "  .style('fill','var(--primary-color,#3b82f6)')\n"
+    "  .transition().delay((_,i)=>600+i*450).duration(900).ease(d3.easeCubicOut)\n"
+    "  .attr('y',d=>y(d.value)).attr('height',d=>H-y(d.value));\n"
+    "</script>\n"
+    "```\n\n"
+
+    "**SHOT TYPE 6: PROCESS_STEPS** — Sequential step-by-step flow with numbered nodes connected by animated arrows.\n"
+    "USE FOR: Algorithms, biological processes, manufacturing steps, historical sequences, how-to explanations.\n"
+    "Steps reveal one-by-one with Vivus-drawn connectors between them. NO AI images needed.\n"
+    "```html\n"
+    "<div class='full-screen-center'>\n"
+    "  <div class='process-flow'>\n"
+    "    <div id='ps-1' class='process-node' style='opacity:0'>\n"
+    "      <div class='node-num'>1</div>\n"
+    "      <div class='node-body'>\n"
+    "        <div class='node-title'>Gather Data</div>\n"
+    "        <div class='node-desc'>Collect raw information from multiple sources</div>\n"
+    "      </div>\n"
+    "    </div>\n"
+    "    <svg id='pc-1' class='process-connector' viewBox='0 0 20 40'>\n"
+    "      <path d='M10,0 L10,30 M4,22 L10,34 L16,22' stroke='currentColor' stroke-width='2.5' fill='none'/>\n"
+    "    </svg>\n"
+    "    <div id='ps-2' class='process-node' style='opacity:0'>\n"
+    "      <div class='node-num'>2</div>\n"
+    "      <div class='node-body'>\n"
+    "        <div class='node-title'>Process & Analyze</div>\n"
+    "        <div class='node-desc'>Apply algorithms to find patterns</div>\n"
+    "      </div>\n"
+    "    </div>\n"
+    "    <svg id='pc-2' class='process-connector' viewBox='0 0 20 40'>\n"
+    "      <path d='M10,0 L10,30 M4,22 L10,34 L16,22' stroke='currentColor' stroke-width='2.5' fill='none'/>\n"
+    "    </svg>\n"
+    "    <div id='ps-3' class='process-node' style='opacity:0'>\n"
+    "      <div class='node-num'>3</div>\n"
+    "      <div class='node-body'>\n"
+    "        <div class='node-title'>Output Results</div>\n"
+    "        <div class='node-desc'>Visualize and interpret the findings</div>\n"
+    "      </div>\n"
+    "    </div>\n"
+    "  </div>\n"
+    "</div>\n"
+    "<script>\n"
+    "fadeIn('#ps-1', 0.5, 0);\n"
+    "setTimeout(() => animateSVG('pc-1', 35), 1800);\n"
+    "setTimeout(() => fadeIn('#ps-2', 0.5, 0), 2600);\n"
+    "setTimeout(() => animateSVG('pc-2', 35), 4400);\n"
+    "setTimeout(() => fadeIn('#ps-3', 0.5, 0), 5200);\n"
+    "setTimeout(() => annotate('#ps-3 .node-title', {type:'box', color:'#10b981', strokeWidth:2}), 6000);\n"
+    "</script>\n"
+    "```\n"
+    "Use 3-5 steps per shot. For more steps, split into two shots. Adjust timing using word timestamps.\n\n"
+
+    "**SHOT TYPE 7: EQUATION_BUILD** — KaTeX equation terms reveal one-by-one in sync with narration.\n"
+    "USE FOR: Math formulas, physics laws, chemistry equations — any time a formula is being explained term-by-term.\n"
+    "KaTeX auto-renders on page load even if elements are opacity:0. Revealing with fadeIn shows the already-rendered math.\n"
+    "```html\n"
+    "<div class='full-screen-center'>\n"
+    "  <div class='layout-hero'>\n"
+    "    <h2 id='eq-ctx' style='opacity:0'>Kinetic Energy Formula</h2>\n"
+    "    <div class='equation-build-row'>\n"
+    "      <span id='eq-0' class='eq-term' style='opacity:0'>$$KE$$</span>\n"
+    "      <span id='eq-1' class='eq-sep' style='opacity:0'>$$=$$</span>\n"
+    "      <span id='eq-2' class='eq-term' style='opacity:0'>$$\\frac{1}{2}$$</span>\n"
+    "      <span id='eq-3' class='eq-term' style='opacity:0'>$$mv^2$$</span>\n"
+    "    </div>\n"
+    "    <p id='eq-note' style='opacity:0;font-size:22px;margin-top:40px;'>measured in Joules (J)</p>\n"
+    "  </div>\n"
+    "</div>\n"
+    "<script>\n"
+    "fadeIn('#eq-ctx', 0.5, 0);\n"
+    "// Reveal each term in sequence — adjust delays to match word timings\n"
+    "setTimeout(() => fadeIn('#eq-0', 0.4, 0), 1200);\n"
+    "setTimeout(() => fadeIn('#eq-1', 0.3, 0), 2000);\n"
+    "setTimeout(() => fadeIn('#eq-2', 0.4, 0), 2800);\n"
+    "setTimeout(() => fadeIn('#eq-3', 0.4, 0), 3600);\n"
+    "setTimeout(() => fadeIn('#eq-note', 0.5, 0), 4800);\n"
+    "// Annotate key terms after all visible\n"
+    "setTimeout(() => annotate('#eq-0', {type:'circle', color:'#dc2626', strokeWidth:3, duration:700}), 5200);\n"
+    "setTimeout(() => annotate('#eq-3', {type:'box', color:'#2563eb', duration:600}), 6000);\n"
+    "</script>\n"
+    "```\n"
+    "Add `.eq-term` class to main variables, `.eq-sep` to operators/equals signs. Each term is its own `<span>`.\n\n"
+
     "**📸 IMAGE PROMPT GUIDELINES (for data-img-prompt)**:\n"
     "Write descriptive, cinematic prompts (20-50 words) for AI image generation:\n"
     "- Specify style: 'realistic photograph', 'scientific illustration', 'infographic style', 'watercolor'\n"
@@ -655,6 +808,10 @@ Use a **variety of shot types** for visual engagement:
 2. **IMAGE_SPLIT**: Image on one side, text on the other (for explanations with visual reference)
 3. **Text/Diagram shot**: Text + SVG/diagram on clean background (for detailed explanations)
 4. **LOWER_THIRD**: Key term banner (can overlay other shots)
+5. **ANNOTATION_MAP**: Full-screen image with Vivus-drawn SVG arrows pointing to labeled regions (anatomy, geography, architecture)
+6. **DATA_STORY**: Animated D3.js bar/line chart (use only when narration mentions actual numeric data)
+7. **PROCESS_STEPS**: Numbered nodes with Vivus connector arrows revealing one-by-one (algorithms, how-to, sequences)
+8. **EQUATION_BUILD**: KaTeX terms revealing sequentially with Rough Notation annotations (math/science formulas)
 
 **EXAMPLE 1 — IMAGE_HERO SHOT (cinematic opening)**:
 ```html

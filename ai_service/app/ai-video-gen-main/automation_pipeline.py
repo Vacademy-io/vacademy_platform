@@ -24,7 +24,7 @@ import sys
 import textwrap
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import urllib.error
 import urllib.error
@@ -851,7 +851,9 @@ class VideoGenerationPipeline:
                 if subject_domain not in TOPIC_SHOT_PROFILES:
                     subject_domain = "general"
                 self._current_subject_domain = subject_domain
+                self._current_visual_style = plan_data.get("visual_style", "realistic cinematic photograph")
                 print(f"📘 Subject domain: {subject_domain} ({TOPIC_SHOT_PROFILES[subject_domain]['description']})")
+                print(f"🎨 Visual style: {self._current_visual_style}")
                 
                 print("🧠 Building concept-aligned segments ...")
                 # Use beat_outline for concept-aligned segmentation if available
@@ -867,7 +869,24 @@ class VideoGenerationPipeline:
                 else:
                     segments = self._segment_words(words)
                     print(f"   ℹ️  Using fixed-window segmentation ({len(segments)} segments)")
-                
+
+                # Store segment start times + labels for chapter markers in the frontend player
+                self._current_chapters = [
+                    {"time": seg["start"], "label": seg.get("beat_label", f"Section {i + 1}")}
+                    for i, seg in enumerate(segments)
+                ]
+
+                # Store glossary terms: each key term introduced at its segment's start time
+                # De-duplicate terms (keep earliest occurrence)
+                seen_terms: Set[str] = set()
+                glossary: List[Dict[str, Any]] = []
+                for seg in segments:
+                    for term in seg.get("key_terms", []):
+                        if term and term not in seen_terms:
+                            seen_terms.add(term)
+                            glossary.append({"term": term, "time": seg["start"]})
+                self._current_glossary = glossary
+
                 if not segments:
                     raise RuntimeError("Failed to derive segments from narration.")
                 
@@ -881,7 +900,11 @@ class VideoGenerationPipeline:
                 accumulate_usage(image_usage)
             
             print("🧾 Writing timeline JSON ...")
-            timeline_path = self._write_timeline(html_segments, run_dir, self._current_branding, self._current_content_type)
+            timeline_path = self._write_timeline(
+                html_segments, run_dir, self._current_branding, self._current_content_type,
+                chapters=getattr(self, '_current_chapters', None),
+                glossary=getattr(self, '_current_glossary', None),
+            )
         
         avatar_video_path = None
         if do_avatar:
@@ -1693,10 +1716,12 @@ class VideoGenerationPipeline:
             if chunk_words:
                 chunk_text = " ".join(str(w["word"]) for w in chunk_words).strip()
                 if chunk_text:
-                    # Check if this segment has a recap marker
+                    # Check if this segment has a recap marker, capture beat label and key terms
                     beat_idx = min(idx, len(beat_outline) - 1)
                     needs_recap = beat_outline[beat_idx].get("needs_recap", False) if beat_idx < len(beat_outline) else False
-                    
+                    beat_label = beat_outline[beat_idx].get("label", f"Section {idx + 1}") if beat_idx < len(beat_outline) else f"Section {idx + 1}"
+                    key_terms = beat_outline[beat_idx].get("key_terms", []) if beat_idx < len(beat_outline) else []
+
                     segments.append({
                         "index": idx + 1,
                         "start": round(start_time, 3),
@@ -1704,6 +1729,8 @@ class VideoGenerationPipeline:
                         "text": chunk_text,
                         "words": chunk_words,
                         "needs_recap": needs_recap,
+                        "beat_label": beat_label,
+                        "key_terms": key_terms,
                     })
         
         return segments
@@ -2884,9 +2911,17 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # Regex to find all such tags
             # We capture: entire tag, quote style, prompt, rest of tag
             matches = list(re.finditer(r'(<img[^>]+data-img-prompt=(["\'])(.*?)\2[^>]*>)', html))
+            SVG_KEYWORDS = [
+                "diagram", "flowchart", "chart", "graph", "infographic",
+                "comparison", "table", "workflow", "process flow", "timeline",
+                "schematic", "blueprint", "map of concepts", "mind map",
+            ]
             for match in matches:
                 full_tag = match.group(1)
                 prompt = match.group(3)
+                if any(kw in prompt.lower() for kw in SVG_KEYWORDS):
+                    print(f"    ⚠️  Skipping image gen (SVG candidate): {prompt[:70]}...")
+                    continue
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
@@ -2905,9 +2940,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         def process_image_task(task):
             prompt = task["prompt"]
             idx = task["seg_idx"]
-            
+
+            # Prepend video-wide visual style for consistency across all images
+            visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
+            if visual_style.lower() not in prompt.lower():
+                prompt = f"{visual_style}, {prompt}"
+
             # Generate
-            print(f"    🎨 Generating image {idx}: {prompt[:50]}...")
+            print(f"    🎨 Generating image {idx}: {prompt[:60]}...")
             # We don't get exact token usage from this simplified call, but we can count images
             image_bytes, usage_meta = self._call_image_generation_llm(prompt)
             if not image_bytes:
@@ -3263,10 +3303,12 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
     # --- Timeline + video -------------------------------------------------
     @staticmethod
     def _write_timeline(
-        html_segments: List[Dict[str, Any]], 
+        html_segments: List[Dict[str, Any]],
         run_dir: Path,
         branding_config: Optional[Dict[str, Any]] = None,
-        content_type: str = "VIDEO"
+        content_type: str = "VIDEO",
+        chapters: Optional[List[Dict[str, Any]]] = None,
+        glossary: Optional[List[Dict[str, Any]]] = None,
     ) -> Path:
         """
         Write timeline JSON with branding support.
@@ -3492,20 +3534,39 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # Calculate final duration
         final_duration = (content_max_end + outro_duration) if outro_enabled else content_max_end
         
+        # Build chapter markers (offset by intro duration so times match absolute video timeline)
+        chapter_markers = None
+        if chapters:
+            chapter_markers = [
+                {"time": round(ch["time"] + content_starts_at, 3), "label": ch["label"]}
+                for ch in chapters
+            ]
+
         # Create timeline object with metadata for the frontend player
         # The player needs to know when to start the audio (after intro)
+        meta_dict: Dict[str, Any] = {
+            "content_type": content_type,              # Tells frontend what type of content
+            "navigation": navigation,                  # "time_driven", "user_driven", or "self_contained"
+            "entry_label": entry_label,                # Label for entries (question, page, segment)
+            "audio_start_at": content_starts_at,       # Audio should start playing at this time
+            "total_duration": final_duration,
+            "intro_duration": intro_duration,
+            "outro_duration": outro_duration if outro_enabled else 0.0,
+            "content_starts_at": content_starts_at,
+            "content_ends_at": content_max_end,
+        }
+        if chapter_markers:
+            meta_dict["chapters"] = chapter_markers
+
+        # Glossary: offset term times by intro duration to match absolute video timeline
+        if glossary:
+            meta_dict["glossary"] = [
+                {"term": g["term"], "time": round(g["time"] + content_starts_at, 3)}
+                for g in glossary
+            ]
+
         timeline_output = {
-            "meta": {
-                "content_type": content_type,              # NEW: Tells frontend what type of content
-                "navigation": navigation,                  # NEW: "time_driven", "user_driven", or "self_contained"
-                "entry_label": entry_label,                # NEW: Label for entries (question, page, segment)
-                "audio_start_at": content_starts_at,       # Audio should start playing at this time
-                "total_duration": final_duration,
-                "intro_duration": intro_duration,
-                "outro_duration": outro_duration if outro_enabled else 0.0,
-                "content_starts_at": content_starts_at,
-                "content_ends_at": content_max_end,
-            },
+            "meta": meta_dict,
             "entries": timeline_entries
         }
         

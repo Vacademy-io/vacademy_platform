@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
+import vacademy.io.admin_core_service.features.fee_management.service.SchoolFeeReceiptService;
 import vacademy.io.admin_core_service.features.fee_management.service.StudentFeePaymentGenerationService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
@@ -77,6 +78,9 @@ public class SchoolEnrollService {
 
     @Autowired
     private FeeLedgerAllocationService feeLedgerAllocationService;
+
+    @Autowired
+    private SchoolFeeReceiptService schoolFeeReceiptService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -242,8 +246,9 @@ public class SchoolEnrollService {
             paymentSpecificData.put("manual", manual);
         }
 
-        // Update payment log with SUCCESS status
-        paymentLogService.updatePaymentLog(
+        // Update payment log with SUCCESS status (no post-payment invoice logic —
+        // school receipt is handled separately)
+        paymentLogService.updatePaymentLogOnly(
                 paymentLogId,
                 PaymentLogStatusEnum.SUCCESS.name(),
                 PaymentStatusEnum.PAID.name(),
@@ -259,5 +264,18 @@ public class SchoolEnrollService {
 
         log.info("Offline payment of {} allocated to fee bills for UserPlan: {}", payment.getAmount(),
                 userPlan.getId());
+
+        // Generate and send school fee receipt (PDF email) — failure won't affect
+        // enrollment
+        try {
+            String txnId = manual != null && manual.getTransactionId() != null ? manual.getTransactionId() : "N/A";
+            schoolFeeReceiptService.generateAndSendReceipt(
+                    user.getId(), userPlan.getId(), paymentLogId,
+                    enrollInvite.getInstituteId(),
+                    payment.getAmount(), txnId, "OFFLINE");
+        } catch (Exception e) {
+            log.error("Failed to generate school fee receipt for UserPlan: {}. Enrollment succeeded.",
+                    userPlan.getId(), e);
+        }
     }
 }

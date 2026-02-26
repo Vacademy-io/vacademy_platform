@@ -7,17 +7,24 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.CouponCod
 import vacademy.io.admin_core_service.features.user_subscription.enums.CouponSourceType;
 import vacademy.io.admin_core_service.features.user_subscription.repository.CouponCodeRepository;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
+import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 
+@Slf4j
 @Service
 public class CouponCodeService {
 
     @Autowired
     private CouponCodeRepository couponCodeRepository;
+
+    @Autowired
+    private InstituteDomainRoutingRepository domainRoutingRepository;
 
     @Autowired
     private vacademy.io.admin_core_service.features.shortlink.service.ShortLinkIntegrationService shortLinkIntegrationService;
@@ -59,7 +66,37 @@ public class CouponCodeService {
         return code.toString();
     }
 
+    private String getLearnerBaseUrlForInstitute(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return learnerBaseUrl; // fallback to default
+        }
+        try {
+            Optional<InstituteDomainRouting> routing = domainRoutingRepository
+                    .findByInstituteIdAndRole(instituteId, "LEARNER");
+            if (routing.isPresent()) {
+                String domain = routing.get().getDomain();
+                String subdomain = routing.get().getSubdomain();
+                if (domain != null && !domain.isBlank()) {
+                    if ("*".equals(subdomain) || subdomain == null || subdomain.isBlank()) {
+                        return "https://" + domain;
+                    } else {
+                        return "https://" + subdomain + "." + domain;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch domain routing for institute {}: {}",
+                    instituteId, e.getMessage());
+        }
+        return learnerBaseUrl; // fallback to default
+    }
+
     public CouponCode createCouponCodeForStudent(String sourceId, String sourceType) {
+        return createCouponCodeForStudent(sourceId, sourceType, "", "");
+    }
+
+    public CouponCode createCouponCodeForStudent(String sourceId, String sourceType, String instituteId,
+            String inviteCode) {
         CouponCode couponCode = new CouponCode();
         couponCode.setCode(generateUniqueCouponCode());
         couponCode.setStatus("ACTIVE");
@@ -82,8 +119,26 @@ public class CouponCodeService {
                 destinationUrl,
                 SHORT_LINK_SOURCE_COUPON,
                 savedCoupon.getId());
-        if (shortUrl != null) {
-            savedCoupon.setShortUrl(shortUrl);
+
+        // Generate Short URL specifically for referral link
+        String effectiveLearnerBaseUrl = getLearnerBaseUrlForInstitute(instituteId);
+        String referralDestinationUrl = String.format(
+                "%s/learner-invitation-response?instituteId=%s&inviteCode=%s&ref=%s",
+                effectiveLearnerBaseUrl,
+                instituteId != null ? instituteId : "",
+                inviteCode != null ? inviteCode : "",
+                savedCoupon.getCode());
+        String shortReferralLink = shortUrlManagementService.createShortUrl(
+                referralDestinationUrl,
+                "REFERRAL_LINK",
+                savedCoupon.getId());
+
+        if (shortUrl != null || shortReferralLink != null) {
+            // Priority given to shortReferralLink
+            if (shortReferralLink != null)
+                savedCoupon.setShortUrl(shortReferralLink);
+            else if (shortUrl != null)
+                savedCoupon.setShortUrl(shortUrl);
             savedCoupon = couponCodeRepository.save(savedCoupon);
         }
 
@@ -138,6 +193,16 @@ public class CouponCodeService {
                 updated.getId(),
                 updated.getShortUrl());
 
+        // Update Short Referral Link
+        String newReferralDestinationUrl = String.format(
+                "%s/learner-invitation-response?instituteId=&inviteCode=&ref=%s",
+                learnerBaseUrl, updated.getCode());
+        shortUrlManagementService.updateShortUrl(
+                newReferralDestinationUrl,
+                "REFERRAL_LINK",
+                updated.getId(),
+                updated.getShortUrl());
+
         return updated;
     }
 
@@ -154,6 +219,12 @@ public class CouponCodeService {
             // Delete associated short URL using centralized service
             shortUrlManagementService.deleteShortUrl(
                     SHORT_LINK_SOURCE_COUPON,
+                    coupon.getId(),
+                    coupon.getShortUrl());
+
+            // Delete associated short referral link using centralized service
+            shortUrlManagementService.deleteShortUrl(
+                    "REFERRAL_LINK",
                     coupon.getId(),
                     coupon.getShortUrl());
         }

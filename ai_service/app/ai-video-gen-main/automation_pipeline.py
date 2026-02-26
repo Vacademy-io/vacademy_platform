@@ -2981,7 +2981,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         failed_generations = 0
         total_image_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "image_count": 0}
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             futures = [executor.submit(process_image_task, t) for t in tasks]
             for f in concurrent.futures.as_completed(futures):
                 res = f.result()
@@ -3060,61 +3060,78 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         """
         Generate image using Google Generative AI (Gemini). Returns (image_bytes, usage_metadata).
         """
-        try:
-            if not self.gemini_image_api_key:
-                print(f"    ⚠️ No Gemini API key for images. Cannot generate: {prompt[:50]}...")
-                return None, None
-                
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key={self.gemini_image_api_key}"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "imageConfig": {"aspectRatio": "16:9"},
-                    "responseModalities": ["IMAGE"]
-                }
+        if not self.gemini_image_api_key:
+            print(f"    ⚠️ No Gemini API key for images. Cannot generate: {prompt[:50]}...")
+            return None, None
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key={self.gemini_image_api_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "imageConfig": {"aspectRatio": "16:9"},
+                "responseModalities": ["IMAGE"]
             }
-            
+        }
+
+        max_retries = 4
+        for attempt in range(max_retries):
             req = urllib.request.Request(
-                url, 
-                data=json.dumps(payload).encode("utf-8"), 
-                headers=headers, 
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
                 method="POST"
             )
-            
-            with urllib.request.urlopen(req, timeout=60) as response:
-                if response.status != 200:
-                    print(f"Gemini API error: {response.status}")
+            try:
+                with urllib.request.urlopen(req, timeout=60) as response:
+                    raw = response.read().decode("utf-8")
+                    data = json.loads(raw)
+
+                usage_metadata = data.get("usageMetadata", {})
+
+                # 1. Direct inlineData
+                if "inlineData" in data:
+                    b64 = data["inlineData"].get("data")
+                    if b64:
+                        return base64.b64decode(b64), usage_metadata
+
+                # 2. Candidates
+                if "candidates" in data and data["candidates"]:
+                    candidate = data["candidates"][0]
+                    if "content" in candidate and "parts" in candidate["content"]:
+                        for part in candidate["content"]["parts"]:
+                            if "inlineData" in part:
+                                b64 = part["inlineData"].get("data")
+                                if b64:
+                                    return base64.b64decode(b64), usage_metadata
+
+                return None, None
+
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    # Respect Retry-After header if present, else exponential backoff
+                    wait = (2 ** attempt) * 5  # 5s, 10s, 20s, 40s
+                    retry_after = e.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            wait = int(retry_after) + 1
+                        except ValueError:
+                            pass
+                    if attempt < max_retries - 1:
+                        print(f"    ⏳ Rate limited (429) for image '{prompt[:40]}...'. Waiting {wait}s (attempt {attempt + 1}/{max_retries})...")
+                        time.sleep(wait)
+                        continue
+                    print(f"    ❌ Gemini image rate limit exceeded after {max_retries} retries: {prompt[:50]}...")
                     return None, None
-                raw = response.read().decode("utf-8")
-                data = json.loads(raw)
-            
-            usage_metadata = data.get("usageMetadata", {})
+                print(f"    ❌ Gemini image HTTP error {e.code} for prompt '{prompt[:50]}...': {e}")
+                return None, None
+            except Exception as e:
+                import traceback
+                print(f"    ❌ Gemini image generation exception for prompt '{prompt[:50]}...': {str(e)}")
+                print(f"    📋 Error details: {traceback.format_exc()[:500]}")
+                return None, None
 
-            # Check for inlineData
-            # 1. Direct inlineData (rare for this endpoint structure but checked in snippet)
-            if "inlineData" in data:
-                b64 = data["inlineData"].get("data")
-                if b64:
-                    return base64.b64decode(b64), usage_metadata
-            
-            # 2. Candidates
-            if "candidates" in data and data["candidates"]:
-                candidate = data["candidates"][0]
-                if "content" in candidate and "parts" in candidate["content"]:
-                    for part in candidate["content"]["parts"]:
-                        if "inlineData" in part:
-                            b64 = part["inlineData"].get("data")
-                            if b64:
-                                return base64.b64decode(b64), usage_metadata
-            
-            return None, None
-
-        except Exception as e:
-            print(f"    ❌ Gemini image generation exception for prompt '{prompt[:50]}...': {str(e)}")
-            import traceback
-            print(f"    📋 Error details: {traceback.format_exc()[:500]}")  # Limit traceback length
-            return None, None
+        return None, None
 
     def _generate_avatar_runpod(self, run_dir: Path) -> Optional[Path]:
         if not self._current_avatar_image_url:

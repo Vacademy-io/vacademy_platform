@@ -31,7 +31,7 @@ public class GeminiImageGenerationService {
     private final AiTokenUsageClient aiTokenUsageClient;
 
     // URL from python service
-    private static final String GEMINI_IMAGE_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=%s";
+    private static final String GEMINI_IMAGE_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=%s";
 
     public String generateAndUploadImage(String prompt) {
         try {

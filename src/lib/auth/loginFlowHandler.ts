@@ -476,7 +476,7 @@ export const handleInstituteSelection = async (instituteId: string): Promise<Log
         void getCourseSettings(true).catch(() => { });
 
         // Determine redirect URL from Display Settings - fetch the correct role settings first
-        let roleKey = hasAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        let roleKey: string = hasAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
         const hasFaculty = hasFacultyAssignedPermission(instituteId);
 
         if (!hasAdminRole && hasFaculty) {

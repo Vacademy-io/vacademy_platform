@@ -24,12 +24,16 @@ import {
     Repeat,
     BookOpen,
     List,
+    HelpCircle,
+    CheckCircle2,
+    XCircle,
 } from 'lucide-react';
 import {
     Entry,
     TimelineMeta,
     AIContentPlayerProps,
     CONTENT_TYPE_LABELS,
+    MCQQuestion,
     formatEntryLabel,
     getDefaultMeta,
 } from './types';
@@ -123,6 +127,12 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
 
     // Chapters panel state
     const [isChaptersOpen, setIsChaptersOpen] = useState(false);
+
+    // MCQ quiz state
+    const [questionsEnabled, setQuestionsEnabled] = useState(true);
+    const [activeQuestion, setActiveQuestion] = useState<MCQQuestion | null>(null);
+    const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+    const answeredQuestionsRef = useRef<Set<number>>(new Set());
 
     // User-driven state (for QUIZ, STORYBOOK, etc.)
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -713,6 +723,9 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
             audioStartedRef.current = false;
             setCurrentTime(0);
             setIsPlaying(false);
+            setActiveQuestion(null);
+            setSelectedAnswer(null);
+            answeredQuestionsRef.current.clear();
         } else {
             setCurrentIndex(0);
             if (entries[0]) {
@@ -911,6 +924,53 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         }
         return idx;
     }, [currentTime, meta.chapters, navigationMode]);
+
+    // =====================================================
+    // MCQ QUESTION TRIGGERING
+    // =====================================================
+
+    // Pause video and show MCQ overlay when currentTime crosses a question's timestamp
+    useEffect(() => {
+        if (
+            navigationMode !== 'time_driven' ||
+            !questionsEnabled ||
+            !meta.questions?.length ||
+            activeQuestion ||
+            !isPlaying
+        ) return;
+
+        for (const q of meta.questions) {
+            if (currentTime >= q.time && !answeredQuestionsRef.current.has(q.time)) {
+                // Mark immediately (synchronous ref write) so subsequent effect runs
+                // from stale renders before state commits cannot re-trigger this question.
+                answeredQuestionsRef.current.add(q.time);
+                // Pause all playback
+                if (audioRef.current) audioRef.current.pause();
+                if (avatarRef.current) avatarRef.current.pause();
+                if (animationFrameRef.current) {
+                    cancelAnimationFrame(animationFrameRef.current);
+                    animationFrameRef.current = null;
+                }
+                isPlayingRef.current = false;
+                setIsPlaying(false);
+                setActiveQuestion(q);
+                break;
+            }
+        }
+    }, [currentTime, navigationMode, questionsEnabled, meta.questions, activeQuestion, isPlaying]);
+
+    // Dismiss active question (after answering or skipping) and resume playback
+    const handleDismissQuestion = useCallback(() => {
+        setActiveQuestion(null);
+        setSelectedAnswer(null);
+        // Resume audio from current position
+        if (audioRef.current && audioStartedRef.current) {
+            audioRef.current.play().catch(console.error);
+            if (avatarRef.current) avatarRef.current.play().catch(() => {});
+        }
+        isPlayingRef.current = true;
+        setIsPlaying(true);
+    }, [activeQuestion]);
 
     // =====================================================
     // MESSAGE HANDLING (Inter-iframe communication)
@@ -1212,6 +1272,170 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             animation: 'slideUpBounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
                         }}>
                             Got it? Click to continue <Play className="size-5" />
+                        </div>
+                    </div>
+                )}
+
+                {/* MCQ Question Overlay */}
+                {activeQuestion && (
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'rgba(0, 0, 0, 0.72)',
+                            backdropFilter: 'blur(6px)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 55,
+                            padding: '24px',
+                        }}
+                    >
+                        <div style={{
+                            background: '#0f172a',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: '16px',
+                            padding: '28px 32px',
+                            maxWidth: '640px',
+                            width: '100%',
+                            boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+                            animation: 'slideUpBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+                        }}>
+                            {/* Header */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                                <HelpCircle style={{ color: '#60a5fa', flexShrink: 0 }} size={18} />
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                                    Quick Check
+                                </span>
+                                <div style={{ flex: 1 }} />
+                                <button
+                                    onClick={handleDismissQuestion}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)', fontSize: '12px', padding: '2px 6px' }}
+                                >
+                                    Skip
+                                </button>
+                            </div>
+
+                            {/* Question */}
+                            <p style={{ color: '#f1f5f9', fontSize: '16px', fontWeight: 600, lineHeight: 1.5, marginBottom: '20px' }}>
+                                {activeQuestion.question}
+                            </p>
+
+                            {/* Options */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                                {activeQuestion.options.map((option, i) => {
+                                    const isSelected = selectedAnswer === i;
+                                    const isCorrect = i === activeQuestion.correct;
+                                    const hasAnswered = selectedAnswer !== null;
+
+                                    let bg = 'rgba(255,255,255,0.05)';
+                                    let border = 'rgba(255,255,255,0.1)';
+                                    let color = '#e2e8f0';
+
+                                    if (hasAnswered) {
+                                        if (isCorrect) {
+                                            bg = 'rgba(34, 197, 94, 0.15)';
+                                            border = '#22c55e';
+                                            color = '#bbf7d0';
+                                        } else if (isSelected && !isCorrect) {
+                                            bg = 'rgba(239, 68, 68, 0.15)';
+                                            border = '#ef4444';
+                                            color = '#fca5a5';
+                                        }
+                                    } else if (isSelected) {
+                                        bg = 'rgba(96, 165, 250, 0.15)';
+                                        border = '#60a5fa';
+                                        color = '#bfdbfe';
+                                    }
+
+                                    return (
+                                        <button
+                                            key={i}
+                                            onClick={() => !hasAnswered && setSelectedAnswer(i)}
+                                            disabled={hasAnswered}
+                                            style={{
+                                                background: bg,
+                                                border: `1px solid ${border}`,
+                                                borderRadius: '10px',
+                                                padding: '12px 16px',
+                                                cursor: hasAnswered ? 'default' : 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '12px',
+                                                transition: 'all 0.15s ease',
+                                                textAlign: 'left',
+                                                width: '100%',
+                                            }}
+                                        >
+                                            <span style={{
+                                                width: '26px',
+                                                height: '26px',
+                                                borderRadius: '50%',
+                                                background: 'rgba(255,255,255,0.08)',
+                                                border: `1px solid ${border}`,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '12px',
+                                                fontWeight: 700,
+                                                color: color,
+                                                flexShrink: 0,
+                                            }}>
+                                                {String.fromCharCode(65 + i)}
+                                            </span>
+                                            <span style={{ color, fontSize: '14px', fontWeight: 500 }}>{option}</span>
+                                            {hasAnswered && isCorrect && (
+                                                <CheckCircle2 size={16} style={{ color: '#22c55e', marginLeft: 'auto', flexShrink: 0 }} />
+                                            )}
+                                            {hasAnswered && isSelected && !isCorrect && (
+                                                <XCircle size={16} style={{ color: '#ef4444', marginLeft: 'auto', flexShrink: 0 }} />
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Explanation (shown after answering) */}
+                            {selectedAnswer !== null && activeQuestion.explanation && (
+                                <div style={{
+                                    background: 'rgba(96, 165, 250, 0.08)',
+                                    border: '1px solid rgba(96, 165, 250, 0.2)',
+                                    borderRadius: '8px',
+                                    padding: '12px 14px',
+                                    marginBottom: '16px',
+                                    fontSize: '13px',
+                                    color: '#94a3b8',
+                                    lineHeight: 1.6,
+                                }}>
+                                    <span style={{ fontWeight: 700, color: '#60a5fa' }}>Explanation: </span>
+                                    {activeQuestion.explanation}
+                                </div>
+                            )}
+
+                            {/* Continue button (shown after answering) */}
+                            {selectedAnswer !== null && (
+                                <button
+                                    onClick={handleDismissQuestion}
+                                    style={{
+                                        width: '100%',
+                                        background: '#2563eb',
+                                        border: 'none',
+                                        borderRadius: '10px',
+                                        padding: '12px',
+                                        color: 'white',
+                                        fontSize: '14px',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px',
+                                    }}
+                                >
+                                    Continue <Play size={14} />
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}
@@ -1680,6 +1904,32 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             >
                                 <List className="size-4" />
                                 <span>Chapters</span>
+                            </button>
+                        )}
+
+                        {/* Quiz Toggle (only for time-driven VIDEO with questions) */}
+                        {navigationMode === 'time_driven' && meta.questions && meta.questions.length > 0 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setQuestionsEnabled(!questionsEnabled); }}
+                                style={{
+                                    ...btnStyle,
+                                    marginLeft: '8px',
+                                    padding: '4px 10px',
+                                    borderRadius: '16px',
+                                    border: `1px solid ${questionsEnabled ? '#a78bfa' : 'rgba(255,255,255,0.3)'}`,
+                                    background: questionsEnabled ? 'rgba(167, 139, 250, 0.2)' : 'transparent',
+                                    color: questionsEnabled ? '#a78bfa' : 'rgba(255,255,255,0.6)',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.2s ease',
+                                }}
+                                title={questionsEnabled ? `Disable quiz questions (${meta.questions.length})` : `Enable quiz questions (${meta.questions.length})`}
+                            >
+                                <HelpCircle size={14} />
+                                <span>Quiz {questionsEnabled ? 'ON' : 'OFF'}</span>
                             </button>
                         )}
 

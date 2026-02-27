@@ -2,6 +2,8 @@ import { getTokenDecodedData, getTokenFromCookie } from './sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 // import { IAccessToken } from '@/constants/auth/tokens';
 import { InstituteDetailsType } from '@/schemas/student/student-list/institute-schema';
+import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 
 export interface Institute {
     id: string;
@@ -261,4 +263,28 @@ export const hasRoleInInstitute = (instituteId: string, role: string): boolean =
 export const getInstitutesWithRole = (role: string): Institute[] => {
     const institutes = getInstitutesFromToken();
     return institutes.filter((institute) => institute.roles.includes(role));
+};
+
+/**
+ * Get the currently active display settings role key for the user
+ * Synchronously uses localStorage to support dynamic custom role keys
+ */
+export const getActiveRoleDisplaySettingsKey = (): string => {
+    const roles = getRolesForCurrentInstitute();
+    if (roles.includes('ADMIN')) return ADMIN_DISPLAY_SETTINGS_KEY;
+
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) return TEACHER_DISPLAY_SETTINGS_KEY;
+
+    const hasFaculty = hasFacultyAssignedPermission(instituteId);
+
+    if (hasFaculty) {
+        const activeKey = localStorage.getItem('ACTIVE_ROLE_DISPLAY_SETTINGS_KEY');
+        if (activeKey && activeKey.startsWith(CUSTOM_ROLE_DISPLAY_SETTINGS_KEY)) {
+            return activeKey;
+        }
+        return CUSTOM_ROLE_DISPLAY_SETTINGS_KEY;
+    }
+
+    return TEACHER_DISPLAY_SETTINGS_KEY;
 };

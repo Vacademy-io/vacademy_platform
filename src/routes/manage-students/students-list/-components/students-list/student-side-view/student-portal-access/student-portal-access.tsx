@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useState, useEffect } from 'react';
 import { Key, Copy, Check, Shield, MonitorPlay, Envelope } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -11,7 +14,7 @@ import {
 } from '@/services/display-settings';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type LearnerManagementSettings,
 } from '@/types/display-settings';
 import { isUserAdmin } from '@/utils/userDetails';
@@ -34,7 +37,8 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
     useEffect(() => {
         const fetchLearnerSettings = async () => {
             const isAdmin = isUserAdmin();
-            const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+            const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
 
             const cachedSettings = getDisplaySettingsFromCache(roleKey);
             const settings =

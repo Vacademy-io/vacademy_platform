@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -9,7 +12,7 @@ import {
 } from '@/lib/auth/sessionUtility';
 import { getUserRoles } from '@/lib/auth/sessionUtility';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 
 export const Route = createLazyFileRoute('/auth-transfer/')({
   component: AuthTransferPage,
@@ -49,7 +52,8 @@ function AuthTransferPage() {
       // 2) Load role-based display settings BEFORE showing any UI
       const roles = getUserRoles(accessToken);
       const isAdmin = roles.includes('ADMIN');
-      const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+      const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
 
       let ds: { postLoginRedirectRoute?: string } | null = null;
       const maxRetries = 3;

@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { MyButton } from '@/components/design-system/button';
 import {
     Dialog,
@@ -27,7 +30,7 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey, Authority } from '@/constants/auth/tokens';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
@@ -53,7 +56,8 @@ const InviteDetailsComponent = ({ form }: { form: UseFormReturn<CourseDetailsFor
         Object.values(tokenData.authorities).some(
             (auth: Authority) => Array.isArray(auth?.roles) && auth.roles.includes('ADMIN')
         );
-    const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+    const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
     const roleDisplay: DisplaySettingsData | null = getDisplaySettingsFromCache(roleKey);
     const showShortInviteLinks = roleDisplay?.coursePage?.viewShortInviteLinks !== false;
 

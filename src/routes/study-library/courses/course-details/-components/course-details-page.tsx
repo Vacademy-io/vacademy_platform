@@ -788,11 +788,10 @@ export const CourseDetailsPage = () => {
     );
 
     const { instituteDetails } = useInstituteDetailsStore();
-    // Show restriction message for non-editable courses (hide for faculty users with HAS_FACULTY_ASSIGNED)
+    // Show restriction message for non-editable courses
     const shouldShowRestriction =
         !isAdmin &&
-        (isPublishedCourse || isInReviewCourse) &&
-        !hasFacultyAssignedPermission(instituteDetails?.id);
+        (isPublishedCourse || isInReviewCourse);
 
     // Show dashboard loader while loading
     if (isLoading) {
@@ -824,15 +823,14 @@ export const CourseDetailsPage = () => {
 
             {/* Top Banner - More Compact */}
             <div
-                className={`relative ${
-                    form.watch('courseData')?.courseBannerMediaId
+                className={`relative ${form.watch('courseData')?.courseBannerMediaId
                         ? form.getValues('courseData')?.isCoursePublishedToCatalaouge
                             ? 'min-h-[200px] sm:min-h-[220px] lg:min-h-[240px]'
                             : 'min-h-[180px] sm:min-h-[200px] lg:min-h-[220px]'
                         : form.getValues('courseData')?.isCoursePublishedToCatalaouge
-                          ? 'min-h-[140px] sm:min-h-[160px] lg:min-h-[180px]'
-                          : 'min-h-[120px] sm:min-h-[140px] lg:min-h-[160px]'
-                }`}
+                            ? 'min-h-[140px] sm:min-h-[160px] lg:min-h-[180px]'
+                            : 'min-h-[120px] sm:min-h-[140px] lg:min-h-[160px]'
+                    }`}
             >
                 {/* Transparent black overlay */}
                 {form.watch('courseData')?.courseBannerMediaId ? (
@@ -857,11 +855,10 @@ export const CourseDetailsPage = () => {
                 )}
                 {/* Primary color overlay with 70% opacity */}
                 <div
-                    className={`container relative z-20 mx-auto px-3 sm:px-4 lg:px-6 ${
-                        form.watch('courseData')?.courseBannerMediaId
+                    className={`container relative z-20 mx-auto px-3 sm:px-4 lg:px-6 ${form.watch('courseData')?.courseBannerMediaId
                             ? 'py-4 sm:py-5 lg:py-6'
                             : 'py-3 sm:py-4 lg:py-5'
-                    } ${!form.watch('courseData')?.courseBannerMediaId ? 'text-black' : 'text-white'}`}
+                        } ${!form.watch('courseData')?.courseBannerMediaId ? 'text-black' : 'text-white'}`}
                 >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
                         {/* Left side - Title and Description */}
@@ -877,36 +874,34 @@ export const CourseDetailsPage = () => {
                                 <>
                                     <div className="flex items-start justify-between gap-4">
                                         <h1
-                                            className={`font-semibold leading-tight ${
-                                                form.watch('courseData')?.courseBannerMediaId
+                                            className={`font-semibold leading-tight ${form.watch('courseData')?.courseBannerMediaId
                                                     ? 'mb-2 text-lg sm:text-xl lg:text-2xl'
                                                     : 'mb-1 text-base sm:text-lg lg:text-xl'
-                                            }`}
+                                                }`}
                                         >
                                             {form.getValues('courseData')?.title}
                                         </h1>
                                     </div>
                                     <p
-                                        className={`leading-snug opacity-90 ${
-                                            form.watch('courseData')?.courseBannerMediaId
+                                        className={`leading-snug opacity-90 ${form.watch('courseData')?.courseBannerMediaId
                                                 ? 'mb-2 text-xs sm:text-sm'
                                                 : 'mb-1 text-xs'
-                                        }`}
+                                            }`}
                                         dangerouslySetInnerHTML={{
                                             __html: form.getValues('courseData')?.description || '',
                                         }}
                                     />
                                     {form.getValues('courseData')
                                         ?.isCoursePublishedToCatalaouge && (
-                                        <MyButton
-                                            type="button"
-                                            scale="small"
-                                            buttonType="primary"
-                                            className="mb-2 rounded-md bg-success-100 font-medium !text-black hover:bg-success-100 focus:bg-success-100 active:bg-success-100"
-                                        >
-                                            Added to catalog
-                                        </MyButton>
-                                    )}
+                                            <MyButton
+                                                type="button"
+                                                scale="small"
+                                                buttonType="primary"
+                                                className="mb-2 rounded-md bg-success-100 font-medium !text-black hover:bg-success-100 focus:bg-success-100 active:bg-success-100"
+                                            >
+                                                Added to catalog
+                                            </MyButton>
+                                        )}
                                     {canEdit && (
                                         <div className="mb-2">
                                             <AddCourseForm
@@ -937,11 +932,10 @@ export const CourseDetailsPage = () => {
                         {form.watch('courseData')?.courseMediaId?.id &&
                             (form.watch('courseData')?.courseMediaId?.type === 'youtube' ? (
                                 <div
-                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${
-                                        form.watch('courseData')?.courseBannerMediaId
+                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${form.watch('courseData')?.courseBannerMediaId
                                             ? 'w-full lg:w-[280px] xl:w-[320px]'
                                             : 'w-full lg:w-[240px] xl:w-[280px]'
-                                    }`}
+                                        }`}
                                 >
                                     <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-black">
                                         <iframe
@@ -958,11 +952,10 @@ export const CourseDetailsPage = () => {
                                 </div>
                             ) : form.watch('courseData')?.courseMediaId?.type === 'video' ? (
                                 <div
-                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${
-                                        form.watch('courseData')?.courseBannerMediaId
+                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${form.watch('courseData')?.courseBannerMediaId
                                             ? 'w-full lg:w-[280px] xl:w-[320px]'
                                             : 'w-full lg:w-[240px] xl:w-[280px]'
-                                    }`}
+                                        }`}
                                 >
                                     <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
                                         <video
@@ -985,11 +978,10 @@ export const CourseDetailsPage = () => {
                                 </div>
                             ) : (
                                 <div
-                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${
-                                        form.watch('courseData')?.courseBannerMediaId
+                                    className={`shrink-0 overflow-hidden rounded-lg shadow-lg ${form.watch('courseData')?.courseBannerMediaId
                                             ? 'w-full lg:w-[280px] xl:w-[320px]'
                                             : 'w-full lg:w-[240px] xl:w-[280px]'
-                                    }`}
+                                        }`}
                                 >
                                     <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
                                         <img
@@ -1015,7 +1007,7 @@ export const CourseDetailsPage = () => {
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:gap-4">
                                     {sessionOptions.length === 1 ? (
                                         sessionOptions[0]?.label.toLocaleLowerCase() !==
-                                            'default' && (
+                                        'default' && (
                                             <div className="flex flex-col gap-1">
                                                 <label className="text-xs font-medium text-gray-700">
                                                     {sessionOptions[0]?.label}
@@ -1059,7 +1051,7 @@ export const CourseDetailsPage = () => {
                                     )}
                                     {levelOptions.length === 1 ? (
                                         levelOptions[0]?.label.toLocaleLowerCase() !==
-                                            'default' && (
+                                        'default' && (
                                             <div className="flex flex-col gap-1">
                                                 <label className="text-xs font-medium text-gray-700">
                                                     {levelOptions[0]?.label}
@@ -1242,18 +1234,18 @@ export const CourseDetailsPage = () => {
                                             <span className="text-sm text-gray-700">
                                                 {form.getValues('courseData').sessions.length >
                                                     1 && (
-                                                    <span>
-                                                        {
-                                                            form.getValues('courseData').sessions
-                                                                .length
-                                                        }{' '}
-                                                        {getTerminology(
-                                                            ContentTerms.Session,
-                                                            SystemTerms.Session
-                                                        )}
-                                                        s
-                                                    </span>
-                                                )}
+                                                        <span>
+                                                            {
+                                                                form.getValues('courseData').sessions
+                                                                    .length
+                                                            }{' '}
+                                                            {getTerminology(
+                                                                ContentTerms.Session,
+                                                                SystemTerms.Session
+                                                            )}
+                                                            s
+                                                        </span>
+                                                    )}
                                                 {form.getValues('courseData').sessions.length > 1 &&
                                                     levelOptions.length > 1 &&
                                                     ' • '}
@@ -1317,12 +1309,12 @@ export const CourseDetailsPage = () => {
                                 ) : (
                                     <>
                                         {coursePage?.viewCourseOverviewItem !== false &&
-                                        slideCountQuery.data &&
-                                        (calculateTotalTimeForCourseDuration(slideCountQuery.data)
-                                            .hours ||
-                                            calculateTotalTimeForCourseDuration(
-                                                slideCountQuery.data
-                                            ).minutes) ? (
+                                            slideCountQuery.data &&
+                                            (calculateTotalTimeForCourseDuration(slideCountQuery.data)
+                                                .hours ||
+                                                calculateTotalTimeForCourseDuration(
+                                                    slideCountQuery.data
+                                                ).minutes) ? (
                                             <div className="flex items-center gap-2">
                                                 <Clock
                                                     size={16}

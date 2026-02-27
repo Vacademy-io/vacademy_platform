@@ -67,6 +67,17 @@ export interface BrandingConfig {
 }
 
 /**
+ * MCQ question shown at a specific timestamp during VIDEO playback
+ */
+export interface MCQQuestion {
+    time: number;        // Video timestamp (seconds) at which to pause and show the question
+    question: string;    // Question text
+    options: string[];   // Exactly 4 answer options
+    correct: number;     // 0-indexed position of the correct option
+    explanation: string; // Brief explanation shown after the student answers
+}
+
+/**
  * Timeline metadata supporting all content types
  */
 export interface TimelineMeta {
@@ -102,6 +113,9 @@ export interface TimelineMeta {
 
     // Glossary terms with the video time they were first introduced
     glossary?: Array<{ term: string; time: number }>;
+
+    // MCQ questions shown at specific timestamps during video playback
+    questions?: MCQQuestion[];
 }
 
 /**

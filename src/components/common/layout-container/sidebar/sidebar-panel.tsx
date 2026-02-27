@@ -344,7 +344,7 @@ const SettingsTabsList: React.FC<SettingsTabsListProps> = ({
                         className={cn(
                             'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150',
                             isActive
-                                ? 'bg-primary-50 font-medium text-primary-600'
+                                ? 'bg-primary-50 font-medium text-neutral-800'
                                 : 'text-neutral-600 hover:bg-neutral-100'
                         )}
                     >
@@ -353,7 +353,7 @@ const SettingsTabsList: React.FC<SettingsTabsListProps> = ({
                             weight={isActive ? 'fill' : 'regular'}
                             className={cn(
                                 'shrink-0 transition-colors',
-                                isActive ? 'text-primary-500' : 'text-neutral-400'
+                                isActive ? 'text-neutral-800' : 'text-neutral-400'
                             )}
                         />
                         <span className="truncate">{tab.value}</span>

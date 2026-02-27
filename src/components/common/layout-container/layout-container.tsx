@@ -38,6 +38,7 @@ export const LayoutContainer = ({
     hasInternalSidebarComponent = false,
     customSidebarControl = false,
     showMobileBackButton = false,
+    internalSidebarMobileText,
 }: {
     children?: React.ReactNode;
     className?: string;
@@ -50,6 +51,7 @@ export const LayoutContainer = ({
     internalSidebarComponent?: React.ReactNode;
     customSidebarControl?: boolean;
     showMobileBackButton?: boolean;
+    internalSidebarMobileText?: string;
 }) => {
     const { open, setOpen } = useSidebar();
     const isMobile = useIsMobile();
@@ -119,7 +121,10 @@ export const LayoutContainer = ({
                     )}
                 >
                     {hasInternalSidebarComponent && internalSidebarComponent ? (
-                        <InternalSidebarComponent sidebarComponent={internalSidebarComponent} />
+                        <InternalSidebarComponent
+                            sidebarComponent={internalSidebarComponent}
+                            mobileButtonText={internalSidebarMobileText}
+                        />
                     ) : (
                         internalSideBar && (
                             <InternalSideBar sideBarList={sideBarList} sideBarData={sideBarData} />

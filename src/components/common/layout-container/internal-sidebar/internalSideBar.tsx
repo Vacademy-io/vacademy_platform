@@ -66,7 +66,7 @@ export const InternalSideBar = ({
                                     <Folder
                                         size={18}
                                         weight={course.id === courseId ? 'fill' : 'duotone'}
-                                        className={cn(course.id === courseId && 'text-primary-600')}
+                                        className={cn(course.id === courseId && 'text-neutral-900')}
                                     />
                                     <span className="flex-1 truncate text-left">
                                         {course.value}
@@ -98,7 +98,7 @@ export const InternalSideBar = ({
                     </SheetTrigger>
                     <SheetContent
                         side="left"
-                        className="w-[280px] p-0 bg-primary-50"
+                        className="w-[280px] p-0 bg-white"
                     >
                         <SheetHeader className="px-3 pt-6">
                             <SheetTitle className="text-lg font-semibold text-gray-800">
@@ -129,7 +129,7 @@ export const InternalSideBar = ({
                                                     <Folder
                                                         size={18}
                                                         weight={course.id === courseId ? 'fill' : 'duotone'}
-                                                        className={cn(course.id === courseId && 'text-primary-600')}
+                                                        className={cn(course.id === courseId && 'text-neutral-900')}
                                                     />
                                                     <span className="flex-1 truncate text-left">
                                                         {course.value}
@@ -149,7 +149,7 @@ export const InternalSideBar = ({
 
     // Desktop: Render as regular sidebar
     return (
-        <div className="flex h-full w-[307px] flex-col gap-4 bg-primary-50 px-3 py-6">
+        <div className="flex h-full w-[307px] flex-col gap-4 bg-white border-r border-neutral-200 px-3 py-6">
             {sidebarContent}
         </div>
     );

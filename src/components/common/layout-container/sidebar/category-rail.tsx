@@ -117,7 +117,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
             <button
                 className={cn(
                     'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
-                    'hover:bg-neutral-100',
+                    'hover:bg-white/10',
                     isLocked && 'cursor-not-allowed opacity-60'
                 )}
                 onClick={() => {
@@ -137,7 +137,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                         layoutId="category-rail-active"
                         className={cn(
                             'absolute inset-0 rounded-xl',
-                            colors?.railActiveBg || 'bg-neutral-100'
+                            colors?.railActiveBg || 'bg-white'
                         )}
                         transition={{
                             type: 'spring',
@@ -162,8 +162,8 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                             className: cn(
                                 'transition-colors duration-200',
                                 isActive
-                                    ? colors?.railIconActive || 'text-neutral-700'
-                                    : 'text-neutral-500'
+                                    ? colors?.railIconActive || 'text-primary-600'
+                                    : 'text-white/70'
                             ),
                         })
                     )}
@@ -174,8 +174,8 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                     className={cn(
                         'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
                         isActive
-                            ? colors?.text || 'text-neutral-700'
-                            : 'text-neutral-500'
+                            ? colors?.text || 'text-white'
+                            : 'text-white/70'
                     )}
                 >
                     {cat.label}
@@ -197,31 +197,18 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
             );
         }
 
-        // When expanded or for non-category items, use tooltip
-        return (
-            <Tooltip key={cat.id} delayDuration={0}>
-                <TooltipTrigger asChild>
-                    {buttonContent}
-                </TooltipTrigger>
-                {!isMobile && (
-                    <TooltipContent side="right" className="font-medium">
-                        {cat.label}
-                        {isLocked && ' (Locked)'}
-                    </TooltipContent>
-                )}
-            </Tooltip>
-        );
+        return <React.Fragment key={cat.id}>{buttonContent}</React.Fragment>;
     };
 
     return (
-        <div className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-neutral-200 bg-white py-3">
+        <div className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-primary-600 bg-primary-500 py-3">
             {/* Search Icon */}
             <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
                     <button
                         className={cn(
                             'mb-2 flex w-10 items-center justify-center rounded-lg p-2 transition-all duration-200',
-                            'text-primary-500 hover:bg-primary-50 hover:text-primary-600'
+                            'text-white/70 hover:bg-white/10 hover:text-white'
                         )}
                         onClick={() => setSearchOpen(true)}
                     >
@@ -231,7 +218,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                 {!isMobile && (
                     <TooltipContent side="right" className="flex items-center gap-2 font-medium">
                         Search
-                        <kbd className="rounded border border-neutral-200 bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500">
+                        <kbd className="rounded border border-primary-400 bg-primary-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
                             ⌘K
                         </kbd>
                     </TooltipContent>
@@ -239,29 +226,27 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
             </Tooltip>
 
             {/* Divider after search */}
-            <div className="mb-1 h-px w-8 bg-neutral-200" />
+            <div className="mb-1 h-px w-8 bg-primary-400/50" />
 
             {/* Category Icons */}
             <div className="flex flex-1 flex-col items-center gap-1">
                 {visibleCategories.map((cat) => renderCategoryButton(cat))}
 
                 {/* Divider before Recent */}
-                <div className="my-1 h-px w-8 bg-neutral-200" />
+                <div className="my-1 h-px w-8 bg-primary-400/50" />
 
                 {/* Recent Tab */}
-                <Tooltip delayDuration={0}>
-                    <TooltipTrigger asChild>
                         <button
                             className={cn(
                                 'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
-                                'hover:bg-neutral-100',
+                                'hover:bg-white/10',
                             )}
                             onClick={() => onCategoryChange('RECENT')}
                         >
                             {activeCategory === 'RECENT' && !isSettingsActive && (
                                 <motion.div
                                     layoutId="category-rail-active"
-                                    className="absolute inset-0 rounded-xl bg-neutral-100"
+                                    className="absolute inset-0 rounded-xl bg-white"
                                     transition={{
                                         type: 'spring',
                                         bounce: 0.15,
@@ -276,8 +261,8 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                                     className={cn(
                                         'transition-colors duration-200',
                                         activeCategory === 'RECENT' && !isSettingsActive
-                                            ? 'text-neutral-700'
-                                            : 'text-neutral-500'
+                                            ? 'text-neutral-900'
+                                            : 'text-white/70'
                                     )}
                                 />
                             </span>
@@ -285,79 +270,63 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                                 className={cn(
                                     'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
                                     activeCategory === 'RECENT' && !isSettingsActive
-                                        ? 'text-neutral-700'
-                                        : 'text-neutral-500'
+                                        ? 'text-neutral-900'
+                                        : 'text-white/70'
                                 )}
                             >
                                 Recent
                             </span>
                         </button>
-                    </TooltipTrigger>
-                    {!isMobile && (
-                        <TooltipContent side="right" className="font-medium">
-                            Recently Visited
-                        </TooltipContent>
-                    )}
-                </Tooltip>
             </div>
 
             {/* ─── Settings (admin-only, pinned to bottom) ──── */}
             {hasSettings && (
                 <>
-                    <div className="my-1 h-px w-8 bg-neutral-200" />
-                    <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                            <button
-                                className={cn(
-                                    'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
-                                    'hover:bg-primary-50',
-                                )}
-                                onClick={() => {
-                                    navigate({ to: '/settings', search: { selectedTab: 'tab' } });
-                                    onCategoryChange('SETTINGS');
-                                }}
-                            >
-                                {isSettingsActive && (
-                                    <motion.div
-                                        layoutId="category-rail-active"
-                                        className="absolute inset-0 rounded-xl bg-primary-100"
-                                        transition={{
-                                            type: 'spring',
-                                            bounce: 0.15,
-                                            duration: 0.5,
-                                        }}
-                                    />
-                                )}
-                                <span className="relative z-10">
-                                    <GearSix
-                                        size={22}
-                                        weight={isSettingsActive ? 'fill' : 'regular'}
-                                        className={cn(
-                                            'transition-colors duration-200',
-                                            isSettingsActive
-                                                ? 'text-primary-600'
-                                                : 'text-primary-500'
-                                        )}
-                                    />
-                                </span>
-                                <span
-                                    className={cn(
-                                        'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
-                                        isSettingsActive
-                                            ? 'text-primary-600'
-                                            : 'text-primary-500'
-                                    )}
-                                >
-                                    Settings
-                                </span>
-                            </button>
-                        </TooltipTrigger>
-                        {!isMobile && (
-                            <TooltipContent side="right" className="font-medium">
-                                Settings
-                            </TooltipContent>
+                    <div className="my-1 h-px w-8 bg-primary-400/50" />
+                    <button
+                        className={cn(
+                            'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
+                            'hover:bg-white/10',
                         )}
-                    </Tooltip>
+                        onClick={() => {
+                            navigate({ to: '/settings', search: { selectedTab: 'tab' } });
+                            onCategoryChange('SETTINGS');
+                        }}
+                    >
+                        {isSettingsActive && (
+                            <motion.div
+                                layoutId="category-rail-active"
+                                className="absolute inset-0 rounded-xl bg-white"
+                                transition={{
+                                    type: 'spring',
+                                    bounce: 0.15,
+                                    duration: 0.5,
+                                }}
+                            />
+                        )}
+                        <span className="relative z-10">
+                            <GearSix
+                                size={22}
+                                weight={isSettingsActive ? 'fill' : 'regular'}
+                                className={cn(
+                                    'transition-colors duration-200',
+                                    isSettingsActive
+                                        ? 'text-neutral-900'
+                                        : 'text-white/70'
+                                )}
+                            />
+                        </span>
+                        <span
+                            className={cn(
+                                'relative z-10 text-[10px] font-medium leading-tight transition-colors duration-200',
+                                isSettingsActive
+                                    ? 'text-neutral-900'
+                                    : 'text-white/70'
+                            )}
+                        >
+                            Settings
+                        </span>
+                    </button>
                 </>
             )}
 

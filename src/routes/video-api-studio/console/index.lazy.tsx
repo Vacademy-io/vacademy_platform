@@ -705,20 +705,24 @@ function VideoConsole() {
 
     const isGenerating = consoleState === 'generating';
 
-    return (
-        <LayoutContainer intrnalMargin={false}>
-        <div className="relative flex h-[calc(100vh-56px)] w-full overflow-hidden bg-background md:h-[calc(100vh-72px)]">
-            {/* Sidebar Desktop */}
-            <div className="hidden h-full md:block">
-                <HistorySidebar
-                    history={history}
-                    selectedId={selectedHistoryId}
-                    onSelect={handleSelectHistory}
-                    onDelete={handleDeleteHistory}
-                    onNewVideo={handleNewVideo}
-                />
-            </div>
+    const SidebarComponent = (
+        <HistorySidebar
+            history={history}
+            selectedId={selectedHistoryId}
+            onSelect={handleSelectHistory}
+            onDelete={handleDeleteHistory}
+            onNewVideo={handleNewVideo}
+        />
+    );
 
+    return (
+        <LayoutContainer
+            intrnalMargin={false}
+            hasInternalSidebarComponent={true}
+            internalSidebarComponent={SidebarComponent}
+            internalSidebarMobileText="History"
+        >
+        <div className="relative flex h-[calc(100vh-56px)] w-full overflow-hidden bg-background md:h-[calc(100vh-72px)]">
             {/* Main Content */}
             <div className="flex min-w-0 flex-1 flex-col bg-secondary/10">
                 {/* Content Area */}

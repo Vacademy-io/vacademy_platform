@@ -70,7 +70,7 @@ export const NonCollapsibleItem = ({ icon, title, to, locked, category }: Sideba
                     weight: hover || isActive ? 'fill' : 'regular',
                     className: cn(
                         'flex-shrink-0 transition-colors duration-150',
-                        hover || isActive ? colors.text : 'text-neutral-500'
+                        hover || isActive ? (isActive ? colors.pillText : colors.text) : 'text-neutral-500'
                     ),
                 })}
 
@@ -78,7 +78,11 @@ export const NonCollapsibleItem = ({ icon, title, to, locked, category }: Sideba
             <span
                 className={cn(
                     'truncate text-[13px] transition-colors duration-150',
-                    hover || isActive ? colors.text : 'text-neutral-600'
+                    isActive
+                        ? cn(colors.pillText, 'font-medium')
+                        : hover
+                            ? cn(colors.text, 'font-medium')
+                            : 'text-neutral-600'
                 )}
             >
                 {title}

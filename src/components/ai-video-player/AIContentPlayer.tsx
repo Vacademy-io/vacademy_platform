@@ -23,6 +23,7 @@ import {
     Subtitles,
     Repeat,
     BookOpen,
+    List,
 } from 'lucide-react';
 import {
     Entry,
@@ -42,6 +43,9 @@ import {
     generateWorksheetHtml,
     generatePuzzleHtml,
     generateMapRegionHtml,
+    generateGameHtml,
+    generateSimulationHtml,
+    generateCodePlaygroundHtml,
 } from './html-processor';
 import { initializeLibraries } from './library-loader';
 import { useCaptions } from './hooks/useCaptions';
@@ -116,6 +120,9 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     // Glossary panel state
     const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
     const [seenGlossaryTerms, setSeenGlossaryTerms] = useState<Array<{ term: string; time: number }>>([]);
+
+    // Chapters panel state
+    const [isChaptersOpen, setIsChaptersOpen] = useState(false);
 
     // User-driven state (for QUIZ, STORYBOOK, etc.)
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -866,14 +873,29 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                 },
             ];
         } else {
-            // For GAME, SIMULATION, CODE_PLAYGROUND: show first entry only
+            // SELF_CONTAINED: INTERACTIVE_GAME, SIMULATION, CODE_PLAYGROUND
             const entry = entries[0];
             if (!entry) return [];
+
+            let htmlContent = entry.html;
+            if (contentType === 'INTERACTIVE_GAME') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Game Container')) {
+                    htmlContent = generateGameHtml(entry);
+                }
+            } else if (contentType === 'SIMULATION') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Simulation')) {
+                    htmlContent = generateSimulationHtml(entry);
+                }
+            } else if (contentType === 'CODE_PLAYGROUND') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Code Playground')) {
+                    htmlContent = generateCodePlaygroundHtml(entry);
+                }
+            }
 
             return [
                 {
                     ...entry,
-                    processedHtml: processHtmlContent(entry.html, contentType),
+                    processedHtml: processHtmlContent(htmlContent, contentType),
                 },
             ];
         }
@@ -972,6 +994,16 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                 ? (currentTime / duration) * 100
                 : 0
             : ((currentIndex + 1) / entries.length) * 100;
+
+    // Current chapter index (highest chapter whose start time <= currentTime)
+    const currentChapterIndex = useMemo(() => {
+        if (!meta.chapters || meta.chapters.length === 0 || navigationMode !== 'time_driven') return -1;
+        let idx = 0;
+        for (let i = 0; i < meta.chapters.length; i++) {
+            if (currentTime >= meta.chapters[i]!.time) idx = i;
+        }
+        return idx;
+    }, [currentTime, meta.chapters, navigationMode]);
 
     return (
         <div
@@ -1184,7 +1216,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                 )}
 
                 {/* Captions / Subtitles Display */}
-                {navigationMode === 'time_driven' && wordsUrl && (
+                {(navigationMode === 'time_driven' || contentType === 'STORYBOOK' || contentType === 'FLASHCARDS') && wordsUrl && (
                     <CaptionDisplay
                         words={currentWords}
                         currentTime={currentTime}
@@ -1193,6 +1225,85 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                         currentPhrase={currentPhrase}
                         currentWordIndex={currentWordIndex}
                     />
+                )}
+
+                {/* Chapters Panel — slides in from left when open */}
+                {isChaptersOpen && meta.chapters && meta.chapters.length > 0 && (
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'absolute',
+                            top: '12px',
+                            left: '12px',
+                            width: '280px',
+                            maxHeight: '65%',
+                            background: 'rgba(10, 15, 25, 0.92)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            zIndex: 35,
+                            overflowY: 'auto',
+                            backdropFilter: 'blur(10px)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            boxSizing: 'border-box',
+                        }}
+                    >
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
+                            Chapters ({meta.chapters.length})
+                        </div>
+                        {meta.chapters.map((chapter, i) => {
+                            const isActive = i === currentChapterIndex;
+                            return (
+                                <div
+                                    key={i}
+                                    onClick={() => {
+                                        setCurrentTime(chapter.time);
+                                        if (chapter.time >= meta.audio_start_at && audioRef.current) {
+                                            audioRef.current.currentTime = chapter.time - meta.audio_start_at;
+                                            audioStartedRef.current = true;
+                                            if (isPlaying) audioRef.current.play().catch(console.error);
+                                        }
+                                        setIsChaptersOpen(false);
+                                    }}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '8px 10px',
+                                        marginBottom: '5px',
+                                        borderRadius: '7px',
+                                        background: isActive ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255,255,255,0.05)',
+                                        border: `1px solid ${isActive ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255,255,255,0.08)'}`,
+                                        cursor: 'pointer',
+                                        transition: 'background 0.15s ease',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                        {isActive && (
+                                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                                        )}
+                                        {!isActive && (
+                                            <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', fontFamily: 'monospace', flexShrink: 0, width: '14px', textAlign: 'right' }}>
+                                                {i + 1}
+                                            </span>
+                                        )}
+                                        <span style={{
+                                            color: isActive ? '#fca5a5' : '#e2e8f0',
+                                            fontSize: '13px',
+                                            fontWeight: isActive ? 700 : 400,
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                        }}>
+                                            {chapter.label}
+                                        </span>
+                                    </div>
+                                    <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', fontFamily: 'monospace', marginLeft: '8px', flexShrink: 0 }}>
+                                        {formatTime(chapter.time)}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
 
                 {/* Glossary Panel — slides in from right when open */}
@@ -1301,6 +1412,26 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     }}
                                 />
                             ))}
+                        </div>
+                    )}
+                    {/* Current chapter name — shown above progress bar for time_driven */}
+                    {navigationMode === 'time_driven' && meta.chapters && meta.chapters.length > 0 && currentChapterIndex >= 0 && (
+                        <div style={{
+                            fontSize: '11px',
+                            color: 'rgba(255,255,255,0.65)',
+                            marginBottom: '4px',
+                            fontWeight: 600,
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                        }}>
+                            <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                            {meta.chapters[currentChapterIndex]?.label}
+                            <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
+                                {currentChapterIndex + 1} / {meta.chapters.length}
+                            </span>
                         </div>
                     )}
                     {navigationMode === 'time_driven' && (
@@ -1525,10 +1656,36 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             </button>
                         )}
 
+                        {/* Chapters Toggle (only when video has chapters) */}
+                        {navigationMode === 'time_driven' && meta.chapters && meta.chapters.length > 0 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsChaptersOpen(!isChaptersOpen); setIsGlossaryOpen(false); }}
+                                style={{
+                                    ...btnStyle,
+                                    marginLeft: '8px',
+                                    padding: '4px 10px',
+                                    borderRadius: '16px',
+                                    border: `1px solid ${isChaptersOpen ? '#f87171' : 'rgba(255,255,255,0.3)'}`,
+                                    background: isChaptersOpen ? 'rgba(248, 113, 113, 0.2)' : 'transparent',
+                                    color: isChaptersOpen ? '#f87171' : 'white',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.2s ease',
+                                }}
+                                title={`Chapters (${meta.chapters.length})`}
+                            >
+                                <List className="size-4" />
+                                <span>Chapters</span>
+                            </button>
+                        )}
+
                         {/* Glossary Toggle (only when video has glossary terms) */}
                         {navigationMode === 'time_driven' && meta.glossary && meta.glossary.length > 0 && (
                             <button
-                                onClick={(e) => { e.stopPropagation(); setIsGlossaryOpen(!isGlossaryOpen); }}
+                                onClick={(e) => { e.stopPropagation(); setIsGlossaryOpen(!isGlossaryOpen); setIsChaptersOpen(false); }}
                                 style={{
                                     ...btnStyle,
                                     marginLeft: '8px',

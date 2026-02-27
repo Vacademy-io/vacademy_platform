@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select';
 import { MyButton } from '@/components/design-system/button';
 
-import { Sparkles, Save, ShieldCheck, Trash2, Plus, Info } from 'lucide-react';
+import { Sparkles, Save, ShieldCheck, Trash2, Plus, Info, Film, Palette, Type } from 'lucide-react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     AI_SERVICE_BASE_URL,
@@ -19,7 +19,13 @@ import {
     GET_INSITITUTE_SETTINGS,
     GET_INSTITUTE_AI_SETTINGS,
     UPDATE_INSTITUTE_AI_SETTINGS,
+    GET_VIDEO_BRANDING,
+    UPDATE_VIDEO_BRANDING,
+    GET_VIDEO_STYLE,
+    UPDATE_VIDEO_STYLE,
+    GET_VIDEO_TEMPLATES,
 } from '@/constants/urls';
+import { ColorPicker } from '@/components/ui/color-picker';
 import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -97,6 +103,73 @@ interface ActivityLogResponse {
 
 import { useAIModelsList } from '@/hooks/useAiModels';
 
+// ─── Video Branding & Style types ─────────────────────────────────────────
+
+interface VideoIntroOutroConfig {
+    enabled: boolean;
+    duration_seconds: number;
+    html: string;
+}
+
+interface VideoWatermarkConfig {
+    enabled: boolean;
+    position: string;
+    opacity: number;
+    html: string;
+    max_width?: number;
+    max_height?: number;
+    margin?: number;
+}
+
+interface VideoBrandingConfig {
+    intro: VideoIntroOutroConfig;
+    outro: VideoIntroOutroConfig;
+    watermark: VideoWatermarkConfig;
+}
+
+interface VideoStyleConfig {
+    background_type: 'white' | 'black';
+    primary_color: string;
+    heading_font: string;
+    body_font: string;
+    layout_theme: string;
+}
+
+const DEFAULT_VIDEO_BRANDING: VideoBrandingConfig = {
+    intro: { enabled: false, duration_seconds: 3, html: '' },
+    outro: { enabled: false, duration_seconds: 4, html: '' },
+    watermark: { enabled: false, position: 'top-right', opacity: 0.5, html: '' },
+};
+
+const DEFAULT_VIDEO_STYLE: VideoStyleConfig = {
+    background_type: 'white',
+    primary_color: '#6366f1',
+    heading_font: 'Inter',
+    body_font: 'Inter',
+    layout_theme: '',
+};
+
+interface VideoTemplate {
+    id: string;
+    name: string;
+    description: string;
+    tags: string[];
+    background_type: 'white' | 'black';
+    preview_html: string;
+}
+
+const FONT_OPTIONS = [
+    'Inter', 'Roboto', 'Open Sans', 'Poppins', 'Montserrat',
+    'Lato', 'Playfair Display', 'Source Serif 4',
+];
+
+const WATERMARK_POSITIONS = [
+    { value: 'top-left',     label: 'Top Left' },
+    { value: 'top-right',    label: 'Top Right' },
+    { value: 'bottom-left',  label: 'Bottom Left' },
+    { value: 'bottom-right', label: 'Bottom Right' },
+];
+
 const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const [openaiKey, setOpenaiKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
@@ -137,6 +210,21 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const [hasCustomPrompt, setHasCustomPrompt] = useState(false);
     const [isSavingAiPrompt, setIsSavingAiPrompt] = useState(false);
     const [isLoadingAiPrompt, setIsLoadingAiPrompt] = useState(false);
+
+    // Video branding state
+    const [videoBranding, setVideoBranding] = useState<VideoBrandingConfig>(DEFAULT_VIDEO_BRANDING);
+    const [isSavingBranding, setIsSavingBranding] = useState(false);
+    const [isLoadingBranding, setIsLoadingBranding] = useState(false);
+
+    // Video style state
+    const [videoStyle, setVideoStyle] = useState<VideoStyleConfig>(DEFAULT_VIDEO_STYLE);
+    const [isSavingStyle, setIsSavingStyle] = useState(false);
+    const [isLoadingStyle, setIsLoadingStyle] = useState(false);
+
+    // Template gallery state
+    const [videoTemplates, setVideoTemplates] = useState<VideoTemplate[]>([]);
+    const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+
     const instituteId = getInstituteId();
 
     // Check if keys exist
@@ -243,6 +331,92 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
         }
     }, [instituteId]);
 
+    // Fetch Video Branding
+    const fetchVideoBranding = useCallback(async () => {
+        if (!instituteId) return;
+        setIsLoadingBranding(true);
+        try {
+            const response = await authenticatedAxiosInstance.get(GET_VIDEO_BRANDING(instituteId));
+            if (response.data?.branding) {
+                setVideoBranding({
+                    intro: { ...DEFAULT_VIDEO_BRANDING.intro, ...response.data.branding.intro },
+                    outro: { ...DEFAULT_VIDEO_BRANDING.outro, ...response.data.branding.outro },
+                    watermark: { ...DEFAULT_VIDEO_BRANDING.watermark, ...response.data.branding.watermark },
+                });
+            }
+        } catch (error: any) {
+            if (error.response?.status !== 404) {
+                console.error('Error fetching video branding:', error);
+            }
+        } finally {
+            setIsLoadingBranding(false);
+        }
+    }, [instituteId]);
+
+    // Save Video Branding
+    const handleSaveVideoBranding = async () => {
+        if (!instituteId) return;
+        setIsSavingBranding(true);
+        try {
+            await authenticatedAxiosInstance.post(UPDATE_VIDEO_BRANDING(instituteId), {
+                branding: videoBranding,
+            });
+            toast.success('Video branding saved successfully!');
+        } catch (error) {
+            console.error('Error saving video branding:', error);
+            toast.error('Failed to save video branding');
+        } finally {
+            setIsSavingBranding(false);
+        }
+    };
+
+    // Fetch Video Style
+    const fetchVideoStyle = useCallback(async () => {
+        if (!instituteId) return;
+        setIsLoadingStyle(true);
+        try {
+            const response = await authenticatedAxiosInstance.get(GET_VIDEO_STYLE(instituteId));
+            if (response.data?.style) {
+                setVideoStyle({ ...DEFAULT_VIDEO_STYLE, ...response.data.style });
+            }
+        } catch (error: any) {
+            if (error.response?.status !== 404) {
+                console.error('Error fetching video style:', error);
+            }
+        } finally {
+            setIsLoadingStyle(false);
+        }
+    }, [instituteId]);
+
+    const fetchVideoTemplates = useCallback(async () => {
+        setIsLoadingTemplates(true);
+        try {
+            const response = await authenticatedAxiosInstance.get(GET_VIDEO_TEMPLATES());
+            setVideoTemplates(response.data?.templates ?? []);
+        } catch (error) {
+            console.error('Error fetching video templates:', error);
+        } finally {
+            setIsLoadingTemplates(false);
+        }
+    }, []);
+
+    // Save Video Style
+    const handleSaveVideoStyle = async () => {
+        if (!instituteId) return;
+        setIsSavingStyle(true);
+        try {
+            await authenticatedAxiosInstance.post(UPDATE_VIDEO_STYLE(instituteId), {
+                style: videoStyle,
+            });
+            toast.success('Video style saved successfully!');
+        } catch (error) {
+            console.error('Error saving video style:', error);
+            toast.error('Failed to save video style');
+        } finally {
+            setIsSavingStyle(false);
+        }
+    };
+
     // Update Institute AI Settings
     const handleSaveAiPrompt = async () => {
         if (!instituteId) return;
@@ -275,11 +449,18 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     useEffect(() => {
         const initialize = async () => {
             setIsLoading(true);
-            await Promise.all([checkKeys(), fetchTutorSettings(), fetchInstituteAiSettings()]);
+            await Promise.all([
+                checkKeys(),
+                fetchTutorSettings(),
+                fetchInstituteAiSettings(),
+                fetchVideoBranding(),
+                fetchVideoStyle(),
+                fetchVideoTemplates(),
+            ]);
             setIsLoading(false);
         };
         initialize();
-    }, [checkKeys, fetchTutorSettings, fetchInstituteAiSettings]);
+    }, [checkKeys, fetchTutorSettings, fetchInstituteAiSettings, fetchVideoBranding, fetchVideoStyle, fetchVideoTemplates]);
 
     // Fetch activity logs when page changes
     useEffect(() => {
@@ -1277,6 +1458,597 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         <>
                                             <Save className="mr-2 size-4" />
                                             Save Prompt
+                                        </>
+                                    )}
+                                </MyButton>
+                            </div>
+                        </>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* ═══════════════════════════════════════════════════════════ */}
+            {/* VIDEO BRANDING CARD                                        */}
+            {/* ═══════════════════════════════════════════════════════════ */}
+            <Card className="border-indigo-100 shadow-sm">
+                <CardHeader className="border-b border-indigo-50 bg-indigo-50/30">
+                    <div className="flex items-center gap-2">
+                        <div className="rounded-lg bg-indigo-500 p-2 text-white">
+                            <Film className="size-5" />
+                        </div>
+                        <div>
+                            <CardTitle className="text-xl">Video Branding</CardTitle>
+                            <CardDescription>
+                                Custom intro, outro, and watermark HTML shown in generated videos
+                            </CardDescription>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-6 pt-6">
+                    {isLoadingBranding ? (
+                        <div className="flex h-32 items-center justify-center">
+                            <div className="size-6 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
+                        </div>
+                    ) : (
+                        <>
+                            {/* ── Intro ────────────────────────────────── */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-sm font-semibold">Intro Slide</Label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-500">
+                                            {videoBranding.intro.enabled ? 'Enabled' : 'Disabled'}
+                                        </span>
+                                        <Switch
+                                            checked={videoBranding.intro.enabled}
+                                            onCheckedChange={(v) =>
+                                                setVideoBranding((b) => ({
+                                                    ...b,
+                                                    intro: { ...b.intro, enabled: v },
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                                {videoBranding.intro.enabled && (
+                                    <div className="space-y-3 rounded-lg border border-indigo-100 bg-indigo-50/20 p-4">
+                                        <div className="flex items-center gap-4">
+                                            <Label className="w-32 shrink-0 text-xs font-medium text-gray-600">
+                                                Duration (seconds)
+                                            </Label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                max={10}
+                                                step={0.5}
+                                                value={videoBranding.intro.duration_seconds}
+                                                onChange={(e) =>
+                                                    setVideoBranding((b) => ({
+                                                        ...b,
+                                                        intro: {
+                                                            ...b.intro,
+                                                            duration_seconds: parseFloat(e.target.value) || 3,
+                                                        },
+                                                    }))
+                                                }
+                                                className="w-24 border-indigo-100 text-sm"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-medium text-gray-600">
+                                                    HTML (full 1920×1080 canvas)
+                                                </Label>
+                                                <textarea
+                                                    value={videoBranding.intro.html}
+                                                    onChange={(e) =>
+                                                        setVideoBranding((b) => ({
+                                                            ...b,
+                                                            intro: { ...b.intro, html: e.target.value },
+                                                        }))
+                                                    }
+                                                    rows={6}
+                                                    placeholder="<div style='display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#fff;'><h1>Your Brand</h1></div>"
+                                                    className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-medium text-gray-600">
+                                                    Live Preview (scaled)
+                                                </Label>
+                                                <div
+                                                    style={{
+                                                        width: '100%',
+                                                        aspectRatio: '16/9',
+                                                        maxWidth: '320px',
+                                                        height: '180px',
+                                                        overflow: 'hidden',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid #e5e7eb',
+                                                        position: 'relative',
+                                                    }}
+                                                >
+                                                    <iframe
+                                                        srcDoc={videoBranding.intro.html || '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f9fafb;color:#9ca3af;font-family:sans-serif;font-size:12px">Intro preview</div>'}
+                                                        style={{
+                                                            width: '1920px',
+                                                            height: '1080px',
+                                                            border: 'none',
+                                                            transformOrigin: 'top left',
+                                                            transform: 'scale(0.1667)',
+                                                            pointerEvents: 'none',
+                                                        }}
+                                                        sandbox="allow-scripts"
+                                                        title="Intro preview"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="border-t border-indigo-50" />
+
+                            {/* ── Outro ────────────────────────────────── */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-sm font-semibold">Outro Slide</Label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-500">
+                                            {videoBranding.outro.enabled ? 'Enabled' : 'Disabled'}
+                                        </span>
+                                        <Switch
+                                            checked={videoBranding.outro.enabled}
+                                            onCheckedChange={(v) =>
+                                                setVideoBranding((b) => ({
+                                                    ...b,
+                                                    outro: { ...b.outro, enabled: v },
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                                {videoBranding.outro.enabled && (
+                                    <div className="space-y-3 rounded-lg border border-indigo-100 bg-indigo-50/20 p-4">
+                                        <div className="flex items-center gap-4">
+                                            <Label className="w-32 shrink-0 text-xs font-medium text-gray-600">
+                                                Duration (seconds)
+                                            </Label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                max={10}
+                                                step={0.5}
+                                                value={videoBranding.outro.duration_seconds}
+                                                onChange={(e) =>
+                                                    setVideoBranding((b) => ({
+                                                        ...b,
+                                                        outro: {
+                                                            ...b.outro,
+                                                            duration_seconds: parseFloat(e.target.value) || 4,
+                                                        },
+                                                    }))
+                                                }
+                                                className="w-24 border-indigo-100 text-sm"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-medium text-gray-600">
+                                                    HTML (full 1920×1080 canvas)
+                                                </Label>
+                                                <textarea
+                                                    value={videoBranding.outro.html}
+                                                    onChange={(e) =>
+                                                        setVideoBranding((b) => ({
+                                                            ...b,
+                                                            outro: { ...b.outro, html: e.target.value },
+                                                        }))
+                                                    }
+                                                    rows={6}
+                                                    placeholder="<div style='display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#fff;'><p>Thank you for watching</p></div>"
+                                                    className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-medium text-gray-600">
+                                                    Live Preview (scaled)
+                                                </Label>
+                                                <div
+                                                    style={{
+                                                        width: '100%',
+                                                        aspectRatio: '16/9',
+                                                        maxWidth: '320px',
+                                                        height: '180px',
+                                                        overflow: 'hidden',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid #e5e7eb',
+                                                        position: 'relative',
+                                                    }}
+                                                >
+                                                    <iframe
+                                                        srcDoc={videoBranding.outro.html || '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f9fafb;color:#9ca3af;font-family:sans-serif;font-size:12px">Outro preview</div>'}
+                                                        style={{
+                                                            width: '1920px',
+                                                            height: '1080px',
+                                                            border: 'none',
+                                                            transformOrigin: 'top left',
+                                                            transform: 'scale(0.1667)',
+                                                            pointerEvents: 'none',
+                                                        }}
+                                                        sandbox="allow-scripts"
+                                                        title="Outro preview"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="border-t border-indigo-50" />
+
+                            {/* ── Watermark ────────────────────────────── */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-sm font-semibold">Watermark</Label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-500">
+                                            {videoBranding.watermark.enabled ? 'Enabled' : 'Disabled'}
+                                        </span>
+                                        <Switch
+                                            checked={videoBranding.watermark.enabled}
+                                            onCheckedChange={(v) =>
+                                                setVideoBranding((b) => ({
+                                                    ...b,
+                                                    watermark: { ...b.watermark, enabled: v },
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                                {videoBranding.watermark.enabled && (
+                                    <div className="space-y-4 rounded-lg border border-indigo-100 bg-indigo-50/20 p-4">
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-medium text-gray-600">
+                                                    Position
+                                                </Label>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {WATERMARK_POSITIONS.map((pos) => (
+                                                        <button
+                                                            key={pos.value}
+                                                            type="button"
+                                                            onClick={() =>
+                                                                setVideoBranding((b) => ({
+                                                                    ...b,
+                                                                    watermark: {
+                                                                        ...b.watermark,
+                                                                        position: pos.value,
+                                                                    },
+                                                                }))
+                                                            }
+                                                            className={`rounded-md border px-3 py-2 text-xs font-medium transition-colors ${
+                                                                videoBranding.watermark.position === pos.value
+                                                                    ? 'border-indigo-400 bg-indigo-100 text-indigo-700'
+                                                                    : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                                            }`}
+                                                        >
+                                                            {pos.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-medium text-gray-600">
+                                                    Opacity ({videoBranding.watermark.opacity.toFixed(2)})
+                                                </Label>
+                                                <input
+                                                    type="range"
+                                                    min={0}
+                                                    max={1}
+                                                    step={0.05}
+                                                    value={videoBranding.watermark.opacity}
+                                                    onChange={(e) =>
+                                                        setVideoBranding((b) => ({
+                                                            ...b,
+                                                            watermark: {
+                                                                ...b.watermark,
+                                                                opacity: parseFloat(e.target.value),
+                                                            },
+                                                        }))
+                                                    }
+                                                    className="w-full"
+                                                />
+                                                <p className="text-[10px] text-gray-400">
+                                                    0 = invisible · 1 = fully opaque
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs font-medium text-gray-600">
+                                                Watermark HTML
+                                            </Label>
+                                            <textarea
+                                                value={videoBranding.watermark.html}
+                                                onChange={(e) =>
+                                                    setVideoBranding((b) => ({
+                                                        ...b,
+                                                        watermark: { ...b.watermark, html: e.target.value },
+                                                    }))
+                                                }
+                                                rows={3}
+                                                placeholder="<div style='font-family:sans-serif;color:rgba(0,0,0,0.3);font-size:14px;'>Your Brand</div>"
+                                                className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
+                                            />
+                                            <p className="text-[10px] text-gray-500">
+                                                Small HTML snippet rendered in the corner of every frame.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end pt-2">
+                                <MyButton
+                                    disabled={isSavingBranding}
+                                    onClick={handleSaveVideoBranding}
+                                    className="min-w-[140px] bg-indigo-600 text-white hover:bg-indigo-700"
+                                >
+                                    {isSavingBranding ? (
+                                        <>
+                                            <span className="mr-2 size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save className="mr-2 size-4" />
+                                            Save Branding
+                                        </>
+                                    )}
+                                </MyButton>
+                            </div>
+                        </>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* ═══════════════════════════════════════════════════════════ */}
+            {/* VIDEO STYLE CARD                                            */}
+            {/* ═══════════════════════════════════════════════════════════ */}
+            <Card className="border-indigo-100 shadow-sm">
+                <CardHeader className="border-b border-indigo-50 bg-indigo-50/30">
+                    <div className="flex items-center gap-2">
+                        <div className="rounded-lg bg-indigo-500 p-2 text-white">
+                            <Palette className="size-5" />
+                        </div>
+                        <div>
+                            <CardTitle className="text-xl">Video Style</CardTitle>
+                            <CardDescription>
+                                Brand colors, fonts, and layout theme used when generating video content
+                            </CardDescription>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-6 pt-6">
+                    {isLoadingStyle ? (
+                        <div className="flex h-32 items-center justify-center">
+                            <div className="size-6 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
+                        </div>
+                    ) : (
+                        <>
+                            {/* ── Background Theme ─────────────────────── */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-semibold">Background Theme</Label>
+                                <div className="flex gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setVideoStyle((s) => ({ ...s, background_type: 'white' }))
+                                        }
+                                        className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                                            videoStyle.background_type === 'white'
+                                                ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                                                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        <span className="size-3 rounded-full border border-gray-300 bg-white" />
+                                        Light
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setVideoStyle((s) => ({ ...s, background_type: 'black' }))
+                                        }
+                                        className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                                            videoStyle.background_type === 'black'
+                                                ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
+                                                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        <span className="size-3 rounded-full border border-gray-600 bg-gray-900" />
+                                        Dark
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* ── Template Gallery ─────────────────────── */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-semibold">Template Gallery</Label>
+                                <p className="text-[10px] text-gray-500">
+                                    Choose a visual template for your AI-generated video slides.
+                                    Brand color and font overrides below apply on top.
+                                </p>
+                                {isLoadingTemplates ? (
+                                    <p className="py-4 text-center text-sm text-gray-400">
+                                        Loading templates…
+                                    </p>
+                                ) : videoTemplates.length === 0 ? (
+                                    <p className="py-4 text-center text-sm text-gray-400">
+                                        No templates available.
+                                    </p>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {videoTemplates.map((template) => {
+                                            const isSelected =
+                                                videoStyle.layout_theme === template.id;
+                                            return (
+                                                <div
+                                                    key={template.id}
+                                                    onClick={() =>
+                                                        setVideoStyle((s) => ({
+                                                            ...s,
+                                                            layout_theme: template.id,
+                                                            background_type:
+                                                                template.background_type,
+                                                        }))
+                                                    }
+                                                    className={`cursor-pointer overflow-hidden rounded-lg border-2 transition-all ${
+                                                        isSelected
+                                                            ? 'border-indigo-500 ring-2 ring-indigo-200'
+                                                            : 'border-gray-200 hover:border-gray-300'
+                                                    }`}
+                                                >
+                                                    {/* iframe preview: 1920×1080 scaled to 240×135 */}
+                                                    <div
+                                                        style={{
+                                                            width: '100%',
+                                                            height: '135px',
+                                                            overflow: 'hidden',
+                                                            position: 'relative',
+                                                            background: '#f3f4f6',
+                                                        }}
+                                                    >
+                                                        <iframe
+                                                            srcDoc={template.preview_html}
+                                                            style={{
+                                                                width: '1920px',
+                                                                height: '1080px',
+                                                                border: 'none',
+                                                                transformOrigin: 'top left',
+                                                                transform: 'scale(0.125)',
+                                                                pointerEvents: 'none',
+                                                            }}
+                                                            sandbox="allow-scripts"
+                                                            title={template.name}
+                                                        />
+                                                    </div>
+                                                    <div className="bg-white px-2 py-1.5">
+                                                        <p
+                                                            className={`text-xs font-semibold ${
+                                                                isSelected
+                                                                    ? 'text-indigo-700'
+                                                                    : 'text-gray-800'
+                                                            }`}
+                                                        >
+                                                            {template.name}
+                                                        </p>
+                                                        <p className="truncate text-[10px] text-gray-400">
+                                                            {template.description}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* ── Primary / Accent Color ───────────────── */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-semibold">Primary / Accent Color</Label>
+                                <p className="text-[10px] text-gray-500">
+                                    Used for headings, accents, chart colours, and annotations in generated slides.
+                                </p>
+                                <div className="flex items-center gap-3">
+                                    <ColorPicker
+                                        value={videoStyle.primary_color}
+                                        onChange={(color) =>
+                                            setVideoStyle((s) => ({ ...s, primary_color: color }))
+                                        }
+                                    />
+                                    <div
+                                        className="size-8 rounded-full border border-gray-200 shadow-sm"
+                                        style={{ background: videoStyle.primary_color }}
+                                    />
+                                    <span className="font-mono text-sm text-gray-600">
+                                        {videoStyle.primary_color}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="border-t border-indigo-50" />
+
+                            {/* ── Typography ───────────────────────────── */}
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <Type className="size-4 text-indigo-500" />
+                                    <Label className="text-sm font-semibold">Typography</Label>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-medium text-gray-600">
+                                            Heading Font
+                                        </Label>
+                                        <Select
+                                            value={videoStyle.heading_font}
+                                            onValueChange={(v) =>
+                                                setVideoStyle((s) => ({ ...s, heading_font: v }))
+                                            }
+                                        >
+                                            <SelectTrigger className="border-indigo-100 focus:border-indigo-300">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {FONT_OPTIONS.map((f) => (
+                                                    <SelectItem key={f} value={f}>
+                                                        {f}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-medium text-gray-600">
+                                            Body Font
+                                        </Label>
+                                        <Select
+                                            value={videoStyle.body_font}
+                                            onValueChange={(v) =>
+                                                setVideoStyle((s) => ({ ...s, body_font: v }))
+                                            }
+                                        >
+                                            <SelectTrigger className="border-indigo-100 focus:border-indigo-300">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {FONT_OPTIONS.map((f) => (
+                                                    <SelectItem key={f} value={f}>
+                                                        {f}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end pt-2">
+                                <MyButton
+                                    disabled={isSavingStyle}
+                                    onClick={handleSaveVideoStyle}
+                                    className="min-w-[140px] bg-indigo-600 text-white hover:bg-indigo-700"
+                                >
+                                    {isSavingStyle ? (
+                                        <>
+                                            <span className="mr-2 size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save className="mr-2 size-4" />
+                                            Save Style
                                         </>
                                     )}
                                 </MyButton>

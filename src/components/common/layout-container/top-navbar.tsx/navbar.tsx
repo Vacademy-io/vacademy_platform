@@ -275,7 +275,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     return (
         <div
             className={cn(
-                'sticky top-0 z-50 flex items-center justify-between border-b bg-neutral-50',
+                'sticky top-0 z-50 flex items-center justify-between border-b border-neutral-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60',
                 isCompact ? 'h-12 px-4 py-2' : 'h-14 px-4 py-2 md:h-[72px] md:px-8 md:py-4'
             )}
         >

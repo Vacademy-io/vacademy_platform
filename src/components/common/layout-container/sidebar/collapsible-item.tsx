@@ -110,7 +110,7 @@ export const CollapsibleItem = ({
                             weight: hover || routeMatches ? 'fill' : 'regular',
                             className: cn(
                                 'flex-shrink-0 transition-colors duration-150',
-                                hover || routeMatches ? colors.text : 'text-neutral-500'
+                                hover || routeMatches ? (routeMatches ? colors.pillText : colors.text) : 'text-neutral-500'
                             ),
                         })}
 
@@ -118,9 +118,11 @@ export const CollapsibleItem = ({
                     <span
                         className={cn(
                             'flex-1 truncate text-left text-[13px] transition-colors duration-150',
-                            hover || routeMatches
-                                ? cn(colors.text, 'font-medium')
-                                : 'text-neutral-600'
+                            routeMatches
+                                ? cn(colors.pillText, 'font-medium')
+                                : hover
+                                    ? cn(colors.text, 'font-medium')
+                                    : 'text-neutral-600'
                         )}
                     >
                         {title}
@@ -131,7 +133,7 @@ export const CollapsibleItem = ({
                         className={cn(
                             'size-3.5 flex-shrink-0 transition-transform duration-200',
                             isOpen && 'rotate-180',
-                            hover || routeMatches ? colors.text : 'text-neutral-400'
+                            hover || routeMatches ? (routeMatches ? colors.pillText : colors.text) : 'text-neutral-400'
                         )}
                     />
                 </div>
@@ -159,7 +161,7 @@ export const CollapsibleItem = ({
                                     className={cn(
                                         'flex cursor-pointer items-center gap-2 rounded-full px-3 py-1 text-[13px] transition-all duration-150',
                                         isSubActive
-                                            ? cn(colors.text, 'font-medium', colors.bg)
+                                            ? cn(colors.pillText, 'font-medium', colors.pillBg)
                                             : cn(
                                                   'text-neutral-500',
                                                   colors.hoverText,

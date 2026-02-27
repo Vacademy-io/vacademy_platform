@@ -155,7 +155,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
         return (
             <>
                 <div
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-neutral-400 hover:bg-neutral-50"
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-neutral-400 hover:bg-primary-50"
                     onClick={() => {
                         navigate({ to: '/locked-feature', search: { feature: item.title } });
                         onClose();
@@ -164,7 +164,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                     <LockKey size={14} weight="duotone" />
                     <span className="truncate">{item.title}</span>
                 </div>
-                {showDividerAfter && <div className="mx-2 my-1 h-px bg-neutral-100" />}
+                {showDividerAfter && <div className="mx-2 my-1 h-px bg-primary-100" />}
             </>
         );
     }
@@ -179,7 +179,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                         'flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors',
                         isActive
                             ? cn(colors.pillBg, colors.pillText, 'font-medium')
-                            : 'text-neutral-600 hover:bg-neutral-50'
+                            : 'text-neutral-600 hover:bg-primary-50'
                     )}
                     onClick={() => {
                         if (item.to) {
@@ -199,12 +199,12 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                             weight: isActive ? 'fill' : 'regular',
                             className: cn(
                                 'flex-shrink-0',
-                                isActive ? colors.text : 'text-neutral-500'
+                                isActive ? colors.pillText : 'text-neutral-500'
                             ),
                         })}
                     <span className="truncate">{item.title}</span>
                 </Link>
-                {showDividerAfter && <div className="mx-2 my-1 h-px bg-neutral-100" />}
+                {showDividerAfter && <div className="mx-2 my-1 h-px bg-primary-100" />}
             </>
         );
     }
@@ -218,8 +218,8 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                         className={cn(
                             'flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors',
                             isActive
-                                ? cn(colors.text, 'font-medium')
-                                : 'text-neutral-600 hover:bg-neutral-50'
+                                ? cn(colors.pillBg, colors.pillText, 'font-medium')
+                                : 'text-neutral-600 hover:bg-primary-50'
                         )}
                     >
                         {item.icon &&
@@ -228,7 +228,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                                 weight: isActive ? 'fill' : 'regular',
                                 className: cn(
                                     'flex-shrink-0',
-                                    isActive ? colors.text : 'text-neutral-500'
+                                    isActive ? colors.pillText : 'text-neutral-500'
                                 ),
                             })}
                         <span className="flex-1 truncate text-left">{item.title}</span>
@@ -236,13 +236,13 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                             className={cn(
                                 'size-3 flex-shrink-0 transition-transform',
                                 (subOpen || isActive) && 'rotate-180',
-                                isActive ? colors.text : 'text-neutral-400'
+                            isActive ? colors.pillText : 'text-neutral-400'
                             )}
                         />
                     </div>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                    <div className="ml-4 flex flex-col gap-0.5 border-l border-neutral-200 py-0.5 pl-3">
+                    <div className="ml-4 flex flex-col gap-0.5 border-l border-primary-100 py-0.5 pl-3">
                         {item.subItems.map((sub, idx) => {
                             const isSubActive =
                                 sub.subItemLink && currentRoute.includes(sub.subItemLink);
@@ -253,8 +253,8 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                                     className={cn(
                                         'flex items-center rounded-md px-2 py-1 text-[13px] transition-colors',
                                         isSubActive
-                                            ? cn(colors.text, 'font-medium')
-                                            : 'text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50'
+                                            ? cn(colors.pillBg, colors.pillText, 'font-medium')
+                                            : 'text-neutral-500 hover:text-neutral-700 hover:bg-primary-50'
                                     )}
                                     onClick={(e) => {
                                         if (sub.locked) {
@@ -289,7 +289,7 @@ const FlyoutMenuItem: React.FC<FlyoutMenuItemProps> = ({
                     </div>
                 </CollapsibleContent>
             </Collapsible>
-            {showDividerAfter && <div className="mx-2 my-1 h-px bg-neutral-100" />}
+            {showDividerAfter && <div className="mx-2 my-1 h-px bg-primary-100" />}
         </>
     );
 };

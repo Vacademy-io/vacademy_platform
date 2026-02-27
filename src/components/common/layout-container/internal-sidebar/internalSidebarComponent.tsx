@@ -13,8 +13,10 @@ import { List } from '@phosphor-icons/react';
 
 export const InternalSidebarComponent = ({
     sidebarComponent,
+    mobileButtonText = 'Menu',
 }: {
     sidebarComponent: React.ReactNode;
+    mobileButtonText?: string;
 }) => {
     const { data, isLoading } = useSuspenseQuery(useInstituteQuery());
     const { isTabVisible, isSubItemVisible } = useTabSettings();
@@ -62,10 +64,10 @@ export const InternalSidebarComponent = ({
                         className="fixed bottom-6 left-4 z-[9999] rounded-full bg-primary-500 px-4 py-2 text-white shadow-xl hover:bg-primary-600 md:bottom-8 md:left-6"
                     >
                         <List className="mr-2 size-4" />
-                        Slides
+                        {mobileButtonText}
                     </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-[280px] overflow-y-auto bg-primary-50 p-0">
+                <SheetContent side="left" className="w-[280px] overflow-y-auto bg-white p-0">
                     <SheetHeader className="sr-only px-3 pt-6">
                         <SheetTitle>Navigation</SheetTitle>
                     </SheetHeader>
@@ -88,7 +90,7 @@ export const InternalSidebarComponent = ({
 
     // Desktop: Render as regular sidebar
     return (
-        <div className="relative flex h-screen w-[307px] flex-col gap-6 overflow-y-scroll bg-primary-50 pb-5 pt-10">
+        <div className="relative flex h-screen w-[307px] flex-col gap-6 overflow-y-scroll bg-white border-r border-neutral-200 pb-5 pt-10">
             {sidebarContent}
         </div>
     );

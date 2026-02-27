@@ -901,6 +901,17 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         }
     }, [entries, currentTime, currentIndex, navigationMode, contentType]);
 
+    // Current chapter index (highest chapter whose start time <= currentTime)
+    // MUST be before early returns to satisfy Rules of Hooks
+    const currentChapterIndex = useMemo(() => {
+        if (!meta.chapters || meta.chapters.length === 0 || navigationMode !== 'time_driven') return -1;
+        let idx = 0;
+        for (let i = 0; i < meta.chapters.length; i++) {
+            if (currentTime >= meta.chapters[i]!.time) idx = i;
+        }
+        return idx;
+    }, [currentTime, meta.chapters, navigationMode]);
+
     // =====================================================
     // MESSAGE HANDLING (Inter-iframe communication)
     // =====================================================
@@ -994,16 +1005,6 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                 ? (currentTime / duration) * 100
                 : 0
             : ((currentIndex + 1) / entries.length) * 100;
-
-    // Current chapter index (highest chapter whose start time <= currentTime)
-    const currentChapterIndex = useMemo(() => {
-        if (!meta.chapters || meta.chapters.length === 0 || navigationMode !== 'time_driven') return -1;
-        let idx = 0;
-        for (let i = 0; i < meta.chapters.length; i++) {
-            if (currentTime >= meta.chapters[i]!.time) idx = i;
-        }
-        return idx;
-    }, [currentTime, meta.chapters, navigationMode]);
 
     return (
         <div

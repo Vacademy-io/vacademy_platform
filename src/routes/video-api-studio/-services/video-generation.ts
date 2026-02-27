@@ -170,9 +170,11 @@ export type SSEEvent = ProgressEvent | CompletedEvent | InfoEvent | ErrorEvent;
 
 export interface VideoUrls {
     video_id: string;
-    html_url: string;
-    audio_url: string;
-    words_url: string;
+    html_url: string | null;
+    audio_url: string | null;
+    words_url: string | null;
+    avatar_url?: string | null;
+    status: VideoStatusType;
     current_stage: VideoStage;
 }
 

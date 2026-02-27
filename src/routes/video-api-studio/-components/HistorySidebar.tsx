@@ -40,7 +40,7 @@ export function HistorySidebar({
     onDelete,
     onNewVideo,
 }: HistorySidebarProps) {
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(true);
 
     const getStatusIcon = (status: HistoryItem['status']) => {
         switch (status) {

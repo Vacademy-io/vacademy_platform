@@ -163,6 +163,7 @@ Requirements:
 - If the language is not English, ensure the tone remains natural for that language.
 - **Include a "Key Takeaway" statement** that summarizes the main point in one simple sentence.
 - **Mention a common mistake** students make about this topic (for Wrong vs Right visual).
+- **GENERATE MCQ QUESTIONS**: For each substantive beat in beat_outline (skip the Hook beat at index 0 and the CTA/Conclusion beat), write one multiple-choice question that tests understanding of that beat's core concept. Write questions in **{language}**. Each question must have exactly 4 options and one clearly correct answer with a brief explanation. The `chapter_index` field must exactly match the beat's 0-based position in the beat_outline array.
 
 **EMOTIONAL ANCHORING (builds engagement)**:
 - **Hook**: Start with a relatable question, surprising fact, or "imagine you are..." scenario to spark curiosity.
@@ -193,7 +194,16 @@ JSON shape:
       "needs_recap": false
     }}
   ],
-  "cta": "..."
+  "cta": "...",
+  "questions": [
+    {{
+      "chapter_index": 1,
+      "question": "Question text testing the core concept of beat at index 1?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct": 0,
+      "explanation": "Brief explanation of why Option A is correct."
+    }}
+  ]
 }}
 
 **subject_domain classification**:

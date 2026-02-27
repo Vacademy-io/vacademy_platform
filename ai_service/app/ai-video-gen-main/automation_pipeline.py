@@ -868,7 +868,12 @@ class VideoGenerationPipeline:
                 print("🧠 Building concept-aligned segments ...")
                 # Use beat_outline for concept-aligned segmentation if available
                 beat_outline = plan_data.get("beat_outline", [])
-                
+
+                # Store raw questions from script plan (chapter timestamps assigned later)
+                self._current_questions = plan_data.get("questions", [])
+                if self._current_questions:
+                    print(f"   📝 Loaded {len(self._current_questions)} MCQ questions from script plan")
+
                 # Configurable max segments to limit LLM expense
                 # Default: max 12 segments (covers ~8 minutes of video at ~40s each)
                 max_segments = getattr(self, '_max_segments', 12)
@@ -914,6 +919,7 @@ class VideoGenerationPipeline:
                 html_segments, run_dir, self._current_branding, self._current_content_type,
                 chapters=getattr(self, '_current_chapters', None),
                 glossary=getattr(self, '_current_glossary', None),
+                questions=getattr(self, '_current_questions', None),
                 language=language,
             )
         
@@ -3552,6 +3558,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         content_type: str = "VIDEO",
         chapters: Optional[List[Dict[str, Any]]] = None,
         glossary: Optional[List[Dict[str, Any]]] = None,
+        questions: Optional[List[Dict[str, Any]]] = None,
         language: str = "English",
     ) -> Path:
         """
@@ -3809,6 +3816,38 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 {"term": g["term"], "time": round(g["time"] + content_starts_at, 3)}
                 for g in glossary
             ]
+
+        # Questions: map chapter_index to actual chapter end times (= next chapter's start)
+        # Only included for VIDEO content with chapters and MCQ data from the script plan
+        if questions and chapter_markers and content_type == "VIDEO":
+            n_chapters = len(chapter_markers)
+            question_markers = []
+            for q in questions:
+                try:
+                    chapter_idx = int(q.get("chapter_index", 0))
+                    # Fire at the start of the NEXT chapter (marks end of current chapter)
+                    if chapter_idx + 1 < n_chapters:
+                        q_time = chapter_markers[chapter_idx + 1]["time"]
+                    else:
+                        # Last chapter: fire just before content ends
+                        q_time = round(content_max_end, 3)
+                    q_text = str(q.get("question", "")).strip()
+                    q_options = [str(o) for o in q.get("options", [])]
+                    q_correct = int(q.get("correct", 0))
+                    q_explanation = str(q.get("explanation", "")).strip()
+                    if q_text and len(q_options) == 4:
+                        question_markers.append({
+                            "time": q_time,
+                            "question": q_text,
+                            "options": q_options,
+                            "correct": q_correct,
+                            "explanation": q_explanation,
+                        })
+                except (ValueError, TypeError):
+                    continue
+            if question_markers:
+                meta_dict["questions"] = question_markers
+                print(f"   ❓ Added {len(question_markers)} MCQ questions to timeline metadata")
 
         timeline_output = {
             "meta": meta_dict,

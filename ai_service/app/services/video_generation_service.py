@@ -323,8 +323,9 @@ class VideoGenerationService:
             
         pipeline = VideoGenerationPipeline(**pipeline_args)
         
-        # Fetch branding configuration from institute settings
+        # Fetch branding and style configuration from institute settings
         branding_config = None
+        style_config = None
         if institute_id and db_session:
             try:
                 from .institute_settings_service import InstituteSettingsService
@@ -335,8 +336,17 @@ class VideoGenerationService:
                     logger.info(f"[VideoGenService] Using custom branding for institute {institute_id}")
                 else:
                     logger.info(f"[VideoGenService] Using default Vacademy branding for institute {institute_id}")
+                style_result = settings_service.get_video_style(institute_id)
+                # Only apply style overrides when the org has explicitly saved a custom style.
+                # Passing default values would silently override pipeline presets (e.g. accent
+                # colors, fonts) even when the org never touched the settings.
+                if style_result.get("has_custom_style"):
+                    style_config = style_result.get("style")
+                    logger.info(f"[VideoGenService] Using custom video style for institute {institute_id}")
+                else:
+                    logger.info(f"[VideoGenService] No custom video style for institute {institute_id}, using pipeline defaults")
             except Exception as e:
-                logger.warning(f"[VideoGenService] Could not fetch branding config: {e}. Using defaults.")
+                logger.warning(f"[VideoGenService] Could not fetch branding/style config: {e}. Using defaults.")
         
         # Map stage indices to pipeline stage names and file keys
         stage_config = {
@@ -562,6 +572,7 @@ class VideoGenerationService:
                     voice_gender=voice_gender,
                     tts_provider=tts_provider,
                     branding_config=branding_config,
+                    style_config=style_config,
                     content_type=content_type,
                     generate_avatar=generate_avatar,
                     avatar_image_url=avatar_image_url

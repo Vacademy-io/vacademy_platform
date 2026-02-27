@@ -73,6 +73,13 @@ except ImportError:
     def format_user_prompt(content_type, **kwargs):
         return None
 
+# Import template gallery definitions
+try:
+    from video_templates import get_template_by_id as _get_template_by_id
+except ImportError:
+    def _get_template_by_id(_id):  # type: ignore[misc]
+        return None
+
 DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 DEFAULT_GEMINI_IMAGE_KEY = os.environ.get("GEMINI_API_KEY", "")
 
@@ -673,6 +680,7 @@ class VideoGenerationPipeline:
         voice_gender: str = "female",
         tts_provider: str = "edge",
         branding_config: Optional[Dict[str, Any]] = None,
+        style_config: Optional[Dict[str, Any]] = None,
         content_type: str = "VIDEO",
         generate_avatar: bool = False,
         avatar_image_url: Optional[str] = None,
@@ -719,6 +727,8 @@ class VideoGenerationPipeline:
         
         # Store branding config (use defaults if not provided)
         self._current_branding = branding_config or self._get_default_branding()
+        # Store style config for brand colors/fonts overrides
+        self._current_style_config = style_config
         
         stage_idx = self.STAGE_INDEX[start_from]
         # stop_at means "stop after this stage", so stop_idx is the next stage after stop_at
@@ -828,7 +838,7 @@ class VideoGenerationPipeline:
 
         if do_html:
             print("🎨 Designing Visual Style Guide ...")
-            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type)
+            style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
             interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "SIMULATION", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION", "MAP_EXPLORATION"]
@@ -1084,6 +1094,15 @@ class VideoGenerationPipeline:
         elif content_type in ["INTERACTIVE_GAME", "SIMULATION"]:
             # Games/simulations may have minimal or no narration
             script_text = data.get("title", content_type) + ". " + data.get("instructions", data.get("description", ""))
+        elif content_type == "PUZZLE_BOOK":
+            # Read puzzle titles + instructions so TTS covers the full book
+            puzzles = data.get("puzzles", [])
+            script_parts = [data.get("title", "Puzzle Book")]
+            for i, p in enumerate(puzzles, 1):
+                title = p.get("title", f"Puzzle {i}")
+                instructions = p.get("instructions", "")
+                script_parts.append(f"Puzzle {i}. {title}. {instructions}" if instructions else f"Puzzle {i}. {title}")
+            script_text = "\n\n".join(script_parts)
         elif content_type == "FLASHCARDS":
             # Read all cards so word timestamps cover the full deck (needed for per-page audio seek)
             cards = data.get("cards", [])
@@ -1146,6 +1165,19 @@ class VideoGenerationPipeline:
                 speech = ex.get("audio_text", ex.get("speech_text", ""))
                 if speech:
                     script_parts.append(f"{speaker_name} says: {speech}")
+            script_text = "\n\n".join(script_parts)
+        elif content_type == "MAP_EXPLORATION":
+            # Read region names + descriptions so TTS covers the full map
+            script_parts = [data.get("title", "Map Exploration")]
+            description = data.get("description", "")
+            if description:
+                script_parts.append(description)
+            for region in data.get("regions", []):
+                name = region.get("name", "")
+                info = region.get("info", {})
+                desc = info.get("description", "") if isinstance(info, dict) else ""
+                if name:
+                    script_parts.append(f"{name}. {desc}" if desc else name)
             script_text = "\n\n".join(script_parts)
         else:
             # Default fallback
@@ -1557,14 +1589,35 @@ class VideoGenerationPipeline:
         return {"words_json": words_json, "words_csv": words_csv}
 
     # --- Style Generation --------------------------------------------------
-    def _generate_style_guide(self, script_text: str, run_dir: Path, background_type: str = "black") -> Dict[str, Any]:
+    def _generate_style_guide(self, script_text: str, run_dir: Path, background_type: str = "black", style_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Generate a style guide based on background_type (white or black).
         Uses predefined presets to ensure proper color contrast.
+
+        Priority chain (highest wins):
+          1. style_config.background_type (explicit brand override)
+          2. template.background_type     (template default)
+          3. function parameter default   ("black")
+
+        After building from preset:
+          template.palette_override  →  merged on top of preset
+          brand primary_color / fonts  →  applied last (always win)
         """
+        # Resolve template (if layout_theme is a known template id)
+        layout_theme_id = (style_config or {}).get("layout_theme", "")
+        template = _get_template_by_id(layout_theme_id) if layout_theme_id else None
+
+        # Determine background_type: explicit brand setting > template default > parameter default
+        explicit_bg = (style_config or {}).get("background_type")
+        if explicit_bg in ("white", "black"):
+            background_type = explicit_bg
+        elif template and template.get("background_type") in ("white", "black"):
+            background_type = template["background_type"]
+        # else: keep the parameter default (already "black")
+
         # Use predefined presets based on background_type
         preset = BACKGROUND_PRESETS.get(background_type, BACKGROUND_PRESETS["black"])
-        
+
         style_guide = {
             "background_type": background_type,
             "palette": {
@@ -1594,11 +1647,46 @@ class VideoGenerationPipeline:
             "code_theme": preset["code_theme"],
             "notes": f"Clean {'dark' if background_type == 'black' else 'light'} educational style. No shadows. Use Rough Notation for annotations."
         }
-        
+
+        # Apply template palette_override (template colors on top of preset)
+        if template:
+            for k, v in template.get("palette_override", {}).items():
+                if k in style_guide["palette"]:
+                    style_guide["palette"][k] = v
+                # keys like background_type, card_bg, card_border may not be in palette
+                elif k not in ("background_type",):
+                    style_guide["palette"][k] = v
+            style_guide["layout_theme"] = layout_theme_id
+            print(f"   🎨 Template applied: {template['name']} ({background_type} background)")
+
+        # Apply institute brand overrides from style_config (always highest priority)
+        if style_config:
+            primary_color = style_config.get("primary_color")
+            if primary_color:
+                style_guide["palette"]["accent"] = primary_color
+                style_guide["palette"]["primary"] = primary_color
+                style_guide["palette"]["annotation_color"] = primary_color
+                style_guide["palette"]["svg_stroke"] = primary_color
+                style_guide["palette"]["mermaid_node_stroke"] = primary_color
+                print(f"   🎨 Brand primary color applied: {primary_color}")
+
+            heading_font = style_config.get("heading_font")
+            body_font = style_config.get("body_font")
+            if heading_font:
+                style_guide["fonts"]["primary"] = heading_font
+            if body_font:
+                style_guide["fonts"]["secondary"] = body_font
+            if heading_font or body_font:
+                print(f"   🔤 Brand fonts applied: heading={heading_font or 'default'}, body={body_font or 'default'}")
+
+            # layout_theme is already set from template lookup above; keep it consistent
+            if layout_theme_id:
+                style_guide["layout_theme"] = layout_theme_id
+
         # Save for inspection
         (run_dir / "style_guide.json").write_text(json.dumps(style_guide, indent=2))
         print(f"🎨 Using {background_type.upper()} background theme")
-        print(f"   Text color: {preset['text']} | SVG stroke: {preset['svg_stroke']} | Annotation: {preset['annotation_color']}")
+        print(f"   Text color: {preset['text']} | SVG stroke: {style_guide['palette']['svg_stroke']} | Annotation: {style_guide['palette']['annotation_color']}")
         return style_guide
 
     # --- Segmentation + HTML ----------------------------------------------
@@ -1763,62 +1851,87 @@ class VideoGenerationPipeline:
         
         if content_type == "QUIZ":
             questions = plan_data.get("questions", [])
+            if not questions:
+                print(f"    ⚠️  QUIZ: 'questions' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, q in enumerate(questions):
                 html = q.get("question_html", f"<div>Question {i+1}</div>")
                 segments.append(create_segment(html, i+1, q.get("id"), extra_meta=q))
-                
+            if not questions:
+                html = plan_data.get("html", "<div>Quiz</div>")
+                segments.append(create_segment(html, 1, "quiz-main", extra_meta=plan_data))
+
         elif content_type == "STORYBOOK":
             pages = plan_data.get("pages", [])
+            if not pages:
+                print(f"    ⚠️  STORYBOOK: 'pages' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, p in enumerate(pages):
                 html = p.get("html", f"<div>Page {i+1}</div>")
-                
+
                 # Fallback: If LLM forgot the data-img-prompt in HTML but provided it in JSON, inject it
                 if "illustration_prompt" in p and "data-img-prompt" not in html:
                     safe_prompt = p["illustration_prompt"].replace('"', '&quot;')
                     if "<img" in html:
-                        # Inject into the first existing <img> tag
                         html = html.replace("<img", f'<img data-img-prompt="{safe_prompt}"', 1)
                         print(f"    🔧 Auto-injected missing data-img-prompt for page {i+1}")
                     else:
-                        # No <img> at all — append a hidden placeholder so _process_generated_images
-                        # can still find and replace it with a generated image
                         html = html + f'<img data-img-prompt="{safe_prompt}" style="display:none" alt="illustration">'
                         print(f"    🔧 Appended hidden img placeholder with data-img-prompt for page {i+1}")
-                
+
                 segments.append(create_segment(html, i+1, f"page-{p.get('page_number', i+1)}", extra_meta=p))
-                
+            if not pages:
+                html = plan_data.get("html", "<div>Storybook</div>")
+                segments.append(create_segment(html, 1, "storybook-main", extra_meta=plan_data))
+
         elif content_type == "INTERACTIVE_GAME":
             # Games are usually a single self-contained entry
             html = plan_data.get("html", "<div>Game Container</div>")
             segments.append(create_segment(html, 1, "game-container", extra_meta=plan_data))
-            
+
         elif content_type == "FLASHCARDS":
             cards = plan_data.get("cards", [])
+            if not cards:
+                print(f"    ⚠️  FLASHCARDS: 'cards' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, c in enumerate(cards):
-                # For flashcards, we might want to combine front/back or just use front_html
-                # and let frontend handle the flip. Let's pass the whole card data in meta.
-                # Use front_html as the initial view
                 html = c.get("front_html", f"<div>Card {i+1}</div>")
                 segments.append(create_segment(html, i+1, c.get("id", f"card-{i+1}"), extra_meta=c))
+            if not cards:
+                html = plan_data.get("html", "<div>Flashcard Deck</div>")
+                segments.append(create_segment(html, 1, "flashcard-main", extra_meta=plan_data))
                 
         elif content_type == "PUZZLE_BOOK":
             puzzles = plan_data.get("puzzles", [])
+            if not puzzles:
+                print(f"    ⚠️  PUZZLE_BOOK: 'puzzles' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, p in enumerate(puzzles):
                 html = p.get("html", f"<div>Puzzle {i+1}</div>")
                 segments.append(create_segment(html, i+1, p.get("id", f"puzzle-{i+1}"), extra_meta=p))
+            if not puzzles:
+                # Fallback: single entry using top-level html or a placeholder
+                html = plan_data.get("html", f"<div>Puzzle Book</div>")
+                segments.append(create_segment(html, 1, "puzzle-main", extra_meta=plan_data))
         
         elif content_type == "TIMELINE":
             events = plan_data.get("events", [])
+            if not events:
+                print(f"    ⚠️  TIMELINE: 'events' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, e in enumerate(events):
                 html = e.get("html", f"<div>Event {i+1}</div>")
                 segments.append(create_segment(html, i+1, e.get("id", f"event-{i+1}"), extra_meta=e))
+            if not events:
+                html = plan_data.get("html", "<div>Timeline</div>")
+                segments.append(create_segment(html, 1, "timeline-main", extra_meta=plan_data))
 
         elif content_type == "MAP_EXPLORATION":
             # Each region is a separate user_driven entry
             regions = plan_data.get("regions", [])
+            if not regions:
+                print(f"    ⚠️  MAP_EXPLORATION: 'regions' key missing or empty. Available keys: {list(plan_data.keys())}")
             for i, r in enumerate(regions):
                 html = r.get("html", f"<div>Region {i+1}</div>")
                 segments.append(create_segment(html, i+1, r.get("id", f"region-{i+1}"), extra_meta=r))
+            if not regions:
+                html = plan_data.get("html", "<div>Map Exploration</div>")
+                segments.append(create_segment(html, 1, "map-main", extra_meta=plan_data))
 
         elif content_type == "SIMULATION":
             # Simulations are self_contained — one single HTML entry with all interactivity
@@ -1873,14 +1986,21 @@ class VideoGenerationPipeline:
         return segments, usage
 
     def _generate_html_segments(self, segments: List[Dict[str, Any]], style_guide: Dict[str, Any], script_plan: Optional[Dict[str, Any]], run_dir: Path, language: str = "English") -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        # Resolve template once (shared across all segment tasks)
+        _layout_theme_id = style_guide.get("layout_theme", "")
+        _template = _get_template_by_id(_layout_theme_id) if _layout_theme_id else None
+
         def task(seg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
             # Flatten style guide for prompt
             palette = style_guide.get("palette", {})
             background_type = style_guide.get("background_type", "black")
-            
+            fonts = style_guide.get("fonts", {})
+            layout_theme = style_guide.get("layout_theme", "")
+            mermaid_theme = style_guide.get("mermaid_theme", "dark")
+
             # Get mermaid classDef based on background type
             mermaid_classdef = f"classDef default fill:{palette.get('mermaid_node_fill', '#1e293b')},stroke:{palette.get('mermaid_node_stroke', '#3b82f6')},stroke-width:2px,color:{palette.get('mermaid_text', '#fff')},rx:8px,ry:8px;"
-            
+
             # Build explicit color instructions based on background
             if background_type == "white":
                 color_warning = (
@@ -1904,9 +2024,26 @@ class VideoGenerationPipeline:
                     text=palette.get('text'),
                     svg_stroke=palette.get('svg_stroke')
                 )
-            
+
+            # ── Build style_context ──────────────────────────────────────────
+            # Order: template (holistic visual direction) → colors → mermaid → typography
+            # Template comes FIRST so the LLM reads the overall aesthetic before
+            # the specific color values that refine it.
             style_context = (
-                f"🎨 **COLOR RULES (CRITICAL - FOLLOW EXACTLY)**:\n"
+                # 1. Template visual direction (if selected) — defines the overall aesthetic
+                (
+                    f"**🎨 VISUAL TEMPLATE: {_template['name'].upper()}** — {_template['description']}\n"
+                    f"{_template['style_injection']}\n"
+                    f"↑ These CSS rules and HTML patterns define your visual identity for this video. "
+                    f"The exact color values below OVERRIDE template defaults where they differ.\n\n"
+                    if _template else (
+                        f"**LAYOUT DIRECTION — {layout_theme.upper().replace('_', ' ')}**: "
+                        f"Let this visual style guide spacing, card shape, and overall tone.\n\n"
+                        if layout_theme else ""
+                    )
+                )
+                # 2. Color rules — precise hex values that the template (or brand) set
+                + f"🎨 **COLOR RULES (CRITICAL - FOLLOW EXACTLY)**:\n"
                 f"{color_warning}\n"
                 f"**EXACT COLORS TO USE**:\n"
                 f"- Text color: {palette.get('text')}\n"
@@ -1921,14 +2058,24 @@ class VideoGenerationPipeline:
                 f"<path stroke=\"{palette.get('svg_stroke')}\" fill=\"none\"/>\n"
                 f"<rect fill=\"{palette.get('svg_fill')}\"/>\n"
                 f"```\n"
-                f"\n**MERMAID DIAGRAMS**:\n"
+                # 3. Mermaid — theme + classDef
+                + f"\n**MERMAID DIAGRAMS** (theme: {mermaid_theme}):\n"
+                f"- Add `%%{{init: {{'theme': '{mermaid_theme}'}}}}%%` as the FIRST LINE inside every `<div class='mermaid'>` block.\n"
                 f"```\n"
+                f"%%{{init: {{'theme': '{mermaid_theme}'}}}}%%\n"
                 f"{mermaid_classdef}\n"
                 f"```\n"
-                f"\n**ROUGH NOTATION** (for annotations):\n"
+                # 4. Rough Notation
+                + f"\n**ROUGH NOTATION** (for annotations):\n"
                 f"```javascript\n"
                 f"annotate('#element-id', {{type: 'underline', color: '{palette.get('annotation_color')}'}});\n"
                 f"```\n"
+                # 5. Typography
+                + f"\n**TYPOGRAPHY (use these exact font families throughout)**:\n"
+                f"- Headings / titles / h1–h3: font-family: '{fonts.get('primary', 'Montserrat')}', sans-serif\n"
+                f"- Body text / paragraphs / labels: font-family: '{fonts.get('secondary', 'Inter')}', sans-serif\n"
+                f"- Code / monospace elements: font-family: '{fonts.get('code', 'Fira Code')}', monospace\n"
+                f"Import these via Google Fonts if not already loaded in the slide.\n"
             )
 
             # Extract relevant visual ideas from beat outline if available
@@ -2080,7 +2227,8 @@ class VideoGenerationPipeline:
             print(f"    Raw content preview: {raw[:200]}...")
             print(f"    Full raw content saved to: {debug_path}")
             
-            fallback = self._fallback_html_payload(raw)
+            seg_dur = max(5.0, float(seg.get("end", 0)) - float(seg.get("start", 0)))
+            fallback = self._fallback_html_payload(raw, seg_duration=seg_dur)
             if fallback:
                 print(
                     f"⚠️  Using fallback markup for segment {seg.get('index')}."
@@ -2090,7 +2238,7 @@ class VideoGenerationPipeline:
                 f"Unable to parse HTML JSON for segment {seg.get('index')} (raw saved to {debug_path})"
             )
 
-    def _fallback_html_payload(self, raw: str) -> Dict[str, Any]:
+    def _fallback_html_payload(self, raw: str, seg_duration: float = 60.0) -> Dict[str, Any]:
         stripped = self._strip_code_fences(raw)
         if stripped.startswith("{") and stripped.rstrip().endswith("}"):
             try:
@@ -2129,7 +2277,7 @@ class VideoGenerationPipeline:
             "shots": [
                 {
                     "offsetSeconds": 0,
-                    "durationSeconds": 999,
+                    "durationSeconds": max(5.0, seg_duration),
                     "htmlStartX": 0,
                     "htmlStartY": 0,
                     "width": 1920,
@@ -2510,7 +2658,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             duration = coerce(shot["durationFraction"], 0.0) * seg_duration
         if duration is None:
             duration = default_span
-        return max(0.25, duration)
+        # Enforce a readable minimum: 3 seconds per shot (prompt asks for 5+ but segments
+        # shorter than ~12s would produce fewer than the requested 3-4 shots at 5s each).
+        return max(3.0, duration)
 
     @staticmethod
     def _resolve_shot_box(shot: Dict[str, Any]) -> Tuple[int, int, int, int, bool]:
@@ -2555,6 +2705,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         h = max(150, h)
         return x, y, w, h, auto_box
 
+    # Extra Google Fonts families required by each template (appended to the base import)
+    _TEMPLATE_EXTRA_FONT_FAMILIES: Dict[str, str] = {
+        "whiteboard":  "Caveat:wght@400;600;700",
+        "chalkboard":  "Caveat:wght@400;600;700",
+        "glamour":     "Playfair+Display:ital,wght@0,400;0,700;1,400",
+        "diorama":     "Poppins:wght@400;600;700;800",
+        "neon":        "Orbitron:wght@400;700;900&family=Share+Tech+Mono",
+        "blueprint":   "Courier+Prime:wght@400;700&family=Share+Tech+Mono",
+        "minimal":     "Inter:wght@300;400;600;700",
+        "cerulean":    "Inter:wght@400;600;700",
+    }
+
     def _ensure_fonts(self, html: str) -> str:
         # Get colors based on background_type
         bg_type = getattr(self, '_current_background_type', 'white')
@@ -2566,8 +2728,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         accent_color = preset["accent"]
         
         # Common educational styles (Highlighting, Markers)
+        # Build Google Fonts import URL — base fonts + any template-specific additions
+        _style_cfg = getattr(self, '_current_style_config', None)
+        _layout_theme = (_style_cfg or {}).get("layout_theme", "") if _style_cfg else ""
+        _extra_family = self._TEMPLATE_EXTRA_FONT_FAMILIES.get(_layout_theme, "")
+        _base_families = "Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code"
+        _fonts_param = f"{_base_families}&family={_extra_family}" if _extra_family else _base_families
+        _fonts_url = f"https://fonts.googleapis.com/css2?family={_fonts_param}&display=swap"
+
         global_css = f"""<style>
-            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');
+            @import url('{_fonts_url}');
             
             /* --- FULL SCREEN CENTER CONTAINER (CRITICAL) --- */
             .full-screen-center {{
@@ -2952,15 +3122,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # Regex to find all such tags
             # We capture: entire tag, quote style, prompt, rest of tag
             matches = list(re.finditer(r'(<img[^>]+data-img-prompt=(["\'])(.*?)\2[^>]*>)', html))
-            SVG_KEYWORDS = [
-                "diagram", "flowchart", "chart", "graph", "infographic",
-                "comparison", "table", "workflow", "process flow", "timeline",
-                "schematic", "blueprint", "map of concepts", "mind map",
-            ]
+            # Word-boundary regex — avoids false positives like "photograph" → "graph"
+            # or "notable" → "table", "architectural" → "chart"
+            _SVG_KW_RE = re.compile(
+                r'\b(diagram|flowchart|bar chart|pie chart|line chart|infographic|'
+                r'comparison chart|data table|workflow|process flow|timeline diagram|'
+                r'schematic|blueprint|concept map|mind map|venn diagram)\b',
+                re.IGNORECASE,
+            )
             for match in matches:
                 full_tag = match.group(1)
                 prompt = match.group(3)
-                if any(kw in prompt.lower() for kw in SVG_KEYWORDS):
+                if _SVG_KW_RE.search(prompt):
                     print(f"    ⚠️  Skipping image gen (SVG candidate): {prompt[:70]}...")
                     continue
                 tasks.append({

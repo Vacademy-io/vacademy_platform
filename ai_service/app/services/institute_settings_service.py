@@ -561,5 +561,78 @@ Follow these rules strictly at all times.
             raise
 
 
+    def get_video_style(self, institute_id: str) -> Dict[str, Any]:
+        """
+        Get video style configuration for an institute (brand colors, fonts, layout theme).
+        Returns defaults if not configured.
+        """
+        DEFAULT_STYLE = {
+            "background_type": "white",
+            "primary_color": "#6366f1",
+            "heading_font": "Inter",
+            "body_font": "Inter",
+            "layout_theme": "clean_light",
+        }
+        try:
+            stmt = text("SELECT setting_json FROM institutes WHERE id = :institute_id")
+            result = self.db.execute(stmt, {"institute_id": institute_id})
+            row = result.fetchone()
+
+            if not row or not row[0]:
+                return {"style": DEFAULT_STYLE.copy(), "has_custom_style": False}
+
+            settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            style = settings.get("setting", {}).get("VIDEO_STYLE")
+
+            if style:
+                merged = {**DEFAULT_STYLE, **style}
+                return {"style": merged, "has_custom_style": True}
+
+            return {"style": DEFAULT_STYLE.copy(), "has_custom_style": False}
+
+        except Exception as e:
+            logger.error(f"Error fetching video style for institute {institute_id}: {e}")
+            return {"style": DEFAULT_STYLE.copy(), "has_custom_style": False}
+
+    def update_video_style(self, institute_id: str, style: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update video style configuration for an institute.
+        """
+        try:
+            stmt = text("SELECT setting_json FROM institutes WHERE id = :institute_id")
+            result = self.db.execute(stmt, {"institute_id": institute_id})
+            row = result.fetchone()
+
+            if not row:
+                raise ValueError(f"Institute {institute_id} not found")
+
+            current_settings = {}
+            if row[0]:
+                current_settings = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+
+            if "setting" not in current_settings:
+                current_settings["setting"] = {}
+
+            current_settings["setting"]["VIDEO_STYLE"] = style
+
+            update_stmt = text("""
+                UPDATE institutes
+                SET setting_json = :setting_json
+                WHERE id = :institute_id
+            """)
+            self.db.execute(update_stmt, {
+                "setting_json": json.dumps(current_settings),
+                "institute_id": institute_id
+            })
+            self.db.commit()
+
+            return {"style": style, "has_custom_style": True}
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error updating video style for institute {institute_id}: {e}")
+            raise
+
+
 __all__ = ["InstituteSettingsService"]
 

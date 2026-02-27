@@ -92,6 +92,11 @@ from ..schemas.institute_settings import (
     VideoBrandingConfig,
     VideoBrandingResponse,
     VideoBrandingUpdateRequest,
+    VideoStyleConfig,
+    VideoStyleResponse,
+    VideoStyleUpdateRequest,
+    VideoTemplateItem,
+    VideoTemplatesListResponse,
 )
 
 
@@ -170,6 +175,107 @@ async def update_video_branding(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update video branding: {str(e)}")
+
+
+# ============== VIDEO STYLE ENDPOINTS ==============
+
+
+@router.get(
+    "/video-style/v1/get",
+    response_model=VideoStyleResponse,
+    summary="Get institute video style settings"
+)
+async def get_video_style(
+    institute_id: str,
+    db: Session = Depends(db_dependency),
+) -> VideoStyleResponse:
+    """
+    Get video style configuration for an institute (brand colors, fonts, layout theme).
+    Returns defaults if not configured.
+
+    Args:
+        institute_id: Institute identifier
+
+    Returns:
+        Video style configuration
+    """
+    try:
+        service = InstituteSettingsService(db)
+        result = service.get_video_style(institute_id)
+        return VideoStyleResponse(
+            institute_id=institute_id,
+            style=VideoStyleConfig(**result["style"]),
+            has_custom_style=result["has_custom_style"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get video style: {str(e)}")
+
+
+@router.post(
+    "/video-style/v1/update",
+    response_model=VideoStyleResponse,
+    summary="Update institute video style settings"
+)
+async def update_video_style(
+    institute_id: str,
+    request: VideoStyleUpdateRequest,
+    db: Session = Depends(db_dependency),
+) -> VideoStyleResponse:
+    """
+    Update video style configuration for an institute.
+
+    Sets brand colors, fonts, and layout theme used during HTML slide generation.
+
+    Args:
+        institute_id: Institute identifier
+        request: Video style configuration to set
+
+    Returns:
+        Updated video style configuration
+    """
+    try:
+        service = InstituteSettingsService(db)
+        result = service.update_video_style(
+            institute_id=institute_id,
+            style=request.style.model_dump()
+        )
+        return VideoStyleResponse(
+            institute_id=institute_id,
+            style=VideoStyleConfig(**result["style"]),
+            has_custom_style=result["has_custom_style"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update video style: {str(e)}")
+
+
+# ============== VIDEO TEMPLATE ENDPOINTS ==============
+
+
+@router.get(
+    "/video-templates/v1/list",
+    response_model=VideoTemplatesListResponse,
+    summary="List all available video templates"
+)
+async def list_video_templates() -> VideoTemplatesListResponse:
+    """
+    Returns all pre-designed video templates available for AI video generation.
+    No institute_id required — templates are system-level constants.
+
+    Each template includes a preview_html for gallery display and is identified
+    by an id that maps to layout_theme in the video style settings.
+    """
+    try:
+        import sys
+        import os
+        pipeline_dir = os.path.join(os.path.dirname(__file__), "../ai-video-gen-main")
+        if pipeline_dir not in sys.path:
+            sys.path.insert(0, pipeline_dir)
+        from video_templates import list_templates
+        return VideoTemplatesListResponse(
+            templates=[VideoTemplateItem(**t) for t in list_templates()]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list templates: {str(e)}")
 
 
 __all__ = ["router"]

@@ -76,6 +76,64 @@ class VideoBrandingUpdateRequest(BaseModel):
     branding: VideoBrandingConfig = Field(description="Video branding configuration to set")
 
 
+# ============== VIDEO STYLE SCHEMAS ==============
+
+class VideoStyleConfig(BaseModel):
+    """Brand colors, fonts, and layout theme for AI-generated video slides."""
+    background_type: str = Field(
+        default="white",
+        description="Background theme: 'white' (light) or 'black' (dark)"
+    )
+    primary_color: str = Field(
+        default="#6366f1",
+        description="Primary/accent color as a hex code (e.g. #6366f1)"
+    )
+    heading_font: str = Field(
+        default="Inter",
+        description="Font family for headings in generated slides"
+    )
+    body_font: str = Field(
+        default="Inter",
+        description="Font family for body text in generated slides"
+    )
+    layout_theme: str = Field(
+        default="clean_light",
+        description="Layout preset name: clean_light, dark_pro, minimal, academic, vibrant"
+    )
+
+
+class VideoStyleResponse(BaseModel):
+    """Response for video style settings."""
+    institute_id: str
+    style: VideoStyleConfig
+    has_custom_style: bool = Field(
+        default=False,
+        description="Whether the institute has custom style configured"
+    )
+
+
+class VideoStyleUpdateRequest(BaseModel):
+    """Request to update video style settings."""
+    style: VideoStyleConfig = Field(description="Video style configuration to set")
+
+
+# ============== VIDEO TEMPLATE SCHEMAS ==============
+
+class VideoTemplateItem(BaseModel):
+    """Metadata for a single pre-designed video template (no style_injection)."""
+    id: str = Field(description="Unique template identifier stored as layout_theme value")
+    name: str = Field(description="Display name e.g. 'Whiteboard'")
+    description: str = Field(description="One-line description of the template style")
+    tags: List[str] = Field(description="Style/category tags")
+    background_type: str = Field(description="'white' or 'black'")
+    preview_html: str = Field(description="Complete HTML page for gallery iframe preview")
+
+
+class VideoTemplatesListResponse(BaseModel):
+    """Response for the templates list endpoint."""
+    templates: List[VideoTemplateItem]
+
+
 class InstituteAISettingsRequest(BaseModel):
     """Request to get institute AI settings."""
     institute_id: str = Field(
@@ -108,5 +166,10 @@ __all__ = [
     "VideoBrandingConfig",
     "VideoBrandingResponse",
     "VideoBrandingUpdateRequest",
+    "VideoStyleConfig",
+    "VideoStyleResponse",
+    "VideoStyleUpdateRequest",
+    "VideoTemplateItem",
+    "VideoTemplatesListResponse",
 ]
 

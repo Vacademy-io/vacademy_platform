@@ -870,8 +870,8 @@ class VideoGenerationPipeline:
                 beat_outline = plan_data.get("beat_outline", [])
                 
                 # Configurable max segments to limit LLM expense
-                # Default: max 8 segments (covers ~8 minutes of video at ~60s each)
-                max_segments = getattr(self, '_max_segments', 8)
+                # Default: max 12 segments (covers ~8 minutes of video at ~40s each)
+                max_segments = getattr(self, '_max_segments', 12)
                 
                 if beat_outline and len(beat_outline) >= 2 and words:
                     segments = self._segment_words_by_beats(words, beat_outline, max_segments=max_segments)
@@ -1695,7 +1695,7 @@ class VideoGenerationPipeline:
         return json.loads(words_path.read_text())
 
     @staticmethod
-    def _segment_words(words: List[Dict[str, Any]], window: float = 60.0) -> List[Dict[str, Any]]:
+    def _segment_words(words: List[Dict[str, Any]], window: float = 40.0) -> List[Dict[str, Any]]:
         if not words:
             return []
         total_duration = float(words[-1]["end"])
@@ -2175,7 +2175,7 @@ class VideoGenerationPipeline:
                     raw, usage = self.html_client.chat(
                         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                         temperature=0.7,  # Lower temperature for more consistent JSON output
-                        max_tokens=12000,
+                        max_tokens=24000,
                     )
                     data = self._parse_html_response(raw, seg, run_dir)
                     shot_entries = self._expand_shots(seg, data)
@@ -3297,7 +3297,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 method="POST"
             )
             try:
-                with urllib.request.urlopen(req, timeout=60) as response:
+                with urllib.request.urlopen(req, timeout=120) as response:
                     raw = response.read().decode("utf-8")
                     data = json.loads(raw)
 
@@ -3341,8 +3341,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 return None, None
             except Exception as e:
                 import traceback
-                print(f"    ❌ Gemini image generation exception for prompt '{prompt[:50]}...': {str(e)}")
-                print(f"    📋 Error details: {traceback.format_exc()[:500]}")
+                print(f"    ⚠️  Gemini image attempt {attempt + 1}/{max_retries} failed for '{prompt[:50]}...': {str(e)}")
+                if attempt < max_retries - 1:
+                    wait = (2 ** attempt) * 3  # 3s, 6s, 12s
+                    print(f"    📋 Error details: {traceback.format_exc()[:300]}")
+                    print(f"    ⏳ Retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+                print(f"    ❌ Gemini image generation failed after {max_retries} attempts: {traceback.format_exc()[:500]}")
                 return None, None
 
         return None, None

@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 
@@ -28,7 +31,7 @@ import { TokenKey } from '@/constants/auth/tokens';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
 } from '@/types/display-settings';
 
@@ -177,7 +180,8 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const roles = getUserRoles(accessToken);
         const isAdmin = roles.includes('ADMIN');
-        const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
         const cached = getDisplaySettingsFromCache(roleKey);
         if (cached) {
             setRoleDisplay(cached);

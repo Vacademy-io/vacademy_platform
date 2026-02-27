@@ -1,3 +1,4 @@
+import { getInstituteId } from '@/constants/helper';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useState, useMemo } from 'react';
 import { AddCourseButton } from '@/components/common/study-library/add-course/add-course-button';
@@ -11,6 +12,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import type { LevelType } from '@/schemas/student/student-list/institute-schema';
 // import { handleGetInstituteUsersForAccessControl } from '@/routes/dashboard/-services/dashboard-services';
 import { useQuery } from '@tanstack/react-query';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { useFacultyCreatorsList } from '@/routes/dashboard/-hooks/useTeacherList';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
@@ -36,7 +38,7 @@ import { CourseInReviewTab } from './course-in-review-tab';
 import { useNavigate } from '@tanstack/react-router';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
     type CourseListTabId,
 } from '@/types/display-settings';
@@ -209,18 +211,18 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     // Role Display Settings (course list tabs)
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
-        // Determine role key from existing roles logic
-        const safeRoles = Array.isArray(roles) ? roles : [];
-        const isAdmin = safeRoles.includes('ADMIN');
-        const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
-        const cached = getDisplaySettingsFromCache(roleKey);
-        if (cached) {
-            setRoleDisplay(cached);
-        } else {
-            getDisplaySettings(roleKey)
-                .then(setRoleDisplay)
-                .catch(() => setRoleDisplay(null));
-        }
+        const fetchSettings = async () => {
+            const roleKey = getActiveRoleDisplaySettingsKey();
+            const cached = getDisplaySettingsFromCache(roleKey);
+            if (cached) {
+                setRoleDisplay(cached);
+            } else {
+                getDisplaySettings(roleKey)
+                    .then(setRoleDisplay)
+                    .catch(() => setRoleDisplay(null));
+            }
+        };
+        fetchSettings();
     }, [roles]);
 
     // Handle tab change with URL sync
@@ -537,13 +539,6 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                     return String(id);
             }
         };
-
-        const isFacultyUser = hasFacultyAssignedPermission(instituteDetails?.id);
-
-        // If faculty, only show All Courses tab
-        if (isFacultyUser) {
-            return [{ key: 'AllCourses', label: labelFor('AllCourses'), show: true }];
-        }
 
         if (roleDisplay?.courseList?.tabs && roleDisplay.courseList.tabs.length > 0) {
             return roleDisplay.courseList.tabs

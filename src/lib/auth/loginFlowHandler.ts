@@ -1,3 +1,4 @@
+import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
 import {
     setAuthorizationCookie,
@@ -17,7 +18,7 @@ import { trackEvent, identifyUser } from '@/lib/amplitude';
 import { getDisplaySettingsFromCache, getDisplaySettings } from '@/services/display-settings';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import type { QueryClient } from '@tanstack/react-query';
@@ -233,9 +234,27 @@ export const handleLoginFlow = async (options: LoginFlowOptions): Promise<LoginF
             void getCourseSettings(true).catch(() => { });
 
             // Determine redirect URL from Display Settings - fetch the correct role settings first
-            const roleKey = hasAdminRole
-                ? ADMIN_DISPLAY_SETTINGS_KEY
-                : TEACHER_DISPLAY_SETTINGS_KEY;
+            const hasFaculty = hasFacultyAssignedPermission(instituteId);
+            let roleKey: string = hasAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+
+            if (!hasAdminRole && hasFaculty) {
+                roleKey = CUSTOM_ROLE_DISPLAY_SETTINGS_KEY;
+                try {
+                    const { getAllRoles } = await import('@/routes/manage-custom-teams/-services/custom-team-services');
+                    const customRoles = await getAllRoles();
+                    const matchedRole = customRoles?.find((cr: any) =>
+                        instituteResult.selectedInstitute?.roles.some(role => role.toUpperCase() === cr.name.toUpperCase())
+                    );
+                    if (matchedRole) {
+                        roleKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${matchedRole.id}`;
+                    }
+                } catch (err) {
+                    console.error('Failed to map custom role for display settings', err);
+                }
+            }
+
+            // Save the determined role key so other components can access it synchronously
+            localStorage.setItem('ACTIVE_ROLE_DISPLAY_SETTINGS_KEY', roleKey);
 
             // Use cache-first approach for display settings to avoid blocking login
             // First try to use cached settings for immediate redirect
@@ -457,7 +476,25 @@ export const handleInstituteSelection = async (instituteId: string): Promise<Log
         void getCourseSettings(true).catch(() => { });
 
         // Determine redirect URL from Display Settings - fetch the correct role settings first
-        const roleKey = hasAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        let roleKey = hasAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        const hasFaculty = hasFacultyAssignedPermission(instituteId);
+
+        if (!hasAdminRole && hasFaculty) {
+            roleKey = CUSTOM_ROLE_DISPLAY_SETTINGS_KEY;
+            try {
+                const { getAllRoles } = await import('@/routes/manage-custom-teams/-services/custom-team-services');
+                const customRoles = await getAllRoles();
+                const matchedRole = customRoles?.find((cr: any) => selectedInstitute?.roles.includes(cr.name));
+                if (matchedRole) {
+                    roleKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${matchedRole.id}`;
+                }
+            } catch (err) {
+                console.error('Failed to map custom role for display settings', err);
+            }
+        }
+
+        // Save the determined role key so other components can access it synchronously
+        localStorage.setItem('ACTIVE_ROLE_DISPLAY_SETTINGS_KEY', roleKey);
 
         // Use cache-first approach for display settings to avoid blocking
         let ds: DisplaySettingsData | null = getDisplaySettingsFromCache(roleKey);

@@ -1,3 +1,5 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
 // class-study-material.tsx
 import { useRouter } from '@tanstack/react-router';
 import { useMutation } from '@tanstack/react-query';
@@ -14,7 +16,7 @@ import { useGetPackageSessionIdFromCourseInit } from '@/utils/helpers/study-libr
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type CourseDetailsTabId,
     type DisplaySettingsData,
 } from '@/types/display-settings';
@@ -367,7 +369,8 @@ export const CourseStructureDetails = ({
         // Use current institute's roles so we load the same display settings as in the effect above
         const roles = getRolesForCurrentInstitute();
         const isAdminRole = roles.includes('ADMIN');
-        const roleKey = isAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+        const roleKey = getActiveRoleDisplaySettingsKey();
         const fromCache = getDisplaySettingsFromCache(roleKey);
         const defaultDetailsTab = fromCache?.courseDetails?.defaultTab as
             | CourseDetailsTabId
@@ -1339,10 +1342,10 @@ export const CourseStructureDetails = ({
                                                             {roleDisplay?.coursePage
                                                                 ?.viewContentNumbering !==
                                                                 false && (
-                                                                <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs font-medium text-gray-600 group-hover:bg-white">
-                                                                    S{idx + 1}
-                                                                </span>
-                                                            )}
+                                                                    <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs font-medium text-gray-600 group-hover:bg-white">
+                                                                        S{idx + 1}
+                                                                    </span>
+                                                                )}
                                                             <span
                                                                 className="truncate"
                                                                 title={subject.subject_name}
@@ -1451,11 +1454,11 @@ export const CourseStructureDetails = ({
                                                                                         readOnly
                                                                                             ? undefined
                                                                                             : () =>
-                                                                                                  toggleModule(
-                                                                                                      mod
-                                                                                                          .module
-                                                                                                          .id
-                                                                                                  )
+                                                                                                toggleModule(
+                                                                                                    mod
+                                                                                                        .module
+                                                                                                        .id
+                                                                                                )
                                                                                     }
                                                                                     className="group/module"
                                                                                 >
@@ -1489,12 +1492,12 @@ export const CourseStructureDetails = ({
                                                                                                 ?.coursePage
                                                                                                 ?.viewContentNumbering !==
                                                                                                 false && (
-                                                                                                <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs font-medium text-gray-500 group-hover/module:bg-white">
-                                                                                                    M
-                                                                                                    {modIdx +
-                                                                                                        1}
-                                                                                                </span>
-                                                                                            )}
+                                                                                                    <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs font-medium text-gray-500 group-hover/module:bg-white">
+                                                                                                        M
+                                                                                                        {modIdx +
+                                                                                                            1}
+                                                                                                    </span>
+                                                                                                )}
                                                                                             <span
                                                                                                 className="truncate"
                                                                                                 title={
@@ -1697,12 +1700,12 @@ export const CourseStructureDetails = ({
                                                                                                                                     ?.coursePage
                                                                                                                                     ?.viewContentNumbering !==
                                                                                                                                     false && (
-                                                                                                                                    <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs text-gray-500 group-hover/chapter:bg-white">
-                                                                                                                                        C
-                                                                                                                                        {chIdx +
-                                                                                                                                            1}
-                                                                                                                                    </span>
-                                                                                                                                )}
+                                                                                                                                        <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs text-gray-500 group-hover/chapter:bg-white">
+                                                                                                                                            C
+                                                                                                                                            {chIdx +
+                                                                                                                                                1}
+                                                                                                                                        </span>
+                                                                                                                                    )}
                                                                                                                                 <span
                                                                                                                                     className="truncate"
                                                                                                                                     title={
@@ -1891,14 +1894,14 @@ export const CourseStructureDetails = ({
 
                                                                                                                                 {(
                                                                                                                                     chapterSlidesMap[
-                                                                                                                                        ch
-                                                                                                                                            .chapter
-                                                                                                                                            .id
+                                                                                                                                    ch
+                                                                                                                                        .chapter
+                                                                                                                                        .id
                                                                                                                                     ] ??
                                                                                                                                     []
                                                                                                                                 )
                                                                                                                                     .length ===
-                                                                                                                                0 ? (
+                                                                                                                                    0 ? (
                                                                                                                                     <div className="px-2 py-1 text-xs text-gray-400">
                                                                                                                                         No{' '}
                                                                                                                                         {getTerminology(
@@ -1912,9 +1915,9 @@ export const CourseStructureDetails = ({
                                                                                                                                 ) : (
                                                                                                                                     (
                                                                                                                                         chapterSlidesMap[
-                                                                                                                                            ch
-                                                                                                                                                .chapter
-                                                                                                                                                .id
+                                                                                                                                        ch
+                                                                                                                                            .chapter
+                                                                                                                                            .id
                                                                                                                                         ] ??
                                                                                                                                         []
                                                                                                                                     ).map(
@@ -1948,12 +1951,12 @@ export const CourseStructureDetails = ({
                                                                                                                                                     ?.coursePage
                                                                                                                                                     ?.viewContentNumbering !==
                                                                                                                                                     false && (
-                                                                                                                                                    <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
-                                                                                                                                                        S
-                                                                                                                                                        {sIdx +
-                                                                                                                                                            1}
-                                                                                                                                                    </span>
-                                                                                                                                                )}
+                                                                                                                                                        <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
+                                                                                                                                                            S
+                                                                                                                                                            {sIdx +
+                                                                                                                                                                1}
+                                                                                                                                                        </span>
+                                                                                                                                                    )}
                                                                                                                                                 {getIcon(
                                                                                                                                                     (
                                                                                                                                                         slide as any
@@ -2118,12 +2121,12 @@ export const CourseStructureDetails = ({
                                                                                                 ?.coursePage
                                                                                                 ?.viewContentNumbering !==
                                                                                                 false && (
-                                                                                                <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs font-medium text-gray-500 group-hover/module:bg-white">
-                                                                                                    M
-                                                                                                    {modIdx +
-                                                                                                        1}
-                                                                                                </span>
-                                                                                            )}
+                                                                                                    <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs font-medium text-gray-500 group-hover/module:bg-white">
+                                                                                                        M
+                                                                                                        {modIdx +
+                                                                                                            1}
+                                                                                                    </span>
+                                                                                                )}
                                                                                             <span
                                                                                                 className="truncate"
                                                                                                 title={
@@ -2326,12 +2329,12 @@ export const CourseStructureDetails = ({
                                                                                                                                     ?.coursePage
                                                                                                                                     ?.viewContentNumbering !==
                                                                                                                                     false && (
-                                                                                                                                    <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs text-gray-500 group-hover/chapter:bg-white">
-                                                                                                                                        C
-                                                                                                                                        {chIdx +
-                                                                                                                                            1}
-                                                                                                                                    </span>
-                                                                                                                                )}
+                                                                                                                                        <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs text-gray-500 group-hover/chapter:bg-white">
+                                                                                                                                            C
+                                                                                                                                            {chIdx +
+                                                                                                                                                1}
+                                                                                                                                        </span>
+                                                                                                                                    )}
                                                                                                                                 <span
                                                                                                                                     className="truncate"
                                                                                                                                     title={
@@ -2518,14 +2521,14 @@ export const CourseStructureDetails = ({
 
                                                                                                                                 {(
                                                                                                                                     chapterSlidesMap[
-                                                                                                                                        ch
-                                                                                                                                            .chapter
-                                                                                                                                            .id
+                                                                                                                                    ch
+                                                                                                                                        .chapter
+                                                                                                                                        .id
                                                                                                                                     ] ??
                                                                                                                                     []
                                                                                                                                 )
                                                                                                                                     .length ===
-                                                                                                                                0 ? (
+                                                                                                                                    0 ? (
                                                                                                                                     <div className="px-2 py-1 text-xs text-gray-400">
                                                                                                                                         No{' '}
                                                                                                                                         {getTerminology(
@@ -2539,9 +2542,9 @@ export const CourseStructureDetails = ({
                                                                                                                                 ) : (
                                                                                                                                     (
                                                                                                                                         chapterSlidesMap[
-                                                                                                                                            ch
-                                                                                                                                                .chapter
-                                                                                                                                                .id
+                                                                                                                                        ch
+                                                                                                                                            .chapter
+                                                                                                                                            .id
                                                                                                                                         ] ??
                                                                                                                                         []
                                                                                                                                     ).map(
@@ -2575,12 +2578,12 @@ export const CourseStructureDetails = ({
                                                                                                                                                     ?.coursePage
                                                                                                                                                     ?.viewContentNumbering !==
                                                                                                                                                     false && (
-                                                                                                                                                    <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
-                                                                                                                                                        S
-                                                                                                                                                        {sIdx +
-                                                                                                                                                            1}
-                                                                                                                                                    </span>
-                                                                                                                                                )}
+                                                                                                                                                        <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
+                                                                                                                                                            S
+                                                                                                                                                            {sIdx +
+                                                                                                                                                                1}
+                                                                                                                                                        </span>
+                                                                                                                                                    )}
                                                                                                                                                 {getIcon(
                                                                                                                                                     (
                                                                                                                                                         slide as any
@@ -2828,12 +2831,12 @@ export const CourseStructureDetails = ({
                                                                                                                                     ?.coursePage
                                                                                                                                     ?.viewContentNumbering !==
                                                                                                                                     false && (
-                                                                                                                                    <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs text-gray-500 group-hover/chapter:bg-white">
-                                                                                                                                        C
-                                                                                                                                        {chIdx +
-                                                                                                                                            1}
-                                                                                                                                    </span>
-                                                                                                                                )}
+                                                                                                                                        <span className="w-7 shrink-0 rounded-md bg-gray-100 py-0.5 text-center font-mono text-xs text-gray-500 group-hover/chapter:bg-white">
+                                                                                                                                            C
+                                                                                                                                            {chIdx +
+                                                                                                                                                1}
+                                                                                                                                        </span>
+                                                                                                                                    )}
                                                                                                                                 <span
                                                                                                                                     className="truncate"
                                                                                                                                     title={
@@ -3018,14 +3021,14 @@ export const CourseStructureDetails = ({
 
                                                                                                                                 {(
                                                                                                                                     chapterSlidesMap[
-                                                                                                                                        ch
-                                                                                                                                            .chapter
-                                                                                                                                            .id
+                                                                                                                                    ch
+                                                                                                                                        .chapter
+                                                                                                                                        .id
                                                                                                                                     ] ??
                                                                                                                                     []
                                                                                                                                 )
                                                                                                                                     .length ===
-                                                                                                                                0 ? (
+                                                                                                                                    0 ? (
                                                                                                                                     <div className="px-2 py-1 text-xs text-gray-400">
                                                                                                                                         No{' '}
                                                                                                                                         {getTerminology(
@@ -3039,9 +3042,9 @@ export const CourseStructureDetails = ({
                                                                                                                                 ) : (
                                                                                                                                     (
                                                                                                                                         chapterSlidesMap[
-                                                                                                                                            ch
-                                                                                                                                                .chapter
-                                                                                                                                                .id
+                                                                                                                                        ch
+                                                                                                                                            .chapter
+                                                                                                                                            .id
                                                                                                                                         ] ??
                                                                                                                                         []
                                                                                                                                     ).map(
@@ -3075,12 +3078,12 @@ export const CourseStructureDetails = ({
                                                                                                                                                     ?.coursePage
                                                                                                                                                     ?.viewContentNumbering !==
                                                                                                                                                     false && (
-                                                                                                                                                    <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
-                                                                                                                                                        S
-                                                                                                                                                        {sIdx +
-                                                                                                                                                            1}
-                                                                                                                                                    </span>
-                                                                                                                                                )}
+                                                                                                                                                        <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
+                                                                                                                                                            S
+                                                                                                                                                            {sIdx +
+                                                                                                                                                                1}
+                                                                                                                                                        </span>
+                                                                                                                                                    )}
                                                                                                                                                 {getIcon(
                                                                                                                                                     (
                                                                                                                                                         slide as any
@@ -3147,11 +3150,11 @@ export const CourseStructureDetails = ({
                                                     readOnly
                                                         ? undefined
                                                         : handleSlideNavigation(
-                                                              subjectId,
-                                                              mod.module.id,
-                                                              ch.chapter.id,
-                                                              '' // Empty slideId for new slide
-                                                          )
+                                                            subjectId,
+                                                            mod.module.id,
+                                                            ch.chapter.id,
+                                                            '' // Empty slideId for new slide
+                                                        )
                                                 }
                                                 className="!m-0 flex w-fit cursor-pointer flex-row items-center justify-start gap-2 px-0 pl-2 text-primary-500"
                                             >
@@ -3185,10 +3188,10 @@ export const CourseStructureDetails = ({
                                                     >
                                                         {roleDisplay?.coursePage
                                                             ?.viewContentNumbering !== false && (
-                                                            <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
-                                                                S{sIdx + 1}
-                                                            </span>
-                                                        )}
+                                                                <span className="w-7 shrink-0 text-center font-mono text-xs text-gray-400">
+                                                                    S{sIdx + 1}
+                                                                </span>
+                                                            )}
                                                         {getIcon(
                                                             (slide as any).html_video_slide
                                                                 ? 'HTML_VIDEO'
@@ -3328,10 +3331,10 @@ export const CourseStructureDetails = ({
                                         {/* Subject Number */}
                                         {roleDisplay?.coursePage?.viewContentNumbering !==
                                             false && (
-                                            <p className="text-xs text-gray-500">
-                                                Subject {idx + 1}
-                                            </p>
-                                        )}
+                                                <p className="text-xs text-gray-500">
+                                                    Subject {idx + 1}
+                                                </p>
+                                            )}
 
                                         {/* Edit and Delete Buttons */}
                                         {canEditStructure && (
@@ -3438,10 +3441,10 @@ export const CourseStructureDetails = ({
                                                 {/* Module Number */}
                                                 {roleDisplay?.coursePage?.viewContentNumbering !==
                                                     false && (
-                                                    <p className="text-xs text-gray-500">
-                                                        Module {modIdx + 1}
-                                                    </p>
-                                                )}
+                                                        <p className="text-xs text-gray-500">
+                                                            Module {modIdx + 1}
+                                                        </p>
+                                                    )}
 
                                                 {/* Edit and Delete Buttons */}
                                                 {canEditStructure && (
@@ -3571,10 +3574,10 @@ export const CourseStructureDetails = ({
                                                 {/* Module Number */}
                                                 {roleDisplay?.coursePage?.viewContentNumbering !==
                                                     false && (
-                                                    <p className="text-xs text-gray-500">
-                                                        Module {modIdx + 1}
-                                                    </p>
-                                                )}
+                                                        <p className="text-xs text-gray-500">
+                                                            Module {modIdx + 1}
+                                                        </p>
+                                                    )}
 
                                                 {/* Edit and Delete Buttons */}
                                                 {canEditStructure && (
@@ -3704,10 +3707,10 @@ export const CourseStructureDetails = ({
                                             {/* Chapter Number */}
                                             {roleDisplay?.coursePage?.viewContentNumbering !==
                                                 false && (
-                                                <p className="text-xs text-gray-500">
-                                                    Chapter {chIdx + 1}
-                                                </p>
-                                            )}
+                                                    <p className="text-xs text-gray-500">
+                                                        Chapter {chIdx + 1}
+                                                    </p>
+                                                )}
 
                                             {/* Edit and Delete Buttons */}
                                             {canEditStructure && (
@@ -3853,10 +3856,10 @@ export const CourseStructureDetails = ({
                                             {/* Chapter Number */}
                                             {roleDisplay?.coursePage?.viewContentNumbering !==
                                                 false && (
-                                                <p className="text-xs text-gray-500">
-                                                    Chapter {chIdx + 1}
-                                                </p>
-                                            )}
+                                                    <p className="text-xs text-gray-500">
+                                                        Chapter {chIdx + 1}
+                                                    </p>
+                                                )}
 
                                             {/* Edit and Delete Buttons */}
                                             {canEditStructure && (
@@ -3949,7 +3952,7 @@ export const CourseStructureDetails = ({
                                 onValueChange={(reordered) =>
                                     handleChapterReorder(
                                         subjectModulesMap[subjects[0]?.id || '']?.[0]?.module.id ||
-                                            '',
+                                        '',
                                         reordered as unknown as ChapterWithSlidesStore[]
                                     )
                                 }
@@ -3970,7 +3973,7 @@ export const CourseStructureDetails = ({
                                                         subjects[0]?.id || '',
                                                         subjects[0]
                                                             ? subjectModulesMap[subjects[0].id]?.[0]
-                                                                  ?.module.id || ''
+                                                                ?.module.id || ''
                                                             : '',
                                                         ch.chapter.id
                                                     );
@@ -4003,10 +4006,10 @@ export const CourseStructureDetails = ({
                                                 {/* Chapter Number */}
                                                 {roleDisplay?.coursePage?.viewContentNumbering !==
                                                     false && (
-                                                    <p className="text-xs text-gray-500">
-                                                        Chapter {chIdx + 1}
-                                                    </p>
-                                                )}
+                                                        <p className="text-xs text-gray-500">
+                                                            Chapter {chIdx + 1}
+                                                        </p>
+                                                    )}
 
                                                 {/* Edit and Delete Buttons */}
                                                 {canEditStructure && (
@@ -4031,8 +4034,8 @@ export const CourseStructureDetails = ({
                                                                                 '',
                                                                             moduleId: subjects[0]
                                                                                 ? subjectModulesMap[
-                                                                                      subjects[0].id
-                                                                                  ]?.[0]?.module.id
+                                                                                    subjects[0].id
+                                                                                ]?.[0]?.module.id
                                                                                 : undefined,
                                                                         });
                                                                     }}
@@ -4076,11 +4079,11 @@ export const CourseStructureDetails = ({
                                                                                 moduleId:
                                                                                     subjects[0]
                                                                                         ? subjectModulesMap[
-                                                                                              subjects[0]
-                                                                                                  .id
-                                                                                          ]?.[0]
-                                                                                              ?.module
-                                                                                              .id
+                                                                                            subjects[0]
+                                                                                                .id
+                                                                                        ]?.[0]
+                                                                                            ?.module
+                                                                                            .id
                                                                                         : undefined,
                                                                             }
                                                                         );
@@ -4194,29 +4197,29 @@ export const CourseStructureDetails = ({
                         (courseStructure === 3 &&
                             currentNavigationLevel === 'subjects' &&
                             subjects[0])) && (
-                        <div className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 transition-colors duration-200 hover:border-primary-400 hover:bg-primary-50">
-                            <AddChapterButton
-                                moduleId={
-                                    courseStructure === 5
-                                        ? selectedModuleId
-                                        : courseStructure === 4
-                                          ? selectedModuleId
-                                          : subjects[0]
-                                            ? subjectModulesMap[subjects[0].id]?.[0]?.module.id ||
-                                              ''
-                                            : ''
-                                }
-                                sessionId={selectedSession}
-                                levelId={selectedLevel}
-                                subjectId={
-                                    courseStructure === 5
-                                        ? selectedSubjectId
-                                        : subjects[0]?.id || ''
-                                }
-                                isTextButton={false}
-                            />
-                        </div>
-                    )}
+                            <div className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 transition-colors duration-200 hover:border-primary-400 hover:bg-primary-50">
+                                <AddChapterButton
+                                    moduleId={
+                                        courseStructure === 5
+                                            ? selectedModuleId
+                                            : courseStructure === 4
+                                                ? selectedModuleId
+                                                : subjects[0]
+                                                    ? subjectModulesMap[subjects[0].id]?.[0]?.module.id ||
+                                                    ''
+                                                    : ''
+                                    }
+                                    sessionId={selectedSession}
+                                    levelId={selectedLevel}
+                                    subjectId={
+                                        courseStructure === 5
+                                            ? selectedSubjectId
+                                            : subjects[0]?.id || ''
+                                    }
+                                    isTextButton={false}
+                                />
+                            </div>
+                        )}
 
                     {/* Add Slide button for Course Structure 2 */}
                     {courseStructure === 2 &&
@@ -4311,8 +4314,8 @@ export const CourseStructureDetails = ({
         <DashboardLoader />
     ) : (
         <div className="flex size-full flex-col gap-3 rounded-lg bg-white py-4 text-neutral-700">
-            {/* Restriction Message (hidden for faculty users with HAS_FACULTY_ASSIGNED) */}
-            {!canEditStructure && !hasFacultyAssignedPermission(instituteDetails?.id) && (
+            {/* Restriction Message */}
+            {!canEditStructure && (
                 <div className="mx-4 rounded-md border border-orange-200 bg-orange-50 p-3">
                     <div className="flex items-center gap-2">
                         <div className="font-medium text-orange-600">
@@ -4320,16 +4323,16 @@ export const CourseStructureDetails = ({
                             {isPublishedCourse
                                 ? 'published'
                                 : isInReviewCourse
-                                  ? 'under review'
-                                  : 'restricted'}
+                                    ? 'under review'
+                                    : 'restricted'}
                             .
                         </div>
                         <div className="text-sm text-orange-600">
                             {isPublishedCourse
                                 ? 'Go to My Courses to create an editable copy.'
                                 : isInReviewCourse
-                                  ? "You cannot edit the content while it's under review."
-                                  : 'You cannot edit this content.'}
+                                    ? "You cannot edit the content while it's under review."
+                                    : 'You cannot edit this content.'}
                         </div>
                     </div>
                 </div>

@@ -304,12 +304,15 @@ function mergeDisplayWithDefaults(
     // Course Page Settings
     const defCoursePage = defaults.coursePage || {
         viewInviteLinks: true,
+        viewShortInviteLinks: false,
         viewCourseConfiguration: true,
         viewCourseOverviewItem: true,
         viewContentNumbering: true,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
+        viewShortInviteLinks:
+            incoming?.coursePage?.viewShortInviteLinks ?? defCoursePage.viewShortInviteLinks,
         viewCourseConfiguration:
             incoming?.coursePage?.viewCourseConfiguration ?? defCoursePage.viewCourseConfiguration,
         viewCourseOverviewItem:

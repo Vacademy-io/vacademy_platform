@@ -58,6 +58,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
     },
     coursePage: {
         viewInviteLinks: true,
+        viewShortInviteLinks: false,
         viewCourseConfiguration: true,
         viewCourseOverviewItem: true,
         viewContentNumbering: true,

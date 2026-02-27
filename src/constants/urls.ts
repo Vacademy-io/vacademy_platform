@@ -16,6 +16,20 @@ export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
 export const UPDATE_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/ai-settings/v1/update?institute_id=${instituteId}`;
 
+// Institute Video Branding APIs (intro/outro/watermark HTML)
+export const GET_VIDEO_BRANDING = (instituteId: string) =>
+    `${AI_SERVICE_BASE_URL}/institute/video-branding/v1/get?institute_id=${instituteId}`;
+export const UPDATE_VIDEO_BRANDING = (instituteId: string) =>
+    `${AI_SERVICE_BASE_URL}/institute/video-branding/v1/update?institute_id=${instituteId}`;
+
+// Institute Video Style APIs (brand colors, fonts, layout theme)
+export const GET_VIDEO_STYLE = (instituteId: string) =>
+    `${AI_SERVICE_BASE_URL}/institute/video-style/v1/get?institute_id=${instituteId}`;
+export const UPDATE_VIDEO_STYLE = (instituteId: string) =>
+    `${AI_SERVICE_BASE_URL}/institute/video-style/v1/update?institute_id=${instituteId}`;
+export const GET_VIDEO_TEMPLATES = () =>
+    `${AI_SERVICE_BASE_URL}/institute/video-templates/v1/list`;
+
 // Institute IDs from environment variables for multi-org deployment
 export const SSDC_INSTITUTE_ID =
     import.meta.env.VITE_SSDC_INSTITUTE_ID || '69ca11c6-54e1-4e99-9498-50c9a4272ce6';

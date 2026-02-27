@@ -2530,6 +2530,76 @@ export function generateMapRegionHtml(
     `;
 }
 
+export function generateGameHtml(entry: Entry): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+    const title = meta.title || entryAny.title || 'Interactive Game';
+    const description = meta.description || entryAny.description || meta.instructions || entryAny.instructions || '';
+    const gameType = meta.game_type || entryAny.game_type || '';
+
+    return `
+        <div style="font-family:'Inter',sans-serif;background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;color:#e0e7ff;text-align:center;">
+            <div style="font-size:56px;margin-bottom:20px;">🎮</div>
+            ${gameType ? `<div style="font-size:11px;font-weight:700;color:#a5b4fc;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:12px;">${gameType.replace(/_/g,' ')}</div>` : ''}
+            <h1 style="font-size:32px;font-weight:900;margin:0 0 16px;line-height:1.2;">${title}</h1>
+            ${description ? `<p style="font-size:16px;color:#c7d2fe;max-width:560px;line-height:1.7;margin:0;">${description}</p>` : ''}
+            <div style="margin-top:32px;padding:16px 28px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;font-size:14px;color:#a5b4fc;">
+                Game content could not be loaded. Please regenerate this content.
+            </div>
+        </div>
+    `;
+}
+
+export function generateSimulationHtml(entry: Entry): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+    const title = meta.title || entryAny.title || 'Simulation';
+    const description = meta.description || entryAny.description || meta.instructions || entryAny.instructions || '';
+    const simType = meta.simulation_type || entryAny.simulation_type || '';
+
+    return `
+        <div style="font-family:'Inter',sans-serif;background:linear-gradient(135deg,#052e16 0%,#064e3b 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;color:#d1fae5;text-align:center;">
+            <div style="font-size:56px;margin-bottom:20px;">⚗️</div>
+            ${simType ? `<div style="font-size:11px;font-weight:700;color:#6ee7b7;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:12px;">${simType.replace(/_/g,' ')} Simulation</div>` : ''}
+            <h1 style="font-size:32px;font-weight:900;margin:0 0 16px;line-height:1.2;">${title}</h1>
+            ${description ? `<p style="font-size:16px;color:#a7f3d0;max-width:560px;line-height:1.7;margin:0;">${description}</p>` : ''}
+            <div style="margin-top:32px;padding:16px 28px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;font-size:14px;color:#6ee7b7;">
+                Simulation content could not be loaded. Please regenerate this content.
+            </div>
+        </div>
+    `;
+}
+
+export function generateCodePlaygroundHtml(entry: Entry): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+    const title = meta.title || entryAny.title || 'Code Playground';
+    const lang = meta.programming_language || entryAny.programming_language || 'javascript';
+    const exercises: any[] = meta.exercises || entryAny.exercises || [];
+    const firstEx = exercises[0] || {};
+    const exTitle = firstEx.title || '';
+    const exInstructions = firstEx.instructions || meta.description || entryAny.description || '';
+    const starterCode = firstEx.starter_code || firstEx.code || '';
+
+    return `
+        <div style="font-family:'Inter',sans-serif;background:#0d1117;min-height:100vh;display:flex;flex-direction:column;padding:32px;color:#c9d1d9;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+                <span style="font-size:24px;">💻</span>
+                <div>
+                    <div style="font-size:11px;font-weight:700;color:#58a6ff;text-transform:uppercase;letter-spacing:0.1em;">${lang}</div>
+                    <h1 style="font-size:22px;font-weight:800;margin:0;color:#f0f6fc;">${title}</h1>
+                </div>
+            </div>
+            ${exTitle ? `<div style="font-size:14px;font-weight:600;color:#e6edf3;margin-bottom:8px;">${exTitle}</div>` : ''}
+            ${exInstructions ? `<p style="font-size:14px;color:#8b949e;line-height:1.6;margin:0 0 20px;">${exInstructions}</p>` : ''}
+            ${starterCode ? `<pre style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;font-family:'Fira Code',monospace;font-size:13px;color:#e6edf3;overflow-x:auto;white-space:pre-wrap;">${starterCode.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>` : ''}
+            <div style="margin-top:auto;padding:14px 20px;background:rgba(88,166,255,0.08);border:1px solid rgba(88,166,255,0.2);border-radius:8px;font-size:13px;color:#58a6ff;text-align:center;">
+                Interactive editor could not be loaded. Please regenerate this content.
+            </div>
+        </div>
+    `;
+}
+
 /**
  * Process HTML content based on content type
  */
@@ -2539,6 +2609,20 @@ export function processHtmlContent(
     isOverlay: boolean = false
 ): string {
     let processedHtml = html;
+
+    // Replace any unresolved placeholder.png (image generation failed on backend)
+    // with a 1×1 transparent GIF so: no broken-image icon, Ken Burns CSS still works,
+    // and the image-hero gradient overlay renders cleanly over the dark background.
+    // Also inject a CSS rule so the parent container shows a subtle dark gradient
+    // in place of the missing photo.
+    if (processedHtml.includes('placeholder.png')) {
+        const TRANSPARENT_1PX = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        processedHtml = processedHtml.replace(/src=['"]placeholder\.png['"]/g, `src="${TRANSPARENT_1PX}"`);
+        // Ensure the generated-image element is invisible so the dark hero bg shows through
+        processedHtml =
+            `<style>.generated-image{opacity:0!important}.image-hero{background:linear-gradient(160deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%)!important}</style>` +
+            processedHtml;
+    }
 
     // Only strip opacity:0 if there's no <script> tag to animate it back
     const hasScript = /<script[\s>]/i.test(processedHtml);

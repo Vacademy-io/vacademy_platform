@@ -317,22 +317,22 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     @Query(value = """
                         SELECT
                             ps.id AS packageSessionId,
-                p.id AS packageId,
-                p.package_name AS packageName,
-                l.id AS levelId,
-                l.level_name AS levelName,
-                s.id AS sessionId,
-                s.session_name AS sessionName,
-                CASE
-                    WHEN LOWER(p.package_name) = LOWER(:query) THEN 100
-                    WHEN LOWER(p.package_name) LIKE LOWER(CONCAT(:query, '%')) THEN 90
-                    ELSE 50
-                END AS matchScore
-            FROM package_session ps
-            JOIN package p ON ps.package_id = p.id
-            JOIN package_institute pi ON p.id = pi.package_id
-            JOIN level l ON ps.level_id = l.id
-            JOIN session s ON ps.session_id = s.id
+                            p.id AS packageId,
+                            p.package_name AS packageName,
+                            l.id AS levelId,
+                            l.level_name AS levelName,
+                            s.id AS sessionId,
+                            s.session_name AS sessionName,
+                            CASE
+                                WHEN LOWER(p.package_name) = LOWER(:query) THEN 100
+                                WHEN LOWER(p.package_name) LIKE LOWER(CONCAT(:query, '%')) THEN 90
+                                ELSE 50
+                            END AS matchScore
+                        FROM package_session ps
+                        JOIN package p ON ps.package_id = p.id
+                        JOIN package_institute pi ON p.id = pi.package_id
+                        JOIN level l ON ps.level_id = l.id
+                        JOIN session s ON ps.session_id = s.id
                         WHERE
                             pi.institute_id = :instituteId
                             AND LOWER(p.package_name) LIKE LOWER(CONCAT(:query, '%'))
@@ -350,5 +350,10 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("limit") int limit);
 
     List<PackageSession> findByPackageEntity_IdAndStatus(String packageId, String status);
+
+    /**
+     * Find all child package sessions for a given parent package session ID.
+     */
+    List<PackageSession> findByParentId(String parentId);
 
 }

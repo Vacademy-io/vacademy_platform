@@ -741,6 +741,11 @@ class VideoGenerationPipeline:
         do_script = stage_idx <= self.STAGE_INDEX["script"] and self.STAGE_INDEX["script"] < stop_idx
         do_tts = stage_idx <= self.STAGE_INDEX["tts"] and self.STAGE_INDEX["tts"] < stop_idx
         do_words = stage_idx <= self.STAGE_INDEX["words"] and self.STAGE_INDEX["words"] < stop_idx
+
+        # SLIDES is purely visual — no audio generation needed
+        if content_type == "SLIDES":
+            do_tts = False
+            do_words = False
         do_html = stage_idx <= self.STAGE_INDEX["html"] and self.STAGE_INDEX["html"] < stop_idx
         do_avatar = stage_idx <= self.STAGE_INDEX["avatar"] and self.STAGE_INDEX["avatar"] < stop_idx and generate_avatar
         do_render = stage_idx <= self.STAGE_INDEX["render"] and self.STAGE_INDEX["render"] < stop_idx
@@ -841,7 +846,7 @@ class VideoGenerationPipeline:
             style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
-            interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "SIMULATION", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION", "MAP_EXPLORATION"]
+            interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "SIMULATION", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION", "MAP_EXPLORATION", "SLIDES"]
             
             if content_type in interactive_types:
                 print(f"🎮 Processing interactive content type: {content_type}")
@@ -1008,6 +1013,8 @@ class VideoGenerationPipeline:
             
             # Format user prompt with all available parameters
             defaults = ct_prompts.get("defaults", {})
+            # Resolve institute style (used by SLIDES and future styled content types)
+            _style = self._current_style_config or {}
             user_prompt = ct_prompts["user_template"].format(
                 base_prompt=base_prompt.strip(),
                 language=language,
@@ -1033,6 +1040,16 @@ class VideoGenerationPipeline:
                 time_period=defaults.get("time_period", "auto"),
                 scenario_type=defaults.get("scenario_type", "role_play"),
                 exchange_count=defaults.get("exchange_count", 8),
+                # SLIDES slide-count defaults
+                slide_count_short=defaults.get("slide_count_short", 6),
+                slide_count_medium=defaults.get("slide_count_medium", 10),
+                slide_count_long=defaults.get("slide_count_long", 15),
+                # Institute style (used by SLIDES; ignored by other templates)
+                primary_color=_style.get("primary_color", "#6366f1"),
+                heading_font=_style.get("heading_font", "Inter"),
+                body_font=_style.get("body_font", "Inter"),
+                background_type=_style.get("background_type", "white"),
+                layout_theme=_style.get("layout_theme", "clean_light"),
             ).strip()
             
         print(f"📝 Generating {content_type} content...")
@@ -1185,6 +1202,9 @@ class VideoGenerationPipeline:
                 if name:
                     script_parts.append(f"{name}. {desc}" if desc else name)
             script_text = "\n\n".join(script_parts)
+        elif content_type == "SLIDES":
+            # SLIDES are purely visual — no TTS needed. Store a minimal placeholder.
+            script_text = data.get("presentation_title", "Presentation")
         else:
             # Default fallback
             script_text = data.get("script", data.get("title", content_type))
@@ -1971,6 +1991,28 @@ class VideoGenerationPipeline:
             if not exchanges:
                 html = plan_data.get("html", "<div>Conversation</div>")
                 segments.append(create_segment(html, 1, "conversation-main", extra_meta=plan_data))
+
+        elif content_type == "SLIDES":
+            slides = plan_data.get("slides", [])
+            if not slides:
+                print(f"    ⚠️  SLIDES: 'slides' key missing or empty. Available keys: {list(plan_data.keys())}")
+            for i, slide in enumerate(slides):
+                html = slide.get("html", f"<div>Slide {i+1}</div>")
+                # If the slide has an image_prompt but no data-img-prompt in its HTML, inject it
+                if slide.get("image_prompt") and "data-img-prompt" not in html:
+                    safe_prompt = slide["image_prompt"].replace('"', '&quot;')
+                    if "<img" in html:
+                        html = html.replace("<img", f'<img data-img-prompt="{safe_prompt}"', 1)
+                        print(f"    🔧 Auto-injected data-img-prompt for slide {i+1}")
+                    else:
+                        # Append a hidden placeholder so image generation is triggered
+                        html = html + f'<img data-img-prompt="{safe_prompt}" src="placeholder.png" style="display:none" alt="">'
+                        print(f"    🔧 Appended hidden img with data-img-prompt for slide {i+1}")
+                meta = {k: v for k, v in slide.items() if k != "html"}
+                segments.append(create_segment(html, i+1, slide.get("id", f"slide-{i+1}"), extra_meta=meta))
+            if not slides:
+                html = plan_data.get("html", "<div>Presentation</div>")
+                segments.append(create_segment(html, 1, "slides-main", extra_meta=plan_data))
 
         else:
             # Generic fallback: try common list keys, then single entry
@@ -3593,7 +3635,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "WORKSHEET": "user_driven",
             "CODE_PLAYGROUND": "self_contained",
             "TIMELINE": "user_driven",
-            "CONVERSATION": "user_driven"
+            "CONVERSATION": "user_driven",
+            "SLIDES": "user_driven",
         }
         navigation = NAVIGATION_MAP.get(content_type, "time_driven")
         
@@ -3611,7 +3654,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "WORKSHEET": "exercise",
             "CODE_PLAYGROUND": "exercise",
             "TIMELINE": "event",
-            "CONVERSATION": "exchange"
+            "CONVERSATION": "exchange",
+            "SLIDES": "slide",
         }
         entry_label = ENTRY_LABEL_MAP.get(content_type, "segment")
         

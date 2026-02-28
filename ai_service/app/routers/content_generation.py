@@ -46,6 +46,7 @@ async def generate_content_from_coursetree(
             request_id=request_id,
             institute_id=payload.institute_id,
             user_id=payload.user_id,
+            language=payload.language,
         ):
             # Format as SSE: "data: <content>\n\n"
             yield f"data: {event}\n\n"

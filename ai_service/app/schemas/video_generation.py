@@ -21,7 +21,8 @@ ContentTypeEnum = Literal[
     "WORKSHEET",          # Printable/interactive homework
     "CODE_PLAYGROUND",    # Interactive code exercises
     "TIMELINE",           # Chronological event visualization
-    "CONVERSATION"        # Language learning dialogues
+    "CONVERSATION",       # Language learning dialogues
+    "SLIDES"              # HTML-based presentation / PPT-style slide deck
 ]
 
 

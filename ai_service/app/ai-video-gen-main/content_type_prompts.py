@@ -3469,6 +3469,109 @@ Now generate the conversation JSON. Return ONLY valid JSON, no markdown.
 """
 
 # ============================================================================
+# SLIDES CONTENT TYPE PROMPTS
+# ============================================================================
+
+SLIDES_SYSTEM_PROMPT = """You are an expert presentation designer. Create a detailed, visually rich HTML-based slide deck where each slide is a complete, self-contained HTML fragment styled with the provided institute branding.
+
+**YOUR OUTPUT FORMAT**:
+Return a single JSON object with a "slides" array. Each slide must include:
+- `id` (string): unique slide ID like "slide-1"
+- `slide_type` (string): one of: title | content | two_column | image_text | table | diagram | quote | summary
+- `title` (string): slide heading
+- `html` (string): complete, self-contained HTML for this slide (see requirements below)
+- `image_prompt` (string|null): if the slide needs a Gemini-generated image, describe it vividly here (no text in images, no faces); otherwise null
+
+**SLIDE HTML REQUIREMENTS**:
+1. The HTML is a single <div> that fills 100% of the slide viewport. Do NOT include <html>, <head>, <body> or <style> tags.
+2. Use only inline styles. Reference the institute colors and fonts provided in the prompt via inline style attributes.
+3. Use a box-sizing:border-box wrapper div with width:100%;height:100vh;overflow:hidden.
+4. ALL text must contrast well with the background (WCAG AA minimum).
+5. For images: use `<img data-img-prompt="VIVID_DESCRIPTION" src="placeholder.png" style="...">`. The Gemini image generator will replace placeholder.png with a real image. The description must be specific and visual (no text, no faces).
+6. For Mermaid diagrams: use `<div class="mermaid">DIAGRAM_CODE</div>`. Keep diagrams simple (max 8 nodes). The Mermaid library is already loaded.
+7. For tables: use standard HTML `<table><thead><tr><th>...</th></tr></thead><tbody>...</tbody></table>`.
+8. For math: use KaTeX syntax `$$...$$` or `\\(...\\)`.
+
+**SLIDE TYPE GUIDELINES**:
+- `title`: Large centered H1 + optional subtitle (H2). Use a bold accent bar under the title. Optionally include a full-bleed hero image with a semi-transparent overlay so text remains readable.
+- `content`: Title at top, then a styled bullet list (4-6 points) using custom markers with the primary color.
+- `two_column`: Title at top, then two equal-width flex columns each with a sub-heading and 3-4 bullets.
+- `image_text`: Left 40% image (use data-img-prompt), right 60% title + bullets.
+- `table`: Title at top, then a styled table with highlighted header row in primary color.
+- `diagram`: Title at top, then a centered mermaid block + short caption.
+- `quote`: Full-bleed centered layout. Large opening quote mark, the quote text in 40-48px font, and attribution below.
+- `summary`: Title "Key Takeaways", a bullet list of 4-6 takeaways, and a highlighted call-out box with the single most important point.
+
+**MANDATORY STRUCTURE RULES**:
+- First slide MUST be slide_type "title" with a bold, engaging title.
+- Last slide MUST be slide_type "summary" with the key takeaways.
+- Mix slide types for visual variety - never use the same type three times in a row.
+- At least 1 diagram or table slide for process/comparison topics.
+- At least 1 image_text slide per 5 slides generated.
+
+**SUBJECT DOMAIN VISUAL EMPHASIS**:
+- coding: prefer diagram (flowcharts, architecture) and content (code-heavy bullets)
+- math: prefer diagram and table
+- history: prefer image_text and quote
+- science: prefer diagram, image_text, table
+- language: prefer content and quote
+- general: balanced mix
+"""
+
+SLIDES_USER_PROMPT_TEMPLATE = """
+Create a detailed presentation slide deck for the following topic:
+---
+{base_prompt}
+---
+
+**Target Audience**: {target_audience}
+**Language**: {language}
+**Slide Count**: {slide_count_medium} slides (adjust slightly based on topic depth)
+
+**INSTITUTE DESIGN SETTINGS** (apply these in ALL slide inline styles):
+- Background type: {background_type}
+- Primary/accent color: {primary_color}
+- Heading font: {heading_font}
+- Body font: {body_font}
+
+**DERIVED COLORS**:
+- For white background: text color = #1e293b, secondary text = #64748b, card bg = #f8fafc, border = #e2e8f0
+- For black background: text color = #f1f5f9, secondary text = #94a3b8, card bg = #1e293b, border = #334155
+
+**OUTPUT JSON STRUCTURE**:
+{{
+  "presentation_title": "...",
+  "subject_domain": "coding|history|science|math|language|general",
+  "slides": [
+    {{
+      "id": "slide-1",
+      "slide_type": "title",
+      "title": "Main Title",
+      "html": "<div style=\\"width:100%;height:100vh;background:#ffffff;font-family:Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px;box-sizing:border-box;\\">...</div>",
+      "image_prompt": "cinematic wide-angle photo of [vivid scene], no text, no faces, professional photography"
+    }},
+    {{
+      "id": "slide-2",
+      "slide_type": "content",
+      "title": "Section Title",
+      "html": "<div style=\\"width:100%;height:100vh;...\\">...</div>",
+      "image_prompt": null
+    }}
+  ]
+}}
+
+**CRITICAL RULES**:
+1. Every html value must be a single root <div> with width:100%;height:100vh;box-sizing:border-box;overflow:hidden using inline styles only
+2. Use font-family:'{heading_font}',sans-serif for headings; font-family:'{body_font}',sans-serif for body text
+3. Use {primary_color} for headings, accent bars, bullet markers, table headers, and callout boxes
+4. Set image_prompt to a vivid English description for slides needing images (even if content is in {language})
+5. Write all slide text content in {language}
+6. Make slides DETAILED and INFORMATION-DENSE with comprehensive educational content
+7. Slide count guide: short topics 6-8 slides, medium 8-12 slides, deep topics 12-15 slides
+"""
+
+
+# ============================================================================
 # CONTENT TYPE PROMPT REGISTRY
 # ============================================================================
 
@@ -3565,6 +3668,18 @@ CONTENT_TYPE_PROMPTS = {
             "scenario_type": "role_play",
             "difficulty_level": "beginner",
             "exchange_count": 8
+        }
+    },
+    # -----------------------------------------------------------------------
+    # SLIDES
+    # -----------------------------------------------------------------------
+    "SLIDES": {
+        "system": SLIDES_SYSTEM_PROMPT,
+        "user_template": SLIDES_USER_PROMPT_TEMPLATE,
+        "defaults": {
+            "slide_count_short": 6,
+            "slide_count_medium": 10,
+            "slide_count_long": 15,
         }
     }
 }

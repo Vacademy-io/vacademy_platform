@@ -396,7 +396,7 @@ class CourseOutlineGenerationService:
             yield f"[Error] Failed to generate outline: {str(e)}"
 
     async def generate_content_from_coursetree(
-        self, course_tree: dict, request_id: str, institute_id: Optional[str] = None, user_id: Optional[str] = None
+        self, course_tree: dict, request_id: str, institute_id: Optional[str] = None, user_id: Optional[str] = None, language: Optional[str] = "English"
     ) -> AsyncGenerator[str, None]:
         """
         Generate content for todos in an existing coursetree.
@@ -493,6 +493,14 @@ class CourseOutlineGenerationService:
                 self._content_generation_service._user_id = extracted_user_id or self._content_generation_service._user_id
                 self._content_generation_service._db_session = self._db_session or self._content_generation_service._db_session
             
+            # Inject request-level language into todo metadata if not already set
+            effective_language = language or "English"
+            for todo in content_todos:
+                if todo.metadata is None:
+                    todo.metadata = {}
+                if not todo.metadata.get("language"):
+                    todo.metadata["language"] = effective_language
+
             # Process todos in order so "Homework Solutions" can use the generated "Homework Questions" content
             generated_content_by_path = {}
             for todo in content_todos:

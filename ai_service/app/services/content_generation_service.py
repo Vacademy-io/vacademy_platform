@@ -82,11 +82,14 @@ class ContentGenerationService:
             is_homework_questions = "homework questions" in title_lower or "assignment -" in title_lower
             is_homework_solutions = "homework solutions" in title_lower or "assignment solutions" in title_lower
 
+            language = (todo.metadata or {}).get("language", "English")
+
             if is_homework_questions:
                 logger.info(f"Using homework (coding/task-focused) prompt for slide: {todo.path}")
                 document_prompt = ContentGenerationPrompts.build_homework_prompt(
                     text_prompt=prompt,
                     title=title,
+                    language=language,
                 )
             elif is_homework_solutions:
                 logger.info(f"Using solution (hint then solution) prompt for slide: {todo.path}")
@@ -94,6 +97,7 @@ class ContentGenerationService:
                     text_prompt=prompt,
                     title=title,
                     homework_content=homework_content,
+                    language=language,
                 )
             else:
                 # Check if diagrams should be included based on prompt
@@ -109,7 +113,8 @@ class ContentGenerationService:
                 document_prompt = ContentGenerationPrompts.build_document_prompt(
                     text_prompt=prompt,
                     title=title,
-                    include_diagrams=include_diagrams
+                    include_diagrams=include_diagrams,
+                    language=language,
                 )
             
             # Generate content using the enhanced prompt and capture token usage
@@ -195,10 +200,12 @@ class ContentGenerationService:
         try:
             logger.info(f"Generating assessment content for slide: {todo.path}")
             
+            language = (todo.metadata or {}).get("language", "English")
             # Build assessment prompt using template similar to media-service PROMPT_TO_QUESTIONS
             assessment_prompt = ContentGenerationPrompts.build_assessment_prompt(
                 text_prompt=prompt,
                 title=todo.title or todo.name,
+                language=language,
             )
             
             # Generate content and capture token usage
@@ -290,10 +297,15 @@ class ContentGenerationService:
             
             # Use keyword if available, otherwise use title or name
             search_query = todo.keyword or todo.title or todo.name
-            
+
             if not search_query:
                 raise ValueError("No search query available for YouTube search (keyword, title, or name required)")
-            
+
+            language = (todo.metadata or {}).get("language", "English")
+            # Append language hint to search query for better localised results (only if not English)
+            if language and language.lower() != "english":
+                search_query = f"{search_query} {language}"
+
             # Search YouTube for the video
             video_id = await self._youtube_service.search_video(search_query)
             
@@ -585,17 +597,19 @@ class ContentGenerationService:
             video_data = video_content.get("contentData", {})
             
             # Step 2: Generate code content
+            language = (todo.metadata or {}).get("language", "English")
             code_prompt = ContentGenerationPrompts.build_code_prompt(
                 text_prompt=todo.prompt,
                 title=todo.title or todo.name,
-                video_topic=todo.title or todo.name
+                video_topic=todo.title or todo.name,
+                language=language,
             )
-            
+
             code_content = await self._llm_client.generate_outline(
                 prompt=code_prompt,
                 model=self._content_model,
             )
-            
+
             # Extract code language from prompt or default to python
             code_language = self._extract_code_language(todo.prompt) or "python"
             
@@ -690,11 +704,13 @@ class ContentGenerationService:
             
             # Step 2: Generate code content
             logger.info(f"[AI_VIDEO_CODE] Generating code content for {todo.path}")
-            
+
+            language = (todo.metadata or {}).get("language", "English")
             code_prompt = ContentGenerationPrompts.build_code_prompt(
                 text_prompt=todo.prompt,
                 title=todo.title or todo.name,
-                video_topic=todo.title or todo.name
+                video_topic=todo.title or todo.name,
+                language=language,
             )
             
             # Generate code content and capture token usage

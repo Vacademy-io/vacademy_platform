@@ -33,6 +33,7 @@ class CourseOutlinePromptBuilder:
         num_chapters_spec = gen_options.num_chapters if hasattr(gen_options, 'num_chapters') and gen_options.num_chapters else None
         course_timing = gen_options.course_timing if hasattr(gen_options, 'course_timing') and gen_options.course_timing else None
         generate_images = gen_options.generate_images if hasattr(gen_options, 'generate_images') else False
+        language = gen_options.language if hasattr(gen_options, 'language') and gen_options.language else "English"
 
         # Build generation requirements string
         generation_requirements = ""
@@ -57,13 +58,18 @@ class CourseOutlinePromptBuilder:
             "courseDepth": str(request.course_depth) if request.course_depth else "auto",
             "generationRequirements": generation_requirements,
             "instituteAICoursePrompt": ai_course_prompt or "",
-            "courseTiming": str(course_timing) if course_timing else ""
+            "courseTiming": str(course_timing) if course_timing else "",
+            "language": language,
         }
 
 
         # Use the exact template from media-service
         template = """
             # ABSOLUTE PRIORITY REQUIREMENTS - FOLLOW EXACTLY
+
+            LANGUAGE REQUIREMENT: Generate ALL course content (titles, slide content prompts, descriptions, course metadata) in: {language}
+            - This applies to course name, chapter names, slide titles, todo prompts, and all text fields
+            - Do NOT use English if a different language is specified
 
             FIRST: ACKNOWLEDGE THE DEPTH SETTING
             - COURSE DEPTH IS SET TO: {courseDepth}

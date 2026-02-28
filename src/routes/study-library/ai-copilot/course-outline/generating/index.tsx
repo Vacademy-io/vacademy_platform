@@ -539,6 +539,17 @@ export function RouteComponent() {
                 if (depthOptions.includeAIGeneratedVideo) {
                     requirements.push('include AI generated videos');
                 }
+                if (depthOptions.includeAISlides) {
+                    requirements.push('include AI slides');
+                }
+                if (depthOptions.includeAIStorybook) {
+                    requirements.push('include AI storybook');
+                }
+
+                // Add language requirement
+                if (courseConfig.language && courseConfig.language !== 'English') {
+                    requirements.push(`generate all content in ${courseConfig.language} language`);
+                }
 
                 // Add duration and format info
                 if (courseConfig.durationFormatStructure?.includeQuizzes) {
@@ -579,6 +590,8 @@ export function RouteComponent() {
                     setEstimatedTimeRemaining(estimatedSeconds);
                 }
 
+                const courseLanguage = courseConfig.language || 'English';
+
                 const payload: any = {
                     user_prompt: userPrompt,
                     course_tree: null,
@@ -586,8 +599,12 @@ export function RouteComponent() {
                     generation_options: {
                         generate_images: true,
                         image_style: 'professional',
+                        language: courseLanguage,
                     },
                 };
+
+                // Store language for content generation step
+                sessionStorage.setItem('courseLanguage', courseLanguage);
 
                 if (numChapters) {
                     payload.generation_options.num_chapters = parseInt(numChapters);

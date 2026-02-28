@@ -50,6 +50,7 @@ import {
     generateGameHtml,
     generateSimulationHtml,
     generateCodePlaygroundHtml,
+    generateSlidesHtml,
 } from './html-processor';
 import { initializeLibraries } from './library-loader';
 import { useCaptions } from './hooks/useCaptions';
@@ -876,6 +877,10 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
             } else if (contentType === 'MAP_EXPLORATION') {
                 if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Region')) {
                     htmlContent = generateMapRegionHtml(entry, currentIndex, entries);
+                }
+            } else if (contentType === 'SLIDES') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Slide')) {
+                    htmlContent = generateSlidesHtml(entry, currentIndex, entries);
                 }
             }
 

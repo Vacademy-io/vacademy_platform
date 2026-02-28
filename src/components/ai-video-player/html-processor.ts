@@ -2600,6 +2600,134 @@ export function generateCodePlaygroundHtml(entry: Entry): string {
     `;
 }
 
+// ============================================================================
+// SLIDES CONTENT TYPE — FALLBACK GENERATOR
+// ============================================================================
+
+/**
+ * Minimal slide styles injected by processHtmlContent for SLIDES content type.
+ * The LLM generates slides with inline styles, so this is kept lean —
+ * mostly ensuring Mermaid diagrams and tables look clean.
+ */
+function getSlidesStyles(): string {
+    return `
+<style>
+/* Slide base reset */
+.slide-root { box-sizing: border-box; }
+
+/* Mermaid diagrams inside slides */
+.slide-root .mermaid { text-align: center; margin: 16px auto; }
+.slide-root .mermaid svg { max-width: 100%; height: auto; }
+
+/* Tables inside slides */
+.slide-root table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 18px;
+}
+.slide-root th {
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+}
+.slide-root td {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+.slide-root tr:last-child td { border-bottom: none; }
+.slide-root tr:nth-child(even) td { background: rgba(0,0,0,0.03); }
+
+/* Slide number badge */
+.slide-number-badge {
+    position: absolute;
+    bottom: 20px;
+    right: 28px;
+    font-size: 13px;
+    opacity: 0.45;
+    font-family: inherit;
+    pointer-events: none;
+}
+</style>`;
+}
+
+/**
+ * Fallback HTML generator for SLIDES content type.
+ * Used when the backend LLM-generated html is missing or is a short placeholder.
+ */
+export function generateSlidesHtml(entry: Entry, index: number, entries: Entry[] = []): string {
+    const meta = (entry.entry_meta || {}) as Record<string, any>;
+    const title = meta.title || entry.id || `Slide ${index + 1}`;
+    const slideType = meta.slide_type || 'content';
+    const bullets: string[] = Array.isArray(meta.bullets) ? meta.bullets : [];
+    const imageUrl: string = meta.image_url || '';
+    const total = entries.length;
+
+    const primaryColor = '#6366f1';
+    const textColor = '#1e293b';
+    const secondaryText = '#64748b';
+    const borderColor = '#e2e8f0';
+    const cardBg = '#f8fafc';
+
+    const bulletItems = bullets.length
+        ? bullets
+              .map(
+                  (b) =>
+                      `<li style="margin-bottom:14px;padding-left:28px;position:relative;font-size:22px;line-height:1.5;color:${textColor};">
+            <span style="position:absolute;left:0;top:2px;color:${primaryColor};font-weight:700;">→</span>
+            ${b}
+        </li>`
+              )
+              .join('')
+        : `<li style="color:${secondaryText};font-size:22px;">Content coming soon.</li>`;
+
+    let bodyHtml = '';
+
+    if (slideType === 'title') {
+        bodyHtml = `
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:60px 80px;">
+                <h1 style="font-size:64px;font-weight:800;color:${primaryColor};margin:0 0 20px;line-height:1.15;">${title}</h1>
+                <div style="width:80px;height:5px;background:${primaryColor};border-radius:3px;margin-bottom:28px;"></div>
+                ${meta.subtitle ? `<h2 style="font-size:28px;font-weight:400;color:${secondaryText};margin:0;">${meta.subtitle}</h2>` : ''}
+                <div style="margin-top:40px;font-size:15px;color:${secondaryText};">Slide 1 of ${total}</div>
+            </div>`;
+    } else if (slideType === 'summary') {
+        bodyHtml = `
+            <div style="display:flex;flex-direction:column;height:100%;padding:56px 72px;">
+                <h2 style="font-size:42px;font-weight:700;color:${primaryColor};margin:0 0 8px;">Key Takeaways</h2>
+                <div style="width:60px;height:4px;background:${primaryColor};border-radius:2px;margin-bottom:32px;"></div>
+                <ul style="list-style:none;padding:0;margin:0 0 28px;flex:1;">${bulletItems}</ul>
+                <div style="background:${primaryColor}15;border-left:4px solid ${primaryColor};border-radius:4px;padding:16px 20px;font-size:18px;color:${textColor};font-weight:500;">
+                    ${meta.key_point || 'Review these key concepts to solidify your understanding.'}
+                </div>
+            </div>`;
+    } else if (imageUrl && slideType === 'image_text') {
+        bodyHtml = `
+            <div style="display:flex;height:100%;">
+                <div style="width:40%;background:#e2e8f0 url('${imageUrl}') center/cover no-repeat;"></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:48px 56px;">
+                    <h2 style="font-size:38px;font-weight:700;color:${primaryColor};margin:0 0 24px;">${title}</h2>
+                    <ul style="list-style:none;padding:0;margin:0;">${bulletItems}</ul>
+                </div>
+            </div>`;
+    } else {
+        // Default: content slide
+        bodyHtml = `
+            <div style="display:flex;flex-direction:column;height:100%;padding:56px 72px;">
+                <h2 style="font-size:42px;font-weight:700;color:${primaryColor};margin:0 0 8px;">${title}</h2>
+                <div style="width:60px;height:4px;background:${primaryColor};border-radius:2px;margin-bottom:32px;"></div>
+                <ul style="list-style:none;padding:0;margin:0;flex:1;">${bulletItems}</ul>
+            </div>`;
+    }
+
+    return `
+        <div class="slide-root" style="width:100%;height:100vh;background:#ffffff;font-family:Inter,system-ui,sans-serif;position:relative;overflow:hidden;">
+            ${bodyHtml}
+            <div class="slide-number-badge">${index + 1} / ${total}</div>
+        </div>`;
+}
+
+
 /**
  * Process HTML content based on content type
  */
@@ -2669,6 +2797,14 @@ export function processHtmlContent(
             break;
         case 'STORYBOOK':
             contentStyles = getStorybookStyles();
+            break;
+        case 'SLIDES':
+            contentStyles = getSlidesStyles();
+            // Ensure slide root div gets the class for scoped table/mermaid styles
+            processedHtml = processedHtml.replace(/(<div[^>]*class=["'][^"']*slide-root[^"']*["'][^>]*>)/i, '$1');
+            if (!processedHtml.includes('slide-root')) {
+                processedHtml = `<div class="slide-root" style="width:100%;height:100vh;overflow:hidden;">${processedHtml}</div>`;
+            }
             break;
     }
 

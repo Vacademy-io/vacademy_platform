@@ -317,34 +317,43 @@ public class DynamicNotificationService {
                 return;
             }
 
-            // Get user's referral code
-            String referralCode = learnerInvitationLinkService.getRefFromUserCoupon(user.getId());
+            // Always fetch short_url directly from CouponCode table — this is the source of
+            // truth.
+            // The passed-in shortReferralLink is used only as a last-resort fallback.
+            String couponShortUrl = null;
+            try {
+                java.util.Optional<vacademy.io.admin_core_service.features.user_subscription.entity.CouponCode> couponCode = couponCodeService
+                        .getCouponCodeBySource(user.getId(), "USER");
+                if (couponCode.isPresent() && couponCode.get().getShortUrl() != null
+                        && !couponCode.get().getShortUrl().trim().isEmpty()) {
+                    couponShortUrl = couponCode.get().getShortUrl();
+                    log.debug("Using short_url from CouponCode table for user {}: {}", user.getId(), couponShortUrl);
+                }
+            } catch (Exception e) {
+                log.warn("Error fetching short_url from CouponCode for user {}: {}", user.getId(), e.getMessage());
+            }
 
-            if (referralCode == null || referralCode.isEmpty()) {
-                log.warn("No referral code found for user: {}, skipping WATI contact attribute update",
+            // Fallback to the passed-in value if CouponCode had no short_url
+            if (couponShortUrl == null || couponShortUrl.isEmpty()) {
+                couponShortUrl = shortReferralLink;
+                log.debug("CouponCode had no short_url for user {}, falling back to passed shortReferralLink: {}",
+                        user.getId(), couponShortUrl);
+            }
+
+            if (couponShortUrl == null || couponShortUrl.isEmpty()) {
+                log.warn("No short_referral_link available for user: {}, skipping WATI contact attribute update",
                         user.getId());
                 return;
             }
 
-            // Provide fallback if shortReferralLink is empty
-            String couponShortUrl = shortReferralLink;
-            if (couponShortUrl == null || couponShortUrl.isEmpty()) {
-                try {
-                    java.util.Optional<vacademy.io.admin_core_service.features.user_subscription.entity.CouponCode> couponCode = couponCodeService
-                            .getCouponCodeBySource(user.getId(), "USER");
-                    if (couponCode.isPresent() && couponCode.get().getShortUrl() != null) {
-                        couponShortUrl = couponCode.get().getShortUrl();
-                    }
-                } catch (Exception e) {
-                    log.warn("Error getting short URL from coupon for user {}: {}", user.getId(), e.getMessage());
-                }
-            }
+            // Get the plain ref code (just for extra context attributes)
+            String referralCode = learnerInvitationLinkService.getRefFromUserCoupon(user.getId());
 
             // Build template variables map
             java.util.Map<String, Object> templateVarsMap = new java.util.HashMap<>();
             templateVarsMap.put("refCode", referralCode);
             templateVarsMap.put("shortUrl", couponShortUrl);
-            templateVarsMap.put("short_referral_link", couponShortUrl);
+            templateVarsMap.put("short_referral_link", couponShortUrl); // ← the key WATI uses
             templateVarsMap.put("shortReferralLink", couponShortUrl);
             templateVarsMap.put("userName", user.getUsername());
             templateVarsMap.put("userEmail", user.getEmail());
@@ -353,6 +362,9 @@ public class DynamicNotificationService {
             templateVarsMap.put("userId", user.getId());
             templateVarsMap.put("instituteName", institute.getInstituteName());
             templateVarsMap.put("instituteId", institute.getId());
+
+            log.info("Updating WATI contact attributes for user: {}, short_referral_link={}",
+                    user.getId(), couponShortUrl);
 
             // Update contact attributes in WATI
             watiContactAttributeService.updateContactAttributes(

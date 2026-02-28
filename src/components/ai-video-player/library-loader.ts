@@ -63,6 +63,7 @@ const LIBRARY_CONFIG: Record<ContentType, string[]> = {
         'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js',
         'https://cdn.jsdelivr.net/npm/howler@2.2/dist/howler.min.js',
     ],
+    SLIDES: [],
 };
 
 /**

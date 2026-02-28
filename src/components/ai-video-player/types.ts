@@ -18,7 +18,8 @@ export type ContentType =
     | 'WORKSHEET' // Printable worksheets
     | 'CODE_PLAYGROUND' // Code editor exercises
     | 'TIMELINE' // Chronological visualization
-    | 'CONVERSATION'; // Language dialogues
+    | 'CONVERSATION' // Language dialogues
+    | 'SLIDES'; // HTML presentation / PPT-style slide deck
 
 /**
  * Navigation modes for content playback
@@ -164,6 +165,7 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
     CODE_PLAYGROUND: '💻 Code',
     TIMELINE: '⏳ Timeline',
     CONVERSATION: '🗣️ Conversation',
+    SLIDES: '🖼️ Slides',
 };
 
 /**
@@ -182,6 +184,7 @@ export const CONTENT_TYPE_NAVIGATION: Record<ContentType, NavigationType> = {
     CODE_PLAYGROUND: 'self_contained',
     TIMELINE: 'user_driven',
     CONVERSATION: 'user_driven',
+    SLIDES: 'user_driven',
 };
 
 /**
@@ -200,6 +203,7 @@ export const CONTENT_TYPE_ENTRY_LABELS: Record<ContentType, string> = {
     CODE_PLAYGROUND: 'exercise',
     TIMELINE: 'event',
     CONVERSATION: 'exchange',
+    SLIDES: 'slide',
 };
 
 /**

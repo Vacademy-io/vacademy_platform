@@ -15,6 +15,7 @@ export interface ContentGenerationRequest {
         }>;
     };
     institute_id?: string;
+    language?: string;
 }
 
 export interface ContentUpdate {
@@ -42,7 +43,8 @@ export async function generateContent(
     onUpdate: (update: ContentUpdate) => void,
     onError: (error: string) => void,
     onProgress?: (message: string) => void,
-    retryCount = 0
+    retryCount = 0,
+    language = 'English'
 ): Promise<void> {
     const apiUrl = `${AI_SERVICE_BASE_URL}/course/content/v1/generate`;
     
@@ -78,6 +80,7 @@ export async function generateContent(
                 body: JSON.stringify({
                     course_tree: { todos },
                     institute_id: instituteId,
+                    language: language,
                 }),
                 signal: controller.signal,
             });

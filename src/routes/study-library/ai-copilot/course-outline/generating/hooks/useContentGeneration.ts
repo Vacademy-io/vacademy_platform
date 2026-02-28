@@ -34,6 +34,9 @@ export const useContentGeneration = (
             return;
         }
 
+        // Read language that was stored during outline generation
+        const language = sessionStorage.getItem('courseLanguage') || 'English';
+
         setIsGeneratingContent(true);
         setContentGenerationProgress('Starting content generation...');
 
@@ -925,7 +928,9 @@ export const useContentGeneration = (
                 },
                 (progress) => {
                     setContentGenerationProgress(progress);
-                }
+                },
+                0, // retryCount
+                language
             );
 
             // Mark content generation as complete (fallback)

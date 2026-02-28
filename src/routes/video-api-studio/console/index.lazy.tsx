@@ -52,6 +52,11 @@ interface CurrentGeneration {
 /** Persisted across page navigations so polling can resume after SSE disconnect */
 const PENDING_GENERATION_KEY = 'video-console-pending-gen';
 
+/** Content types that produce no audio — html_url alone is sufficient for "complete" */
+const NO_AUDIO_TYPES = new Set<ContentType>(['SLIDES']);
+const needsAudio = (contentType?: ContentType | string) =>
+    !NO_AUDIO_TYPES.has(contentType as ContentType);
+
 interface PendingGeneration {
     videoId: string;
     prompt: string;
@@ -68,6 +73,7 @@ function VideoConsole() {
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
     const [consoleState, setConsoleState] = useState<ConsoleState>('idle');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     // Lifted state for prompt and options
     const [prompt, setPrompt] = useState(() => localStorage.getItem('video-studio-prompt') || '');
@@ -207,7 +213,7 @@ function VideoConsole() {
                     const urls = await getVideoUrls(pending.videoId, apiKey);
                     // Only treat as complete when html_url is actually present
                     // (backend can return status=COMPLETED with null URLs mid-run)
-                    if (urls.html_url && urls.audio_url) {
+                    if (urls.html_url && (urls.audio_url || !needsAudio(pending.contentType))) {
                         if (pollingRef.current) clearInterval(pollingRef.current);
                         pollingRef.current = null;
                         localStorage.removeItem(PENDING_GENERATION_KEY);
@@ -219,7 +225,7 @@ function VideoConsole() {
                                       percentage: 100,
                                       message: '',
                                       htmlUrl: urls.html_url!,
-                                      audioUrl: urls.audio_url!,
+                                      audioUrl: urls.audio_url ?? undefined,
                                       wordsUrl: urls.words_url ?? undefined,
                                   }
                                 : null
@@ -357,7 +363,7 @@ function VideoConsole() {
                             if (
                                 event.stage === 'HTML' &&
                                 (timelineUrl || prev?.htmlUrl) &&
-                                prev?.audioUrl
+                                (prev?.audioUrl || !needsAudio(contentType))
                             ) {
                                 // HTML stage complete = content ready, show result
                                 setConsoleState('complete');
@@ -416,7 +422,7 @@ function VideoConsole() {
 
                         setCurrentGeneration((prev) => {
                             // If we have HTML URLs, keep showing the player
-                            if (prev?.htmlUrl && prev?.audioUrl && hasContent) {
+                            if (prev?.htmlUrl && (prev?.audioUrl || !needsAudio(contentType)) && hasContent) {
                                 localStorage.removeItem(PENDING_GENERATION_KEY);
                                 toast.error(
                                     'Generation encountered an issue. Content is still available.'
@@ -529,7 +535,7 @@ function VideoConsole() {
             setSelectedHistoryId(item.video_id);
 
             // If we have URLs locally, use them directly
-            if (item.html_url && item.audio_url) {
+            if (item.html_url && (item.audio_url || !needsAudio(item.content_type))) {
                 setCurrentGeneration({
                     videoId: item.video_id,
                     prompt: item.prompt,
@@ -560,8 +566,8 @@ function VideoConsole() {
 
                     // Backend can return status=COMPLETED with null URLs when the job
                     // finished a mid-stage (e.g. current_stage=SCRIPT). Only show the
-                    // player when both URLs are actually present.
-                    if (!urls.html_url || !urls.audio_url) {
+                    // player when the required URLs are actually present.
+                    if (!urls.html_url || (!urls.audio_url && needsAudio(item.content_type))) {
                         setIsLoadingVideoUrls(false);
                         toast.info('Content is still being generated. Waiting for completion…');
                         startPollingForVideo(
@@ -580,7 +586,7 @@ function VideoConsole() {
                     const updatedItem: HistoryItem = {
                         ...item,
                         html_url: urls.html_url,
-                        audio_url: urls.audio_url,
+                        audio_url: urls.audio_url ?? undefined,
                         words_url: urls.words_url ?? undefined,
                         status: 'completed',
                     };
@@ -597,7 +603,7 @@ function VideoConsole() {
                         percentage: 100,
                         message: '',
                         htmlUrl: urls.html_url,
-                        audioUrl: urls.audio_url,
+                        audioUrl: urls.audio_url ?? undefined,
                         wordsUrl: urls.words_url ?? undefined,
                         options: item.options,
                     });
@@ -705,24 +711,32 @@ function VideoConsole() {
 
     const isGenerating = consoleState === 'generating';
 
-    const SidebarComponent = (
-        <HistorySidebar
-            history={history}
-            selectedId={selectedHistoryId}
-            onSelect={handleSelectHistory}
-            onDelete={handleDeleteHistory}
-            onNewVideo={handleNewVideo}
-        />
-    );
-
     return (
         <LayoutContainer
             intrnalMargin={false}
             hasInternalSidebarComponent={true}
-            internalSidebarComponent={SidebarComponent}
-            internalSidebarMobileText="History"
         >
         <div className="relative flex h-[calc(100vh-56px)] w-full overflow-hidden bg-background md:h-[calc(100vh-72px)]">
+            {/* Collapsible History Sidebar (desktop) */}
+            <div
+                className="hidden flex-shrink-0 flex-col border-r bg-white dark:bg-card md:flex"
+                style={{
+                    width: isSidebarOpen ? 280 : 48,
+                    transition: 'width 0.25s ease',
+                    overflow: 'hidden',
+                }}
+            >
+                <HistorySidebar
+                    history={history}
+                    selectedId={selectedHistoryId}
+                    onSelect={handleSelectHistory}
+                    onDelete={handleDeleteHistory}
+                    onNewVideo={handleNewVideo}
+                    isCollapsed={!isSidebarOpen}
+                    onToggleCollapse={() => setIsSidebarOpen((prev) => !prev)}
+                />
+            </div>
+
             {/* Main Content */}
             <div className="flex min-w-0 flex-1 flex-col bg-secondary/10">
                 {/* Content Area */}
@@ -775,7 +789,7 @@ function VideoConsole() {
 
                     {consoleState === 'complete' &&
                         currentGeneration?.htmlUrl &&
-                        currentGeneration?.audioUrl && (
+                        (currentGeneration?.audioUrl || !needsAudio(currentGeneration?.contentType)) && (
                             <VideoResult
                                 videoId={currentGeneration.videoId}
                                 htmlUrl={currentGeneration.htmlUrl}

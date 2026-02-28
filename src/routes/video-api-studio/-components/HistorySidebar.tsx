@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -9,6 +8,9 @@ import {
     Loader2,
     AlertCircle,
     History as HistoryIcon,
+    ChevronRight,
+    ChevronLeft,
+    Plus,
 } from 'lucide-react';
 import { HistoryItem } from '../-services/video-generation';
 import {
@@ -29,6 +31,8 @@ interface HistorySidebarProps {
     onSelect: (item: HistoryItem) => void;
     onDelete: (videoId: string) => void;
     onNewVideo: () => void;
+    isCollapsed: boolean;
+    onToggleCollapse: () => void;
 }
 
 export function HistorySidebar({
@@ -37,6 +41,8 @@ export function HistorySidebar({
     onSelect,
     onDelete,
     onNewVideo,
+    isCollapsed,
+    onToggleCollapse,
 }: HistorySidebarProps) {
 
     const getStatusIcon = (status: HistoryItem['status']) => {
@@ -67,6 +73,49 @@ export function HistorySidebar({
         return date.toLocaleDateString();
     };
 
+    /* ── Collapsed icon strip ── */
+    if (isCollapsed) {
+        return (
+            <div className="flex h-full w-full flex-col items-center gap-1 py-2">
+                {/* Expand toggle */}
+                <button
+                    onClick={onToggleCollapse}
+                    title="Expand history"
+                    className="flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                    <ChevronRight className="size-4" />
+                </button>
+
+                {/* New video */}
+                <button
+                    onClick={onNewVideo}
+                    title="New Video"
+                    className="flex size-9 items-center justify-center rounded-md text-violet-600 transition-colors hover:bg-violet-50"
+                >
+                    <Plus className="size-4" />
+                </button>
+
+                {/* Divider */}
+                <div className="my-1 w-6 border-t" />
+
+                {/* Recent item status dots */}
+                {history.slice(0, 8).map((item) => (
+                    <button
+                        key={item.video_id}
+                        onClick={() => onSelect(item)}
+                        title={item.prompt}
+                        className={`flex size-9 items-center justify-center rounded-md transition-colors hover:bg-muted ${
+                            selectedId === item.video_id ? 'bg-violet-50 ring-1 ring-violet-200' : ''
+                        }`}
+                    >
+                        {getStatusIcon(item.status)}
+                    </button>
+                ))}
+            </div>
+        );
+    }
+
+    /* ── Expanded full sidebar ── */
     return (
         <div className="flex size-full flex-col backdrop-blur-sm">
             <div className="flex items-center justify-between border-b border-primary-100 p-4">
@@ -74,6 +123,14 @@ export function HistorySidebar({
                     <HistoryIcon className="size-4 text-muted-foreground" />
                     <h2 className="text-sm font-semibold text-foreground">History</h2>
                 </div>
+                {/* Collapse toggle */}
+                <button
+                    onClick={onToggleCollapse}
+                    title="Collapse history"
+                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                    <ChevronLeft className="size-4" />
+                </button>
             </div>
 
             <div className="p-3">

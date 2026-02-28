@@ -3472,102 +3472,271 @@ Now generate the conversation JSON. Return ONLY valid JSON, no markdown.
 # SLIDES CONTENT TYPE PROMPTS
 # ============================================================================
 
-SLIDES_SYSTEM_PROMPT = """You are an expert presentation designer. Create a detailed, visually rich HTML-based slide deck where each slide is a complete, self-contained HTML fragment styled with the provided institute branding.
+SLIDES_SYSTEM_PROMPT = """You are a world-class presentation designer who creates visually stunning, highly engaging HTML slide decks. Every slide must be rich with visual elements — images, inline SVGs, Mermaid diagrams, stat cards, icon grids, and decorative shapes. Plain text-only slides are NEVER acceptable.
 
-**YOUR OUTPUT FORMAT**:
+═══════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════
 Return a single JSON object with a "slides" array. Each slide must include:
-- `id` (string): unique slide ID like "slide-1"
-- `slide_type` (string): one of: title | content | two_column | image_text | table | diagram | quote | summary
+- `id` (string): unique ID like "slide-1"
+- `slide_type` (string): one of: title | content | two_column | image_text | stats | process | diagram | table | quote | visual_list | summary
 - `title` (string): slide heading
-- `html` (string): complete, self-contained HTML for this slide (see requirements below)
-- `image_prompt` (string|null): if the slide needs a Gemini-generated image, describe it vividly here (no text in images, no faces); otherwise null
+- `html` (string): complete self-contained HTML fragment (see requirements below)
+- `image_prompt` (string|null): vivid English description for Gemini image generation (no text in image, no faces). Set this on ALL slides that benefit from a photograph or illustration.
 
-**SLIDE HTML REQUIREMENTS**:
-1. The HTML is a single <div> that fills 100% of the slide viewport. Do NOT include <html>, <head>, <body> or <style> tags.
-2. Use only inline styles. Reference the institute colors and fonts provided in the prompt via inline style attributes.
-3. Use a box-sizing:border-box wrapper div with width:100%;height:100vh;overflow:hidden.
-4. ALL text must contrast well with the background (WCAG AA minimum).
-5. For images: use `<img data-img-prompt="VIVID_DESCRIPTION" src="placeholder.png" style="...">`. The Gemini image generator will replace placeholder.png with a real image. The description must be specific and visual (no text, no faces).
-6. For Mermaid diagrams: use `<div class="mermaid">DIAGRAM_CODE</div>`. Keep diagrams simple (max 8 nodes). The Mermaid library is already loaded.
-7. For tables: use standard HTML `<table><thead><tr><th>...</th></tr></thead><tbody>...</tbody></table>`.
-8. For math: use KaTeX syntax `$$...$$` or `\\(...\\)`.
+═══════════════════════════════════════════════════════
+SLIDE HTML TECHNICAL REQUIREMENTS
+═══════════════════════════════════════════════════════
+1. The html field is a single <div> that fills the slide viewport. NO <html>, <head>, <body>, or <style> tags.
+2. Use ONLY inline styles. No external stylesheets, no class-based CSS (except "mermaid").
+3. Root wrapper: `width:100%; height:100vh; box-sizing:border-box; overflow:hidden; position:relative;`
+4. All text MUST contrast well with the background (WCAG AA).
+5. Images: `<img data-img-prompt="VIVID_DESCRIPTION" src="placeholder.png" style="...">` — the image pipeline replaces placeholder.png.
+6. Mermaid: `<div class="mermaid">DIAGRAM_CODE</div>` — library is pre-loaded. Keep to ≤10 nodes. Use graph LR, graph TD, flowchart, or mindmap syntax.
+7. Inline SVG: use `<svg>` tags directly in HTML for icons, decorative shapes, progress indicators, and simple charts. This is encouraged on EVERY slide.
+8. Tables: standard `<table><thead><tr><th>…</th></tr></thead><tbody>…</tbody></table>`.
+9. Math: KaTeX syntax `$$…$$` or `\\(…\\)`.
 
-**SLIDE TYPE GUIDELINES**:
-- `title`: Large centered H1 + optional subtitle (H2). Use a bold accent bar under the title. Optionally include a full-bleed hero image with a semi-transparent overlay so text remains readable.
-- `content`: Title at top, then a styled bullet list (4-6 points) using custom markers with the primary color.
-- `two_column`: Title at top, then two equal-width flex columns each with a sub-heading and 3-4 bullets.
-- `image_text`: Left 40% image (use data-img-prompt), right 60% title + bullets.
-- `table`: Title at top, then a styled table with highlighted header row in primary color.
-- `diagram`: Title at top, then a centered mermaid block + short caption.
-- `quote`: Full-bleed centered layout. Large opening quote mark, the quote text in 40-48px font, and attribution below.
-- `summary`: Title "Key Takeaways", a bullet list of 4-6 takeaways, and a highlighted call-out box with the single most important point.
+═══════════════════════════════════════════════════════
+⚡ VISUAL MANDATE — EVERY SLIDE MUST HAVE AT LEAST ONE:
+═══════════════════════════════════════════════════════
+• A Gemini-generated image (data-img-prompt on <img>), OR
+• An inline SVG illustration / icon / decorative shape, OR
+• A Mermaid diagram, OR
+• A styled stat card / infographic element
 
-**MANDATORY STRUCTURE RULES**:
-- First slide MUST be slide_type "title" with a bold, engaging title.
-- Last slide MUST be slide_type "summary" with the key takeaways.
-- Mix slide types for visual variety - never use the same type three times in a row.
-- At least 1 diagram or table slide for process/comparison topics.
-- At least 1 image_text slide per 5 slides generated.
+If a slide has only plain text and bullets, it is INVALID. Redesign it.
 
-**SUBJECT DOMAIN VISUAL EMPHASIS**:
-- coding: prefer diagram (flowcharts, architecture) and content (code-heavy bullets)
-- math: prefer diagram and table
-- history: prefer image_text and quote
-- science: prefer diagram, image_text, table
-- language: prefer content and quote
-- general: balanced mix
+═══════════════════════════════════════════════════════
+SLIDE TYPE DETAILED SPECS
+═══════════════════════════════════════════════════════
+
+**`title`** — Opening slide:
+• Full-bleed background image (data-img-prompt) with a dark/light semi-transparent overlay (rgba) so text is readable
+• Large H1 (56-72px, bold, white or high-contrast)
+• Optional subtitle H2 (24-32px)
+• A decorative SVG accent element (geometric shape, wave, or line) below the subtitle
+• Bottom strip or badge showing the target audience or date
+
+**`content`** — Key points slide:
+• Title (H2, 32-40px) with a 4px colored left-border accent bar
+• Bullet list (4-6 items), each bullet MUST use an inline SVG icon instead of plain "•":
+  ```html
+  <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="PRIMARY_COLOR" stroke-width="2.5" style="flex-shrink:0;margin-top:2px;"><path d="M5 13l4 4L19 7"/></svg>
+    <span style="font-size:18px;line-height:1.5;">Bullet text here</span>
+  </div>
+  ```
+• A decorative SVG pattern, abstract shape, or small illustrative image in one corner (20-30% of slide area)
+
+**`two_column`** — Split content slide:
+• Title at top (full width)
+• Two flex columns separated by a colored divider line
+• Each column: sub-heading + 3-4 SVG-icon bullets
+• Optionally place a small image or SVG illustration in one column instead of bullets
+
+**`image_text`** — Visual + explanation slide:
+• Left 40%: a photo (data-img-prompt) with rounded corners and a colored shadow/border
+• Right 60%: title (H2) + 3-5 SVG-icon bullet points
+• Title slide accent bar using primary color
+
+**`stats`** — Impact numbers slide (USE THIS for any data, percentages, counts, measurements):
+• Title at top
+• 3-4 large stat cards in a flex row, each card:
+  ```html
+  <div style="flex:1;background:CARD_BG;border-radius:16px;padding:32px 24px;text-align:center;border-top:4px solid PRIMARY_COLOR;">
+    <svg ...ICON_SVG...</svg>
+    <div style="font-size:56px;font-weight:900;color:PRIMARY_COLOR;line-height:1;">VALUE</div>
+    <div style="font-size:14px;color:SECONDARY_TEXT;margin-top:8px;font-weight:600;">LABEL</div>
+    <div style="font-size:12px;color:SECONDARY_TEXT;margin-top:4px;">supporting detail</div>
+  </div>
+  ```
+• A subtle SVG decorative wave or grid pattern behind the cards
+
+**`process`** — Step-by-step flow slide (USE THIS for any sequence, workflow, cycle, or procedure):
+• Title at top
+• For linear flows (≤5 steps): horizontal row of numbered circles connected by SVG arrows:
+  ```html
+  <div style="display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;">
+    <div style="text-align:center;width:140px;">
+      <div style="width:56px;height:56px;border-radius:50%;background:PRIMARY_COLOR;color:#fff;font-size:22px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">1</div>
+      <div style="font-size:13px;font-weight:600;">Step label</div>
+      <div style="font-size:11px;color:SECONDARY_TEXT;margin-top:4px;">detail</div>
+    </div>
+    <svg width="40" height="24" viewBox="0 0 40 24"><path d="M0 12 L32 12 M24 4 L32 12 L24 20" stroke="PRIMARY_COLOR" stroke-width="2.5" fill="none"/></svg>
+    <!-- repeat for each step -->
+  </div>
+  ```
+• For cycles (≥5 steps): use a Mermaid `graph TD` or `flowchart LR` inside a styled container
+• Add a small descriptive paragraph below the flow
+
+**`diagram`** — Visual diagram slide:
+• Title at top
+• A `<div class="mermaid">` block (60-70% of slide height) centered in the slide
+• Use graph LR for horizontal flows, graph TD for hierarchies, mindmap for concepts, pie for distributions
+• A brief 1-2 sentence explanation caption below the diagram
+• Decorative SVG accent (thin colored border line or corner shape) around the diagram container
+
+**`table`** — Comparison / data slide:
+• Title at top
+• Styled `<table>` with:
+  - `<thead>` row: `background:PRIMARY_COLOR; color:#fff; padding:12px;`
+  - Alternating row backgrounds: row 0 = card_bg, row 1 = white/transparent
+  - Bordered cells with rounded table corners (border-radius on first/last cells)
+• Optional small SVG icon in the header or a color-coded legend
+
+**`quote`** — Powerful statement slide:
+• Full-bleed solid color background (primary_color or dark) OR full-bleed image with overlay
+• Very large opening quote SVG mark (100px+) in accent/gold color
+• Quote text at 36-48px, centered, italic, light color
+• Attribution at 18px below
+• Decorative SVG geometric shapes in corners (circles, lines)
+
+**`visual_list`** — Icon-grid slide (USE THIS instead of plain content when items are categories/concepts):
+• Title at top
+• A 2×2 or 2×3 grid of icon cards:
+  ```html
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+    <div style="background:CARD_BG;border-radius:12px;padding:20px;border-left:4px solid PRIMARY_COLOR;">
+      <svg width="32" height="32" ...THEMATIC_ICON_SVG...</svg>
+      <div style="font-size:16px;font-weight:700;margin-top:10px;color:TEXT_COLOR;">Category Name</div>
+      <div style="font-size:13px;color:SECONDARY_TEXT;margin-top:6px;">Brief 1-sentence description</div>
+    </div>
+    <!-- repeat -->
+  </div>
+  ```
+• Each card icon should be a THEMATIC SVG drawn with simple paths matching the card's topic
+
+**`summary`** — Closing slide:
+• Title "Key Takeaways" with a trophy/star SVG icon beside it
+• 4-6 takeaway rows, each with a colored number badge (circle) + bold text
+• A highlighted callout box at the bottom (primary_color border, light bg) with THE single most important insight
+• Optional: a small congratulatory or relevant SVG illustration in the bottom-right corner
+
+═══════════════════════════════════════════════════════
+INLINE SVG GUIDANCE
+═══════════════════════════════════════════════════════
+Draw SVG icons inline using simple paths. Examples:
+
+Checkmark: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="COLOR" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>`
+Arrow right: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="COLOR" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`
+Star: `<svg width="24" height="24" viewBox="0 0 24 24" fill="COLOR"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`
+Circle bullet: `<svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="COLOR"/></svg>`
+Bar chart: `<svg width="60" height="40" viewBox="0 0 60 40"><rect x="2" y="20" width="12" height="18" fill="COLOR" rx="2"/><rect x="18" y="10" width="12" height="28" fill="COLOR" rx="2" opacity="0.8"/><rect x="34" y="4" width="12" height="34" fill="COLOR" rx="2" opacity="0.6"/><rect x="50" y="14" width="8" height="24" fill="COLOR" rx="2" opacity="0.7"/></svg>`
+Decorative circle bg: `<svg style="position:absolute;right:-60px;top:-60px;opacity:0.08;" width="300" height="300" viewBox="0 0 300 300"><circle cx="150" cy="150" r="150" fill="PRIMARY_COLOR"/></svg>`
+
+For complex domain icons (atom, DNA, gear, brain, globe, etc.) use multiple SVG paths to create recognizable shapes.
+
+═══════════════════════════════════════════════════════
+IMAGE PROMPT RULES
+═══════════════════════════════════════════════════════
+- Write image_prompt in English always (even if slide text is in another language)
+- Be specific: lighting, setting, style, colors (e.g. "macro photograph of water droplets on a green leaf, soft bokeh background, bright natural light, no text, no people")
+- Minimum 30% of slides MUST have a non-null image_prompt
+- ALL title slides MUST have image_prompt set
+- image_text slides MUST have image_prompt set
+- For process/stats/diagram slides, image_prompt can be null (SVG/diagram provides the visual)
+
+═══════════════════════════════════════════════════════
+MANDATORY STRUCTURE RULES
+═══════════════════════════════════════════════════════
+- Slide 1: MUST be "title" with hero image
+- Last slide: MUST be "summary"
+- NEVER use the same slide_type more than 2 times in a row
+- For any topic involving data/numbers → include at least 1 "stats" slide
+- For any topic involving steps/process/cycle → include at least 1 "process" slide
+- For any topic involving concepts/categories → include at least 1 "visual_list" slide
+- For science/history/geography → include at least 2 "image_text" slides
+- For ANY topic → include at least 1 "diagram" (Mermaid) slide
+
+═══════════════════════════════════════════════════════
+SUBJECT DOMAIN VISUAL EMPHASIS
+═══════════════════════════════════════════════════════
+- science: process + diagram + stats + image_text (with nature/lab photos)
+- history: image_text (era photos) + quote + timeline as diagram + two_column
+- math: stats + diagram (flowchart) + table + process
+- coding: process + diagram (architecture/flowchart) + visual_list (concepts)
+- business/pitch: stats + two_column + process + visual_list
+- language: quote + visual_list + two_column + image_text
+- general: balanced mix of all types
 """
 
 SLIDES_USER_PROMPT_TEMPLATE = """
-Create a detailed presentation slide deck for the following topic:
+Create a visually stunning, image-rich presentation slide deck for the following topic:
 ---
 {base_prompt}
 ---
 
 **Target Audience**: {target_audience}
-**Language**: {language}
-**Slide Count**: {slide_count_medium} slides (adjust slightly based on topic depth)
+**Language for slide text**: {language}
+**Slide Count**: {slide_count_medium} slides (adjust based on topic depth; min 8, max 15)
 
-**INSTITUTE DESIGN SETTINGS** (apply these in ALL slide inline styles):
+**INSTITUTE DESIGN SETTINGS** (apply to ALL slide inline styles):
 - Background type: {background_type}
 - Primary/accent color: {primary_color}
 - Heading font: {heading_font}
 - Body font: {body_font}
 
-**DERIVED COLORS**:
-- For white background: text color = #1e293b, secondary text = #64748b, card bg = #f8fafc, border = #e2e8f0
-- For black background: text color = #f1f5f9, secondary text = #94a3b8, card bg = #1e293b, border = #334155
+**DERIVED COLOR PALETTE** (use these exact values):
+For WHITE background:
+  - Slide background: #ffffff
+  - Text color: #1e293b
+  - Secondary text: #64748b
+  - Card background: #f8fafc
+  - Border: #e2e8f0
+  - Accent light: {primary_color}18  (primary at 9% opacity hex)
 
-**OUTPUT JSON STRUCTURE**:
+For BLACK/DARK background:
+  - Slide background: #0f172a
+  - Text color: #f1f5f9
+  - Secondary text: #94a3b8
+  - Card background: #1e293b
+  - Border: #334155
+  - Accent light: {primary_color}30
+
+**OUTPUT JSON STRUCTURE** (return ONLY valid JSON, no markdown fences):
 {{
   "presentation_title": "...",
-  "subject_domain": "coding|history|science|math|language|general",
+  "subject_domain": "science|history|math|coding|business|language|general",
   "slides": [
     {{
       "id": "slide-1",
       "slide_type": "title",
-      "title": "Main Title",
-      "html": "<div style=\\"width:100%;height:100vh;background:#ffffff;font-family:Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px;box-sizing:border-box;\\">...</div>",
-      "image_prompt": "cinematic wide-angle photo of [vivid scene], no text, no faces, professional photography"
+      "title": "Engaging Main Title Here",
+      "html": "<div style=\\"width:100%;height:100vh;box-sizing:border-box;overflow:hidden;position:relative;font-family:'{heading_font}',sans-serif;\\"><img data-img-prompt=\\"cinematic wide-angle photo, relevant scene, no text, no faces\\" src=\\"placeholder.png\\" style=\\"position:absolute;inset:0;width:100%;height:100%;object-fit:cover;\\"/><div style=\\"position:absolute;inset:0;background:rgba(15,23,42,0.62);\\"></div><div style=\\"position:relative;z-index:2;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px;text-align:center;\\"><h1 style=\\"font-size:64px;font-weight:900;color:#fff;line-height:1.15;margin:0 0 20px;\\">TITLE</h1><p style=\\"font-size:26px;color:rgba(255,255,255,0.82);margin:0 0 32px;\\">Subtitle here</p><svg width=\\"120\\" height=\\"6\\" viewBox=\\"0 0 120 6\\"><rect width=\\"120\\" height=\\"6\\" rx=\\"3\\" fill=\\"{primary_color}\\"/></svg></div></div>",
+      "image_prompt": "cinematic wide-angle dramatic photograph related to [SPECIFIC TOPIC], vivid colors, professional photography, no text overlay, no faces"
     }},
     {{
       "id": "slide-2",
-      "slide_type": "content",
-      "title": "Section Title",
-      "html": "<div style=\\"width:100%;height:100vh;...\\">...</div>",
+      "slide_type": "stats",
+      "title": "By The Numbers",
+      "html": "<div style=\\"width:100%;height:100vh;...stats card HTML...\\">...</div>",
+      "image_prompt": null
+    }},
+    {{
+      "id": "slide-3",
+      "slide_type": "process",
+      "title": "How It Works",
+      "html": "<div style=\\"width:100%;height:100vh;...step flow HTML...\\">...</div>",
       "image_prompt": null
     }}
   ]
 }}
 
-**CRITICAL RULES**:
-1. Every html value must be a single root <div> with width:100%;height:100vh;box-sizing:border-box;overflow:hidden using inline styles only
-2. Use font-family:'{heading_font}',sans-serif for headings; font-family:'{body_font}',sans-serif for body text
-3. Use {primary_color} for headings, accent bars, bullet markers, table headers, and callout boxes
-4. Set image_prompt to a vivid English description for slides needing images (even if content is in {language})
-5. Write all slide text content in {language}
-6. Make slides DETAILED and INFORMATION-DENSE with comprehensive educational content
-7. Slide count guide: short topics 6-8 slides, medium 8-12 slides, deep topics 12-15 slides
+**NON-NEGOTIABLE VISUAL RULES**:
+1. Root div: width:100%;height:100vh;box-sizing:border-box;overflow:hidden;position:relative always
+2. Use font-family:'{heading_font}',sans-serif for all headings (H1/H2/H3)
+3. Use font-family:'{body_font}',sans-serif for body/paragraph text
+4. Use {primary_color} for headings, accent bars, bullet SVG icons, card top borders, table headers, callout boxes
+5. ALL title slides must have a hero <img data-img-prompt="..."> with a dark overlay
+6. ALL image_text slides must have <img data-img-prompt="...">
+7. Content/visual_list slides: EVERY bullet/card must have an inline SVG icon
+8. Stats slides: stat values must be 48-72px, bold, in primary color
+9. Process slides: numbered circles must use primary color background with white text
+10. Write slide text in {language}; write image_prompt values ALWAYS in English
+11. Minimum 30% of slides must have non-null image_prompt
+12. Make slides information-dense AND visually compelling — rich content in every slide
+13. Do NOT add any padding or background color to the outermost root div beyond what's needed — the slide should look like a full-bleed professional slide, not a webpage with whitespace margins
 """
 
 

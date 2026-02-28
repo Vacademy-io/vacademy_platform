@@ -565,6 +565,260 @@ class ContentGenerationService:
             }
             yield json.dumps(error_response)
 
+    async def generate_ai_slides_content(
+        self, todo: Todo
+    ) -> AsyncGenerator[str, None]:
+        """
+        Generate AI Slides content for an AI_SLIDES type todo.
+        Uses the SLIDES content_type in the video generation pipeline (no TTS stages).
+        Targets HTML stage directly since SLIDES skip TTS/WORDS stages.
+        """
+        try:
+            logger.info(f"[AI_SLIDES] Starting generation for slide: {todo.path}")
+
+            video_id = f"slides-{todo.path.replace('.', '-').replace('/', '-')}-{str(uuid4())[:8]}"
+            logger.info(f"[AI_SLIDES] Generated video_id: {video_id}")
+
+            prompt = todo.prompt or f"Create an educational slide deck explaining: {todo.title or todo.name}"
+
+            started_event = {
+                "type": "SLIDE_CONTENT_UPDATE",
+                "path": todo.path,
+                "status": True,
+                "actionType": todo.action_type,
+                "slideType": "AI_SLIDES",
+                "contentData": {
+                    "videoId": video_id,
+                    "status": "GENERATING",
+                    "message": "AI Slides generation started...",
+                    "currentStage": "INITIALIZING",
+                    "progress": 0,
+                },
+                "metadata": {"isGenerating": True, "videoId": video_id},
+            }
+            yield json.dumps(started_event)
+
+            # SLIDES skips TTS/WORDS — target HTML directly
+            async for event in self._video_gen_service.generate_till_stage(
+                video_id=video_id,
+                prompt=prompt,
+                target_stage="HTML",
+                content_type="SLIDES",
+                language=todo.metadata.get("language", "English"),
+                captions_enabled=False,  # SLIDES are visual-only
+                html_quality=todo.metadata.get("html_quality", "advanced"),
+                resume=False,
+                model=todo.metadata.get("model") or todo.model,
+                target_audience=todo.metadata.get("target_audience", "General/Adult"),
+                target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                db_session=self._db_session,
+                institute_id=self._institute_id,
+                user_id=self._user_id,
+            ):
+                wrapped_event = {
+                    "type": "SLIDE_CONTENT_UPDATE",
+                    "path": todo.path,
+                    "status": True,
+                    "actionType": todo.action_type,
+                    "slideType": "AI_SLIDES",
+                    "contentData": {
+                        "videoId": video_id,
+                        "status": "GENERATING",
+                        "currentStage": event.get("stage", "UNKNOWN"),
+                        "progress": event.get("percentage", 0),
+                        "message": f"Generating slides: {event.get('stage', 'stage')}...",
+                    },
+                    "metadata": {"isGenerating": True, "videoId": video_id, "internalEvent": event},
+                }
+                yield json.dumps(wrapped_event)
+
+            video_status = self._video_gen_service.get_video_status(video_id)
+            if not video_status:
+                raise ValueError(f"AI Slides generation failed: no status found for {video_id}")
+
+            ai_slides_details = {
+                "videoId": video_id,
+                "status": "COMPLETED",
+                "htmlFileId": video_status["file_ids"].get("html"),
+                "htmlUrl": video_status["s3_urls"].get("html"),
+                "language": video_status.get("language", "English"),
+                "currentStage": "HTML",
+                "progress": 100,
+            }
+
+            final_update = {
+                "type": "SLIDE_CONTENT_UPDATE",
+                "path": todo.path,
+                "status": True,
+                "actionType": todo.action_type,
+                "slideType": "AI_SLIDES",
+                "contentData": ai_slides_details,
+                "metadata": {"isGenerating": False, "videoId": video_id},
+            }
+            yield json.dumps(final_update)
+            logger.info(f"[AI_SLIDES] Successfully completed generation for {todo.path}")
+
+        except Exception as e:
+            import traceback
+            error_msg = str(e)
+            logger.error(f"[AI_SLIDES] Error generating AI slides content for {todo.path}: {error_msg}")
+            logger.error(f"[AI_SLIDES] Traceback:\n{traceback.format_exc()}")
+            yield json.dumps({
+                "type": "SLIDE_CONTENT_ERROR",
+                "path": todo.path,
+                "status": False,
+                "actionType": todo.action_type,
+                "slideType": "AI_SLIDES",
+                "errorMessage": f"Failed to generate AI slides: {error_msg}",
+                "contentData": f"Error generating AI slides: {error_msg}",
+            })
+
+    async def generate_ai_storybook_content(
+        self, todo: Todo
+    ) -> AsyncGenerator[str, None]:
+        """
+        Generate AI Storybook content for an AI_STORYBOOK type todo.
+        Uses the STORYBOOK content_type in the video generation pipeline.
+        Stops at SCRIPT stage (fast response) and continues HTML in background.
+        """
+        try:
+            logger.info(f"[AI_STORYBOOK] Starting generation for slide: {todo.path}")
+
+            video_id = f"storybook-{todo.path.replace('.', '-').replace('/', '-')}-{str(uuid4())[:8]}"
+            logger.info(f"[AI_STORYBOOK] Generated video_id: {video_id}")
+
+            prompt = todo.prompt or f"Create an illustrated educational storybook about: {todo.title or todo.name}"
+
+            started_event = {
+                "type": "SLIDE_CONTENT_UPDATE",
+                "path": todo.path,
+                "status": True,
+                "actionType": todo.action_type,
+                "slideType": "AI_STORYBOOK",
+                "contentData": {
+                    "videoId": video_id,
+                    "status": "GENERATING",
+                    "message": "AI Storybook generation started. This may take 2-5 minutes...",
+                    "currentStage": "INITIALIZING",
+                    "progress": 0,
+                },
+                "metadata": {"isGenerating": True, "videoId": video_id},
+            }
+            yield json.dumps(started_event)
+
+            async for event in self._video_gen_service.generate_till_stage(
+                video_id=video_id,
+                prompt=prompt,
+                target_stage="SCRIPT",
+                content_type="STORYBOOK",
+                language=todo.metadata.get("language", "English"),
+                captions_enabled=True,
+                html_quality=todo.metadata.get("html_quality", "advanced"),
+                resume=False,
+                model=todo.metadata.get("model") or todo.model,
+                target_audience=todo.metadata.get("target_audience", "General/Adult"),
+                target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                db_session=self._db_session,
+                institute_id=self._institute_id,
+                user_id=self._user_id,
+            ):
+                wrapped_event = {
+                    "type": "SLIDE_CONTENT_UPDATE",
+                    "path": todo.path,
+                    "status": True,
+                    "actionType": todo.action_type,
+                    "slideType": "AI_STORYBOOK",
+                    "contentData": {
+                        "videoId": video_id,
+                        "status": "GENERATING",
+                        "currentStage": event.get("stage", "UNKNOWN"),
+                        "progress": event.get("percentage", 0),
+                        "message": f"Generating storybook: {event.get('stage', 'stage')}...",
+                    },
+                    "metadata": {"isGenerating": True, "videoId": video_id, "internalEvent": event},
+                }
+                yield json.dumps(wrapped_event)
+
+            video_status = self._video_gen_service.get_video_status(video_id)
+            if not video_status:
+                raise ValueError(f"AI Storybook generation failed: no status found for {video_id}")
+
+            ai_storybook_details = {
+                "videoId": video_id,
+                "status": "COMPLETED",
+                "scriptFileId": video_status["file_ids"].get("script"),
+                "scriptUrl": video_status["s3_urls"].get("script"),
+                "language": video_status.get("language", "English"),
+                "currentStage": "SCRIPT",
+                "progress": 100,
+                "backgroundGeneration": True,
+                "message": "Storybook script generated. HTML is being generated in the background.",
+            }
+
+            final_update = {
+                "type": "SLIDE_CONTENT_UPDATE",
+                "path": todo.path,
+                "status": True,
+                "actionType": todo.action_type,
+                "slideType": "AI_STORYBOOK",
+                "contentData": ai_storybook_details,
+                "metadata": {"isGenerating": False, "videoId": video_id, "backgroundGeneration": True},
+            }
+            yield json.dumps(final_update)
+
+            # Background task to continue to HTML stage
+            async def continue_storybook_html():
+                try:
+                    logger.info(f"[AI_STORYBOOK] Starting background HTML generation for {video_id}")
+                    await asyncio.sleep(1)
+                    async for event in self._video_gen_service.generate_till_stage(
+                        video_id=video_id,
+                        prompt=prompt,
+                        target_stage="HTML",
+                        content_type="STORYBOOK",
+                        language=todo.metadata.get("language", "English"),
+                        captions_enabled=True,
+                        html_quality=todo.metadata.get("html_quality", "advanced"),
+                        resume=True,
+                        model=todo.metadata.get("model") or todo.model,
+                        target_audience=todo.metadata.get("target_audience", "General/Adult"),
+                        target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                        db_session=self._db_session,
+                        institute_id=self._institute_id,
+                        user_id=self._user_id,
+                    ):
+                        if event.get("type") == "completed":
+                            logger.info(f"[AI_STORYBOOK] Background HTML generation completed for {video_id}")
+                        elif event.get("type") == "error":
+                            logger.error(f"[AI_STORYBOOK] Background HTML error for {video_id}: {event.get('message')}")
+                except Exception as bg_error:
+                    logger.error(f"[AI_STORYBOOK] Background HTML generation failed for {video_id}: {str(bg_error)}")
+
+            try:
+                loop = asyncio.get_event_loop()
+                bg_task = loop.create_task(continue_storybook_html())
+                bg_task.add_done_callback(
+                    lambda t: logger.error(f"[AI_STORYBOOK] Background task error: {t.exception()}") if t.exception() else logger.info(f"[AI_STORYBOOK] Background task done for {video_id}")
+                )
+                logger.info(f"[AI_STORYBOOK] Background HTML task started for {video_id}")
+            except Exception as task_error:
+                logger.error(f"[AI_STORYBOOK] Failed to start background task for {video_id}: {str(task_error)}")
+
+        except Exception as e:
+            import traceback
+            error_msg = str(e)
+            logger.error(f"[AI_STORYBOOK] Error generating AI storybook content for {todo.path}: {error_msg}")
+            logger.error(f"[AI_STORYBOOK] Traceback:\n{traceback.format_exc()}")
+            yield json.dumps({
+                "type": "SLIDE_CONTENT_ERROR",
+                "path": todo.path,
+                "status": False,
+                "actionType": todo.action_type,
+                "slideType": "AI_STORYBOOK",
+                "errorMessage": f"Failed to generate AI storybook: {error_msg}",
+                "contentData": f"Error generating AI storybook: {error_msg}",
+            })
+
     async def generate_video_code_content(
         self, todo: Todo
     ) -> dict:
@@ -925,6 +1179,14 @@ class ContentGenerationService:
             elif todo.type == "AI_VIDEO_CODE":
                 # AI_VIDEO_CODE generation streams multiple events
                 async for event in self.generate_ai_video_code_content(todo=todo):
+                    yield event
+            elif todo.type == "AI_SLIDES":
+                # AI_SLIDES generation streams multiple events
+                async for event in self.generate_ai_slides_content(todo=todo):
+                    yield event
+            elif todo.type == "AI_STORYBOOK":
+                # AI_STORYBOOK generation streams multiple events
+                async for event in self.generate_ai_storybook_content(todo=todo):
                     yield event
             else:
                 logger.warning(f"Unknown todo type: {todo.type}, skipping content generation")

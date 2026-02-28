@@ -359,7 +359,7 @@ class ImageGenerationService:
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key={effective_key}",
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={effective_key}",
                     headers={
                         "Content-Type": "application/json"
                     },

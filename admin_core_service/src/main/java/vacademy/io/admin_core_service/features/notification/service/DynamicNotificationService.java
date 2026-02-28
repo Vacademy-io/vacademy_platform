@@ -216,6 +216,19 @@ public class DynamicNotificationService {
             String shortRefLink = learnerInvitationLinkService
                     .generateShortLearnerInvitationResponseLink(instituteId, enrollInvite, user.getId());
 
+            // Get the coupon code's short_url to use as referral link if available
+            String couponShortUrl = shortRefLink;
+            try {
+                java.util.Optional<vacademy.io.admin_core_service.features.user_subscription.entity.CouponCode> couponCode = couponCodeService
+                        .getCouponCodeBySource(user.getId(), "USER");
+                if (couponCode.isPresent() && couponCode.get().getShortUrl() != null
+                        && !couponCode.get().getShortUrl().trim().isEmpty()) {
+                    couponShortUrl = couponCode.get().getShortUrl();
+                }
+            } catch (Exception e) {
+                log.warn("Error getting short URL from coupon for user {}: {}", user.getId(), e.getMessage());
+            }
+
             // Get theme color from institute (default to orange if not set)
             String themeColor = getThemeColorFromInstitute(institute);
 
@@ -245,7 +258,7 @@ public class DynamicNotificationService {
                     // Referral template variables
                     .name(user.getFullName() != null ? user.getFullName() : user.getUsername())
                     .referralLink(invitationLink)
-                    .shortReferralLink(shortRefLink) // Generate and pass exactly what we need
+                    .shortReferralLink(couponShortUrl) // Use the coupon short URL
                     .inviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "")
                     .themeColor(themeColor)
                     .build();
@@ -304,6 +317,8 @@ public class DynamicNotificationService {
             java.util.Map<String, Object> templateVarsMap = new java.util.HashMap<>();
             templateVarsMap.put("refCode", referralCode);
             templateVarsMap.put("shortUrl", couponShortUrl);
+            templateVarsMap.put("short_referral_link", couponShortUrl);
+            templateVarsMap.put("shortReferralLink", couponShortUrl);
             templateVarsMap.put("userName", user.getUsername());
             templateVarsMap.put("userEmail", user.getEmail());
             templateVarsMap.put("userMobile", user.getMobileNumber());

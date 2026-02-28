@@ -799,34 +799,34 @@ class VideoGenerationPipeline:
                 "script_text": script_path.read_text(),
             }
 
+        # Content types that produce no audio (purely visual)
+        NO_AUDIO_TYPES = {"SLIDES"}
+
         # Only proceed to TTS if we are not stopping before it
         if self.STAGE_INDEX["tts"] < stop_idx:
             if do_tts:
                 # print("🗣️  Synthesize narration ...") # Already printed in method
                 tts_outputs = self._synthesize_voice(
-                    script_plan["script_path"], 
-                    run_dir, 
+                    script_plan["script_path"],
+                    run_dir,
                     language=language,
                     voice_gender=voice_gender,
                     tts_provider=tts_provider
                 )
-            else:
+            elif content_type not in NO_AUDIO_TYPES:
+                # Resuming from a checkpoint after TTS — files must already exist
                 self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
                 self._require_file(audio_path, "narration.mp3 (decoded audio)")
                 tts_outputs = {"response_json": response_json, "audio_path": audio_path}
+            # else: no-audio content type (e.g. SLIDES) — leave tts_outputs as empty defaults
 
         # Only proceed to WORDS if we are not stopping before it
         if self.STAGE_INDEX["words"] < stop_idx:
             if do_words:
                 print("🔤 Deriving word timings ...")
-                # Ensure we have the necessary inputs from TTS stage (or loaded files)
-                if not tts_outputs["response_json"]:
-                     # This should not happen due to the check above and do_tts logic, 
-                     # but essentially if we are here, we must have tts outputs
-                     # If we skipped TTS generation (do_tts=False), we loaded them in the else block above.
-                     pass
                 word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
-            else:
+            elif content_type not in NO_AUDIO_TYPES:
+                # Resuming from a checkpoint after WORDS — files must already exist
                 self._require_file(words_json, "narration.words.json")
                 self._require_file(words_csv, "narration.words.csv")
                 # Note: alignment.json not required since phonemes disabled
@@ -834,10 +834,14 @@ class VideoGenerationPipeline:
                     "words_json": words_json,
                     "words_csv": words_csv,
                 }
+            # else: no-audio content type — leave word_outputs as empty defaults
 
-            words = self._load_words(word_outputs["words_json"])
-            if not words:
-                raise RuntimeError("No words parsed from timestamps; cannot continue.")
+            if word_outputs["words_json"] is not None:
+                words = self._load_words(word_outputs["words_json"])
+                if not words:
+                    raise RuntimeError("No words parsed from timestamps; cannot continue.")
+            else:
+                words = []
         else:
             words = []
 

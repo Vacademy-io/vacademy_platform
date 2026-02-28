@@ -428,6 +428,17 @@ public class SendUniqueLinkService {
                 finalParamMap.put("name", mergedParams.getOrDefault("name", user.getFullName()));
             }
 
+            // Always inject important system variables if they have values,
+            // so they are sent to WATI/Meta even if not configured in the template's
+            // dynamic_parameters DB column.
+            if (mergedParams.containsKey("short_referral_link")
+                    && StringUtils.hasText(mergedParams.get("short_referral_link"))) {
+                finalParamMap.put("short_referral_link", mergedParams.get("short_referral_link"));
+            }
+            if (mergedParams.containsKey("referral_link") && StringUtils.hasText(mergedParams.get("referral_link"))) {
+                finalParamMap.put("referral_link", mergedParams.get("referral_link"));
+            }
+
             // Build request for notification-service
             WhatsappRequest request = new WhatsappRequest();
             request.setTemplateName(templateName);

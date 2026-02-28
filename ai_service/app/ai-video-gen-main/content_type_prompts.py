@@ -3475,10 +3475,14 @@ Now generate the conversation JSON. Return ONLY valid JSON, no markdown.
 SLIDES_SYSTEM_PROMPT = """You are a world-class presentation designer who creates visually stunning, highly engaging HTML slide decks. Every slide must be rich with visual elements — images, inline SVGs, Mermaid diagrams, stat cards, icon grids, and decorative shapes. Plain text-only slides are NEVER acceptable.
 
 ═══════════════════════════════════════════════════════
-OUTPUT FORMAT
+OUTPUT FORMAT — STRICTLY REQUIRED
 ═══════════════════════════════════════════════════════
+⚠️  CRITICAL: You MUST return a JSON object with a "slides" ARRAY. NEVER put all slide
+HTML into a single top-level "html" field. Every slide MUST be a separate object in the
+"slides" array. Responses that collapse multiple slides into one entry are INVALID.
+
 Return a single JSON object with a "slides" array. Each slide must include:
-- `id` (string): unique ID like "slide-1"
+- `id` (string): unique ID like "slide-1", "slide-2", … (NEVER "slides-main")
 - `slide_type` (string): one of: title | content | two_column | image_text | stats | process | diagram | table | quote | visual_list | summary
 - `title` (string): slide heading
 - `html` (string): complete self-contained HTML fragment (see requirements below)
@@ -3669,7 +3673,7 @@ Create a visually stunning, image-rich presentation slide deck for the following
 
 **Target Audience**: {target_audience}
 **Language for slide text**: {language}
-**Slide Count**: {slide_count_medium} slides (adjust based on topic depth; min 8, max 15)
+**Slide Count**: {slide_count_medium} slides (adjust based on topic depth; min 6, max 12)
 
 **INSTITUTE DESIGN SETTINGS** (apply to ALL slide inline styles):
 - Background type: {background_type}
@@ -3846,9 +3850,9 @@ CONTENT_TYPE_PROMPTS = {
         "system": SLIDES_SYSTEM_PROMPT,
         "user_template": SLIDES_USER_PROMPT_TEMPLATE,
         "defaults": {
-            "slide_count_short": 6,
-            "slide_count_medium": 10,
-            "slide_count_long": 15,
+            "slide_count_short": 5,
+            "slide_count_medium": 8,
+            "slide_count_long": 12,
         }
     }
 }

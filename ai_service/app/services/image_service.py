@@ -106,7 +106,7 @@ class ImageGenerationService:
                         prompt=banner_prompt,
                         gemini_key=gemini_key
                     ),
-                    timeout=15.0  # 15 seconds for banner
+                    timeout=60.0  # 60 seconds for banner
                 )
                 banner_url, banner_usage = banner_result
                 # Aggregate usage
@@ -134,7 +134,7 @@ class ImageGenerationService:
                         prompt=preview_prompt,
                         gemini_key=gemini_key
                     ),
-                    timeout=15.0  # 15 seconds for preview
+                    timeout=60.0  # 60 seconds for preview
                 )
                 preview_url, preview_usage = preview_result
                 # Aggregate usage
@@ -162,7 +162,7 @@ class ImageGenerationService:
                         prompt=media_prompt,
                         gemini_key=gemini_key
                     ),
-                    timeout=15.0  # 15 seconds for media
+                    timeout=60.0  # 60 seconds for media
                 )
                 media_url, media_usage = media_result
                 # Aggregate usage
@@ -359,7 +359,7 @@ class ImageGenerationService:
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key={effective_key}",
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key={effective_key}",
                     headers={
                         "Content-Type": "application/json"
                     },

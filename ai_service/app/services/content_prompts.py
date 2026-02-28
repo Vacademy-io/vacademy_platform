@@ -132,9 +132,14 @@ class ContentGenerationPrompts:
    - Strictly avoid duplicate content from existing questions
                 
 2. Content Requirements:
-   - Preserve ALL DS_TAGs in HTML comments
-   - Include relevant images from Objective
-                
+   - Generate all content from the text prompt
+   - For questions that genuinely need a visual (diagrams, shapes, graphs, circuits, maps, experimental setups, etc.), you MAY include an image using ONLY this exact format:
+     <!-- DS_TAG_IMG_START --><img data-img-prompt="VIVID_ENGLISH_DESCRIPTION" src="placeholder.png" alt="description" style="max-width:100%;border-radius:8px;margin:8px 0;"><!-- DS_TAG_IMG_END -->
+   - The data-img-prompt must be a vivid, specific English description — the image pipeline will generate the actual image
+   - NEVER use external URLs (https://example.com, https://..., etc.) as src — ALWAYS use src="placeholder.png"
+   - For simple shapes, equations, or diagrams, prefer inline SVG over an img tag
+   - Only add images when they are truly essential to understand or answer the question — do not add decorative images
+
 3. Question Type Handling:
    - MCQS/MCQM: 4 options with clear single/multiple answers
    - ONE_WORD/LONG_ANSWER:
@@ -155,13 +160,13 @@ class ContentGenerationPrompts:
             "question_number": "number",
             "question": {{
                 "type": "HTML",
-                "content": "string" // Include img tags if present
+                "content": "string" // Text, inline SVG, or img with data-img-prompt (NEVER external URLs)
             }},
             "options": [
                 {{
                     "type": "HTML",
                     "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
-                    "content": "string" // Include img tags if present
+                    "content": "string" // Plain text or inline SVG — no external URLs
                 }}
             ],
             "correct_options": ["1"], // preview_id of correct option or list of correct options
@@ -181,12 +186,12 @@ class ContentGenerationPrompts:
 }}
                 
 **Critical Rules**:
-- If textPrompt is insufficient for questions, try to extract first 5 questions
-- Never modify DS_TAG comments
-- Maintain original HTML structure from source
+- If textPrompt is insufficient for questions, generate at least 5 questions from the topic
 - Strictly validate JSON syntax
 - Ensure question numbers are sequential without gaps
 - Never repeat question stems or options
+- NEVER use external/real/fake image URLs — only src="placeholder.png" with data-img-prompt attribute
+- Always wrap img tags in <!-- DS_TAG_IMG_START --> ... <!-- DS_TAG_IMG_END --> comments
 """
 
 

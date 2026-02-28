@@ -1063,10 +1063,13 @@ class VideoGenerationPipeline:
         last_error = None
         for attempt in range(max_attempts):
             try:
+                # SLIDES needs a large token budget: each slide has rich HTML (inline SVGs,
+                # styles) that must be JSON-escaped, so 10 slides ≈ 20 000–30 000 tokens.
+                _max_tokens = 32000 if content_type == "SLIDES" else 16000
                 raw, usage = self.script_client.chat(
                     messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                     temperature=0.5,
-                    max_tokens=16000,  # Increased for complex content types
+                    max_tokens=_max_tokens,
                 )
                 data = _extract_json_blob(raw)
                 break  # Success
@@ -2000,6 +2003,8 @@ class VideoGenerationPipeline:
             slides = plan_data.get("slides", [])
             if not slides:
                 print(f"    ⚠️  SLIDES: 'slides' key missing or empty. Available keys: {list(plan_data.keys())}")
+                print(f"    ⚠️  This usually means the model ran out of tokens or ignored the slides-array format.")
+                print(f"    ⚠️  Tip: use a model with high output token limits (e.g. google/gemini-2.5-pro).")
             for i, slide in enumerate(slides):
                 html = slide.get("html", f"<div>Slide {i+1}</div>")
                 # If the slide has an image_prompt but no data-img-prompt in its HTML, inject it
@@ -2014,7 +2019,11 @@ class VideoGenerationPipeline:
                         print(f"    🔧 Appended hidden img with data-img-prompt for slide {i+1}")
                 meta = {k: v for k, v in slide.items() if k != "html"}
                 segments.append(create_segment(html, i+1, slide.get("id", f"slide-{i+1}"), extra_meta=meta))
-            if not slides:
+            if slides:
+                print(f"    ✅ SLIDES: extracted {len(slides)} slide(s) from plan.")
+            else:
+                # Fallback: model returned monolithic HTML or empty slides array.
+                # Wrap the whole thing in a single entry so the response is at least usable.
                 html = plan_data.get("html", "<div>Presentation</div>")
                 segments.append(create_segment(html, 1, "slides-main", extra_meta=plan_data))
 

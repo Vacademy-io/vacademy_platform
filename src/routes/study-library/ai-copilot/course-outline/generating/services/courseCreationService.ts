@@ -574,10 +574,12 @@ async function createSlide(params: CreateSlideParams): Promise<void> {
                 await createVideoSlide(params);
                 break;
             case 'ai-video':
-                // For ai-video, ALWAYS create HTML_VIDEO slide type
-                // Allow creation after script generation, video can generate in background
+            case 'ai-slides':
+            case 'ai-storybook':
+                // ai-video, ai-slides, and ai-storybook all use the HTML_VIDEO slide type
+                // and render via the same player on the frontend
                 console.log(
-                    `[Course Creation] Routing to createHtmlVideoSlide for: ${slide.slideTitle}`
+                    `[Course Creation] Routing to createHtmlVideoSlide for: ${slide.slideTitle} (type: ${slide.slideType})`
                 );
                 await createHtmlVideoSlide(params);
                 break;

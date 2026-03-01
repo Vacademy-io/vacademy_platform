@@ -5,7 +5,7 @@ export interface ContentGenerationRequest {
         todos: Array<{
             name: string;
             title: string;
-            type: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO";
+            type: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO" | "AI_SLIDES" | "AI_STORYBOOK" | "VIDEO_CODE" | "AI_VIDEO_CODE";
             path: string;
             action_type: "ADD" | "UPDATE";
             prompt: string;
@@ -23,7 +23,7 @@ export interface ContentUpdate {
     path: string;
     status: boolean | string; // Can be boolean or "COMPLETED" | "GENERATING" for AI_VIDEO
     actionType: "ADD" | "UPDATE";
-    slideType: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO";
+    slideType: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO" | "AI_SLIDES" | "AI_STORYBOOK" | "VIDEO_CODE" | "AI_VIDEO_CODE";
     title?: string;
     contentData: any;
     errorMessage?: string;

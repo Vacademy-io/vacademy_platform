@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { Button } from '@/components/ui/button';
-import { Video, Loader2 } from 'lucide-react';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Video, Loader2, History as HistoryIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import {
@@ -74,6 +75,7 @@ function VideoConsole() {
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
     const [consoleState, setConsoleState] = useState<ConsoleState>('idle');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
 
     // Lifted state for prompt and options
     const [prompt, setPrompt] = useState(() => localStorage.getItem('video-studio-prompt') || '');
@@ -717,7 +719,29 @@ function VideoConsole() {
             hasInternalSidebarComponent={true}
         >
         <div className="relative flex h-[calc(100vh-56px)] w-full overflow-hidden bg-background md:h-[calc(100vh-72px)]">
-            {/* Collapsible History Sidebar (desktop) */}
+            {/* Mobile History Drawer */}
+            <Sheet open={isMobileHistoryOpen} onOpenChange={setIsMobileHistoryOpen}>
+                <SheetContent side="left" className="w-[280px] p-0">
+                    <SheetTitle className="sr-only">History</SheetTitle>
+                    <HistorySidebar
+                        history={history}
+                        selectedId={selectedHistoryId}
+                        onSelect={(item) => {
+                            handleSelectHistory(item);
+                            setIsMobileHistoryOpen(false);
+                        }}
+                        onDelete={handleDeleteHistory}
+                        onNewVideo={() => {
+                            handleNewVideo();
+                            setIsMobileHistoryOpen(false);
+                        }}
+                        isCollapsed={false}
+                        onToggleCollapse={() => setIsMobileHistoryOpen(false)}
+                    />
+                </SheetContent>
+            </Sheet>
+
+            {/* Collapsible History Sidebar (desktop only) */}
             <div
                 className="hidden flex-shrink-0 flex-col border-r bg-white dark:bg-card md:flex"
                 style={{
@@ -739,6 +763,19 @@ function VideoConsole() {
 
             {/* Main Content */}
             <div className="flex min-w-0 flex-1 flex-col bg-secondary/10">
+                {/* Mobile: History access button (shown only on mobile, hidden on md+) */}
+                {history.length > 0 && (
+                    <div className="flex items-center border-b px-3 py-1.5 md:hidden">
+                        <button
+                            onClick={() => setIsMobileHistoryOpen(true)}
+                            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                            <HistoryIcon className="size-3.5" />
+                            History ({history.length})
+                        </button>
+                    </div>
+                )}
+
                 {/* Content Area */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth p-2 sm:p-3">
                     {consoleState === 'idle' && !currentGeneration && !isLoadingVideoUrls && (

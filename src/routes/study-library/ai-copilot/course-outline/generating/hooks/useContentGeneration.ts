@@ -45,13 +45,15 @@ export const useContentGeneration = (
         setAbortController(controller);
 
         try {
-            // Filter todos to only include DOCUMENT, ASSESSMENT, VIDEO, AI_VIDEO, VIDEO_CODE, and AI_VIDEO_CODE types
+            // Filter todos to only include supported content types
             const contentTodos = outlineTodos.filter(
                 (todo: any) =>
                     todo.type === 'DOCUMENT' ||
                     todo.type === 'ASSESSMENT' ||
                     todo.type === 'VIDEO' ||
                     todo.type === 'AI_VIDEO' ||
+                    todo.type === 'AI_SLIDES' ||
+                    todo.type === 'AI_STORYBOOK' ||
                     todo.type === 'VIDEO_CODE' ||
                     todo.type === 'AI_VIDEO_CODE'
             );
@@ -116,6 +118,8 @@ export const useContentGeneration = (
                         (todo.type === 'ASSESSMENT' && slide.slideType === 'quiz') ||
                         (todo.type === 'VIDEO' && slide.slideType === 'video') ||
                         (todo.type === 'AI_VIDEO' && slide.slideType === 'ai-video') ||
+                        (todo.type === 'AI_SLIDES' && slide.slideType === 'ai-slides') ||
+                        (todo.type === 'AI_STORYBOOK' && slide.slideType === 'ai-storybook') ||
                         (todo.type === 'VIDEO_CODE' && slide.slideType === 'video-code') ||
                         (todo.type === 'AI_VIDEO_CODE' && slide.slideType === 'ai-video-code');
 
@@ -151,6 +155,8 @@ export const useContentGeneration = (
                         (todo.type === 'ASSESSMENT' && slide.slideType === 'quiz') ||
                         (todo.type === 'VIDEO' && slide.slideType === 'video') ||
                         (todo.type === 'AI_VIDEO' && slide.slideType === 'ai-video') ||
+                        (todo.type === 'AI_SLIDES' && slide.slideType === 'ai-slides') ||
+                        (todo.type === 'AI_STORYBOOK' && slide.slideType === 'ai-storybook') ||
                         (todo.type === 'VIDEO_CODE' && slide.slideType === 'video-code') ||
                         (todo.type === 'AI_VIDEO_CODE' && slide.slideType === 'ai-video-code');
 
@@ -210,6 +216,8 @@ export const useContentGeneration = (
                         (todo.type === 'ASSESSMENT' && slide.slideType === 'quiz') ||
                         (todo.type === 'VIDEO' && slide.slideType === 'video') ||
                         (todo.type === 'AI_VIDEO' && slide.slideType === 'ai-video') ||
+                        (todo.type === 'AI_SLIDES' && slide.slideType === 'ai-slides') ||
+                        (todo.type === 'AI_STORYBOOK' && slide.slideType === 'ai-storybook') ||
                         (todo.type === 'VIDEO_CODE' && slide.slideType === 'video-code') ||
                         (todo.type === 'AI_VIDEO_CODE' && slide.slideType === 'ai-video-code');
 
@@ -250,6 +258,9 @@ export const useContentGeneration = (
                                 (todo.type === 'ASSESSMENT' && slide.slideType === 'quiz') ||
                                 (todo.type === 'VIDEO' && slide.slideType === 'video') ||
                                 (todo.type === 'AI_VIDEO' && slide.slideType === 'ai-video') ||
+                                (todo.type === 'AI_SLIDES' && slide.slideType === 'ai-slides') ||
+                                (todo.type === 'AI_STORYBOOK' &&
+                                    slide.slideType === 'ai-storybook') ||
                                 (todo.type === 'VIDEO_CODE' && slide.slideType === 'video-code') ||
                                 (todo.type === 'AI_VIDEO_CODE' &&
                                     slide.slideType === 'ai-video-code'))
@@ -511,6 +522,25 @@ export const useContentGeneration = (
                                     `⚠️ [${update.path}] AI_VIDEO_CODE event received but no contentData yet`
                                 );
                             }
+                        } else if (update.slideType === 'AI_SLIDES' || update.slideType === 'AI_STORYBOOK') {
+                            console.log(
+                                `🔵 [${update.path}] Processing ${update.slideType} data, status: ${update.status}`
+                            );
+                            // AI_SLIDES and AI_STORYBOOK use the same pipeline as AI_VIDEO
+                            if (update.contentData) {
+                                content = JSON.stringify(update.contentData);
+                                console.log(`✅ [${update.path}] ${update.slideType} data stored:`, {
+                                    videoId: update.contentData.videoId,
+                                    timelineUrl: update.contentData.timelineUrl,
+                                    status: update.contentData.status || update.status,
+                                    progress: update.contentData.progress,
+                                });
+                            } else {
+                                content = JSON.stringify({
+                                    status: update.status || 'GENERATING',
+                                    progress: 0,
+                                });
+                            }
                         }
 
                         // Update localStorage first
@@ -528,8 +558,13 @@ export const useContentGeneration = (
                                     let newProgress = 0;
                                     let aiVideoData = parsed[slideIndex].aiVideoData;
 
-                                    if (update.slideType === 'AI_VIDEO' && update.contentData) {
-                                        // For AI_VIDEO, use status from contentData or update.status
+                                    if (
+                                        (update.slideType === 'AI_VIDEO' ||
+                                            update.slideType === 'AI_SLIDES' ||
+                                            update.slideType === 'AI_STORYBOOK') &&
+                                        update.contentData
+                                    ) {
+                                        // AI_VIDEO, AI_SLIDES, AI_STORYBOOK all use the same video pipeline
                                         const videoStatus =
                                             update.contentData.status || update.status;
                                         if (videoStatus === 'COMPLETED') {
@@ -542,7 +577,6 @@ export const useContentGeneration = (
                                         ) {
                                             newStatus = 'generating';
                                             newProgress = update.contentData.progress || 0;
-                                            // Store partial data if available
                                             if (update.contentData) {
                                                 aiVideoData = update.contentData;
                                             }

@@ -145,6 +145,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                 FROM live_session s
                 LEFT JOIN session_schedules ss ON s.id = ss.session_id
                 WHERE s.id = :sessionId
+                ORDER BY ss.meeting_date ASC
             """, nativeQuery = true)
     List<ScheduleDTO> findSchedulesBySessionId(@Param("sessionId") String sessionId);
 

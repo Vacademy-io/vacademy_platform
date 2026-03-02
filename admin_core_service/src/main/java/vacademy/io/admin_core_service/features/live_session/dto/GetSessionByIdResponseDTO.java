@@ -56,6 +56,7 @@ public class GetSessionByIdResponseDTO {
         private LearnerButtonConfigDTO learnerButtonConfig;
         private LocalDate meetingDate;
         private String timezone;
+        private Boolean dailyAttendance;
     }
 
     @Getter

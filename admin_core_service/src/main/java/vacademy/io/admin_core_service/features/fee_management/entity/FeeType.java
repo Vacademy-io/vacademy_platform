@@ -33,6 +33,9 @@ public class FeeType {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "is_skippable")
+    private Boolean isSkippable = false;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Builder;
 import lombok.Data;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
 import java.util.List;
 
@@ -16,4 +17,10 @@ public class SchoolEnrollResponseDTO {
     private String userPlanId;
     private List<String> studentFeePaymentIds;
     private String message;
+
+    /**
+     * Present ONLY for online payment mode.
+     * Contains razorpayOrderId, razorpayKey etc for the frontend to open checkout.
+     */
+    private PaymentResponseDTO paymentResponse;
 }

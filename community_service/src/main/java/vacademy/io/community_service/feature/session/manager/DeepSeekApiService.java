@@ -16,7 +16,7 @@ public class DeepSeekApiService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final String apiUrl = "https://openrouter.ai/api/v1/chat/completions";
 
-    @Value("${DEEPSEEK_API_KEY}")
+    @Value("${OPENROUTER_API_KEY}")
     private String apiKey;
 
     public DeepSeekApiService() {

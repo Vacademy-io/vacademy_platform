@@ -445,8 +445,13 @@ public class LiveSessionService {
         if (!"LIVE".equals(session.getSessionStatus())) {
             throw new VacademyException("Error Moving Session: Session is not live");
         }
-        // Add validation for moveTo index if necessary (e.g., within bounds of available slides)
-        session.setCurrentSlideIndex(startPresentationDto.getMoveTo());
+        int targetIndex = startPresentationDto.getMoveTo();
+        int totalSlides = (session.getSlides() != null && session.getSlides().getAddedSlides() != null)
+                ? session.getSlides().getAddedSlides().size() : 0;
+        if (targetIndex < 0 || targetIndex >= totalSlides) {
+            throw new VacademyException("Invalid slide index: " + targetIndex + ". Must be between 0 and " + (totalSlides - 1));
+        }
+        session.setCurrentSlideIndex(targetIndex);
         sendSlideToStudents(session);
         // Optionally, notify teacher about the move as well if they need specific confirmation
         // notifyTeacherAboutSlideChange(session);
@@ -569,8 +574,14 @@ public class LiveSessionService {
                     slideLog = new SlideResponsesLogDto(); // Start fresh if corruption
                 }
             }
-            // Optional: Prevent duplicate responses or allow updates based on studentAttempts
-            // For now, we add all responses.
+            // Enforce attempt limit per participant per slide
+            int attemptsAllowed = session.getStudentAttempts() != null ? session.getStudentAttempts() : 1;
+            long existingAttempts = slideLog.getResponses().stream()
+                    .filter(r -> responseRequest.getUsername().equals(r.getUsername()))
+                    .count();
+            if (existingAttempts >= attemptsAllowed) {
+                throw new VacademyException("Attempt limit reached for this question.");
+            }
             slideLog.getResponses().add(participantResponse);
             try {
                 return objectMapper.writeValueAsString(slideLog);
@@ -660,18 +671,19 @@ public class LiveSessionService {
                 List<String> correctOptionIds = autoEval.getData().getCorrectOptionIds();
                 List<String> submittedOptionIds = participantResponse.getResponseData().getSelectedOptionIds();
                 if (correctOptionIds == null || submittedOptionIds == null) return null;
-                if (correctOptionIds.size() != submittedOptionIds.size()) return null;
+                if (correctOptionIds.size() != submittedOptionIds.size()) return false;
                 return new HashSet<>(correctOptionIds).equals(new HashSet<>(submittedOptionIds));
             case "ONE_WORD":
             case "NUMERIC":
+            case "NUMERICAL":
                 String correctAnswerText = autoEval.getData().getAnswer();
                 String submittedAnswerText = participantResponse.getResponseData().getTextAnswer();
                 if (correctAnswerText == null || submittedAnswerText == null) return null;
                 // Simple comparison: case-insensitive and trimmed
                 return correctAnswerText.trim().equalsIgnoreCase(submittedAnswerText.trim());
             case "LONG_ANSWER":
-                // Typically not auto-evaluated, or needs more complex logic
-                return null; // Or false if we decide non-auto-evaluable are "incorrect" by default
+                // Not auto-evaluated — requires manual review
+                return null;
             default:
                 return null; // Unknown type
         }
@@ -693,13 +705,15 @@ public class LiveSessionService {
 
     }
 
-    @Transactional
     public LiveSessionDto addSlideInLiveSession(PresentationSlideDto presentationSlideDto, String sessionId, Integer afterSlideOrder) {
         if (sessionId == null) {
             throw new VacademyException("Invalid session code: " + sessionId);
         }
         LiveSessionDto session = sessions.get(sessionId);
-        PresentationSlideDto newSlide = presentationCrudManager.addSlideAfterIndex(presentationSlideDto.getPresentationId(), afterSlideOrder, presentationSlideDto).getBody();
+        if (session == null) {
+            throw new VacademyException("Session not found: " + sessionId);
+        }
+        presentationCrudManager.addSlideAfterIndex(presentationSlideDto.getPresentationId(), afterSlideOrder, presentationSlideDto);
         session.setSlides(presentationCrudManager.getPresentation(presentationSlideDto.getPresentationId()).getBody());
         sendUpdateSlideAnnouncementToStudents(session);
         return session;

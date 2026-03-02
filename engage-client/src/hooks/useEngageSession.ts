@@ -15,13 +15,6 @@ interface UseEngageSessionProps {
 }
 
 export const useEngageSession = ({ inviteCode, username, initialSessionData }: UseEngageSessionProps) => {
-  console.log('[INITIAL DATA CHECK] Full initialSessionData:', JSON.parse(JSON.stringify(initialSessionData)));
-  // Log the specific slide we are having trouble with if it exists in initial data
-  const problemSlideInitial = initialSessionData.slides.added_slides.find(s => s.id === '2ac8eb51-8533-439c-bbe3-82e1c78b85b7');
-  if (problemSlideInitial) {
-    console.log('[INITIAL DATA CHECK] Problem slide (ID: 2ac8eb51...) in initialData:', JSON.parse(JSON.stringify(problemSlideInitial)));
-  }
-
   const [sessionState, setSessionState] = useState<UserSession>({
     username,
     inviteCode,
@@ -31,35 +24,34 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
     sseStatus: 'connecting',
     error: null,
   });
+
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const clientHeartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Use a ref for sessionId so connectSse never needs it as a reactive dep
+  const sessionIdRef = useRef(initialSessionData.session_id);
 
   const updateSessionState = useCallback((updates: Partial<UserSession>) => {
     setSessionState(prev => ({ ...prev, ...updates }));
   }, []);
 
   const sendClientHeartbeat = useCallback(async () => {
-    if (!sessionState.sessionId || !username) return;
-    const heartbeatUrl = `${SSE_BASE_URL}/${sessionState.sessionId}/heartbeat?username=${encodeURIComponent(username)}`;
+    if (!sessionIdRef.current || !username) return;
+    const heartbeatUrl = `${SSE_BASE_URL}/${sessionIdRef.current}/heartbeat?username=${encodeURIComponent(username)}`;
     try {
-      // console.log('[SSE] Sending client heartbeat...');
       await fetch(heartbeatUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}), // Empty body as per curl example
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
       });
-      // console.log('[SSE] Client heartbeat sent successfully.');
     } catch (error) {
       console.error('[SSE] Error sending client heartbeat:', error);
     }
-  }, [sessionState.sessionId, username]);
+  }, [username]);
 
 
   const connectSse = useCallback(() => {
-    if (!username || !sessionState.sessionId) {
+    if (!username || !sessionIdRef.current) {
       updateSessionState({ error: "Missing username or session ID for SSE connection.", sseStatus: 'error' });
       return;
     }
@@ -69,15 +61,15 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
       clearInterval(clientHeartbeatTimerRef.current);
       clientHeartbeatTimerRef.current = null;
     }
-    
+
     // Close existing EventSource if any
     if (eventSourceRef.current) {
-        console.log("[SSE] Closing existing EventSource before reconnecting.");
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      console.log("[SSE] Closing existing EventSource before reconnecting.");
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
     }
 
-    const sseUrl = `${SSE_BASE_URL}/${sessionState.sessionId}?username=${encodeURIComponent(username)}`;
+    const sseUrl = `${SSE_BASE_URL}/${sessionIdRef.current}?username=${encodeURIComponent(username)}`;
     console.log(`[SSE] Attempting to connect (attempt ${reconnectAttemptsRef.current + 1}): ${sseUrl}`);
     const newEventSource = new EventSource(sseUrl, { withCredentials: false });
     eventSourceRef.current = newEventSource;
@@ -85,40 +77,38 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
 
     newEventSource.onopen = () => {
       console.log("[SSE] Connection established.");
-      reconnectAttemptsRef.current = 0; // Reset attempts on successful connection
+      reconnectAttemptsRef.current = 0;
       updateSessionState({ sseStatus: 'connected', error: null });
       toast.info("Live Connection Active", { description: "Receiving real-time updates.", duration: 2000 });
-      // Start client-side heartbeat
-      sendClientHeartbeat(); // Send one immediately
+      sendClientHeartbeat();
       clientHeartbeatTimerRef.current = setInterval(sendClientHeartbeat, CLIENT_HEARTBEAT_INTERVAL_MS);
     };
 
     newEventSource.onerror = (errorEvent) => {
       console.error("[SSE] Error occurred with EventSource:", errorEvent);
-      if (eventSourceRef.current) eventSourceRef.current.close(); // Close the failed EventSource
+      if (eventSourceRef.current) eventSourceRef.current.close();
 
       if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttemptsRef.current++;
-        const delay = Math.min(INITIAL_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttemptsRef.current), 30000); // Exponential backoff, max 30s
+        const delay = Math.min(INITIAL_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttemptsRef.current), 30000);
         console.log(`[SSE] Attempting to reconnect in ${delay / 1000} seconds (attempt ${reconnectAttemptsRef.current})...`);
         updateSessionState({ sseStatus: 'reconnecting', error: `Connection lost. Attempting to reconnect (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})...` });
         setTimeout(connectSse, delay);
       } else {
         console.error("[SSE] Max reconnection attempts reached. Giving up.");
         updateSessionState({ sseStatus: 'error', error: "Max reconnection attempts reached. Please check your connection or try rejoining." });
-        toast.error("Connection Failed", { description: "Could not reconnect to the session after multiple attempts."});
+        toast.error("Connection Failed", { description: "Could not reconnect to the session after multiple attempts." });
         if (clientHeartbeatTimerRef.current) {
           clearInterval(clientHeartbeatTimerRef.current);
         }
       }
     };
 
-    // Generic message handler first
+    // Generic message handler for unnamed events
     newEventSource.onmessage = (event) => {
-        console.log("[SSE] Generic message received:", event);
-        // Potentially useful if backend sends unnamed events or for debugging.
+      console.log("[SSE] Generic message received:", event);
     };
-    
+
     // Specific event listener for 'session_event_learner'
     const sessionEventListener = (event: MessageEvent) => {
       try {
@@ -130,7 +120,7 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
           let newCurrentSlide = prev.currentSlide;
           let error = prev.error;
 
-          // If this is a CURRENT_SLIDE event and the session is still in INIT, 
+          // If this is a CURRENT_SLIDE event and the session is still in INIT,
           // implicitly move it to STARTED state to show the slide.
           if (eventData.type === "CURRENT_SLIDE" && newSessionData?.session_status === "INIT") {
             newSessionData = { ...newSessionData, session_status: "STARTED" };
@@ -141,18 +131,17 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
             newSessionData = newSessionData ? { ...newSessionData, session_status: eventData.status } : null;
             if (eventData.status === 'ENDED' || eventData.status === 'CANCELLED') {
               toast.info("Session Ended", { description: eventData.message || "The session has concluded." });
-               if (eventSourceRef.current) eventSourceRef.current.close(); // Close SSE on session end
-               if (clientHeartbeatTimerRef.current) clearInterval(clientHeartbeatTimerRef.current); // Stop heartbeats
+              if (eventSourceRef.current) eventSourceRef.current.close();
+              if (clientHeartbeatTimerRef.current) clearInterval(clientHeartbeatTimerRef.current);
             } else if (eventData.status === 'STARTED' && prev.sessionData?.session_status === 'INIT' && eventData.type !== "CURRENT_SLIDE") {
-              // Avoid double toast if CURRENT_SLIDE already triggered it
               toast.success("Session Started!", { description: "The presentation is now live." });
             }
           }
-          
-          const conditionForSlideUpdate = eventData.currentSlideIndex !== undefined && 
-                                        newSessionData && 
-                                        newSessionData.slides && 
-                                        Array.isArray(newSessionData.slides.added_slides);
+
+          const conditionForSlideUpdate = eventData.currentSlideIndex !== undefined &&
+            newSessionData &&
+            newSessionData.slides &&
+            Array.isArray(newSessionData.slides.added_slides);
 
           if (conditionForSlideUpdate) {
             newSessionData = { ...newSessionData!, current_slide_index: eventData.currentSlideIndex as number };
@@ -165,15 +154,21 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
               console.warn(`[SSE] Slide with slide_order ${eventData.currentSlideIndex} not found in added_slides array.`);
             }
           }
-          
+
           if (eventData.slide_data) {
-              newCurrentSlide = eventData.slide_data;
-              if (newSessionData && newSessionData.slides.added_slides) {
-                  const slideIdx = newSessionData.slides.added_slides.findIndex((s: Slide) => s.id === eventData.slide_data!.id);
-                  if (slideIdx !== -1) {
-                      newSessionData.slides.added_slides[slideIdx] = eventData.slide_data;
-                  }
+            newCurrentSlide = eventData.slide_data;
+            if (newSessionData && newSessionData.slides.added_slides) {
+              const slideIdx = newSessionData.slides.added_slides.findIndex((s: Slide) => s.id === eventData.slide_data!.id);
+              if (slideIdx !== -1) {
+                // Create a new array to avoid direct state mutation
+                const updatedSlides = [...newSessionData.slides.added_slides];
+                updatedSlides[slideIdx] = eventData.slide_data;
+                newSessionData = {
+                  ...newSessionData,
+                  slides: { ...newSessionData.slides, added_slides: updatedSlides },
+                };
               }
+            }
           }
 
           if (eventData.type === 'ERROR') {
@@ -190,24 +185,21 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
     newEventSource.addEventListener('session_event_learner', sessionEventListener);
 
     const heartbeatListener = (_event: MessageEvent) => {
-        // console.log("[SSE] (Server) Heartbeat received:", event.data);
-        // Can update a "last seen" timestamp if needed
+      // Server heartbeat acknowledgement — no action needed
     };
     newEventSource.addEventListener('learner_heartbeat', heartbeatListener);
 
-    const updateSlidesListener = async (event: MessageEvent) => {
+    const updateSlidesListener = async (_event: MessageEvent) => {
       try {
-        const eventData = JSON.parse(event.data);
-        console.log("[SSE] Received 'update_slides' event:", eventData);
         toast.info("Checking for presentation updates...");
 
-        const response = await fetch(`${SSE_BASE_URL}/get-updated-details/${sessionState.sessionId}`);
-        
+        const response = await fetch(`${SSE_BASE_URL}/get-updated-details/${sessionIdRef.current}`);
+
         if (!response.ok) {
           const errorBody = await response.text();
           throw new Error(`Failed to fetch updated session details: ${response.status} ${errorBody}`);
         }
-        
+
         const updatedDetails: SessionDetailsResponse = await response.json();
         console.log("[SSE] Successfully fetched updated session details:", updatedDetails);
 
@@ -220,38 +212,34 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
           currentSlide: newCurrentSlide,
         });
 
-        toast.success("Presentation Updated", {
-          description: "New slides have been loaded.",
-        });
+        toast.success("Presentation Updated", { description: "New slides have been loaded." });
 
       } catch (e) {
         console.error("[SSE] Error processing 'update_slides' event:", e);
-        toast.error("Update Failed", {
-          description: "Could not retrieve the latest presentation changes.",
-        });
+        toast.error("Update Failed", { description: "Could not retrieve the latest presentation changes." });
       }
     };
     newEventSource.addEventListener('update_slides', updateSlidesListener);
 
-    // Return a cleanup function for the event source listeners
     return () => {
-        console.log("[SSE] Cleaning up EventSource connection.");
-        newEventSource.removeEventListener('session_event_learner', sessionEventListener);
-        newEventSource.removeEventListener('learner_heartbeat', heartbeatListener);
-        newEventSource.removeEventListener('update_slides', updateSlidesListener);
-        newEventSource.close(); // Ensure this specific instance is closed
+      console.log("[SSE] Cleaning up EventSource connection.");
+      newEventSource.removeEventListener('session_event_learner', sessionEventListener);
+      newEventSource.removeEventListener('learner_heartbeat', heartbeatListener);
+      newEventSource.removeEventListener('update_slides', updateSlidesListener);
+      newEventSource.close();
     };
+  // session_status intentionally excluded — it caused a reconnection loop on every status change.
+  // sessionIdRef is used instead of sessionState.sessionId to avoid that dep as well.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username, sessionState.sessionId, updateSessionState, sendClientHeartbeat, sessionState.sessionData?.session_status]); // Added dependencies
+  }, [username, updateSessionState, sendClientHeartbeat]);
 
 
   useEffect(() => {
-    // Initial connection
-    connectSse();
+    const cleanup = connectSse();
 
-    // Overall cleanup when the component unmounts or critical dependencies change
     return () => {
-      console.log("[SSE] Component unmounting or critical deps changed. Closing connection and removing listeners.");
+      console.log("[SSE] Component unmounting. Closing connection.");
+      if (cleanup) cleanup();
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -259,11 +247,11 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
       if (clientHeartbeatTimerRef.current) {
         clearInterval(clientHeartbeatTimerRef.current);
       }
-      reconnectAttemptsRef.current = 0; // Reset for potential future remounts
+      reconnectAttemptsRef.current = 0;
       updateSessionState({ sseStatus: 'disconnected' });
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectSse]); // connectSse is memoized
+  }, [connectSse]);
 
   return sessionState;
 };

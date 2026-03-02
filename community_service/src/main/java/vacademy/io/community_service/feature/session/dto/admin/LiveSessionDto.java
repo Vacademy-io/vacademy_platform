@@ -32,7 +32,7 @@ public class LiveSessionDto {
     private CreateSessionDto createSessionDto;
     private Integer currentSlideIndex = 0;
     @JsonIgnore
-    private List<SseEmitter> studentEmitters = Collections.synchronizedList(new ArrayList<>());
+    private List<SseEmitter> studentEmitters = new CopyOnWriteArrayList<>();
     @JsonIgnore
     private List<ParticipantDto> participants = new CopyOnWriteArrayList<>();
     @JsonIgnore

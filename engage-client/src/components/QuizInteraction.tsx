@@ -1,6 +1,6 @@
 // src/components/QuizInteraction.tsx
 import React, { useState, useEffect } from 'react';
-import { type AddedQuestion } from '@/types';
+import { type AddedQuestion, type Option } from '@/types';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -95,8 +95,9 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
     setIsSubmitting(true);
     setError(null);
 
-    // If currentQuestionCategory is not 'unknown', questionData.question_type is guaranteed to be a known type string.
-    const responseTypeStr = questionData.question_type!.toUpperCase();
+    // Normalize NUMERICAL → NUMERIC so backend evaluateResponse switch matches
+    const rawType = questionData.question_type!.toUpperCase();
+    const responseTypeStr = rawType === 'NUMERICAL' ? 'NUMERIC' : rawType;
 
     const payload = {
         username: username,
@@ -193,21 +194,17 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
       <CardContent className="space-y-3 p-4 pt-0 max-h-[45vh] overflow-y-auto relative z-10">
         {currentQuestionCategory === 'multiple_choice' ? (
           questionData.options.length > 0 ? (
-            <RadioGroup
-              onValueChange={(value: string) => handleOptionChange(value)}
-              value={isMultipleChoice ? undefined : selectedOptionIds[0]}
-              disabled={!canAttempt || isSubmitting}
-              className="space-y-3"
-            >
-              {questionData.options.map((option) => (
-                <div
-                  key={option.id}
-                  className={`flex items-center space-x-3 p-3 rounded-xl border transition-all duration-300 ease-out backdrop-blur-sm
-                              ${selectedOptionIds.includes(option.id) ? 'border-orange-400/50 bg-orange-900/40 ring-2 ring-orange-400/30' : 'border-white/30 bg-black/40 hover:border-white/40 hover:bg-black/50'}
-                              ${(!canAttempt || isSubmitting) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
-                  onClick={() => !isMultipleChoice && canAttempt && !isSubmitting && handleOptionChange(option.id)}
-                >
-                  {isMultipleChoice ? (
+            isMultipleChoice ? (
+              // MCQM: plain div wrapper — Checkbox handles its own state; RadioGroup is semantically wrong here
+              <div className="space-y-3">
+                {questionData.options.map((option: Option) => (
+                  <div
+                    key={option.id}
+                    className={`flex items-center space-x-3 p-3 rounded-xl border transition-all duration-300 ease-out backdrop-blur-sm
+                                ${selectedOptionIds.includes(option.id) ? 'border-orange-400/50 bg-orange-900/40 ring-2 ring-orange-400/30' : 'border-white/30 bg-black/40 hover:border-white/40 hover:bg-black/50'}
+                                ${(!canAttempt || isSubmitting) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
+                    onClick={() => canAttempt && !isSubmitting && handleOptionChange(option.id)}
+                  >
                     <Checkbox
                       id={`option-${option.id}`}
                       checked={selectedOptionIds.includes(option.id)}
@@ -215,21 +212,41 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                       disabled={!canAttempt || isSubmitting}
                       className="size-4"
                     />
-                  ) : (
+                    <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
+                      dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              // MCQS: RadioGroup ensures only one option is selected at a time
+              <RadioGroup
+                onValueChange={(value: string) => handleOptionChange(value)}
+                value={selectedOptionIds[0]}
+                disabled={!canAttempt || isSubmitting}
+                className="space-y-3"
+              >
+                {questionData.options.map((option: Option) => (
+                  <div
+                    key={option.id}
+                    className={`flex items-center space-x-3 p-3 rounded-xl border transition-all duration-300 ease-out backdrop-blur-sm
+                                ${selectedOptionIds.includes(option.id) ? 'border-orange-400/50 bg-orange-900/40 ring-2 ring-orange-400/30' : 'border-white/30 bg-black/40 hover:border-white/40 hover:bg-black/50'}
+                                ${(!canAttempt || isSubmitting) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
+                  >
                     <RadioGroupItem
                       value={option.id}
                       id={`option-${option.id}`}
                       className="size-4 border-slate-400 data-[state=checked]:border-primary data-[state=checked]:text-primary focus:ring-primary"
                     />
-                  )}
-                  <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
-                    dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
-                  />
-                </div>
-              ))}
-            </RadioGroup>
+                    <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
+                      dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
+                    />
+                  </div>
+                ))}
+              </RadioGroup>
+            )
           ) : (
-              <p className="text-white/60 text-center py-4">No options available for this question.</p>
+            <p className="text-white/60 text-center py-4">No options available for this question.</p>
           )
         ) : currentQuestionCategory === 'text_input' ? (
           questionData.question_type === 'ONE_WORD' || questionData.question_type === 'NUMERICAL' ? (

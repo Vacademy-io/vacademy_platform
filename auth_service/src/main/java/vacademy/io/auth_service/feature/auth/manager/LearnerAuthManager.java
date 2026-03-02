@@ -17,10 +17,12 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
+import vacademy.io.auth_service.feature.auth.dto.ActiveSessionDTO;
 import vacademy.io.auth_service.feature.auth.dto.AuthRequestDto;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.enums.ClientNameEnum;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
+import vacademy.io.auth_service.feature.user.service.UserSessionService;
 
 import vacademy.io.auth_service.feature.institute.InstituteInfoDTO;
 import vacademy.io.auth_service.feature.institute.InstituteInternalService;
@@ -96,6 +98,9 @@ public class LearnerAuthManager {
 
         @Autowired
         private NotificationService notificationService;
+
+        @Autowired
+        private UserSessionService userSessionService;
 
         @Autowired
         private RoleRepository roleRepository;
@@ -302,15 +307,32 @@ public class LearnerAuthManager {
                 if (roles.isEmpty())
                         throw new UsernameNotFoundException("Invalid user request!");
 
+                // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
+                Optional<List<ActiveSessionDTO>> sessionCheck = userSessionService.checkSessionLimit(user.getId(),
+                                authRequestDTO.getInstituteId());
+                if (sessionCheck.isPresent()) {
+                        return JwtResponseDto.builder()
+                                        .sessionLimitExceeded(true)
+                                        .activeSessions(sessionCheck.get())
+                                        .build();
+                }
+                // ── END SESSION LIMIT CHECK ──
+
                 List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream()
                                 .map(UserPermission::getPermissionId).toList();
 
                 RefreshToken refreshToken = refreshTokenService.createRefreshToken(userName,
                                 authRequestDTO.getClientName());
 
+                String accessToken = jwtService.generateToken(user, user.getRoles().stream().toList(), permissions);
+
+                // Register the new session (noop for institutes without limit configured)
+                userSessionService.createSession(
+                                user.getId(), authRequestDTO.getInstituteId(),
+                                accessToken, authRequestDTO.getDeviceType());
+
                 return JwtResponseDto.builder()
-                                .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(),
-                                                permissions))
+                                .accessToken(accessToken)
                                 .refreshToken(refreshToken.getToken())
                                 .build();
         }
@@ -387,14 +409,31 @@ public class LearnerAuthManager {
 
                 refreshTokenService.deleteAllRefreshToken(user);
 
+                // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
+                Optional<List<ActiveSessionDTO>> sessionCheck = userSessionService.checkSessionLimit(user.getId(),
+                                authRequestDTO.getInstituteId());
+                if (sessionCheck.isPresent()) {
+                        return JwtResponseDto.builder()
+                                        .sessionLimitExceeded(true)
+                                        .activeSessions(sessionCheck.get())
+                                        .build();
+                }
+                // ── END SESSION LIMIT CHECK ──
+
                 List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream()
                                 .map(UserPermission::getPermissionId).toList();
                 RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(),
                                 authRequestDTO.getClientName());
 
+                String accessToken = jwtService.generateToken(user, user.getRoles().stream().toList(), permissions);
+
+                // Register the new session (noop for institutes without limit configured)
+                userSessionService.createSession(
+                                user.getId(), authRequestDTO.getInstituteId(),
+                                accessToken, authRequestDTO.getDeviceType());
+
                 return JwtResponseDto.builder()
-                                .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(),
-                                                permissions))
+                                .accessToken(accessToken)
                                 .refreshToken(refreshToken.getToken())
                                 .build();
         }
@@ -457,14 +496,31 @@ public class LearnerAuthManager {
 
                 refreshTokenService.deleteAllRefreshToken(user);
 
+                // ── SESSION LIMIT CHECK (transparent when no limit configured) ──
+                Optional<List<ActiveSessionDTO>> sessionCheck = userSessionService.checkSessionLimit(user.getId(),
+                                authRequestDTO.getInstituteId());
+                if (sessionCheck.isPresent()) {
+                        return JwtResponseDto.builder()
+                                        .sessionLimitExceeded(true)
+                                        .activeSessions(sessionCheck.get())
+                                        .build();
+                }
+                // ── END SESSION LIMIT CHECK ──
+
                 List<String> permissions = userPermissionRepository.findByUserId(user.getId()).stream()
                                 .map(UserPermission::getPermissionId).toList();
                 RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(),
                                 authRequestDTO.getClientName());
 
+                String accessToken = jwtService.generateToken(user, user.getRoles().stream().toList(), permissions, 10);
+
+                // Register the new session (noop for institutes without limit configured)
+                userSessionService.createSession(
+                                user.getId(), authRequestDTO.getInstituteId(),
+                                accessToken, authRequestDTO.getDeviceType());
+
                 return JwtResponseDto.builder()
-                                .accessToken(jwtService.generateToken(user, user.getRoles().stream().toList(),
-                                                permissions, 10))
+                                .accessToken(accessToken)
                                 .refreshToken(refreshToken.getToken())
                                 .build();
         }

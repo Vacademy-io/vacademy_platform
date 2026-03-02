@@ -59,6 +59,12 @@ public class StudentFeePayment {
     @Column(name = "status", nullable = false)
     private String status; // e.g., PENDING, PARTIAL_PAID, PAID, WAIVED, OVERDUE
 
+    @Column(name = "is_skippable")
+    private Boolean isSkippable = false;
+
+    @Column(name = "fee_type_id")
+    private String feeTypeId;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

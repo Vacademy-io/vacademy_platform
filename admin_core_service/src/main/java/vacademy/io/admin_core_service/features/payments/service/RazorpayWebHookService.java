@@ -17,9 +17,16 @@ import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.payment.enums.PaymentType;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.RenewalPaymentService;
+import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
+import vacademy.io.admin_core_service.features.fee_management.service.SchoolFeeReceiptService;
+import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.common.logging.SentryLogger;
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.math.BigDecimal;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -57,6 +64,15 @@ public class RazorpayWebHookService {
 
     @Autowired
     private RenewalPaymentService renewalPaymentService;
+
+    @Autowired
+    private FeeLedgerAllocationService feeLedgerAllocationService;
+
+    @Autowired
+    private SchoolFeeReceiptService schoolFeeReceiptService;
+
+    @Autowired
+    private UserPlanService userPlanService;
 
     /**
      * Processes Razorpay webhook events
@@ -140,6 +156,9 @@ public class RazorpayWebHookService {
             if (paymentType != null && PaymentType.RENEWAL.name().equals(paymentType)) {
                 log.info("Processing RENEWAL payment webhook for orderId: {}", orderId);
                 handleRenewalPayment(eventType, orderId, instituteId, paymentEntity);
+            } else if (paymentType != null && PaymentType.SCHOOL.name().equals(paymentType)) {
+                log.info("Processing SCHOOL payment webhook for orderId: {}", orderId);
+                handleSchoolPayment(eventType, orderId, instituteId, paymentEntity);
             } else {
                 // Handle initial payment events
                 handleRazorpayEvent(eventType, orderId, instituteId, paymentEntity);
@@ -769,6 +788,73 @@ public class RazorpayWebHookService {
                 return PaymentStatusEnum.PAYMENT_PENDING;
             default:
                 return null;
+        }
+    }
+
+    private void handleSchoolPayment(String eventType, String orderId, String instituteId, JsonNode paymentEntity) {
+        log.info("Handling SCHOOL payment webhook event: {} for orderId: {}", eventType, orderId);
+
+        try {
+            Optional<PaymentLog> paymentLogOpt = paymentLogRepository.findById(orderId);
+            if (paymentLogOpt.isEmpty()) {
+                log.error("PaymentLog not found for orderId: {}", orderId);
+                return;
+            }
+            PaymentLog paymentLog = paymentLogOpt.get();
+
+            switch (eventType) {
+                case "order.paid":
+                case "payment.captured":
+                    log.info("School payment process for orderId: {}", orderId);
+
+                    extractAndSavePaymentMethod(orderId, instituteId, paymentEntity);
+                    generateAndStoreRazorpayInvoice(orderId, instituteId, paymentEntity);
+
+                    // 1. Update PaymentLog status ONLY (no regular post-payment logic)
+                    paymentLogService.updatePaymentLogOnly(orderId, PaymentLogStatusEnum.SUCCESS.name(),
+                            PaymentStatusEnum.PAID.name(), null);
+
+                    if (paymentLog.getUserPlan() != null) {
+                        String userPlanId = paymentLog.getUserPlan().getId();
+                        BigDecimal amount = paymentLog.getPaymentAmount() != null
+                                ? BigDecimal.valueOf(paymentLog.getPaymentAmount())
+                                : BigDecimal.ZERO;
+
+                        // 2. Allocate payment to fee bills
+                        feeLedgerAllocationService.allocatePayment(orderId, amount, userPlanId);
+
+                        // 3. Update UserPlan status to ACTIVE (Batch status handled as well if needed,
+                        // but normally just activating plan is enough or we rely on the normal flow.
+                        // Since plan is active, learner can access.)
+                        userPlanService.updateUserPlanStatuses(java.util.List.of(userPlanId),
+                                UserPlanStatusEnum.ACTIVE.name());
+
+                        // 4. Generate and send School Receipt
+                        String paymentId = paymentEntity.has("id") ? paymentEntity.get("id").asText() : null;
+                        schoolFeeReceiptService.generateAndSendReceipt(paymentLog.getUserId(), userPlanId, orderId,
+                                instituteId, amount, paymentId, "ONLINE");
+                    }
+                    break;
+
+                case "payment.failed":
+                    log.warn("School payment failed for orderId: {}", orderId);
+
+                    paymentLogService.updatePaymentLogOnly(orderId, PaymentLogStatusEnum.FAILED.name(),
+                            PaymentStatusEnum.FAILED.name(), null);
+
+                    if (paymentLog.getUserPlan() != null) {
+                        String userPlanId = paymentLog.getUserPlan().getId();
+
+                        // 1. Update UserPlan back to PAYMENT_FAILED
+                        userPlanService.updateUserPlanStatuses(java.util.List.of(userPlanId),
+                                UserPlanStatusEnum.PAYMENT_FAILED.name());
+                        // Note: Batch status should ideally be updated to PAYMENT_FAILED, but updating
+                        // the plan status explicitly handles the main restriction.
+                    }
+                    break;
+            }
+        } catch (Exception e) {
+            log.error("Error processing school payment webhook for orderId: {}", orderId, e);
         }
     }
 }

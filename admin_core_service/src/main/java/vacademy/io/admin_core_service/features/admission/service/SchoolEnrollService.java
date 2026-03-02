@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.fee_management.service.StudentFee
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
+import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
@@ -28,10 +29,14 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.dto.ManualPaymentDTO;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.payment.enums.PaymentType;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -82,6 +87,9 @@ public class SchoolEnrollService {
     @Autowired
     private SchoolFeeReceiptService schoolFeeReceiptService;
 
+    @Autowired
+    private PaymentService paymentService;
+
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -109,7 +117,16 @@ public class SchoolEnrollService {
         // Step 4: Extract startDate (default to today)
         Date enrollmentStartDate = request.getStartDate() != null ? request.getStartDate() : new Date();
 
-        // Step 5: Create UserPlan (plan_id = null for school, status = ACTIVE)
+        // Step 5: Create UserPlan (plan_id = null for school)
+        // For online payment, start as PAYMENT_PENDING — becomes ACTIVE after webhook
+        // confirms payment.
+        // For offline, start as ACTIVE immediately since admin has cash in hand.
+        boolean isOnline = request.getSchoolPayment() != null
+                && "ONLINE".equalsIgnoreCase(request.getSchoolPayment().getPaymentMode());
+        String userPlanStatus = isOnline ? UserPlanStatusEnum.PENDING_FOR_PAYMENT.name()
+                : UserPlanStatusEnum.ACTIVE.name();
+        String batchStatus = isOnline ? LearnerStatusEnum.INVITED.name() : LearnerStatusEnum.ACTIVE.name();
+
         UserPlan userPlan = userPlanService.createUserPlan(
                 createdUser.getId(),
                 null, // paymentPlan = null for school
@@ -117,7 +134,7 @@ public class SchoolEnrollService {
                 enrollInvite,
                 paymentOption,
                 null, // paymentInitiationRequest = null (we handle payment separately)
-                UserPlanStatusEnum.ACTIVE.name(),
+                userPlanStatus,
                 null, // source
                 null, // subOrgId
                 enrollmentStartDate);
@@ -128,11 +145,13 @@ public class SchoolEnrollService {
         log.info("DEBUG: Flush after UserPlan creation succeeded");
 
         // Step 6: Create student + StudentSessionInstituteGroupMapping
+        // batchStatus = ACTIVE for offline (immediate access), INVITED for online
+        // (access granted post-payment)
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         instituteStudentDetails.add(InstituteStudentDetails.builder()
                 .instituteId(request.getInstituteId())
                 .packageSessionId(request.getPackageSessionId())
-                .enrollmentStatus(LearnerStatusEnum.ACTIVE.name())
+                .enrollmentStatus(batchStatus)
                 .enrollmentDate(enrollmentStartDate)
                 .accessDays(
                         enrollInvite.getLearnerAccessDays() != null
@@ -167,8 +186,10 @@ public class SchoolEnrollService {
         }
 
         // Step 8: Handle payment (if provided)
+        PaymentResponseDTO paymentResponseDTO = null;
         if (request.getSchoolPayment() != null) {
-            handlePayment(request.getSchoolPayment(), createdUser, userPlan, enrollInvite);
+            paymentResponseDTO = handlePayment(request.getSchoolPayment(), createdUser, userPlan, enrollInvite,
+                    request.getInstituteId());
         }
 
         // Build response
@@ -176,7 +197,8 @@ public class SchoolEnrollService {
                 .userId(createdUser.getId())
                 .userPlanId(userPlan.getId())
                 .studentFeePaymentIds(studentFeePaymentIds)
-                .message("Student enrolled successfully")
+                .message(isOnline ? "Student enrolled. Proceed to payment." : "Student enrolled successfully")
+                .paymentResponse(paymentResponseDTO)
                 .build();
     }
 
@@ -198,17 +220,65 @@ public class SchoolEnrollService {
         }
     }
 
-    private void handlePayment(SchoolPaymentDTO payment, UserDTO user, UserPlan userPlan, EnrollInvite enrollInvite) {
+    private PaymentResponseDTO handlePayment(SchoolPaymentDTO payment, UserDTO user, UserPlan userPlan,
+            EnrollInvite enrollInvite, String instituteId) {
         if ("OFFLINE".equalsIgnoreCase(payment.getPaymentMode())) {
             handleOfflinePayment(payment, user, userPlan, enrollInvite);
+            return null; // Offline has no checkout response
         } else if ("ONLINE".equalsIgnoreCase(payment.getPaymentMode())) {
-            // Online payment flow — placeholder for future implementation
-            log.info("Online payment mode selected. This will be implemented in a future iteration.");
-            throw new VacademyException("Online payment for school enrollment is not yet supported");
+            return handleOnlinePayment(payment, user, userPlan, enrollInvite, instituteId);
         } else {
             throw new VacademyException("Invalid payment mode: " + payment.getPaymentMode()
                     + ". Supported modes: OFFLINE, ONLINE");
         }
+    }
+
+    /**
+     * Handles online payment via Razorpay.
+     * Creates a Razorpay order and returns checkout details to the frontend.
+     * Fee bills remain PENDING — allocation happens in the webhook after parent
+     * pays.
+     *
+     * @param payment      the payment DTO from the request
+     * @param user         the enrolled student user
+     * @param userPlan     the UserPlan (status = PAYMENT_PENDING at this point)
+     * @param enrollInvite the enroll invite (carries vendor, vendorId, currency)
+     * @param instituteId  the institute ID
+     * @return PaymentResponseDTO with razorpayOrderId, razorpayKey for frontend
+     *         checkout
+     */
+    private PaymentResponseDTO handleOnlinePayment(SchoolPaymentDTO payment, UserDTO user, UserPlan userPlan,
+            EnrollInvite enrollInvite, String instituteId) {
+        if (payment.getAmount() == null || payment.getAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            throw new VacademyException("Online payment amount must be greater than zero");
+        }
+
+        // Build PaymentInitiationRequestDTO — marks payment_type as SCHOOL
+        // so the Razorpay webhook routes to handleSchoolPayment() instead of regular
+        // flow
+        PaymentInitiationRequestDTO paymentRequest = new PaymentInitiationRequestDTO();
+        paymentRequest.setAmount(payment.getAmount().doubleValue());
+        paymentRequest.setCurrency(enrollInvite.getCurrency() != null ? enrollInvite.getCurrency() : "INR");
+        paymentRequest.setEmail(user.getEmail());
+        paymentRequest.setInstituteId(instituteId);
+        paymentRequest.setPaymentType(PaymentType.SCHOOL); // ← key routing flag for webhook
+
+        // Wrap into the DTO that PaymentService.handlePayment() accepts
+        LearnerPackageSessionsEnrollDTO enrollDTO = new LearnerPackageSessionsEnrollDTO();
+        enrollDTO.setPaymentInitiationRequest(paymentRequest);
+
+        // Delegates to PaymentService which:
+        // 1. Creates PaymentLog (INITIATED)
+        // 2. Creates/gets Razorpay customer
+        // 3. Creates Razorpay order with payment_type=SCHOOL in notes
+        // 4. Returns razorpayOrderId + razorpayKey for frontend
+        PaymentResponseDTO response = paymentService.handlePayment(user, enrollDTO, instituteId, enrollInvite,
+                userPlan);
+
+        log.info("Online school payment order created for UserPlan: {}, PaymentLog: {}",
+                userPlan.getId(), response.getOrderId());
+
+        return response;
     }
 
     /**

@@ -320,7 +320,10 @@ export function DashboardComponent() {
         ) {
           navigate({
             to: "/study-library/live-class/embed",
-            search: { sessionId: session.schedule_id },
+            search: {
+              sessionId: session.schedule_id,
+              learnerButtonConfig: session.learner_button_config ?? undefined,
+            },
           });
         } else {
           window.open(session.meeting_link, "_blank", "noopener,noreferrer");
@@ -335,7 +338,10 @@ export function DashboardComponent() {
         ) {
           navigate({
             to: "/study-library/live-class/embed",
-            search: { sessionId: session.schedule_id },
+            search: {
+              sessionId: session.schedule_id,
+              learnerButtonConfig: session.learner_button_config ?? undefined,
+            },
           });
         } else {
           window.open(session.meeting_link, "_blank", "noopener,noreferrer");

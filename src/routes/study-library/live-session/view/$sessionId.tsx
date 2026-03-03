@@ -50,6 +50,7 @@ import {
 import {
     Pagination,
     PaginationContent,
+    PaginationEllipsis,
     PaginationItem,
     PaginationLink,
     PaginationNext,
@@ -690,47 +691,75 @@ function ViewLiveSession() {
                                                     ))}
                                             </Accordion>
 
-                                            {groupedSchedules.length > itemsPerPage && (
-                                                <div className="mt-4 flex justify-center">
-                                                    <Pagination>
-                                                        <PaginationContent>
-                                                            <PaginationItem>
-                                                                <PaginationPrevious
-                                                                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                                                    className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                                                                />
-                                                            </PaginationItem>
-
-                                                            {Array.from({ length: Math.ceil(groupedSchedules.length / itemsPerPage) }).map((_, i) => (
-                                                                <PaginationItem key={i}>
-                                                                    <PaginationLink
-                                                                        isActive={currentPage === i + 1}
-                                                                        onClick={() => setCurrentPage(i + 1)}
-                                                                        className="cursor-pointer"
-                                                                    >
-                                                                        {i + 1}
-                                                                    </PaginationLink>
+                                            {groupedSchedules.length > itemsPerPage && (() => {
+                                                const totalPages = Math.ceil(groupedSchedules.length / itemsPerPage);
+                                                // Build truncated page number list: 1 ... (current-1) current (current+1) ... last
+                                                const getPageNumbers = (): (number | 'ellipsis')[] => {
+                                                    const pages: (number | 'ellipsis')[] = [];
+                                                    if (totalPages <= 7) {
+                                                        for (let i = 1; i <= totalPages; i++) pages.push(i);
+                                                        return pages;
+                                                    }
+                                                    // Always show first page
+                                                    pages.push(1);
+                                                    if (currentPage > 3) pages.push('ellipsis');
+                                                    // Pages around current
+                                                    const start = Math.max(2, currentPage - 1);
+                                                    const end = Math.min(totalPages - 1, currentPage + 1);
+                                                    for (let i = start; i <= end; i++) pages.push(i);
+                                                    if (currentPage < totalPages - 2) pages.push('ellipsis');
+                                                    // Always show last page
+                                                    pages.push(totalPages);
+                                                    return pages;
+                                                };
+                                                return (
+                                                    <div className="mt-4 flex justify-center">
+                                                        <Pagination>
+                                                            <PaginationContent>
+                                                                <PaginationItem>
+                                                                    <PaginationPrevious
+                                                                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                                                        className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                                                    />
                                                                 </PaginationItem>
-                                                            ))}
 
-                                                            <PaginationItem>
-                                                                <PaginationNext
-                                                                    onClick={() =>
-                                                                        setCurrentPage((p) =>
-                                                                            Math.min(Math.ceil(groupedSchedules.length / itemsPerPage), p + 1)
-                                                                        )
-                                                                    }
-                                                                    className={
-                                                                        currentPage === Math.ceil(groupedSchedules.length / itemsPerPage)
-                                                                            ? 'pointer-events-none opacity-50'
-                                                                            : 'cursor-pointer'
-                                                                    }
-                                                                />
-                                                            </PaginationItem>
-                                                        </PaginationContent>
-                                                    </Pagination>
-                                                </div>
-                                            )}
+                                                                {getPageNumbers().map((page, idx) =>
+                                                                    page === 'ellipsis' ? (
+                                                                        <PaginationItem key={`ellipsis-${idx}`}>
+                                                                            <PaginationEllipsis />
+                                                                        </PaginationItem>
+                                                                    ) : (
+                                                                        <PaginationItem key={page}>
+                                                                            <PaginationLink
+                                                                                isActive={currentPage === page}
+                                                                                onClick={() => setCurrentPage(page)}
+                                                                                className="cursor-pointer"
+                                                                            >
+                                                                                {page}
+                                                                            </PaginationLink>
+                                                                        </PaginationItem>
+                                                                    )
+                                                                )}
+
+                                                                <PaginationItem>
+                                                                    <PaginationNext
+                                                                        onClick={() =>
+                                                                            setCurrentPage((p) =>
+                                                                                Math.min(totalPages, p + 1)
+                                                                            )
+                                                                        }
+                                                                        className={
+                                                                            currentPage === totalPages
+                                                                                ? 'pointer-events-none opacity-50'
+                                                                                : 'cursor-pointer'
+                                                                        }
+                                                                    />
+                                                                </PaginationItem>
+                                                            </PaginationContent>
+                                                        </Pagination>
+                                                    </div>
+                                                );
+                                            })()}
                                         </>
                                     ) : (
                                         <SessionCalendarView schedules={groupedSchedules} />

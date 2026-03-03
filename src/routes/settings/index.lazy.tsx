@@ -2,11 +2,11 @@ import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useState } from 'react';
-import { SettingsTabs } from './settings/-constants/terms';
-import { getAvailableSettingsTabs } from './settings/-utils/utils';
-import { Route as SettingsRoute } from './settings';
+import { SettingsTabs } from './-constants/terms';
+import { getAvailableSettingsTabs } from './-utils/utils';
+import { Route as SettingsRoute } from '.';
 
-export const Route = createLazyFileRoute('/settings')({
+export const Route = createLazyFileRoute('/settings/')({
     component: () => (
         <LayoutContainer>
             <RouteComponent />
@@ -25,7 +25,7 @@ const SafeRouteSearch = () => {
 
 function RouteComponent() {
     const searchParams = SafeRouteSearch();
-    const [selectedTab, setSelectedTab] = useState(searchParams.selectedTab ?? SettingsTabs.Tab);
+    const [selectedTab, setSelectedTab] = useState('adminDisplay');
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {
@@ -44,9 +44,5 @@ function RouteComponent() {
     const activeTabConfig = availableTabs.find((t) => t.tab === selectedTab) || availableTabs[0];
     const ActiveComponent = activeTabConfig?.component;
 
-    return (
-        <div>
-            {ActiveComponent && <ActiveComponent isTab={true} />}
-        </div>
-    );
+    return <div>{ActiveComponent && <ActiveComponent isTab={true} />}</div>;
 }

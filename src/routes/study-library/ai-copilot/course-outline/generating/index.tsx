@@ -873,6 +873,10 @@ export function RouteComponent() {
                     slideType = 'video';
                 } else if (todo.type === 'AI_VIDEO') {
                     slideType = 'ai-video';
+                } else if (todo.type === 'AI_SLIDES') {
+                    slideType = 'ai-slides';
+                } else if (todo.type === 'AI_STORYBOOK') {
+                    slideType = 'ai-storybook';
                 } else if (todo.type === 'VIDEO_CODE') {
                     slideType = 'video-code';
                 } else if (todo.type === 'AI_VIDEO_CODE') {

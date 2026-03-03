@@ -42,7 +42,7 @@ export interface LiveSessionStep1RequestDTO {
     cover_file_id?: string | null;
     time_zone?: string;
     learner_button_config?: LearnerButtonConfig | null;
-    update_recurrence_scope?: 'ONLY_THIS' | 'ALL_FUTURE' | null;
+    update_recurrence_scope?: 'ONLY_THIS' | 'ALL_FUTURE' | 'CURRENT_DAY_ALL_SESSIONS' | 'ALL_FUTURE_ALL_SESSIONS' | null;
 }
 
 export interface LearnerButtonConfig {
@@ -120,6 +120,39 @@ export interface FieldOptionDTO {
  * @param originalSchedules - (Optional) Previously saved schedules for update detection.
  */
 
+// Helper to normalize a startTime string to HH:mm:ss format
+function normalizeStartTime(time: string | undefined): string {
+    if (!time) return '';
+    // If already has seconds (HH:mm:ss), return as-is
+    const parts = time.split(':');
+    if (parts.length >= 3) return time;
+    // HH:mm → HH:mm:00
+    if (parts.length === 2) return `${time}:00`;
+    return time;
+}
+
+// Helper to ensure endDate is in YYYY-MM-DD format
+function normalizeEndDate(endDate: string | undefined): string | null {
+    if (!endDate) return null;
+    // Already in YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return endDate;
+    // Has time component (ISO format) - extract date part
+    if (endDate.includes('T')) return endDate.split('T')[0] || endDate;
+    // Try parsing as date
+    try {
+        const parsed = new Date(endDate);
+        if (!isNaN(parsed.getTime())) {
+            const year = parsed.getFullYear();
+            const month = String(parsed.getMonth() + 1).padStart(2, '0');
+            const day = String(parsed.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+    } catch {
+        // ignore
+    }
+    return endDate;
+}
+
 export function transformFormToDTOStep1(
     form: SessionFormInput,
     instituteId: string,
@@ -127,7 +160,7 @@ export function transformFormToDTOStep1(
     musicFileId: string | undefined,
     thumbnailFileId: string | undefined,
     coverFileId: string | undefined | null,
-    updateRecurrenceScope?: 'ONLY_THIS' | 'ALL_FUTURE' | null,
+    updateRecurrenceScope?: 'ONLY_THIS' | 'ALL_FUTURE' | 'CURRENT_DAY_ALL_SESSIONS' | 'ALL_FUTURE_ALL_SESSIONS' | null
 ): LiveSessionStep1RequestDTO {
     const {
         id: sessionId,
@@ -202,7 +235,7 @@ export function transformFormToDTOStep1(
                             const baseSchedule: ScheduleDTO = {
                                 id: sessionId.trim(),
                                 day: dayBlock.day,
-                                start_time: session.startTime ? `${session.startTime}:00` : '',
+                                start_time: normalizeStartTime(session.startTime),
                                 duration: String(duration),
                                 link: session.link || '',
                                 thumbnail_file_id: session.thumbnailFileId || '',
@@ -219,12 +252,27 @@ export function transformFormToDTOStep1(
                                 originalScheduleMap.delete(sessionId.trim());
                             }
                         });
+
+                        // Also add a template entry (without ID) to added_schedules
+                        // so the backend can generate new sessions for extended date ranges
+                        added_schedules.push({
+                            id: undefined,
+                            day: dayBlock.day,
+                            start_time: normalizeStartTime(session.startTime),
+                            duration: String(duration),
+                            link: session.link || '',
+                            thumbnail_file_id: session.thumbnailFileId || '',
+                            daily_attendance: session.countAttendanceDaily || false,
+                            default_class_link: dayBlock.default_class_link || null,
+                            default_class_name: dayBlock.default_class_name || null,
+                            learner_button_config: dayBlock.learner_button_config || null,
+                        });
                     } else {
                         // New session without ID
                         const baseSchedule: ScheduleDTO = {
                             id: undefined,
                             day: dayBlock.day,
-                            start_time: session.startTime ? `${session.startTime}:00` : '',
+                            start_time: normalizeStartTime(session.startTime),
                             duration: String(duration),
                             link: session.link || '',
                             thumbnail_file_id: session.thumbnailFileId || '',
@@ -237,7 +285,6 @@ export function transformFormToDTOStep1(
                     }
                 }
             );
-
         });
 
         // Anything left in originalScheduleMap is considered deleted
@@ -258,7 +305,7 @@ export function transformFormToDTOStep1(
         default_meet_link: defaultLink || '',
         start_time: startTimeISO,
         last_entry_time: lastEntryTimeISO,
-        session_end_date: endDate || null,
+        session_end_date: normalizeEndDate(endDate),
         recurrence_type: meetingType,
         added_schedules,
         updated_schedules,

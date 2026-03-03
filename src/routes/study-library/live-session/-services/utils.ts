@@ -110,6 +110,7 @@ export interface Schedule {
         id: string;
         thumbnailFileId: string;
         countAttendanceDaily: boolean;
+        dailyAttendance?: boolean;
         default_class_link?: string | null;
         default_class_name?: string | null;
         learner_button_config?: {

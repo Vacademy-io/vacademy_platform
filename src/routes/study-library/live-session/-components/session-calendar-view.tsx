@@ -131,7 +131,8 @@ export function SessionCalendarView({ schedules }: SessionCalendarViewProps) {
                 </div>
             </div>
 
-            <div className="rounded-lg border bg-card shadow-sm">
+            <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+                <div className="min-w-[700px]">
                 {/* Header */}
                 <div className="grid grid-cols-7 border-b bg-muted/30">
                     {weekDays.map((day) => (
@@ -208,6 +209,7 @@ export function SessionCalendarView({ schedules }: SessionCalendarViewProps) {
                         );
                     })}
                 </div>
+                </div>
             </div>
 
             <div className="flex items-center justify-end gap-6 px-4 text-sm text-muted-foreground">
@@ -226,7 +228,7 @@ export function SessionCalendarView({ schedules }: SessionCalendarViewProps) {
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>
                             Sessions for {selectedDate && format(selectedDate, 'MMMM d, yyyy')}
@@ -238,7 +240,7 @@ export function SessionCalendarView({ schedules }: SessionCalendarViewProps) {
                             const sessions = getSessionsForDate(selectedDate);
                             const defaultLink = sessions[0]?.default_class_link;
                             const defaultClassName = sessions[0]?.defaultClassName;
-                            const learnerButton = sessions[0]?.learner_button_config;
+                            const learnerButton = sessions[0]?.learner_button_config;  
 
                             if (defaultLink || learnerButton) {
                                 return (

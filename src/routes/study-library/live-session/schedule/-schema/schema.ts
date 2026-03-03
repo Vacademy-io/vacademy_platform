@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { toast } from 'sonner';
 import { AccessType, RecurringType } from '../../-constants/enums';
 
 const weekDaysEnum = z.enum([
@@ -14,10 +15,10 @@ const weekDaysEnum = z.enum([
 // Schema for learner button configuration
 const learnerButtonConfigSchema = z.object({
     text: z.string().min(1, 'Button text is required').max(50, 'Button text must be 50 characters or less'),
-    url: z.string().url('Invalid URL'),
-    background_color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid hex color format'),
-    text_color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid hex color format'),
-    visible: z.boolean(),
+        url: z.string().url('Invalid URL'),
+        background_color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid hex color format'),
+        text_color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid hex color format'),
+        visible: z.boolean(),
 }).optional().nullable();
 
 const sessionDetailsSchema = z.object({
@@ -113,6 +114,18 @@ export const sessionFormSchema = z
                 message: 'End date is required for recurring meetings.',
                 path: ['endDate'],
             });
+        }
+        // Validate end date is greater than start date
+        if (data.meetingType === RecurringType.WEEKLY && data.endDate && data.startTime) {
+            const startDateStr = data.startTime.split('T')[0];
+            if (startDateStr && data.endDate <= startDateStr) {
+                toast.error('End date should be greater than start date.');
+                ctx.addIssue({
+                    code: 'custom',
+                    message: 'End date should be greater than start date.',
+                    path: ['endDate'],
+                });
+            }
         }
     });
 

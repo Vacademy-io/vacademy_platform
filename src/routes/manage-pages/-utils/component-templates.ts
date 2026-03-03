@@ -176,6 +176,173 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             fields: { title: 'package_name', price: 'price' },
         },
     },
+
+    faqSection: {
+        type: 'faqSection',
+        enabled: true,
+        props: {
+            headerText: 'Frequently Asked Questions',
+            subheading: 'Everything you need to know.',
+            faqs: [
+                { question: 'What courses do you offer?', answer: 'We offer a wide range of courses across multiple disciplines.' },
+                { question: 'How do I enroll?', answer: 'Simply sign up, browse our catalogue, and click enroll on any course.' },
+                { question: 'Is there a free trial?', answer: 'Yes! Many of our courses offer a free preview.' },
+            ],
+            backgroundColor: '#F9FAFB',
+        },
+    },
+
+    videoEmbed: {
+        type: 'videoEmbed',
+        enabled: true,
+        props: {
+            url: '',
+            title: 'Watch Our Story',
+            caption: '',
+            aspectRatio: '16:9',
+            autoplay: false,
+            backgroundColor: '#000000',
+        },
+    },
+
+    ctaBanner: {
+        type: 'ctaBanner',
+        enabled: true,
+        props: {
+            heading: 'Ready to Get Started?',
+            subheading: 'Join thousands of learners and start your journey today.',
+            backgroundColor: '#3B82F6',
+            textColor: '#FFFFFF',
+            layout: 'centered',
+            button: {
+                enabled: true,
+                text: 'Start Learning',
+                action: 'navigate',
+                target: '',
+                style: 'white',
+            },
+        },
+    },
+
+    pricingTable: {
+        type: 'pricingTable',
+        enabled: true,
+        props: {
+            headerText: 'Choose Your Plan',
+            subheading: 'Simple, transparent pricing for everyone.',
+            plans: [
+                {
+                    name: 'Basic',
+                    price: 'Free',
+                    period: '',
+                    description: 'Perfect for getting started',
+                    features: ['5 Courses', 'Community access', 'Email support'],
+                    highlighted: false,
+                    buttonText: 'Get Started',
+                    buttonTarget: '',
+                },
+                {
+                    name: 'Pro',
+                    price: '₹999',
+                    period: '/month',
+                    description: 'For serious learners',
+                    features: ['Unlimited Courses', 'Priority support', 'Certificates', 'Live sessions'],
+                    highlighted: true,
+                    buttonText: 'Get Pro',
+                    buttonTarget: '',
+                },
+            ],
+        },
+    },
+
+    contactForm: {
+        type: 'contactForm',
+        enabled: true,
+        props: {
+            heading: 'Get In Touch',
+            subheading: "We'd love to hear from you. Send us a message!",
+            fields: [
+                { name: 'name', label: 'Full Name', type: 'text', required: true },
+                { name: 'email', label: 'Email Address', type: 'email', required: true },
+                { name: 'phone', label: 'Phone Number', type: 'text', required: false },
+                { name: 'message', label: 'Message', type: 'textarea', required: true },
+            ],
+            submitLabel: 'Send Message',
+            successMessage: "Thank you! We'll be in touch soon.",
+            backgroundColor: '#FFFFFF',
+        },
+    },
+
+    teamSection: {
+        type: 'teamSection',
+        enabled: true,
+        props: {
+            headerText: 'Meet Our Team',
+            subheading: 'The passionate people behind our platform.',
+            members: [
+                {
+                    name: 'Team Member',
+                    role: 'Co-Founder & CEO',
+                    bio: 'Passionate about education and technology.',
+                    avatar: '',
+                    socials: [],
+                },
+                {
+                    name: 'Team Member',
+                    role: 'Head of Learning',
+                    bio: 'Dedicated to creating the best learning experience.',
+                    avatar: '',
+                    socials: [],
+                },
+            ],
+            layout: 'grid',
+            columns: 3,
+        },
+    },
+
+    announcementFeed: {
+        type: 'announcementFeed',
+        enabled: true,
+        props: {
+            headerText: 'Latest Updates',
+            subheading: 'Stay up to date with our latest news.',
+            announcements: [
+                {
+                    title: 'New Course Launch',
+                    date: '2025-01-15',
+                    summary: 'We are excited to announce our new advanced course series.',
+                    tag: 'News',
+                },
+                {
+                    title: 'Platform Update',
+                    date: '2025-01-10',
+                    summary: 'We have improved our platform for a better learning experience.',
+                    tag: 'Update',
+                },
+            ],
+            layout: 'list',
+            showDate: true,
+            showTag: true,
+            backgroundColor: '#FFFFFF',
+        },
+    },
+
+    imageGallery: {
+        type: 'imageGallery',
+        enabled: true,
+        props: {
+            headerText: 'Gallery',
+            subheading: '',
+            images: [
+                { src: '', alt: 'Gallery image 1', caption: '' },
+                { src: '', alt: 'Gallery image 2', caption: '' },
+                { src: '', alt: 'Gallery image 3', caption: '' },
+            ],
+            columns: 3,
+            gap: 'medium',
+            showCaptions: false,
+        },
+    },
 };
 
 export const getComponentTemplate = (type: string): Component => {

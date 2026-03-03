@@ -35,6 +35,8 @@ interface EditorState {
     addPage: (page: Page) => void;
     deletePage: (pageId: string) => void;
     duplicatePage: (pageId: string) => void;
+    togglePagePublished: (pageId: string) => void;
+    updatePageSeo: (pageId: string, seo: Page['seo']) => void;
 
     // Undo/Redo
     undo: () => void;
@@ -201,6 +203,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 selectedPageId: newSelectedPageId,
                 selectedComponentId: null,
             };
+        }),
+
+    togglePagePublished: (pageId) =>
+        set((state) => {
+            if (!state.config) return {};
+            const newPages = state.config.pages.map((p) =>
+                p.id === pageId ? { ...p, published: !p.published } : p
+            );
+            const newConfig = { ...state.config, pages: newPages };
+            return pushToHistory(state, newConfig);
+        }),
+
+    updatePageSeo: (pageId, seo) =>
+        set((state) => {
+            if (!state.config) return {};
+            const newPages = state.config.pages.map((p) =>
+                p.id === pageId ? { ...p, seo: { ...p.seo, ...seo } } : p
+            );
+            const newConfig = { ...state.config, pages: newPages };
+            return pushToHistory(state, newConfig);
         }),
 
     duplicatePage: (pageId) =>

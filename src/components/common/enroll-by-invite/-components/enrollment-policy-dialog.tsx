@@ -296,10 +296,10 @@ const EnrollmentPolicyDialog = ({
                 </div>
                 <div className="text-center space-y-2">
                     <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-800">
-                        Re-enrollment Not Available
+                        Ready to continue ?
                     </DialogTitle>
                     <DialogDescription className="text-gray-600 text-sm sm:text-base leading-relaxed">
-                     Your free trial has ended. If you would like to continue regular practice, you can register for a membership by clicking the button below.
+                        {reenrollmentPolicy?.reenrollmentBlockedMessage}
                     </DialogDescription>
                 </div>
             </DialogHeader>
@@ -337,11 +337,11 @@ const EnrollmentPolicyDialog = ({
         <>
             <DialogHeader className="space-y-4 pb-4">
                 <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
-                    <CheckCircle2 className="w-8 h-8 text-white" />
+                    <AlertTriangle className="w-8 h-8 text-white" />
                 </div>
                 <div className="text-center space-y-2">
                     <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-800">
-                        Premium Member Detected
+                        You have an active membership
                     </DialogTitle>
                     <DialogDescription className="text-gray-600 text-sm sm:text-base leading-relaxed">
                         {onEnrollment?.blockMessage ||
@@ -350,43 +350,31 @@ const EnrollmentPolicyDialog = ({
                 </div>
             </DialogHeader>
 
-            <div className="py-4">
-                <div className="rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 p-4">
-                    <div className="flex items-start gap-3">
-                        <Sparkles className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                        <p className="text-sm text-blue-800">
-                            As a premium member, you already have access to all the features included in the demo. Enjoy your full membership benefits!
-                        </p>
+            {reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
+                <div className="py-4">
+                    <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
+                        <div className="flex flex-col items-center text-center space-y-3">
+                            <Sparkles className="w-6 h-6 text-primary-600" />
+                            <h4 className="font-semibold text-gray-900">Upgrade to Continue Learning</h4>
+                            <p className="text-sm text-gray-600">
+                                Get unlimited access to all course content with our premium plan.
+                            </p>
+                            <MyButton
+                                type="button"
+                                buttonType="primary"
+                                scale="medium"
+                                layoutVariant="default"
+                                onClick={() => handleUpgradeClick(reenrollmentPolicy.upgradeOptions?.paid_upgrade?.url || "")}
+                                disabled={isRedirecting}
+                                className="flex items-center gap-2 px-6 shadow-lg shadow-primary-500/30 hover:shadow-primary-500/40"
+                            >
+                                <span>{reenrollmentPolicy.upgradeOptions.paid_upgrade.text}</span>
+                                <ExternalLink className="w-4 h-4 ml-2" />
+                            </MyButton>
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <DialogFooter className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row gap-3">
-                <MyButton
-                    type="button"
-                    buttonType="secondary"
-                    scale="medium"
-                    layoutVariant="default"
-                    onClick={() => onOpenChange(false)}
-                    className="w-full sm:w-auto order-2 sm:order-1"
-                >
-                    <X className="w-4 h-4 mr-2" />
-                    Close
-                </MyButton>
-                <MyButton
-                    type="button"
-                    buttonType="primary"
-                    scale="medium"
-                    layoutVariant="default"
-                    onClick={() => {
-                        onOpenChange(false);
-                        onContinue?.();
-                    }}
-                    className="w-full sm:w-auto order-1 sm:order-2 bg-gradient-to-r from-primary-500 to-primary-600"
-                >
-                    Go to Dashboard
-                </MyButton>
-            </DialogFooter>
+            )}
         </>
     );
 

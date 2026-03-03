@@ -717,8 +717,9 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   // Helper function to fetch enrollment policy and show appropriate dialog
   // Helper function to fetch enrollment policy and show appropriate dialog
   const fetchAndHandleEnrollmentPolicy = async (
-    scenario: "success" | "error_already_enrolled" = "success"
-  ) => {
+    scenario: "success" | "error_already_enrolled" = "success",
+    enrollmentErrorMessage?: string
+  ): Promise<boolean> => {
     try {
       const packageSessionId =
         inviteData?.package_session_to_payment_options?.[0]?.package_session_id;
@@ -727,7 +728,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         console.log(
           "[EnrollByInvite] No package session ID available for enrollment policy"
         );
-        return;
+        return false;
       }
 
       const policyResponse = await getEnrollmentPolicy({ packageSessionId });
@@ -749,29 +750,40 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           if (hasFrontendActions) {
             setEnrollmentPolicyDialogType("success_with_actions");
             setEnrollmentPolicyDialogOpen(true);
+            return true;
           }
         } else if (scenario === "error_already_enrolled") {
           // Determine strictness and type of blockage
           let dialogType: EnrollmentPolicyDialogType = "already_enrolled";
 
-          // If there are upgrade options, it's likely a re-enrollment block with upsell
+          // Determine dialog type based on the actual enrollment error message
+          // If the error message matches the onEnrollment.blockMessage, it's a paid member block
+          // Otherwise, it's a re-enrollment case
           if (
+            policyResponse?.onEnrollment?.blockIfActiveIn?.length &&
+            policyResponse?.onEnrollment?.blockMessage &&
+            enrollmentErrorMessage &&
+            enrollmentErrorMessage === policyResponse.onEnrollment.blockMessage
+          ) {
+            dialogType = "paid_member_blocked";
+          }
+          // If there are upgrade options, it's likely a re-enrollment block with upsell
+          else if (
             policyResponse?.reenrollmentPolicy?.upgradeOptions?.paid_upgrade
           ) {
             dialogType = "reenrollment_blocked";
           }
-          // If explicitly checking for paid member block (this usually requires specific error code,
-          // but we can fallback to checking if onEnrollment block message exists and looks relevant)
-          // For now, we prioritize reenrollment/already_enrolled for 510 errors.
 
           setEnrollmentPolicyDialogType(dialogType);
           setEnrollmentPolicyDialogOpen(true);
+          return true;
         }
       }
     } catch (err) {
       console.error("[EnrollByInvite] Failed to fetch enrollment policy:", err);
       // Non-blocking - we don't prevent the enrollment flow if policy fetch fails
     }
+    return false;
   };
 
   const handleUpgrade = (url: string) => {
@@ -859,8 +871,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         // @ts-expect-error
         const errorData = err?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
-          toast.error(errorData?.ex || "Enrollment failed");
-          await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+          if (!dialogOpened) {
+            toast.error(errorData?.ex || "Enrollment failed");
+          }
         }
         setError(errorData?.ex);
       } finally {
@@ -917,8 +931,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         // @ts-expect-error
         const errorData = err?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
-          toast.error(errorData?.ex || "Payment failed");
-          await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+          if (!dialogOpened) {
+            toast.error(errorData?.ex || "Payment failed");
+          }
         }
         setError(errorData?.ex);
         console.error(err);
@@ -1032,8 +1048,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       } catch (err) {
         const errorData = (err as { response?: { data?: { ex?: string; responseCode?: string } } })?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
-          toast.error(errorData?.ex || "Payment failed");
-          await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+          if (!dialogOpened) {
+            toast.error(errorData?.ex || "Payment failed");
+          }
         }
         setError(
           (err as Error)?.message ||
@@ -1108,8 +1126,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         // @ts-expect-error
         const errorData = err?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
-          toast.error(errorData?.ex || "Failed to initiate payment");
-          await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+          if (!dialogOpened) {
+            toast.error(errorData?.ex || "Failed to initiate payment");
+          }
         }
         setError(errorData?.ex || "Failed to initiate payment");
         console.error("Razorpay enrollment error:", err);
@@ -1177,8 +1197,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       // @ts-expect-error
       const errorData = err?.response?.data;
       if (errorData?.responseCode?.includes("510")) {
-        toast.error(errorData?.ex || "Payment failed");
-        await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
+        const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+        if (!dialogOpened) {
+          toast.error(errorData?.ex || "Payment failed");
+        }
       }
       setError(errorData?.ex);
       console.error(err);
@@ -1243,8 +1265,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           // @ts-expect-error
           const errorData = err?.response?.data;
           if (errorData?.responseCode?.includes("510")) {
-            toast.error(errorData?.ex || "Failed to complete enrollment");
-            await fetchAndHandleEnrollmentPolicy("error_already_enrolled");
+            const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+            if (!dialogOpened) {
+              toast.error(errorData?.ex || "Failed to complete enrollment");
+            }
           }
           setError(errorData?.ex || "Failed to complete enrollment");
           console.error("Razorpay completion error:", err);
@@ -1377,8 +1401,10 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       } catch (err) {
         const errData = (err as { response?: { data?: { ex?: string; responseCode?: string } } })?.response?.data;
         if (errData?.responseCode?.includes("510")) {
-          toast.error(errData?.ex || "Payment failed");
-          fetchAndHandleEnrollmentPolicy("error_already_enrolled");
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errData?.ex);
+          if (!dialogOpened) {
+            toast.error(errData?.ex || "Payment failed");
+          }
         }
         setError(
           (err as Error)?.message || errData?.ex || "Failed to initialize payment"

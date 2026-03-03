@@ -59,6 +59,16 @@ android {
 			// Set the deep link host for Fivesep (adjust to your domain)
 			manifestPlaceholders.DEEP_LINK_HOST = "fivesep.vacademy.io"
 		}
+		shikshanation {
+			dimension "client"
+			applicationId "com.shikshanation.new.app"
+			versionCode 1
+			versionName "1.0.0"
+			// Change app name for Fivesep
+			resValue "string", "app_name", "Shiksha Nation"
+			// Set the deep link host for Fivesep (adjust to your domain)
+			manifestPlaceholders.DEEP_LINK_HOST = "shiksha-nation.vacademy.io"
+		}
 	}
 }
 

@@ -3,6 +3,7 @@ import {
   createRootRouteWithContext,
   Outlet,
   redirect,
+  useRouterState,
 } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
@@ -59,6 +60,7 @@ const PUBLIC_ROUTES = [
   "/courses/course-details", // Course details should be public for browsing
   "/un", // Public unsubscribe links
   "/m", // Public media hosting page
+  "/admission/payment", // Public admission payment links shared by institutes
 ];
 
 const isAuthenticated = async () => {
@@ -73,7 +75,7 @@ const isAuthenticated = async () => {
   const hasToken = !isNullOrEmptyOrUndefined(token);
   const hasStudentDetails = !isNullOrEmptyOrUndefined(studentDetails?.value);
   const hasInstituteDetails = !isNullOrEmptyOrUndefined(
-    instituteDetails?.value
+    instituteDetails?.value,
   );
 
   console.log(`🔍 Authentication check:`, {
@@ -199,7 +201,7 @@ const RootComponent = () => {
       setPrimaryColor("holistic");
     } else {
       setPrimaryColor(
-        themeCode ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "neutral"
+        themeCode ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "neutral",
       );
     }
   };
@@ -228,7 +230,7 @@ const RootComponent = () => {
 
     checkForUpdate();
     setPrimaryColorFromStorage();
-    
+
     // Fetch chatbot settings and enable floating button if enabled in settings
     getChatbotSettings(false)
       .then((settings) => setIsChatbotEnabled(settings?.enable === true))
@@ -432,11 +434,14 @@ const RootComponent = () => {
     };
   }, []);
 
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const hideChatbot = pathname.startsWith("/admission");
+
   return (
     <ChatbotProvider>
       <Outlet />
-      <ChatbotPanel />
-      {isChatbotEnabled && <ChatbotFloatingButton />}
+      {!hideChatbot && <ChatbotPanel />}
+      {!hideChatbot && isChatbotEnabled && <ChatbotFloatingButton />}
     </ChatbotProvider>
   );
 };
@@ -462,12 +467,10 @@ export const Route = createRootRouteWithContext<{
     if (urlAccessToken && urlRefreshToken) {
       console.log("[__root] Detected tokens in URL, performing auto-login...");
       try {
-        const { performFullAuthCycle } = await import(
-          "@/services/auth-cycle-service"
-        );
-        const { getTokenDecodedData } = await import(
-          "@/lib/auth/sessionUtility"
-        );
+        const { performFullAuthCycle } =
+          await import("@/services/auth-cycle-service");
+        const { getTokenDecodedData } =
+          await import("@/lib/auth/sessionUtility");
         const decoded = getTokenDecodedData(urlAccessToken);
         // Institute ID is the first key in JWT authorities, or fallback to institute_id claim
         const instituteId =
@@ -477,7 +480,7 @@ export const Route = createRootRouteWithContext<{
         if (instituteId) {
           await performFullAuthCycle(
             { accessToken: urlAccessToken, refreshToken: urlRefreshToken },
-            instituteId
+            instituteId,
           );
 
           // Honor redirect param (e.g. ?redirect=%2Fdashboard -> /dashboard); default to /dashboard
@@ -488,15 +491,21 @@ export const Route = createRootRouteWithContext<{
               ? redirectPath
               : "/dashboard";
 
-          console.log("[__root] Auto-login complete, redirecting to:", targetPath);
+          console.log(
+            "[__root] Auto-login complete, redirecting to:",
+            targetPath,
+          );
           // Full page redirect so the next load sees auth state and no token params in URL
-          const origin = typeof window !== "undefined" ? window.location.origin : "";
+          const origin =
+            typeof window !== "undefined" ? window.location.origin : "";
           window.location.replace(`${origin}${targetPath}`);
           throw redirect({ to: targetPath as never });
         } else {
           console.warn("[__root] SSO: could not get instituteId from token", {
             hasAuthorities: !!decoded?.authorities,
-            authorityKeys: decoded?.authorities ? Object.keys(decoded.authorities) : [],
+            authorityKeys: decoded?.authorities
+              ? Object.keys(decoded.authorities)
+              : [],
           });
         }
       } catch (error) {
@@ -541,7 +550,7 @@ export const Route = createRootRouteWithContext<{
         // Try to resolve domain routing
         const domainRoutingResult = await resolveDomainRouting(
           domain,
-          testSubdomain
+          testSubdomain,
         );
 
         if (domainRoutingResult) {
@@ -564,7 +573,7 @@ export const Route = createRootRouteWithContext<{
             "[__root] Caught redirect Response in root block. Rethrowing.",
             {
               status: error.status,
-            }
+            },
           );
           throw error;
         }
@@ -605,7 +614,7 @@ export const Route = createRootRouteWithContext<{
         // Try to resolve domain routing
         const domainRoutingResult = await resolveDomainRouting(
           domain,
-          testSubdomain
+          testSubdomain,
         );
 
         if (domainRoutingResult) {
@@ -628,7 +637,7 @@ export const Route = createRootRouteWithContext<{
             "[__root] (protected) Caught redirect Response. Rethrowing.",
             {
               status: error.status,
-            }
+            },
           );
           throw error;
         }

@@ -221,12 +221,20 @@ export const GET_APPLICANT_STAGES = (applicantId: string) =>
 export const SUBMIT_ADMISSION = `${BASE_URL}/admin-core-service/v1/admission/submit`;
 
 // Admission payment flow
-// GET_ADMISSION_PAYMENT_OPTIONS: fetch available payment options for this institute
+// GET_ADMISSION_PAYMENT_OPTIONS: fetch available payment options for this institute (requires auth)
 export const GET_ADMISSION_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/v1/payment-option/get-payment-options`;
-// INITIATE_APPLICANT_PAYMENT: POST /v1/applicant/{applicantId}/payment/initiate?paymentOptionId={id}
+// INITIATE_APPLICANT_PAYMENT: POST /v1/applicant/{applicantId}/payment/initiate?paymentOptionId={id} (requires auth)
 // body: { vendor, amount, currency, razorpay_request: {} }
 // returns razorpay order details (razorpayKeyId, razorpayOrderId, amount, currency)
 export const INITIATE_APPLICANT_PAYMENT = (applicantId: string) =>
   `${BASE_URL}/admin-core-service/v1/applicant/${applicantId}/payment/initiate`;
+
+// Open (no-auth) admission payment endpoints — used by the public /admission/payment/:id link
+// Fetch a single payment option by its ID (no JWT needed)
+export const GET_PAYMENT_OPTION_BY_ID = (paymentOptionId: string) =>
+  `${BASE_URL}/admin-core-service/open/v1/payment-option/${paymentOptionId}`;
+// Initiate applicant payment without JWT — open variant
+export const INITIATE_APPLICANT_PAYMENT_OPEN = (applicantId: string) =>
+  `${BASE_URL}/admin-core-service/open/v1/applicant/${applicantId}/payment/initiate`;
 // AI service base url
 export const AI_SERVICE_URL = `${BASE_URL}/ai-service`;

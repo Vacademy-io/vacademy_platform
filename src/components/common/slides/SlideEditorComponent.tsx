@@ -95,6 +95,7 @@ const SlidesEditorComponent = ({
         slides,
         currentSlideId,
         editMode,
+        dirtySlideIds,
         setCurrentSlideId,
         setEditMode,
         addSlide,
@@ -105,6 +106,8 @@ const SlidesEditorComponent = ({
         initializeNewPresentationState,
         updateSlideIds,
         clearRecommendations,
+        markAllDirty,
+        clearDirtySlides,
     } = useSlideStore();
 
     const router = useRouter();
@@ -852,24 +855,30 @@ const SlidesEditorComponent = ({
             const allProcessedSlidesInCurrentSave = [];
             for (let index = 0; index < slides.length; index++) {
                 const slide = slides[index];
-                let fileId;
+                let fileId: string;
 
-                try {
-                    // TODO: Optimize S3 upload - only upload if content has actually changed.
-                    // For now, it re-uploads every time, generating a new fileId.
-                    fileId = await UploadFileInS3V2(
-                        slide,
-                        () => { }, // Progress callback (noop)
-                        tokenData.sub, // User ID
-                        'SLIDES',      // Category
-                        tokenData.sub, // Institute ID (using sub as placeholder if specific institute ID is different)
-                        true           // isPublic
-                    );
-                } catch (uploadError) {
-                    console.error('Upload failed for slide:', slide.id, uploadError);
-                    toast.error(`Failed to upload content for slide ${index + 1}.`);
-                    setIsSaving(false); // Ensure saving state is reset
-                    return; // Stop the save process if any upload fails
+                const isDirty = dirtySlideIds.has(slide.id);
+                const hasExistingSourceId = !!slide.source_id;
+
+                if (!isDirty && hasExistingSourceId) {
+                    // Content unchanged — reuse the existing S3 file ID to skip the upload
+                    fileId = slide.source_id;
+                } else {
+                    try {
+                        fileId = await UploadFileInS3V2(
+                            slide,
+                            () => { }, // Progress callback (noop)
+                            tokenData.sub,
+                            'SLIDES',
+                            tokenData.sub,
+                            true
+                        );
+                    } catch (uploadError) {
+                        console.error('Upload failed for slide:', slide.id, uploadError);
+                        toast.error(`Failed to upload content for slide ${index + 1}.`);
+                        setIsSaving(false);
+                        return;
+                    }
                 }
 
                 const isQuestionSlide = [SlideTypeEnum.Quiz, SlideTypeEnum.Feedback].includes(
@@ -1094,11 +1103,12 @@ const SlidesEditorComponent = ({
                     if (syncedSlides.length > 0) {
                         // Sort one last time to be certain, then update the global state.
                         syncedSlides.sort((a, b) => a.slide_order - b.slide_order);
-                        console.log("State synchronized. Updating local slides.", syncedSlides);
                         setSlides(syncedSlides);
                         // After successfully syncing, update the originalSlideIds to reflect the new state.
                         // This prevents re-adding slides that were just saved.
                         setOriginalSlideIds(new Set(syncedSlides.map(s => s.id)));
+                        // All saved slides are now clean — future saves will only upload changed ones.
+                        clearDirtySlides();
                     }
                 } else if (!isEdit && response.data.id) {
                     // This is the case for auto-create where the slide array might be empty in the response,
@@ -1134,8 +1144,109 @@ const SlidesEditorComponent = ({
         }
     };
 
-    const exportPresentationToFile = () => toast.info('Export function coming soon!');
-    const importPresentationFromFile = () => toast.info('Import function coming soon!');
+    const exportPresentationToFile = () => {
+        try {
+            // Serialize slides — convert Map-based collaborators to plain arrays so JSON.stringify works
+            const exportableSlides = slides.map((slide) => {
+                if (slide.type === SlideTypeEnum.Quiz || slide.type === SlideTypeEnum.Feedback) {
+                    return slide;
+                }
+                const excalidrawSlide = slide as ExcalidrawSlideData;
+                const collaborators = excalidrawSlide.appState?.collaborators;
+                return {
+                    ...excalidrawSlide,
+                    appState: {
+                        ...excalidrawSlide.appState,
+                        collaborators: collaborators instanceof Map
+                            ? Array.from(collaborators.entries())
+                            : [],
+                    },
+                };
+            });
+
+            const payload = {
+                version: 1,
+                title: metaData.title || 'Untitled',
+                exported_at: new Date().toISOString(),
+                slides: exportableSlides,
+            };
+
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${(metaData.title || 'presentation').replace(/\s+/g, '_')}.volt.json`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+            URL.revokeObjectURL(url);
+            toast.success('Presentation exported successfully.');
+        } catch (err) {
+            console.error('Export failed:', err);
+            toast.error('Failed to export presentation.');
+        }
+    };
+
+    const importPresentationFromFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        // Reset the input so the same file can be re-imported if needed
+        event.target.value = '';
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const parsed = JSON.parse(e.target?.result as string);
+
+                // Accept either a .volt.json export or a raw array of slides
+                const rawSlides: AppSlide[] = Array.isArray(parsed)
+                    ? parsed
+                    : Array.isArray(parsed.slides)
+                        ? parsed.slides
+                        : null;
+
+                if (!rawSlides) {
+                    toast.error('Invalid file format. Expected a Volt export or a slides array.');
+                    return;
+                }
+
+                // Re-hydrate collaborators Maps and assign fresh temp IDs so there are no ID collisions
+                const importedSlides: AppSlide[] = rawSlides.map((slide, index) => {
+                    const freshId = `temp-import-${Date.now()}-${index}`;
+                    if (slide.type === SlideTypeEnum.Quiz || slide.type === SlideTypeEnum.Feedback) {
+                        return { ...slide, id: freshId, slide_order: slides.length + index, source_id: undefined };
+                    }
+                    const excalidrawSlide = slide as ExcalidrawSlideData;
+                    const rawCollaborators = excalidrawSlide.appState?.collaborators;
+                    const collaboratorsMap = Array.isArray(rawCollaborators)
+                        ? new Map(rawCollaborators)
+                        : new Map();
+                    return {
+                        ...excalidrawSlide,
+                        id: freshId,
+                        slide_order: slides.length + index,
+                        source_id: undefined, // force re-upload on next save
+                        appState: { ...excalidrawSlide.appState, collaborators: collaboratorsMap },
+                    };
+                });
+
+                const combined = [...slides, ...importedSlides].map((s, i) => ({ ...s, slide_order: i }));
+                setSlides(combined);
+                // Mark all imported slides dirty so they get uploaded on next save
+                importedSlides.forEach(s => {
+                    const newDirty = new Set(useSlideStore.getState().dirtySlideIds);
+                    newDirty.add(s.id);
+                    useSlideStore.setState({ dirtySlideIds: newDirty });
+                });
+                toast.success(`${importedSlides.length} slide(s) imported successfully.`);
+            } catch (err) {
+                console.error('Import failed:', err);
+                toast.error('Failed to parse the file. Make sure it is a valid Volt export.');
+            }
+        };
+        reader.readAsText(file);
+    };
 
     const handleSharePresentation = () => {
         if (presentationId) {

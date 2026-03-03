@@ -40,8 +40,9 @@ interface BaseSlide {
     id: string;
     type: SlideTypeEnum;
     slide_order: number; // Important for presentation sequence
-    // Add any other common properties, e.g., from your backend `SlideData`
     title?: string; // Optional title for the slide itself
+    source_id?: string; // S3 file ID from the backend — preserved to avoid re-uploading unchanged slides
+    questionId?: string; // DB question ID for Quiz/Feedback slides
 }
 
 // Interface for Excalidraw-based slides (Title, Text, Blank, Excalidraw, and others by default)

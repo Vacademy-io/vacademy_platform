@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
@@ -44,7 +44,7 @@ import { getTerminology } from "@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 function EmbedComponent() {
-  const { sessionId, videoUrl, title, learnerButtonConfig } = Route.useSearch();
+  const { sessionId, videoUrl, title, learnerButtonConfig: searchLearnerButtonConfig } = Route.useSearch();
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
   const [batchIds, setBatchIds] = useState<string[]>([]);
@@ -58,6 +58,20 @@ function EmbedComponent() {
   }, []);
 
   const { data: sessions } = useLiveSessions(batchIds);
+
+  // Derive learnerButtonConfig: prefer URL search params, fallback to matching live session data
+  const learnerButtonConfig = useMemo(() => {
+    if (searchLearnerButtonConfig) return searchLearnerButtonConfig;
+    if (sessionId && sessions?.live_sessions) {
+      const matchingSession = sessions.live_sessions.find(
+        (s) => s.schedule_id === sessionId
+      );
+      if (matchingSession?.learner_button_config) {
+        return matchingSession.learner_button_config;
+      }
+    }
+    return undefined;
+  }, [searchLearnerButtonConfig, sessionId, sessions?.live_sessions]);
 
   useEffect(() => {
     // If we are watching a default class (no sessionId) and a live session starts, redirect

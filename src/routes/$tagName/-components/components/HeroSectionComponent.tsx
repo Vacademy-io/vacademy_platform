@@ -154,9 +154,10 @@ const HeroSectionPlaceholder: React.FC<{
                   </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-base sm:text-lg text-gray-600 leading-relaxed line-clamp-3">
-                    {heroDescription}
-                  </p>
+                  <div
+                    className="text-base sm:text-lg text-gray-600 leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: heroDescription }}
+                  />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
@@ -180,9 +181,10 @@ const HeroSectionPlaceholder: React.FC<{
                   </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-base sm:text-lg text-gray-600 line-clamp-3">
-                    {heroDescription}
-                  </p>
+                  <div
+                    className="text-base sm:text-lg text-gray-600"
+                    dangerouslySetInnerHTML={{ __html: heroDescription }}
+                  />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
@@ -292,9 +294,10 @@ const HeroSectionWithState: React.FC<{
                   </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-base sm:text-lg text-gray-600 leading-relaxed line-clamp-3">
-                    {heroDescription}
-                  </p>
+                  <div
+                    className="text-base sm:text-lg text-gray-600 leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: heroDescription }}
+                  />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
@@ -332,9 +335,10 @@ const HeroSectionWithState: React.FC<{
                   </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-base sm:text-lg text-gray-600 line-clamp-3">
-                    {heroDescription}
-                  </p>
+                  <div
+                    className="text-base sm:text-lg text-gray-600"
+                    dangerouslySetInnerHTML={{ __html: heroDescription }}
+                  />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button

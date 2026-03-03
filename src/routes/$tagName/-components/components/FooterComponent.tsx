@@ -136,7 +136,7 @@ export const FooterComponent: React.FC<FooterProps & {
             {/* PRIMARY ACCENT: Section title uses primary color */}
             <h3 className="text-sm font-semibold mb-3 text-primary-700">{leftSection.title}</h3>
             {/* NEUTRAL: Body text */}
-            <p className="text-sm text-gray-600 mb-3">{leftSection.text}</p>
+            <div className="text-sm text-gray-600 mb-3" dangerouslySetInnerHTML={{ __html: leftSection.text }} />
 
             {/* Social Media Links - PRIMARY ACCENT on hover */}
             {leftSection.socials && leftSection.socials.length > 0 && (

@@ -16,6 +16,9 @@ import {
   Printer,
   Maximize,
   Minimize,
+  HelpCircle,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import type {
   ContentType,
@@ -23,6 +26,7 @@ import type {
   TimelineMeta,
   TimelineData,
   Frame,
+  MCQQuestion,
 } from "./types";
 import { CONTENT_TYPE_LABELS, CONTENT_TYPE_ENTRY_LABELS } from "./types";
 import { getLibraryScriptTags } from "./library-loader";
@@ -102,6 +106,12 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
   const [showPlaybackSpeedMenu, setShowPlaybackSpeedMenu] = useState(false);
   const [scale, setScale] = useState(0.8);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // MCQ quiz state
+  const [questionsEnabled, setQuestionsEnabled] = useState(true);
+  const [activeQuestion, setActiveQuestion] = useState<MCQQuestion | null>(null);
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const answeredQuestionsRef = useRef<Set<number>>(new Set());
 
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -556,6 +566,34 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     }
   }, [isPlaying, meta, currentTime, audioStarted, isTimeDriven, audioUrl]);
 
+  // MCQ question trigger: pause and show overlay when currentTime crosses a question's timestamp
+  useEffect(() => {
+    if (!isTimeDriven || !questionsEnabled || !meta.questions?.length || activeQuestion || !isPlaying) return;
+
+    for (const q of meta.questions) {
+      if (currentTime >= q.time && !answeredQuestionsRef.current.has(q.time)) {
+        // Mark immediately (synchronous) to prevent double-trigger from stale renders
+        answeredQuestionsRef.current.add(q.time);
+        if (audioRef.current) audioRef.current.pause();
+        setIsPlaying(false);
+        setActiveQuestion(q);
+        break;
+      }
+    }
+  }, [currentTime, isTimeDriven, questionsEnabled, meta.questions, activeQuestion, isPlaying]);
+
+  const handleDismissQuestion = useCallback(() => {
+    setActiveQuestion(null);
+    setSelectedAnswer(null);
+    // Resume audio from current position
+    const audioStartAt = meta.audio_start_at || 0;
+    if (currentTime >= audioStartAt && audioRef.current) {
+      audioRef.current.play().catch(console.error);
+      if (!audioStarted) setAudioStarted(true);
+    }
+    setIsPlaying(true);
+  }, [meta.audio_start_at, currentTime, audioStarted]);
+
   const handleReset = useCallback(() => {
     if (isTimeDriven) {
       if (audioRef.current) {
@@ -565,6 +603,9 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
       setCurrentTime(0);
       setIsPlaying(false);
       setAudioStarted(false);
+      setActiveQuestion(null);
+      setSelectedAnswer(null);
+      answeredQuestionsRef.current.clear();
     } else {
       setCurrentEntryIndex(0);
       navigationRef.current?.goTo(0);
@@ -830,6 +871,90 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               No frame content available
             </div>
           )}
+        {/* MCQ Question Overlay */}
+        {activeQuestion && (
+          <div
+            className="absolute inset-0 flex items-center justify-center p-4 z-20"
+            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl">
+              {/* Header */}
+              <div className="flex items-center gap-2 mb-4">
+                <HelpCircle className="h-4 w-4 text-blue-400 shrink-0" />
+                <span className="text-blue-400 text-xs font-bold uppercase tracking-widest">Quick Check</span>
+                <div className="flex-1" />
+                <button
+                  onClick={handleDismissQuestion}
+                  className="text-gray-500 hover:text-gray-300 text-xs px-2 py-1 transition-colors"
+                >
+                  Skip
+                </button>
+              </div>
+
+              {/* Question */}
+              <p className="text-white text-base font-semibold leading-relaxed mb-5">
+                {activeQuestion.question}
+              </p>
+
+              {/* Options */}
+              <div className="space-y-2.5 mb-5">
+                {activeQuestion.options.map((option, i) => {
+                  const isSelected = selectedAnswer === i;
+                  const isCorrect = i === activeQuestion.correct;
+                  const hasAnswered = selectedAnswer !== null;
+
+                  let cls = 'border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 hover:border-gray-500';
+                  if (hasAnswered) {
+                    if (isCorrect) cls = 'border-green-500 bg-green-900/30 text-green-200';
+                    else if (isSelected) cls = 'border-red-500 bg-red-900/30 text-red-200';
+                    else cls = 'border-gray-700 bg-gray-800/50 text-gray-500';
+                  } else if (isSelected) {
+                    cls = 'border-blue-500 bg-blue-900/30 text-blue-200';
+                  }
+
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => !hasAnswered && setSelectedAnswer(i)}
+                      disabled={hasAnswered}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left text-sm font-medium transition-all ${cls} disabled:cursor-default`}
+                    >
+                      <span className={`w-6 h-6 rounded-full border flex items-center justify-center text-xs font-bold shrink-0 ${
+                        hasAnswered && isCorrect ? 'border-green-400 text-green-400' :
+                        hasAnswered && isSelected ? 'border-red-400 text-red-400' :
+                        'border-current'
+                      }`}>
+                        {String.fromCharCode(65 + i)}
+                      </span>
+                      <span className="flex-1">{option}</span>
+                      {hasAnswered && isCorrect && <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />}
+                      {hasAnswered && isSelected && !isCorrect && <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Explanation */}
+              {selectedAnswer !== null && activeQuestion.explanation && (
+                <div className="bg-blue-950/40 border border-blue-800/40 rounded-lg px-4 py-3 mb-4 text-sm text-gray-300 leading-relaxed">
+                  <span className="font-bold text-blue-400">Explanation: </span>
+                  {activeQuestion.explanation}
+                </div>
+              )}
+
+              {/* Continue button */}
+              {selectedAnswer !== null && (
+                <Button
+                  onClick={handleDismissQuestion}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold"
+                >
+                  Continue <Play className="h-3.5 w-3.5 ml-2" />
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
         </div>
       </div>
 
@@ -954,6 +1079,24 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Quiz Toggle (only when video has questions) */}
+                {meta.questions && meta.questions.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setQuestionsEnabled(!questionsEnabled)}
+                    className={`h-8 px-3 border-gray-700 text-xs font-semibold transition-colors ${
+                      questionsEnabled
+                        ? 'bg-purple-900/40 text-purple-300 border-purple-700 hover:bg-purple-900/60'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                    title={questionsEnabled ? 'Disable quiz questions' : 'Enable quiz questions'}
+                  >
+                    <HelpCircle className="h-3.5 w-3.5 mr-1" />
+                    Quiz {questionsEnabled ? 'ON' : 'OFF'}
+                  </Button>
+                )}
 
                 {/* Fullscreen Toggle */}
                 <Button

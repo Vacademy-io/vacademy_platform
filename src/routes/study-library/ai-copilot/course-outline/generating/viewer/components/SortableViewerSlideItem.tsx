@@ -522,7 +522,7 @@ export const SortableViewerSlideItem = React.memo(({ slide, onEdit, onDelete, ge
                     <div className="flex items-center justify-center gap-3 py-8">
                         <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
                         <span className="text-sm font-medium text-neutral-600">
-                            Generating {slide.slideType === 'doc' ? 'document' : (slide.slideType === 'quiz' || slide.slideType === 'assessment' || slide.slideType === 'ASSESSMENT') ? 'quiz' : slide.slideType === 'video' ? 'video' : slide.slideType === 'ai-video' ? 'AI video' : 'content'}...
+                            Generating {slide.slideType === 'doc' ? 'document' : (slide.slideType === 'quiz' || slide.slideType === 'assessment' || slide.slideType === 'ASSESSMENT') ? 'quiz' : slide.slideType === 'video' ? 'video' : slide.slideType === 'ai-video' ? 'AI video' : slide.slideType === 'ai-slides' ? 'AI slides' : slide.slideType === 'ai-storybook' ? 'storybook' : 'content'}...
                         </span>
                     </div>
                 </div>
@@ -983,8 +983,8 @@ export const SortableViewerSlideItem = React.memo(({ slide, onEdit, onDelete, ge
             );
         }
 
-        // AI Video pages - show video player
-        if (slideType === 'ai-video') {
+        // AI Video / AI Slides / AI Storybook pages - show video player
+        if (slideType === 'ai-video' || slideType === 'ai-slides' || slideType === 'ai-storybook') {
             // Store status to avoid type narrowing issues
             const slideStatus: 'pending' | 'generating' | 'completed' = slide.status;
 

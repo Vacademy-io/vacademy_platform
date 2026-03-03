@@ -1235,11 +1235,13 @@ export const SortableSlideItem = React.memo(
             }
 
             // Only render if slide is completed and has content
-            // Exception: AI_VIDEO slides should show prompt even when pending
+            // Exception: AI_VIDEO / AI_SLIDES / AI_STORYBOOK slides should show prompt even when pending
             // Exception: AI_VIDEO_CODE and VIDEO_CODE slides should show even when video is generating
             // Exception: Quiz/Assessment slides can show content even when not completed (if content exists)
             if (
                 slide.slideType !== 'ai-video' &&
+                slide.slideType !== 'ai-slides' &&
+                slide.slideType !== 'ai-storybook' &&
                 slide.slideType !== 'ai-video-code' &&
                 slide.slideType !== 'video-code' &&
                 slide.slideType !== 'quiz' &&
@@ -1276,8 +1278,8 @@ export const SortableSlideItem = React.memo(
             }
 
             try {
-                // AI Video pages - show prompt in outline view (always visible, even when pending)
-                if (slide.slideType === 'ai-video') {
+                // AI Video / AI Slides / AI Storybook pages - show prompt in outline view (always visible, even when pending)
+                if (slide.slideType === 'ai-video' || slide.slideType === 'ai-slides' || slide.slideType === 'ai-storybook') {
                     // Show video player when video is ready - check both status and aiVideoData
                     const hasVideo =
                         slide.aiVideoData?.timelineUrl &&

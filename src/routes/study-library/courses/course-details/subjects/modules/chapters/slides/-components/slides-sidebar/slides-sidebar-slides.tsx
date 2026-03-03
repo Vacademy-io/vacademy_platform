@@ -38,9 +38,9 @@ interface FormValues {
 // Function to get the display text for slide type
 const getSlideTypeDisplay = (slide: Slide): string => {
     const sourceType = slide.source_type ?? '';
-    // For HTML_VIDEO slides, show "HTML Video"
+    // For HTML_VIDEO slides (AI Video, AI Slides, AI Storybook), show "AI Content"
     if (sourceType === 'HTML_VIDEO') {
-        return 'HTML Video';
+        return 'AI Content';
     }
 
     // For DOCUMENT slides with specific sub-types (not DOC), show just the sub-type

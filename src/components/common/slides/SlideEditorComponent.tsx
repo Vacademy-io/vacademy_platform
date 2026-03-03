@@ -21,6 +21,7 @@ import { ArrowLeft } from 'lucide-react';
 import { TokenKey } from '@/constants/auth/tokens';
 import { ActualPresentationDisplay } from './ActualPresentationDisplay'; // Import the new component
 import { SessionOptionsModal, type SessionOptions } from './components/SessionOptionModel'; // Assumed path
+import { SessionLeaderboardModal } from './components/SessionLeaderboardModal';
 import { WaitingRoom } from './components/SessionWaitingRoom'; // Assumed path
 import { ADD_PRESENTATION, EDIT_PRESENTATION, CREATE_SESSION_API_URL, FINISH_SESSION_API_URL } from '@/constants/urls';
 import { SlideRenderer } from './SlideRenderer'; // Import the extracted SlideRenderer
@@ -194,6 +195,10 @@ const SlidesEditorComponent = ({
     // State for session finish modal
     const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
     const [isTranscribingOnFinish, setIsTranscribingOnFinish] = useState(false);
+
+    // State for session leaderboard modal
+    const [isLeaderboardModalOpen, setIsLeaderboardModalOpen] = useState(false);
+    const [finishedSessionId, setFinishedSessionId] = useState<string | null>(null);
 
     // --- State for AI Slide Recommendations ---
     const recommendationIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -711,10 +716,13 @@ const SlidesEditorComponent = ({
     };
 
     const cleanupAndExitSession = async (callFinishApi: boolean = false) => {
-        if (callFinishApi && sessionDetails?.session_id) {
+        const currentSessionId = sessionDetails?.session_id;
+        const showLeaderboard = sessionDetails?.show_results_at_last_slide === true;
+
+        if (callFinishApi && currentSessionId) {
             try {
                 await authenticatedAxiosInstance.post(FINISH_SESSION_API_URL, {
-                    session_id: sessionDetails.session_id,
+                    session_id: currentSessionId,
                     move_to: null, // move_to can be null for this API
                 });
                 toast.success("Session has been successfully ended on the server.");
@@ -723,6 +731,12 @@ const SlidesEditorComponent = ({
                 toast.error("Failed to notify the server about the session ending. It may still be active.");
             }
         }
+
+        // Save session ID for leaderboard before clearing
+        if (currentSessionId && showLeaderboard) {
+            setFinishedSessionId(currentSessionId);
+        }
+
         // UI state resets
         setJustExitedSession(true);
         setEditMode(true);
@@ -737,6 +751,11 @@ const SlidesEditorComponent = ({
         setShouldRecordAudio(false);
         setAudioBlobUrl(null);
         toast.info('Exited live session flow.');
+
+        // Show leaderboard only if it was a scored session
+        if (currentSessionId && showLeaderboard) {
+            setIsLeaderboardModalOpen(true);
+        }
     };
 
     const processAndFinishSession = async (inBackground: boolean) => {
@@ -2366,6 +2385,17 @@ const SlidesEditorComponent = ({
                     )}
                 </DialogContent>
             </Dialog>
+            {/* Session Leaderboard Modal */}
+            {finishedSessionId && (
+                <SessionLeaderboardModal
+                    isOpen={isLeaderboardModalOpen}
+                    onClose={() => {
+                        setIsLeaderboardModalOpen(false);
+                        setFinishedSessionId(null);
+                    }}
+                    sessionId={finishedSessionId}
+                />
+            )}
         </div>
     );
 };

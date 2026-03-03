@@ -1,6 +1,6 @@
 import { useEditorStore } from '../-stores/editor-store';
 import { Button } from '@/components/ui/button';
-import { Settings, Plus, Copy, Trash2, MoreVertical } from 'lucide-react';
+import { Settings, Plus, Copy, Trash2, MoreVertical, Globe, EyeOff } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -28,6 +28,7 @@ export const PageTabs = () => {
         addPage,
         deletePage,
         duplicatePage,
+        togglePagePublished,
     } = useEditorStore();
 
     const [showAddDialog, setShowAddDialog] = useState(false);
@@ -79,8 +80,12 @@ export const PageTabs = () => {
                             variant={selectedPageId === page.id ? 'secondary' : 'ghost'}
                             size="sm"
                             onClick={() => selectPage(page.id)}
-                            className="pr-1"
+                            className="gap-1.5 pr-1"
                         >
+                            <span
+                                className={`size-2 rounded-full ${page.published ? 'bg-green-500' : 'bg-gray-300'}`}
+                                title={page.published ? 'Published' : 'Draft'}
+                            />
                             {page.title || page.route}
                         </Button>
                         <DropdownMenu>
@@ -94,6 +99,19 @@ export const PageTabs = () => {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
+                                <DropdownMenuItem onClick={() => togglePagePublished(page.id)}>
+                                    {page.published ? (
+                                        <>
+                                            <EyeOff className="mr-2 size-4" />
+                                            Set as Draft
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Globe className="mr-2 size-4 text-green-600" />
+                                            Publish
+                                        </>
+                                    )}
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => duplicatePage(page.id)}>
                                     <Copy className="mr-2 size-4" />
                                     Duplicate

@@ -16,9 +16,11 @@ import { fetchBothInstituteAPIs } from '@/services/student-list-section/getInsti
 
 interface PreviewPanelProps {
     tagName: string;
+    onComponentSelected?: (componentId: string, pageId: string) => void;
+    selectedComponentId?: string | null;
 }
 
-export const PreviewPanel = ({ tagName }: PreviewPanelProps) => {
+export const PreviewPanel = ({ tagName, onComponentSelected, selectedComponentId }: PreviewPanelProps) => {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [isReady, setIsReady] = useState(false);
     const [selectedPageRoute, setSelectedPageRoute] = useState<string>('');
@@ -85,11 +87,14 @@ export const PreviewPanel = ({ tagName }: PreviewPanelProps) => {
                 setIsReady(true);
                 sendConfigToPreview();
             }
+            if (event.data?.type === 'COMPONENT_SELECTED') {
+                onComponentSelected?.(event.data.componentId, event.data.pageId);
+            }
         };
 
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [sendConfigToPreview]);
+    }, [sendConfigToPreview, onComponentSelected]);
 
     useEffect(() => {
         if (!isReady || !config) return;
@@ -100,6 +105,15 @@ export const PreviewPanel = ({ tagName }: PreviewPanelProps) => {
 
         return () => clearTimeout(timeout);
     }, [config, isReady, sendConfigToPreview]);
+
+    // Send highlight signal to iframe when selected component changes
+    useEffect(() => {
+        if (!isReady) return;
+        iframeRef.current?.contentWindow?.postMessage(
+            { type: 'HIGHLIGHT_COMPONENT', componentId: selectedComponentId || null },
+            '*'
+        );
+    }, [selectedComponentId, isReady]);
 
     const viewportSizes = CATALOGUE_EDITOR_CONFIG.VIEWPORTS;
     const currentSize = viewportSizes[viewport];

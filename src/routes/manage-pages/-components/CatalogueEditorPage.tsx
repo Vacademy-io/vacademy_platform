@@ -2,22 +2,42 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getCatalogueConfig, saveCatalogueConfig } from '../-services/catalogue-service';
 import { useEditorStore } from '../-stores/editor-store';
-import { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ComponentLibrary } from './ComponentLibrary';
-import { PageCanvas } from './PageCanvas';
+import { TemplateLibrary } from './TemplateLibrary';
 import { PropertyPanel } from './PropertyPanel';
 import { PageTabs } from './PageTabs';
 import { Button } from '@/components/ui/button';
-import { Loader2, Save, Code, LayoutTemplate, Undo2, Redo2 } from 'lucide-react';
+import { Loader2, Save, Code, LayoutTemplate, Undo2, Redo2, Layers, PuzzleIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Route } from '../editor/$tagName';
 import { CatalogueConfig } from '../-types/editor-types';
 import { useCataloguePermissions } from '../-hooks/use-catalogue-permissions';
+import { useCallback } from 'react';
+import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, useDroppable } from '@dnd-kit/core';
+import { getComponentTemplate } from '../-utils/component-templates';
 
 import { PreviewPanel } from './PreviewPanel';
-import { Eye, EyeOff } from 'lucide-react';
-import { useState } from 'react';
 import { Textarea } from '@/components/ui/textarea';
+
+/** Drop zone wrapping the center iframe canvas */
+const CanvasDropZone = ({
+    children,
+    className,
+}: {
+    children: React.ReactNode;
+    className?: string;
+}) => {
+    const { setNodeRef, isOver } = useDroppable({ id: 'canvas-drop-zone' });
+    return (
+        <div
+            ref={setNodeRef}
+            className={`${className || ''} ${isOver ? 'ring-2 ring-inset ring-blue-400' : ''}`}
+        >
+            {children}
+        </div>
+    );
+};
 
 export const CatalogueEditorPage = () => {
     const { tagName } = Route.useParams();
@@ -32,12 +52,39 @@ export const CatalogueEditorPage = () => {
         redo,
         canUndo,
         canRedo,
+        selectComponent,
+        selectPage,
+        selectedComponentId,
+        selectedPageId,
+        addComponent,
     } = useEditorStore();
     const { toast } = useToast();
-    const [showPreview, setShowPreview] = useState(false);
     const { canWrite } = useCataloguePermissions();
+
+    const handleComponentSelected = useCallback((componentId: string, pageId: string) => {
+        selectPage(pageId);
+        selectComponent(componentId);
+    }, [selectPage, selectComponent]);
+
+    // Drag-from-library: pointer sensor with a small activation distance to allow clicks
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    );
+
+    const handleDragEnd = useCallback((event: DragEndEvent) => {
+        const { active, over } = event;
+        // If dropped over the canvas area or anywhere (we add to selected page)
+        if (active.data.current?.type && selectedPageId && over?.id === 'canvas-drop-zone') {
+            const componentType = active.data.current.type as string;
+            const component = getComponentTemplate(componentType);
+            addComponent(selectedPageId, component);
+        }
+    }, [selectedPageId, addComponent]);
     const [jsonText, setJsonText] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
+    const [sidebarTab, setSidebarTab] = useState<'components' | 'templates'>('components');
+    const [savedConfigJSON, setSavedConfigJSON] = useState('');
+    const isDirty = config ? JSON.stringify(config) !== savedConfigJSON : false;
 
     const { data, isLoading } = useQuery({
         queryKey: ['catalogueConfig', instituteId, tagName],
@@ -48,7 +95,8 @@ export const CatalogueEditorPage = () => {
     const saveMutation = useMutation({
         mutationFn: (newConfig: CatalogueConfig) =>
             saveCatalogueConfig(instituteId!, tagName, newConfig),
-        onSuccess: () => {
+        onSuccess: (_, savedConfig) => {
+            setSavedConfigJSON(JSON.stringify(savedConfig));
             toast({ title: 'Saved', description: 'Changes saved successfully' });
         },
         onError: (err) => {
@@ -66,11 +114,24 @@ export const CatalogueEditorPage = () => {
             try {
                 const parsed = JSON.parse(data.catalogue_json);
                 setConfig(parsed);
+                setSavedConfigJSON(data.catalogue_json);
             } catch (e) {
                 console.error('Failed to parse catalogue JSON', e);
             }
         }
     }, [data, setConfig]);
+
+    // Warn before leaving with unsaved changes
+    useEffect(() => {
+        const handler = (e: BeforeUnloadEvent) => {
+            if (isDirty) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [isDirty]);
 
     // Sync JSON text when switching to JSON mode
     useEffect(() => {
@@ -143,7 +204,14 @@ export const CatalogueEditorPage = () => {
                         </Button>
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
+                    {/* Unsaved indicator */}
+                    {isDirty && (
+                        <span className="flex items-center gap-1.5 text-xs text-amber-600">
+                            <span className="size-2 rounded-full bg-amber-500" />
+                            Unsaved changes
+                        </span>
+                    )}
                     {/* Undo/Redo Buttons */}
                     <div className="flex rounded-lg border bg-gray-100 p-0.5">
                         <Button
@@ -165,20 +233,6 @@ export const CatalogueEditorPage = () => {
                             <Redo2 className="size-4" />
                         </Button>
                     </div>
-                    {activeTab === 'visual' && (
-                        <Button
-                            variant={showPreview ? 'secondary' : 'ghost'}
-                            size="sm"
-                            onClick={() => setShowPreview(!showPreview)}
-                        >
-                            {showPreview ? (
-                                <EyeOff className="mr-2 size-4" />
-                            ) : (
-                                <Eye className="mr-2 size-4" />
-                            )}
-                            {showPreview ? 'Edit Mode' : 'Preview'}
-                        </Button>
-                    )}
                     <Button
                         size="sm"
                         onClick={() => saveMutation.mutate(config)}
@@ -210,41 +264,76 @@ export const CatalogueEditorPage = () => {
                     />
                 </div>
             ) : (
-                /* Visual Editor Mode */
-                <div className="flex flex-1 overflow-hidden">
-                    {/* Left Sidebar - Components */}
-                    <div
-                        className={`flex w-64 flex-col border-r bg-white ${showPreview ? 'hidden' : ''}`}
-                    >
-                        <div className="border-b p-4 font-medium">Components</div>
-                        <ComponentLibrary />
+                /* Visual Editor Mode — Live iframe canvas */
+                <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+                    <div className="flex flex-1 overflow-hidden">
+                        {/* Left Sidebar - Components / Templates */}
+                        <div className="flex w-64 flex-col border-r bg-white">
+                            {/* Sidebar Tab Strip */}
+                            <div className="flex shrink-0 border-b">
+                                <button
+                                    onClick={() => setSidebarTab('components')}
+                                    className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${
+                                        sidebarTab === 'components'
+                                            ? 'border-b-2 border-blue-500 text-blue-600'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    <PuzzleIcon className="size-3.5" />
+                                    Components
+                                </button>
+                                <button
+                                    onClick={() => setSidebarTab('templates')}
+                                    className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${
+                                        sidebarTab === 'templates'
+                                            ? 'border-b-2 border-blue-500 text-blue-600'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    <Layers className="size-3.5" />
+                                    Templates
+                                </button>
+                            </div>
+                            {/* Sidebar Content */}
+                            <div className="flex flex-1 flex-col overflow-hidden">
+                                {sidebarTab === 'components' ? (
+                                    <ComponentLibrary />
+                                ) : (
+                                    <TemplateLibrary />
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Center - Live iframe preview (always visible, is a drop zone) */}
+                        <CanvasDropZone className="relative flex flex-1 flex-col overflow-hidden">
+                            <div className="flex w-full flex-1 overflow-hidden">
+                                <PreviewPanel
+                                    tagName={tagName}
+                                    onComponentSelected={handleComponentSelected}
+                                    selectedComponentId={selectedComponentId}
+                                />
+                            </div>
+                            {/* Bottom - Page Tabs for page management */}
+                            <div className="h-12 shrink-0 border-t bg-white">
+                                <PageTabs />
+                            </div>
+                        </CanvasDropZone>
+
+                        {/* Right Sidebar - Properties */}
+                        <div className="flex w-80 flex-col overflow-auto border-l bg-white">
+                            <div className="border-b p-4 font-medium">Properties</div>
+                            <PropertyPanel />
+                        </div>
                     </div>
 
-                    {/* Center - Canvas or Preview */}
-                    <div className="relative flex flex-1 flex-col overflow-hidden bg-white">
-                        {showPreview ? (
-                            <PreviewPanel tagName={tagName} />
-                        ) : (
-                            <>
-                                <div className="flex w-full flex-1 overflow-auto">
-                                    <PageCanvas />
-                                </div>
-                                {/* Bottom - Page Tabs */}
-                                <div className="h-12 shrink-0 border-t bg-white">
-                                    <PageTabs />
-                                </div>
-                            </>
-                        )}
-                    </div>
-
-                    {/* Right Sidebar - Properties */}
-                    <div
-                        className={`flex w-80 flex-col overflow-auto border-l bg-white ${showPreview ? 'hidden' : ''}`}
-                    >
-                        <div className="border-b p-4 font-medium">Properties</div>
-                        <PropertyPanel />
-                    </div>
-                </div>
+                    {/* Floating drag ghost */}
+                    <DragOverlay>
+                        {/* Content rendered by @dnd-kit automatically when dragging */}
+                        <div className="rounded border border-blue-400 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 shadow-lg">
+                            Drop to add component
+                        </div>
+                    </DragOverlay>
+                </DndContext>
             )}
         </div>
     );

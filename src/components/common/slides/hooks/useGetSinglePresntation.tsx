@@ -45,8 +45,10 @@ export const fetchPresentation = async (presentationId: string, setSlides: any, 
                     try {
                         if (questionData.auto_evaluation_json) {
                             const parsedEval = JSON.parse(questionData.auto_evaluation_json);
-                            if (parsedEval?.data?.correctOptionIds) {
-                                correctOptionIds = parsedEval.data.correctOptionIds;
+                            // Backend may serialize as snake_case (correct_option_ids) or camelCase (correctOptionIds)
+                            const ids = parsedEval?.data?.correctOptionIds || parsedEval?.data?.correct_option_ids;
+                            if (ids && Array.isArray(ids)) {
+                                correctOptionIds = ids;
                             }
                         }
                     } catch (e) {

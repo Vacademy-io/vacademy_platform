@@ -209,7 +209,7 @@ export const generatePaymentLink = (
     applicantId: string,
     paymentOptionId: string
 ): string => {
-    return `http://localhost:8100/admission/payment/${instituteId}/${applicantId}/${paymentOptionId}`;
+    return `https://learner.vacademy.io/admission/payment/${instituteId}/${applicantId}/${paymentOptionId}`;
 };
 
 /**

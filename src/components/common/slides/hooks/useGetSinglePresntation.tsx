@@ -45,6 +45,7 @@ export const fetchPresentation = async (presentationId: string, setSlides: any, 
                         id: slide.id,
                         slide_order: slide.slide_order,
                         type: slideType,
+                        source_id: slide.content, // preserve so savePresentation can skip re-upload
                         questionId: questionData.id,
                         elements: {
                             questionName: questionData.text?.content || '',
@@ -78,6 +79,7 @@ export const fetchPresentation = async (presentationId: string, setSlides: any, 
                         id: slide.id,
                         slide_order: slide.slide_order,
                         type: slideDataFromS3.type || SlideTypeEnum.Excalidraw,
+                        source_id: slide.content, // preserve so savePresentation can skip re-upload
                     };
 
                     if (!Array.isArray(slideContent.elements)) slideContent.elements = [];

@@ -129,6 +129,7 @@ interface SlideStore {
     slides: Slide[];
     currentSlideId: string | undefined;
     editMode: boolean;
+    dirtySlideIds: Set<string>; // IDs of slides whose content has changed since last save
     setSlides: (slides: Slide[], skipSave?: boolean) => void;
     setCurrentSlideId: (id: string | undefined) => void;
     setEditMode: (editMode: boolean) => void;
@@ -147,6 +148,8 @@ interface SlideStore {
     updateSlideIds: (
         idUpdates: { tempId: string; newId: string; newQuestionId?: string; newOptions?: { tempOptionId: string, newOptionId: string }[] }[]
     ) => void;
+    markAllDirty: () => void; // Mark every slide as dirty (e.g. on first create)
+    clearDirtySlides: () => void; // Clear dirty set after a successful save
     // --- State and actions for recommendations ---
     recommendationBatches: RecommendationBatch[];
     addRecommendationBatch: (batch: RecommendationBatch) => void;
@@ -179,6 +182,7 @@ export const useSlideStore = create<SlideStore>((set, get) => {
         slides: initialSlides,
         currentSlideId: initialSlides[0]?.id,
         editMode: true,
+        dirtySlideIds: new Set<string>(),
         recommendationBatches: [],
 
         initializeNewPresentationState: () => {
@@ -281,12 +285,6 @@ export const useSlideStore = create<SlideStore>((set, get) => {
 
                 for (const key of meaningfulProps) {
                     if (!isEqual(oldStoredAppState[key], newAppStateForStore[key])) {
-                        console.log(
-                            `[useSlideStore] AppState change detected on key: "${key}". Old:`,
-                            oldStoredAppState[key],
-                            'New:',
-                            newAppStateForStore[key]
-                        );
                         appStateActuallyChanged = true;
                         break;
                     }
@@ -296,18 +294,17 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                 if (!appStateActuallyChanged) {
                     const scrollThreshold = 50;
                     const zoomThreshold = 0.1;
-                    
+
                     const oldScroll = { x: oldStoredAppState.scrollX || 0, y: oldStoredAppState.scrollY || 0 };
                     const newScroll = { x: newAppStateForStore.scrollX || 0, y: newAppStateForStore.scrollY || 0 };
                     const oldZoom = oldStoredAppState.zoom?.value || 1;
                     const newZoom = newAppStateForStore.zoom?.value || 1;
-                    
-                    const scrollChanged = Math.abs(oldScroll.x - newScroll.x) > scrollThreshold || 
+
+                    const scrollChanged = Math.abs(oldScroll.x - newScroll.x) > scrollThreshold ||
                                          Math.abs(oldScroll.y - newScroll.y) > scrollThreshold;
                     const zoomChanged = Math.abs(oldZoom - newZoom) > zoomThreshold;
-                    
+
                     if (scrollChanged || zoomChanged) {
-                        console.log(`[useSlideStore] Significant scroll/zoom change detected`);
                         appStateActuallyChanged = true;
                     }
                 }
@@ -332,7 +329,6 @@ export const useSlideStore = create<SlideStore>((set, get) => {
 
                 // If nothing meaningful changed, return the original state to avoid unnecessary re-renders/saves
                 if (!hasMeaningfulChange) {
-                    console.log('[useSlideStore] No meaningful changes detected. Skipping update.');
                     return state;
                 }
 
@@ -350,13 +346,14 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                 if (typeof window !== 'undefined') {
                     localStorage.setItem(
                         'slides',
-                        JSON.stringify(newSlidesArray.map(serializeSlideForStorage)) // Ensure serializeSlideForStorage handles the new appState structure
+                        JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
                     );
                 }
-                console.log(
-                    '[useSlideStore] State updated successfully with new view/content state.'
-                );
-                return { slides: newSlidesArray };
+
+                // Mark this slide as dirty so savePresentation knows to re-upload it
+                const newDirtyIds = new Set(state.dirtySlideIds);
+                newDirtyIds.add(id);
+                return { slides: newSlidesArray, dirtySlideIds: newDirtyIds };
             });
         },
 
@@ -383,7 +380,11 @@ export const useSlideStore = create<SlideStore>((set, get) => {
             const currentSlides = get().slides;
             const newSlides = [...currentSlides, newSlide];
             get().setSlides(newSlides); // This handles saving to localStorage
-            set({ currentSlideId: newSlide.id }); // Set the new slide as current
+
+            // New slides must always be uploaded — mark dirty immediately
+            const newDirtyIds = new Set(get().dirtySlideIds);
+            newDirtyIds.add(newSlide.id);
+            set({ currentSlideId: newSlide.id, dirtySlideIds: newDirtyIds });
         },
 
         deleteSlide: (id) => {
@@ -457,15 +458,16 @@ export const useSlideStore = create<SlideStore>((set, get) => {
                         JSON.stringify(newSlidesArray.map(serializeSlideForStorage))
                     );
                 }
-                return { slides: newSlidesArray };
+
+                const newDirtyIds = new Set(state.dirtySlideIds);
+                newDirtyIds.add(id);
+                return { slides: newSlidesArray, dirtySlideIds: newDirtyIds };
             }),
             
         updateSlideIds: (idUpdates) => set((state) => {
-            console.log("Updating slide IDs in store:", idUpdates);
             const newSlides = state.slides.map(slide => {
                 const update = idUpdates.find(u => u.tempId === slide.id);
                 if (update) {
-                    console.log(`Found match: tempId=${update.tempId}, newId=${update.newId}. Updating slide.`);
                     const updatedSlide = { ...slide, id: update.newId };
 
                     // If it's a quiz/feedback slide, we might need to update question and option IDs
@@ -505,11 +507,19 @@ export const useSlideStore = create<SlideStore>((set, get) => {
             return { slides: newSlides, currentSlideId: newCurrentSlideId };
         }),
 
+        markAllDirty: () => {
+            const allIds = new Set(get().slides.map(s => s.id));
+            set({ dirtySlideIds: allIds });
+        },
+
+        clearDirtySlides: () => {
+            set({ dirtySlideIds: new Set<string>() });
+        },
+
         addRecommendationBatch: (batch: RecommendationBatch) => {
             set((state) => ({
                 recommendationBatches: [...state.recommendationBatches, batch]
             }));
-            console.log('[useSlideStore] New recommendation batch added:', batch);
         },
 
         removeRecommendation: (timestamp: string, slideId: string) => {
@@ -526,12 +536,10 @@ export const useSlideStore = create<SlideStore>((set, get) => {
 
                 return { recommendationBatches: newBatches };
             });
-             console.log(`[useSlideStore] Removed recommendation slide ${slideId} from batch ${timestamp}.`);
-        },
-        
+            },
+
         clearRecommendations: () => {
             set({ recommendationBatches: [] });
-            console.log('[useSlideStore] All recommendations cleared.');
         },
     };
 });

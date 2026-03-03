@@ -685,6 +685,8 @@ export const useContentGeneration = (
                                                 s.slideType !== 'assessment' &&
                                                 s.slideType !== 'video' &&
                                                 s.slideType !== 'ai-video' &&
+                                                s.slideType !== 'ai-slides' &&
+                                                s.slideType !== 'ai-storybook' &&
                                                 s.slideType !== 'video-code' &&
                                                 s.slideType !== 'ai-video-code')
                                     );
@@ -708,6 +710,8 @@ export const useContentGeneration = (
                                                 s.slideType === 'assessment' ||
                                                 s.slideType === 'video' ||
                                                 s.slideType === 'ai-video' ||
+                                                s.slideType === 'ai-slides' ||
+                                                s.slideType === 'ai-storybook' ||
                                                 s.slideType === 'video-code' ||
                                                 s.slideType === 'ai-video-code'
                                         ).length;

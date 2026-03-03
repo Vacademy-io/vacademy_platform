@@ -858,13 +858,21 @@ public class ApplicantService {
                                 }
                         } else {
                                 // Create NEW Audience Response
-                                if ("ADMISSION".equals(workflowType)) {
-                                        // ADMISSION path: no Audience campaign required — create a direct response
+                                // For ADMISSION workflow, or for direct INSTITUTE-sourced applications
+                                // where no campaign is configured, create the response without a campaign.
+                                boolean isDirectApplication = "ADMISSION".equals(workflowType)
+                                                || "INSTITUTE".equals(request.getSource());
+
+                                if (isDirectApplication) {
+                                        // Direct path: no Audience campaign required
+                                        String sourceType = "ADMISSION".equals(workflowType)
+                                                        ? "MANUAL_ADMISSION"
+                                                        : "DIRECT_APPLICATION";
                                         audienceResponse = AudienceResponse.builder()
-                                                        .audienceId(null) // No campaign for manual admission
+                                                        .audienceId(null) // No campaign needed
                                                         .userId(parentUser.getId())
                                                         .studentUserId(childUser != null ? childUser.getId() : null)
-                                                        .sourceType("MANUAL_ADMISSION")
+                                                        .sourceType(sourceType)
                                                         .sourceId(request.getSourceId())
                                                         .enquiryId(null)
                                                         .parentName(getFormDataString(request.getFormData(),
@@ -873,7 +881,9 @@ public class ApplicantService {
                                                                         "parent_email"))
                                                         .parentMobile(getFormDataString(request.getFormData(),
                                                                         "parent_phone"))
-                                                        .overallStatus("ADMISSION")
+                                                        .overallStatus("ADMISSION".equals(workflowType)
+                                                                        ? "ADMISSION"
+                                                                        : "APPLICATION")
                                                         .build();
                                 } else {
                                         Audience audience = audienceRepository
@@ -1568,7 +1578,8 @@ public class ApplicantService {
 
         /**
          * Admin manual move to next stage
-         * Updates applicant, creates new applicant_stage entry, and updates audience_response if workflow type completed
+         * Updates applicant, creates new applicant_stage entry, and updates
+         * audience_response if workflow type completed
          */
         @Transactional
         public void moveApplicantToNextStage(String applicantId) {
@@ -1609,7 +1620,8 @@ public class ApplicantService {
                 applicant.setApplicationStageStatus("INITIATED");
                 applicantRepository.save(applicant);
 
-                // Step 5: UPDATE current applicant_stage (mark COMPLETED) and CREATE new applicant_stage row
+                // Step 5: UPDATE current applicant_stage (mark COMPLETED) and CREATE new
+                // applicant_stage row
                 Optional<ApplicantStage> currentApplicantStageOpt = applicantStageRepository
                                 .findTopByApplicantIdOrderByCreatedAtDesc(applicantId);
 
@@ -1633,7 +1645,8 @@ public class ApplicantService {
                                 .build();
                 applicantStageRepository.save(newApplicantStage);
 
-                // Step 6: UPDATE audience_response if current stage had is_last = 1 (workflow type completed)
+                // Step 6: UPDATE audience_response if current stage had is_last = 1 (workflow
+                // type completed)
                 Optional<AudienceResponse> audienceResponseOpt = audienceResponseRepository
                                 .findByApplicantId(applicantId);
 
@@ -1643,7 +1656,8 @@ public class ApplicantService {
                         if (Boolean.TRUE.equals(currentStageDef.getIsLast())) {
                                 audienceResponse.setOverallStatus("CHANGED");
                                 audienceResponseRepository.save(audienceResponse);
-                                logger.info("Updated audience_response.overall_status to CHANGED for applicant {} (workflow type completed)", applicantId);
+                                logger.info("Updated audience_response.overall_status to CHANGED for applicant {} (workflow type completed)",
+                                                applicantId);
                         }
                 }
 

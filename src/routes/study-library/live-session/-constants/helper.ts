@@ -153,6 +153,79 @@ function normalizeEndDate(endDate: string | undefined): string | null {
     return endDate;
 }
 
+type SessionInput = {
+    id?: string;
+    startTime?: string;
+    durationHours?: string;
+    durationMinutes?: string;
+    link?: string;
+    countAttendanceDaily?: boolean;
+    thumbnailFileId?: string;
+};
+
+function buildScheduleBase(
+    session: SessionInput,
+    dayBlock: WeeklyClass,
+    buttonConfig?: LearnerButtonConfig | null
+): Omit<ScheduleDTO, 'id'> {
+    const duration = Number(session.durationHours) * 60 + Number(session.durationMinutes);
+    return {
+        day: dayBlock.day,
+        start_time: normalizeStartTime(session.startTime),
+        duration: String(duration),
+        link: session.link || '',
+        thumbnail_file_id: session.thumbnailFileId || '',
+        daily_attendance: session.countAttendanceDaily || false,
+        default_class_link: dayBlock.default_class_link || null,
+        default_class_name: dayBlock.default_class_name || null,
+        learner_button_config: dayBlock.learner_button_config || buttonConfig || null,
+    };
+}
+
+function processSession(
+    session: SessionInput,
+    dayBlock: WeeklyClass,
+    topLevelButtonConfig: LearnerButtonConfig | null | undefined,
+    originalScheduleMap: Map<string, WeeklyClass>,
+    added_schedules: ScheduleDTO[],
+    updated_schedules: ScheduleDTO[]
+): void {
+    const normalizedTime = normalizeStartTime(session.startTime);
+    const duration = Number(session.durationHours) * 60 + Number(session.durationMinutes);
+
+    // Skip incomplete sessions: must have a valid start time and non-zero duration
+    if (!normalizedTime || isNaN(duration) || duration <= 0) {
+        console.warn(
+            `[processSession] Skipping session on ${dayBlock.day}: ` +
+                `startTime="${session.startTime}", ` +
+                `durationHours="${session.durationHours}", ` +
+                `durationMinutes="${session.durationMinutes}", ` +
+                `duration=${duration}, id=${session.id || '(new)'}. ` +
+                `Reason: ${!normalizedTime ? 'empty startTime' : `invalid duration (${duration})`}`
+        );
+        return;
+    }
+
+    if (session.id) {
+        // Session ID may be comma-separated (one per weekly occurrence)
+        // Pass topLevelButtonConfig so day-level falls back to top-level (same as original)
+        const base = buildScheduleBase(session, dayBlock, topLevelButtonConfig);
+        const sessionIds = session.id.split(',').filter((id) => id.trim());
+        sessionIds.forEach((sessionId) => {
+            updated_schedules.push({ id: sessionId.trim(), ...base });
+            originalScheduleMap.delete(sessionId.trim());
+        });
+        // Template entry without ID so backend generates new sessions for extended date ranges
+        added_schedules.push({ id: undefined, ...base });
+    } else {
+        // New session – fall back to top-level button config when day level is absent
+        added_schedules.push({
+            id: undefined,
+            ...buildScheduleBase(session, dayBlock, topLevelButtonConfig),
+        });
+    }
+}
+
 export function transformFormToDTOStep1(
     form: SessionFormInput,
     instituteId: string,
@@ -211,105 +284,22 @@ export function transformFormToDTOStep1(
     if (meetingType === RecurringType.WEEKLY) {
         recurringSchedule.forEach((dayBlock: WeeklyClass) => {
             if (!dayBlock.isSelect) return;
-
-            dayBlock.sessions.forEach(
-                (session: {
-                    id?: string;
-                    startTime?: string;
-                    durationHours?: string;
-                    durationMinutes?: string;
-                    link?: string;
-                    countAttendanceDaily?: boolean;
-                    thumbnailFileId?: string;
-                }) => {
-                    const duration =
-                        Number(session.durationHours) * 60 + Number(session.durationMinutes);
-
-                    // Skip incomplete sessions: must have a valid start time and non-zero duration
-                    const normalizedTime = normalizeStartTime(session.startTime);
-                    if (!normalizedTime || isNaN(duration) || duration <= 0) {
-                        console.warn(
-                            `[transformFormToDTOStep1] Skipping session on ${dayBlock.day}: ` +
-                            `startTime="${session.startTime}", ` +
-                            `durationHours="${session.durationHours}", ` +
-                            `durationMinutes="${session.durationMinutes}", ` +
-                            `duration=${duration}, id=${session.id || '(new)'}. ` +
-                            `Reason: ${!normalizedTime ? 'empty startTime' : `invalid duration (${duration})`}`
-                        );
-                        return;
-                    }
-
-                    // Check if session has an ID - if yes, it's an update; if no, it's new
-                    if (session.id) {
-                        // Session ID might be comma-separated string containing multiple IDs
-                        // (one for each week occurrence of the same time slot)
-                        const sessionIds = session.id.split(',').filter((id) => id.trim());
-
-                        // Create an update entry for EACH ID
-                        sessionIds.forEach((sessionId) => {
-                            const baseSchedule: ScheduleDTO = {
-                                id: sessionId.trim(),
-                                day: dayBlock.day,
-                                start_time: normalizeStartTime(session.startTime),
-                                duration: String(duration),
-                                link: session.link || '',
-                                thumbnail_file_id: session.thumbnailFileId || '',
-                                daily_attendance: session.countAttendanceDaily || false,
-                                default_class_link: dayBlock.default_class_link || null, // From day level
-                                default_class_name: dayBlock.default_class_name || null, // From day level
-                                learner_button_config: dayBlock.learner_button_config || learner_button_config || null, // Day level, fallback to top-level
-                            };
-
-                            updated_schedules.push(baseSchedule);
-
-                            // Remove from originalScheduleMap to track processed sessions
-                            if (originalScheduleMap.has(sessionId.trim())) {
-                                originalScheduleMap.delete(sessionId.trim());
-                            }
-                        });
-
-                        // Also add a template entry (without ID) to added_schedules
-                        // so the backend can generate new sessions for extended date ranges
-                        added_schedules.push({
-                            id: undefined,
-                            day: dayBlock.day,
-                            start_time: normalizeStartTime(session.startTime),
-                            duration: String(duration),
-                            link: session.link || '',
-                            thumbnail_file_id: session.thumbnailFileId || '',
-                            daily_attendance: session.countAttendanceDaily || false,
-                            default_class_link: dayBlock.default_class_link || null,
-                            default_class_name: dayBlock.default_class_name || null,
-                            learner_button_config: dayBlock.learner_button_config || learner_button_config || null,
-                        });
-                    } else {
-                        // New session without ID
-                        const baseSchedule: ScheduleDTO = {
-                            id: undefined,
-                            day: dayBlock.day,
-                            start_time: normalizeStartTime(session.startTime),
-                            duration: String(duration),
-                            link: session.link || '',
-                            thumbnail_file_id: session.thumbnailFileId || '',
-                            daily_attendance: session.countAttendanceDaily || false,
-                            default_class_link: dayBlock.default_class_link || null, // From day level
-                            default_class_name: dayBlock.default_class_name || null, // From day level
-                            learner_button_config: dayBlock.learner_button_config || learner_button_config || null, // Day level, fallback to top-level
-                        };
-                        added_schedules.push(baseSchedule);
-                    }
-                }
+            dayBlock.sessions.forEach((session) =>
+                processSession(
+                    session,
+                    dayBlock,
+                    learner_button_config,
+                    originalScheduleMap,
+                    added_schedules,
+                    updated_schedules
+                )
             );
         });
+    }
 
-        // Anything left in originalScheduleMap is considered deleted
-        for (const id of originalScheduleMap.keys()) {
-            deleted_schedule_ids.push(id);
-        }
-    } else {
-        for (const id of originalScheduleMap.keys()) {
-            deleted_schedule_ids.push(id);
-        }
+    // Anything left in originalScheduleMap is considered deleted
+    for (const id of originalScheduleMap.keys()) {
+        deleted_schedule_ids.push(id);
     }
 
     return {

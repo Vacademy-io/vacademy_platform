@@ -784,6 +784,101 @@ export default function ScheduleStep1() {
         return false;
     };
 
+    /** Uploads the core session files (background music + cover thumbnail).
+     *  Returns the resulting file IDs, or null if an upload fails. */
+    const uploadCoreFiles = async (): Promise<{
+        musicFileId: string | undefined;
+        thumbnailFileId: string | undefined;
+    } | null> => {
+        let musicFileId = existingMusicId || undefined;
+        let thumbnailFileId = existingThumbnailId || undefined;
+
+        if (selectedMusicFile) {
+            try {
+                musicFileId = await UploadFileInS3(selectedMusicFile, () => {}, 'your-user-id');
+            } catch (error) {
+                console.error('Error uploading music file:', error);
+                toast.error('Failed to upload background music. Please try again.');
+                return null;
+            }
+        }
+        if (selectedFile) {
+            try {
+                thumbnailFileId = await UploadFileInS3(selectedFile, () => {}, 'your-user-id');
+            } catch (error) {
+                console.error('Error uploading thumbnail:', error);
+                toast.error('Failed to upload thumbnail image. Please try again.');
+                return null;
+            }
+        }
+        return { musicFileId, thumbnailFileId };
+    };
+
+    /** Merges the latest live form state into the submitted data so that
+     *  dynamically added sessions (via form.setValue) are never lost. */
+    const buildMergedFormData = (
+        data: z.infer<typeof sessionFormSchema>
+    ): z.infer<typeof sessionFormSchema> => {
+        const updatedData = { ...data };
+        // CRITICAL FIX: React Hook Form's handleSubmit resolver may not always
+        // include newly-added sessions in its output. Reading from form.getValues()
+        // guarantees all dynamic sessions are captured.
+        const latestRecurringSchedule = form.getValues('recurringSchedule');
+        if (latestRecurringSchedule) {
+            updatedData.recurringSchedule = latestRecurringSchedule.map((latestDay, dayIdx) => {
+                const resolvedDay = data.recurringSchedule?.[dayIdx];
+                if (resolvedDay) {
+                    return { ...resolvedDay, sessions: latestDay.sessions };
+                }
+                return latestDay;
+            });
+        }
+        return updatedData;
+    };
+
+    /** Uploads per-session thumbnails for all recurring schedule sessions in-place.
+     *  Returns false (and shows a toast) if any upload fails. */
+    const uploadRecurringSessionThumbnails = async (
+        updatedData: z.infer<typeof sessionFormSchema>
+    ): Promise<boolean> => {
+        if (!updatedData.recurringSchedule) return true;
+
+        for (let dayIndex = 0; dayIndex < updatedData.recurringSchedule.length; dayIndex++) {
+            const day = updatedData.recurringSchedule[dayIndex];
+            if (!day?.sessions) continue;
+
+            for (let sessionIndex = 0; sessionIndex < day.sessions.length; sessionIndex++) {
+                const sessionThumbnail = getSessionThumbnail(dayIndex, sessionIndex);
+                if (!sessionThumbnail) continue;
+
+                try {
+                    const sessionThumbnailId = await UploadFileInS3(
+                        sessionThumbnail,
+                        () => {},
+                        'your-user-id'
+                    );
+                    const target =
+                        updatedData.recurringSchedule?.[dayIndex]?.sessions?.[sessionIndex];
+                    if (target) {
+                        updatedData.recurringSchedule[dayIndex]!.sessions![
+                            sessionIndex
+                        ]!.thumbnailFileId = sessionThumbnailId;
+                    }
+                } catch (error) {
+                    console.error(
+                        `Error uploading thumbnail for ${day.day} session ${sessionIndex + 1}:`,
+                        error
+                    );
+                    toast.error(
+                        `Failed to upload thumbnail for ${day.day} session ${sessionIndex + 1}`
+                    );
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
     const executeSubmission = async (
         data: z.infer<typeof sessionFormSchema>,
         updateRecurrenceScope: 'ONLY_THIS' | 'ALL_FUTURE' | 'CURRENT_DAY_ALL_SESSIONS' | 'ALL_FUTURE_ALL_SESSIONS' | null = null
@@ -791,120 +886,33 @@ export default function ScheduleStep1() {
         if (isSubmitting) return; // Prevent multiple submissions
 
         setIsSubmitting(true);
-        let musicFileId = existingMusicId || undefined;
-        let thumbnailFileId = existingThumbnailId || undefined;
-
         try {
-            // Override with new uploads if files are selected
-            if (selectedMusicFile) {
-                try {
-                    musicFileId = await UploadFileInS3(selectedMusicFile, () => {}, 'your-user-id');
-                } catch (error) {
-                    console.error('Error uploading music file:', error);
-                    toast.error('Failed to upload background music. Please try again.');
-                    setIsSubmitting(false);
-                    return;
-                }
+            const uploadedFiles = await uploadCoreFiles();
+            if (!uploadedFiles) {
+                setIsSubmitting(false);
+                return;
             }
-            if (selectedFile) {
-                try {
-                    thumbnailFileId = await UploadFileInS3(selectedFile, () => {}, 'your-user-id');
-                } catch (error) {
-                    console.error('Error uploading thumbnail:', error);
-                    toast.error('Failed to upload thumbnail image. Please try again.');
-                    setIsSubmitting(false);
-                    return;
-                }
+
+            const updatedData = buildMergedFormData(data);
+
+            const thumbnailsUploaded = await uploadRecurringSessionThumbnails(updatedData);
+            if (!thumbnailsUploaded) {
+                setIsSubmitting(false);
+                return;
             }
-        } catch (error) {
-            console.error('Error uploading files:', error);
-            toast.error('Failed to upload files. Please try again.');
-            setIsSubmitting(false);
-            return;
-        }
 
-        // Upload session thumbnails and update form data
-        const updatedData = { ...data };
+            // Session IDs already in the form data are sufficient for the backend
+            // to determine updates vs new additions — pass an empty originalSchedules array.
+            const body = transformFormToDTOStep1(
+                updatedData,
+                INSTITUTE_ID,
+                [],
+                uploadedFiles.musicFileId,
+                uploadedFiles.thumbnailFileId,
+                instituteDetails?.institute_logo_file_id,
+                updateRecurrenceScope
+            );
 
-        // CRITICAL FIX: Merge the latest recurringSchedule from the live form state.
-        // When sessions are dynamically added via form.setValue (in addSessionToDay),
-        // React Hook Form's handleSubmit resolver may not always include the newly
-        // added sessions in its output. By reading directly from form.getValues(),
-        // we ensure all dynamically added sessions are captured in the payload.
-        const latestRecurringSchedule = form.getValues('recurringSchedule');
-        if (latestRecurringSchedule) {
-            updatedData.recurringSchedule = latestRecurringSchedule.map((latestDay, dayIdx) => {
-                const resolvedDay = data.recurringSchedule?.[dayIdx];
-                // Always use latestDay.sessions from form.getValues() to ensure
-                // dynamically added sessions are always included in the payload.
-                // The resolver may not always capture newly added sessions,
-                // and even when it does, the raw form state is the most reliable
-                // source for session data (including IDs and user edits).
-                if (resolvedDay) {
-                    return { ...resolvedDay, sessions: latestDay.sessions };
-                }
-                return latestDay;
-            });
-        }
-
-        if (updatedData.recurringSchedule) {
-            for (let dayIndex = 0; dayIndex < updatedData.recurringSchedule.length; dayIndex++) {
-                const day = updatedData.recurringSchedule[dayIndex];
-                if (day?.sessions) {
-                    for (let sessionIndex = 0; sessionIndex < day.sessions.length; sessionIndex++) {
-                        const sessionThumbnail = getSessionThumbnail(dayIndex, sessionIndex);
-                        if (sessionThumbnail) {
-                            try {
-                                const sessionThumbnailId = await UploadFileInS3(
-                                    sessionThumbnail,
-                                    () => {},
-                                    'your-user-id'
-                                );
-                                if (
-                                    updatedData.recurringSchedule?.[dayIndex]?.sessions?.[
-                                        sessionIndex
-                                    ]
-                                ) {
-                                    updatedData.recurringSchedule[dayIndex]!.sessions![
-                                        sessionIndex
-                                    ]!.thumbnailFileId = sessionThumbnailId;
-                                }
-                            } catch (error) {
-                                console.error(
-                                    `Error uploading thumbnail for ${day.day} session ${
-                                        sessionIndex + 1
-                                    }:`,
-                                    error
-                                );
-                                toast.error(
-                                    `Failed to upload thumbnail for ${day.day} session ${
-                                        sessionIndex + 1
-                                    }`
-                                );
-                                setIsSubmitting(false);
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Transform function will handle added/updated/deleted schedules
-        // by comparing form data (updatedData) with original schedules
-        // We pass empty array for originalSchedules - the session IDs in the form data
-        // will be used by the backend to determine updates vs additions
-        const body = transformFormToDTOStep1(
-            updatedData,
-            INSTITUTE_ID,
-            [], // Empty array - session IDs in form data are sufficient for backend
-            musicFileId,
-            thumbnailFileId,
-            instituteDetails?.institute_logo_file_id,
-            updateRecurrenceScope
-        );
-
-        try {
             const response = await createLiveSessionStep1(body);
             setSessionId(response.id);
             setStep1Data(data);

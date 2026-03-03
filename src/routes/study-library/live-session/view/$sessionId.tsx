@@ -173,7 +173,7 @@ function ViewLiveSession() {
         const grouped = new Map<string, GroupedSchedule['sessions']>();
 
         sessionData.schedule.added_schedules.forEach((schedule) => {
-            const date = (schedule as { meetingDate?: string }).meetingDate || '';
+            const date = schedule.meetingDate || '';
             if (!date) return;
 
             if (!grouped.has(date)) {
@@ -628,27 +628,27 @@ function ViewLiveSession() {
                                                                                             </div>
                                                                                         )}
                                                                                         {learnerButton && learnerButton.visible && (
-                                                                                            <div className="flex items-start gap-2 pt-1">
+                                                                                                <div className="flex items-start gap-2 pt-1">
                                                                                                 <svg xmlns="http://www.w3.org/2000/svg" className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                                                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                                                                                                </svg>
-                                                                                                <div className="flex-1">
+                                                                                                    </svg>
+                                                                                                    <div className="flex-1">
                                                                                                     <span className="font-medium text-gray-700">Custom Button: </span>
-                                                                                                    <span
-                                                                                                        style={{
+                                                                                                        <span
+                                                                                                            style={{
                                                                                                             backgroundColor: learnerButton.background_color,
-                                                                                                            color: learnerButton.text_color,
-                                                                                                        }}
-                                                                                                        className="inline-block rounded-md px-2.5 py-1 text-xs font-semibold shadow-sm"
-                                                                                                    >
+                                                                                                                color: learnerButton.text_color,
+                                                                                                            }}
+                                                                                                            className="inline-block rounded-md px-2.5 py-1 text-xs font-semibold shadow-sm"
+                                                                                                        >
                                                                                                         {learnerButton.text}
-                                                                                                    </span>
+                                                                                                        </span>
                                                                                                     <span className="ml-2 text-xs text-gray-600 break-all">
                                                                                                         → {learnerButton.url}
-                                                                                                    </span>
+                                                                                                        </span>
+                                                                                                    </div>
                                                                                                 </div>
-                                                                                            </div>
-                                                                                        )}
+                                                                                            )}
                                                                                     </div>
                                                                                 </div>
                                                                             );
@@ -658,31 +658,31 @@ function ViewLiveSession() {
 
                                                                     <div className="space-y-2">
                                                                         {daySchedule.sessions.map((session) => (
-                                                                            <div
-                                                                                key={session.id}
-                                                                                className="rounded-md border bg-muted/30 p-3"
-                                                                            >
-                                                                                {/* Session Time and Duration */}
-                                                                                <div className="flex items-center justify-between">
-                                                                                    <div className="flex items-center gap-3">
-                                                                                        <div className="flex items-center gap-2 text-sm">
+                                                                                <div
+                                                                                    key={session.id}
+                                                                                    className="rounded-md border bg-muted/30 p-3"
+                                                                                >
+                                                                                    {/* Session Time and Duration */}
+                                                                                    <div className="flex items-center justify-between">
+                                                                                        <div className="flex items-center gap-3">
+                                                                                            <div className="flex items-center gap-2 text-sm">
                                                                                             <Timer className="size-4 text-primary" />
                                                                                             <span className="font-medium">{session.time}</span>
-                                                                                        </div>
-                                                                                        <span className="text-xs text-muted-foreground">
+                                                                                            </div>
+                                                                                            <span className="text-xs text-muted-foreground">
                                                                                             {session.duration} mins
-                                                                                        </span>
-                                                                                    </div>
-                                                                                    <a
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <a
                                                                                         href={session.link}
-                                                                                        target="_blank"
-                                                                                        rel="noopener noreferrer"
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
                                                                                         className="text-xs font-medium text-primary hover:underline"
-                                                                                    >
-                                                                                        Join →
-                                                                                    </a>
+                                                                                        >
+                                                                                            Join →
+                                                                                        </a>
+                                                                                    </div>
                                                                                 </div>
-                                                                            </div>
                                                                         ))}
                                                                     </div>
                                                                 </div>
@@ -693,73 +693,85 @@ function ViewLiveSession() {
 
                                             {groupedSchedules.length > itemsPerPage && (() => {
                                                 const totalPages = Math.ceil(groupedSchedules.length / itemsPerPage);
-                                                // Build truncated page number list: 1 ... (current-1) current (current+1) ... last
+                                                    // Build truncated page number list: 1 ... (current-1) current (current+1) ... last
                                                 const getPageNumbers = (): (number | 'ellipsis')[] => {
-                                                    const pages: (number | 'ellipsis')[] = [];
-                                                    if (totalPages <= 7) {
+                                                        const pages: (number | 'ellipsis')[] = [];
+                                                        if (totalPages <= 7) {
                                                         for (let i = 1; i <= totalPages; i++) pages.push(i);
-                                                        return pages;
-                                                    }
-                                                    // Always show first page
-                                                    pages.push(1);
-                                                    if (currentPage > 3) pages.push('ellipsis');
-                                                    // Pages around current
-                                                    const start = Math.max(2, currentPage - 1);
+                                                            return pages;
+                                                        }
+                                                        // Always show first page
+                                                        pages.push(1);
+                                                        if (currentPage > 3) pages.push('ellipsis');
+                                                        // Pages around current
+                                                        const start = Math.max(2, currentPage - 1);
                                                     const end = Math.min(totalPages - 1, currentPage + 1);
                                                     for (let i = start; i <= end; i++) pages.push(i);
                                                     if (currentPage < totalPages - 2) pages.push('ellipsis');
-                                                    // Always show last page
-                                                    pages.push(totalPages);
-                                                    return pages;
-                                                };
-                                                return (
-                                                    <div className="mt-4 flex justify-center">
-                                                        <Pagination>
-                                                            <PaginationContent>
-                                                                <PaginationItem>
-                                                                    <PaginationPrevious
-                                                                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                                                        className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                                                                    />
-                                                                </PaginationItem>
+                                                        // Always show last page
+                                                        pages.push(totalPages);
+                                                        return pages;
+                                                    };
+                                                    return (
+                                                        <div className="mt-4 flex justify-center">
+                                                            <Pagination>
+                                                                <PaginationContent>
+                                                                    <PaginationItem>
+                                                                        <PaginationPrevious
+                                                                            onClick={() =>
+                                                                                setCurrentPage(
+                                                                                    (p) =>
+                                                                                        Math.max(
+                                                                                            1,
+                                                                                            p - 1
+                                                                                        )
+                                                                                )
+                                                                            }
+                                                                            className={
+                                                                                currentPage === 1
+                                                                                    ? 'pointer-events-none opacity-50'
+                                                                                    : 'cursor-pointer'
+                                                                            }
+                                                                        />
+                                                                    </PaginationItem>
 
                                                                 {getPageNumbers().map((page, idx) =>
-                                                                    page === 'ellipsis' ? (
+                                                                            page === 'ellipsis' ? (
                                                                         <PaginationItem key={`ellipsis-${idx}`}>
-                                                                            <PaginationEllipsis />
-                                                                        </PaginationItem>
-                                                                    ) : (
+                                                                                    <PaginationEllipsis />
+                                                                                </PaginationItem>
+                                                                            ) : (
                                                                         <PaginationItem key={page}>
-                                                                            <PaginationLink
+                                                                                    <PaginationLink
                                                                                 isActive={currentPage === page}
                                                                                 onClick={() => setCurrentPage(page)}
-                                                                                className="cursor-pointer"
-                                                                            >
-                                                                                {page}
-                                                                            </PaginationLink>
-                                                                        </PaginationItem>
-                                                                    )
-                                                                )}
+                                                                                        className="cursor-pointer"
+                                                                                    >
+                                                                                        {page}
+                                                                                    </PaginationLink>
+                                                                                </PaginationItem>
+                                                                            )
+                                                                    )}
 
-                                                                <PaginationItem>
-                                                                    <PaginationNext
-                                                                        onClick={() =>
+                                                                    <PaginationItem>
+                                                                        <PaginationNext
+                                                                            onClick={() =>
                                                                             setCurrentPage((p) =>
                                                                                 Math.min(totalPages, p + 1)
-                                                                            )
-                                                                        }
-                                                                        className={
+                                                                                )
+                                                                            }
+                                                                            className={
                                                                             currentPage === totalPages
-                                                                                ? 'pointer-events-none opacity-50'
-                                                                                : 'cursor-pointer'
-                                                                        }
-                                                                    />
-                                                                </PaginationItem>
-                                                            </PaginationContent>
-                                                        </Pagination>
-                                                    </div>
-                                                );
-                                            })()}
+                                                                                    ? 'pointer-events-none opacity-50'
+                                                                                    : 'cursor-pointer'
+                                                                            }
+                                                                        />
+                                                                    </PaginationItem>
+                                                                </PaginationContent>
+                                                            </Pagination>
+                                                        </div>
+                                                    );
+                                                })()}
                                         </>
                                     ) : (
                                         <SessionCalendarView schedules={groupedSchedules} />
@@ -907,21 +919,21 @@ function ViewLiveSession() {
 
                         {/* Associatd Batches */}
                         {schedule.package_session_ids && schedule.package_session_ids.length > 0 && (
-                            <Card className="overflow-hidden border-border/60 shadow-sm">
-                                <CardHeader className="bg-muted/40 px-6 py-4">
+                                <Card className="overflow-hidden border-border/60 shadow-sm">
+                                    <CardHeader className="bg-muted/40 px-6 py-4">
                                     <CardTitle className="text-lg font-semibold">Associated Batches</CardTitle>
-                                </CardHeader>
-                                <Separator />
-                                <CardContent className="p-6">
-                                    <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 p-4 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
-                                        <span className="font-medium">Linked Batches</span>
-                                        <Badge className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600">
-                                            {schedule.package_session_ids.length}
-                                        </Badge>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
+                                    </CardHeader>
+                                    <Separator />
+                                    <CardContent className="p-6">
+                                        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 p-4 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                                            <span className="font-medium">Linked Batches</span>
+                                            <Badge className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600">
+                                                {schedule.package_session_ids.length}
+                                            </Badge>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
                     </div>
                 </div>
             </div>

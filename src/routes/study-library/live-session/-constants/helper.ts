@@ -224,6 +224,21 @@ export function transformFormToDTOStep1(
                 }) => {
                     const duration =
                         Number(session.durationHours) * 60 + Number(session.durationMinutes);
+
+                    // Skip incomplete sessions: must have a valid start time and non-zero duration
+                    const normalizedTime = normalizeStartTime(session.startTime);
+                    if (!normalizedTime || isNaN(duration) || duration <= 0) {
+                        console.warn(
+                            `[transformFormToDTOStep1] Skipping session on ${dayBlock.day}: ` +
+                            `startTime="${session.startTime}", ` +
+                            `durationHours="${session.durationHours}", ` +
+                            `durationMinutes="${session.durationMinutes}", ` +
+                            `duration=${duration}, id=${session.id || '(new)'}. ` +
+                            `Reason: ${!normalizedTime ? 'empty startTime' : `invalid duration (${duration})`}`
+                        );
+                        return;
+                    }
+
                     // Check if session has an ID - if yes, it's an update; if no, it's new
                     if (session.id) {
                         // Session ID might be comma-separated string containing multiple IDs
@@ -242,7 +257,7 @@ export function transformFormToDTOStep1(
                                 daily_attendance: session.countAttendanceDaily || false,
                                 default_class_link: dayBlock.default_class_link || null, // From day level
                                 default_class_name: dayBlock.default_class_name || null, // From day level
-                                learner_button_config: dayBlock.learner_button_config || null, // From day level
+                                learner_button_config: dayBlock.learner_button_config || learner_button_config || null, // Day level, fallback to top-level
                             };
 
                             updated_schedules.push(baseSchedule);
@@ -265,7 +280,7 @@ export function transformFormToDTOStep1(
                             daily_attendance: session.countAttendanceDaily || false,
                             default_class_link: dayBlock.default_class_link || null,
                             default_class_name: dayBlock.default_class_name || null,
-                            learner_button_config: dayBlock.learner_button_config || null,
+                            learner_button_config: dayBlock.learner_button_config || learner_button_config || null,
                         });
                     } else {
                         // New session without ID
@@ -279,7 +294,7 @@ export function transformFormToDTOStep1(
                             daily_attendance: session.countAttendanceDaily || false,
                             default_class_link: dayBlock.default_class_link || null, // From day level
                             default_class_name: dayBlock.default_class_name || null, // From day level
-                            learner_button_config: dayBlock.learner_button_config || null, // From day level
+                            learner_button_config: dayBlock.learner_button_config || learner_button_config || null, // Day level, fallback to top-level
                         };
                         added_schedules.push(baseSchedule);
                     }

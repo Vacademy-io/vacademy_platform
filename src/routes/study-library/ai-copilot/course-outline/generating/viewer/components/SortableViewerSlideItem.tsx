@@ -88,7 +88,7 @@ const YooptaViewer = ({ content, className }: { content: string; className?: str
 
                 // Unwrap single-child wrapper if standard behavior (matches SlideMaterial)
                 // But generally we want to process the *children* of the content
-                // If content is just text, wrapper.children might be empty (if text node), 
+                // If content is just text, wrapper.children might be empty (if text node),
                 // so we handle that case by checking childNodes.
 
                 const processNodes = (nodes: NodeListOf<ChildNode>) => {

@@ -112,19 +112,29 @@ export const getPublicUrl = async (fileId: string | undefined | null): Promise<s
         console.log('[getPublicUrl] Skipping API call for URL:', cleanFileId);
         return cleanFileId;
     }
-    const response = await authenticatedAxiosInstance.get(GET_PUBLIC_URL, {
-        params: { fileId: cleanFileId, expiryDays: 1 },
-    });
-    return response?.data;
+    try {
+        const response = await authenticatedAxiosInstance.get(GET_PUBLIC_URL, {
+            params: { fileId: cleanFileId, expiryDays: 1 },
+        });
+        return response?.data;
+    } catch (error) {
+        console.warn('[getPublicUrl] Error fetching public URL (ignoring non-200):', error);
+        return '';
+    }
 };
 
 export const getPublicUrls = async (fileIds: string | undefined | null) => {
-    const response = await authenticatedAxiosInstance({
-        method: 'GET',
-        url: GET_DETAILS,
-        params: { fileIds, expiryDays: 1 },
-    });
-    return response?.data;
+    try {
+        const response = await authenticatedAxiosInstance({
+            method: 'GET',
+            url: GET_DETAILS,
+            params: { fileIds, expiryDays: 1 },
+        });
+        return response?.data;
+    } catch (error) {
+        console.warn('[getPublicUrls] Error fetching public URLs (ignoring non-200):', error);
+        return {};
+    }
 };
 
 export const UploadFileInS3V2 = async (

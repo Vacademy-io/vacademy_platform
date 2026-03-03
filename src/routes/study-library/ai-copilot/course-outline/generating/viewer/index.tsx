@@ -62,14 +62,22 @@ import {
     verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { 
-    processDocumentContent, 
-    parseCodeContent, 
-    cleanQuizContent, 
-    parseVideoContent, 
-    parseQuizContent 
+import {
+    processDocumentContent,
+    parseCodeContent,
+    cleanQuizContent,
+    parseVideoContent,
+    parseQuizContent
 } from './utils/contentParsers';
 import { SortableViewerSlideItem } from './components/SortableViewerSlideItem';
+import type {
+    SlideType,
+    QuizQuestion,
+    SlideGeneration,
+    SessionProgress,
+    SortableSessionItemProps,
+    CircularProgressProps
+} from '../../../shared/types';
 
 // Route definition only - component is lazy loaded from index.lazy.tsx
 export const Route = createFileRoute('/study-library/ai-copilot/course-outline/generating/viewer/')({
@@ -77,13 +85,6 @@ export const Route = createFileRoute('/study-library/ai-copilot/course-outline/g
 });
 
 // Circular Progress Component
-interface CircularProgressProps {
-    value: number;
-    size?: number;
-    strokeWidth?: number;
-    className?: string;
-}
-
 const CircularProgress = ({ value, size = 24, strokeWidth = 3, className = '' }: CircularProgressProps) => {
     const radius = (size - strokeWidth) / 2;
     const circumference = radius * 2 * Math.PI;
@@ -122,71 +123,6 @@ const CircularProgress = ({ value, size = 24, strokeWidth = 3, className = '' }:
         </div>
     );
 };
-
-type SlideType =
-    | 'objectives'
-    | 'topic'
-    | 'quiz'
-    | 'assessment'
-    | 'ASSESSMENT'
-    | 'homework'
-    | 'solution'
-    | 'doc'
-    | 'pdf'
-    | 'video'
-    | 'ai-video'
-    | 'video-code'
-    | 'ai-video-code'
-    | 'image'
-    | 'jupyter'
-    | 'code-editor'
-    | 'scratch'
-    | 'video-jupyter'
-    | 'video-code-editor'
-    | 'video-scratch'
-    | 'assignment';
-
-interface QuizQuestion {
-    question: string;
-    options: string[];
-    correctAnswerIndex?: number;
-    explanation?: string;
-}
-
-interface SlideGeneration {
-    id: string;
-    sessionId: string;
-    sessionTitle: string;
-    slideTitle: string;
-    slideType: SlideType;
-    status: 'pending' | 'generating' | 'completed';
-    progress: number;
-    content?: string;
-    regenerationCount?: number; // Number of times this slide has been regenerated
-}
-
-interface SessionProgress {
-    sessionId: string;
-    sessionTitle: string;
-    slides: SlideGeneration[];
-    progress: number;
-}
-
-// Sortable Session Item Component
-interface SortableSessionItemProps {
-    session: SessionProgress;
-    sessionIndex: number;
-    onEdit: (sessionId: string, newTitle: string) => void;
-    onDelete: (sessionId: string) => void;
-    onRegenerate: (sessionId: string) => void;
-    editingSessionId: string | null;
-    editSessionTitle: string;
-    onStartEdit: (sessionId: string, currentTitle: string) => void;
-    onCancelEdit: () => void;
-    onSaveEdit: (sessionId: string) => void;
-    setEditSessionTitle: (title: string) => void;
-    children: React.ReactNode;
-}
 
 const SortableSessionItem = ({
     session,
@@ -333,12 +269,12 @@ const SortableSessionItem = ({
 function RouteComponent() {
     const navigate = useNavigate();
     const { setOpen } = useSidebar();
-    
+
     // Collapse sidebar on mount
     useEffect(() => {
         setOpen(false);
     }, [setOpen]);
-    
+
     const [slides, setSlides] = useState<SlideGeneration[]>([]);
     const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
     const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -485,7 +421,7 @@ function RouteComponent() {
             const firstSlide = sessionSlides[0];
             const completedSlides = sessionSlides.filter(s => s && s.status === 'completed').length;
             const progress = sessionSlides.length > 0 ? (completedSlides / sessionSlides.length) * 100 : 0;
-            
+
             return {
                 sessionId,
                 sessionTitle: firstSlide?.sessionTitle || 'Untitled Session',
@@ -662,9 +598,9 @@ function RouteComponent() {
     const documentHasImage = (content?: string): boolean => {
         if (!content) return false;
         // Check for img tags or mermaid diagrams (which are converted to images)
-        return content.includes('<img') || 
-               content.includes('mermaid.ink') || 
-               content.includes('graph') || 
+        return content.includes('<img') ||
+               content.includes('mermaid.ink') ||
+               content.includes('graph') ||
                content.includes('flowchart') ||
                content.includes('sequenceDiagram') ||
                content.includes('classDiagram');
@@ -679,9 +615,9 @@ function RouteComponent() {
 
         // Check if this is a document with image or video type
         const isDocumentWithImage = (slide.slideType === 'doc' || slide.slideType === 'objectives') && documentHasImage(slide.content);
-        const isVideoType = slide.slideType === 'video' || 
-                           slide.slideType === 'video-code-editor' || 
-                           slide.slideType === 'video-jupyter' || 
+        const isVideoType = slide.slideType === 'video' ||
+                           slide.slideType === 'video-code-editor' ||
+                           slide.slideType === 'video-jupyter' ||
                            slide.slideType === 'video-scratch';
         const isTopicSlide = slide.slideType === 'topic';
         const regenerationCount = slide.regenerationCount || 0;
@@ -779,7 +715,7 @@ function RouteComponent() {
 
     const handleConfirmRegenerate = () => {
         if (!regeneratingSlideId) return;
-        
+
         // In a real app, this would trigger regeneration with or without prompt
         const prompt = regenerationPrompt.trim();
         if (prompt) {
@@ -787,21 +723,21 @@ function RouteComponent() {
         } else {
             console.log('Regenerate slide (simple):', regeneratingSlideId);
         }
-        
+
         // Update regeneration count
         setSlides((prev) =>
             prev.map((slide) => {
                 if (slide.id === regeneratingSlideId) {
                     const currentCount = slide.regenerationCount || 0;
-                    return { 
-                        ...slide, 
+                    return {
+                        ...slide,
                         regenerationCount: currentCount + 1
                     };
                 }
                 return slide;
             })
         );
-        
+
         // Close dialog and reset state
         setRegenerateDialogOpen(false);
         setRegeneratingSlideId(null);
@@ -982,21 +918,21 @@ function RouteComponent() {
                     <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                         {(() => {
                             if (!regeneratingSlideId) return null;
-                            
+
                             const slide = slides.find(s => s.id === regeneratingSlideId);
                             if (!slide) return null;
-                            
-                            const isVideoType = slide.slideType === 'video' || 
-                                               slide.slideType === 'video-code-editor' || 
-                                               slide.slideType === 'video-jupyter' || 
+
+                            const isVideoType = slide.slideType === 'video' ||
+                                               slide.slideType === 'video-code-editor' ||
+                                               slide.slideType === 'video-jupyter' ||
                                                slide.slideType === 'video-scratch';
                             const isTopicSlide = slide.slideType === 'topic';
                             const isDocumentWithImage = (slide.slideType === 'doc' || slide.slideType === 'objectives') && documentHasImage(slide.content);
                             const regenerationCount = slide.regenerationCount ?? 0;
-                            
+
                             // Show warning for video types, document slides with images, or for topic slides only when regenerating video section
                             const shouldShowWarning = (isVideoType || isDocumentWithImage || (isTopicSlide && regeneratingSection === 'video')) && regenerationCount < 2;
-                            
+
                             if (shouldShowWarning) {
                                 return (
                                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">

@@ -110,6 +110,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [scale, setScale] = useState(1);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [containerWidth, setContainerWidth] = useState(0);
 
     // Time-driven state (for VIDEO)
     const [currentTime, setCurrentTime] = useState(0);
@@ -156,6 +157,9 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     // Computed values
     const contentType = meta.content_type;
     const navigationMode = meta.navigation;
+    // Compact mode: hide text labels in controls when player is too narrow for them (tablet/mobile)
+    // At ~700px wide, text labels on Focus/Chapters/Quiz buttons push fullscreen off-screen
+    const isCompact = containerWidth > 0 && containerWidth < 700;
 
     // Captions hook (only for time-driven content with audio)
     const {
@@ -380,6 +384,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                 if (clientWidth > 0 && clientHeight > 0) {
                     const newScale = scaleCalculator.calculateScale(clientWidth, clientHeight);
                     setScale(newScale);
+                    setContainerWidth(clientWidth);
                 }
             }
         };
@@ -1735,7 +1740,9 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                         style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '16px',
+                            gap: isCompact ? '6px' : '16px',
+                            flexWrap: 'nowrap',
+                            minWidth: 0,
                         }}
                     >
                         {/* Time-driven controls */}
@@ -1755,15 +1762,17 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 <button onClick={handleReset} style={btnStyle} title="Restart">
                                     <RotateCcw className="size-5 text-white" />
                                 </button>
-                                <span style={timeStyle}>
-                                    {formatTime(currentTime)} / {formatTime(duration)}
+                                <span style={{ ...timeStyle, fontSize: isCompact ? '11px' : undefined }}>
+                                    {isCompact
+                                        ? formatTime(currentTime)
+                                        : `${formatTime(currentTime)} / ${formatTime(duration)}`}
                                 </span>
                                 <button
                                     onClick={handleSpeedChange}
                                     style={{
                                         ...btnStyle,
-                                        marginLeft: '4px',
-                                        padding: '2px 8px',
+                                        marginLeft: isCompact ? '0' : '4px',
+                                        padding: '2px 6px',
                                         borderRadius: '4px',
                                         background: 'rgba(255, 255, 255, 0.15)',
                                         color: 'white',
@@ -1860,8 +1869,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             </>
                         )}
 
-                        {/* Content type badge */}
-                        <span style={badgeStyle}>{CONTENT_TYPE_LABELS[contentType]}</span>
+                        {/* Content type badge — hidden in compact mode to save space */}
+                        {!isCompact && <span style={badgeStyle}>{CONTENT_TYPE_LABELS[contentType]}</span>}
 
                         {/* Focus Mode Toggle (Dynamic Playback Speed) */}
                         {navigationMode === 'time_driven' && (
@@ -1869,8 +1878,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 onClick={() => setIsFocusMode(!isFocusMode)}
                                 style={{
                                     ...btnStyle,
-                                    marginLeft: '12px',
-                                    padding: '4px 10px',
+                                    marginLeft: isCompact ? '0' : '12px',
+                                    padding: isCompact ? '4px 6px' : '4px 10px',
                                     borderRadius: '16px',
                                     border: `1px solid ${isFocusMode ? '#3b82f6' : 'rgba(255,255,255,0.3)'}`,
                                     background: isFocusMode ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
@@ -1878,11 +1887,13 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     fontSize: '12px',
                                     fontWeight: 600,
                                     transition: 'all 0.2s ease',
+                                    display: 'flex',
+                                    alignItems: 'center',
                                 }}
                                 title="Focus Mode: Automatically slows down during complex diagrams"
                             >
-                                <span style={{ marginRight: '6px', fontSize: '14px' }}>🧠</span>
-                                FOCUS {isFocusMode ? 'ON' : 'OFF'}
+                                <span style={{ marginRight: isCompact ? '0' : '6px', fontSize: '14px' }}>🧠</span>
+                                {!isCompact && `FOCUS ${isFocusMode ? 'ON' : 'OFF'}`}
                             </button>
                         )}
 
@@ -1892,8 +1903,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 onClick={(e) => { e.stopPropagation(); setIsChaptersOpen(!isChaptersOpen); setIsGlossaryOpen(false); }}
                                 style={{
                                     ...btnStyle,
-                                    marginLeft: '8px',
-                                    padding: '4px 10px',
+                                    marginLeft: isCompact ? '0' : '8px',
+                                    padding: isCompact ? '4px 6px' : '4px 10px',
                                     borderRadius: '16px',
                                     border: `1px solid ${isChaptersOpen ? '#f87171' : 'rgba(255,255,255,0.3)'}`,
                                     background: isChaptersOpen ? 'rgba(248, 113, 113, 0.2)' : 'transparent',
@@ -1908,7 +1919,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 title={`Chapters (${meta.chapters.length})`}
                             >
                                 <List className="size-4" />
-                                <span>Chapters</span>
+                                {!isCompact && <span>Chapters</span>}
                             </button>
                         )}
 
@@ -1918,8 +1929,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 onClick={(e) => { e.stopPropagation(); setQuestionsEnabled(!questionsEnabled); }}
                                 style={{
                                     ...btnStyle,
-                                    marginLeft: '8px',
-                                    padding: '4px 10px',
+                                    marginLeft: isCompact ? '0' : '8px',
+                                    padding: isCompact ? '4px 6px' : '4px 10px',
                                     borderRadius: '16px',
                                     border: `1px solid ${questionsEnabled ? '#a78bfa' : 'rgba(255,255,255,0.3)'}`,
                                     background: questionsEnabled ? 'rgba(167, 139, 250, 0.2)' : 'transparent',
@@ -1934,7 +1945,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 title={questionsEnabled ? `Disable quiz questions (${meta.questions.length})` : `Enable quiz questions (${meta.questions.length})`}
                             >
                                 <HelpCircle size={14} />
-                                <span>Quiz {questionsEnabled ? 'ON' : 'OFF'}</span>
+                                {!isCompact && <span>Quiz {questionsEnabled ? 'ON' : 'OFF'}</span>}
                             </button>
                         )}
 
@@ -1944,8 +1955,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 onClick={(e) => { e.stopPropagation(); setIsGlossaryOpen(!isGlossaryOpen); setIsChaptersOpen(false); }}
                                 style={{
                                     ...btnStyle,
-                                    marginLeft: '8px',
-                                    padding: '4px 10px',
+                                    marginLeft: isCompact ? '0' : '8px',
+                                    padding: isCompact ? '4px 6px' : '4px 10px',
                                     borderRadius: '16px',
                                     border: `1px solid ${isGlossaryOpen ? '#60a5fa' : 'rgba(255,255,255,0.3)'}`,
                                     background: isGlossaryOpen ? 'rgba(96, 165, 250, 0.2)' : 'transparent',
@@ -1992,7 +2003,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 title={isAutoplay ? 'Disable Autoplay' : 'Enable Autoplay'}
                             >
                                 <Repeat className="size-4" />
-                                <span style={{ fontSize: '12px', fontWeight: 600 }}>Autoplay</span>
+                                {!isCompact && <span style={{ fontSize: '12px', fontWeight: 600 }}>Autoplay</span>}
                             </button>
                         )}
 

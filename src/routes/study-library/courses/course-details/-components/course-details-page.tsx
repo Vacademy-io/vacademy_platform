@@ -14,6 +14,7 @@ import {
     ClipboardText,
     PresentationChart,
     FileText,
+    VideoCamera,
 } from '@phosphor-icons/react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -1342,6 +1343,17 @@ export const CourseDetailsPage = () => {
                                                 const getSlideTypeInfo = (sourceType: string | null | undefined) => {
                                                     const safeType = sourceType && typeof sourceType === 'string' ? sourceType : '';
                                                     switch (safeType) {
+                                                        case 'HTML_VIDEO':
+                                                            return {
+                                                                icon: (
+                                                                    <VideoCamera
+                                                                        size={16}
+                                                                        className="shrink-0 text-purple-600"
+                                                                    />
+                                                                ),
+                                                                name: 'AI Content',
+                                                                color: 'text-purple-600',
+                                                            };
                                                         case 'VIDEO':
                                                             return {
                                                                 icon: (

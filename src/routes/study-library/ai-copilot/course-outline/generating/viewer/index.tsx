@@ -17,6 +17,7 @@ import {
     CheckCircle,
     Loader2,
     Layers,
+    BookOpen,
     File,
     Notebook,
     Puzzle,
@@ -459,6 +460,10 @@ function RouteComponent() {
                 return <Video className="h-4 w-4 text-red-600" />;
             case 'ai-video':
                 return <Video className="h-4 w-4 text-purple-600" />;
+            case 'ai-slides':
+                return <Layers className="h-4 w-4 text-teal-600" />;
+            case 'ai-storybook':
+                return <BookOpen className="h-4 w-4 text-rose-600" />;
             case 'video-code':
             case 'ai-video-code':
                 return (

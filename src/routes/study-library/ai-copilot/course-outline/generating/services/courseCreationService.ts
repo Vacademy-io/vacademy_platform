@@ -421,8 +421,20 @@ export async function createCourseWithContent(
         for (let sessionIndex = 0; sessionIndex < sessions.length; sessionIndex++) {
             const session = sessions[sessionIndex];
             if (!session) continue;
+
+            // Skip sessions that have no real slides (only placeholders or completely empty)
+            const realSlides = session.slides.filter(
+                (s) => s && s.slideTitle !== '_placeholder_'
+            );
+            if (realSlides.length === 0) {
+                console.log(
+                    `[Course Creation] Skipping empty session "${session.sessionTitle}" (no real slides)`
+                );
+                continue;
+            }
+
             console.log(
-                `[Course Creation] Processing session ${sessionIndex + 1}/${sessions.length}: "${session.sessionTitle}" with ${session.slides.length} slides`
+                `[Course Creation] Processing session ${sessionIndex + 1}/${sessions.length}: "${session.sessionTitle}" with ${realSlides.length} slides`
             );
 
             // Create Chapter
@@ -456,16 +468,16 @@ export async function createCourseWithContent(
                 console.log(`[Course Creation] Chapter response full data:`, chapterResponse.data);
                 chapterIds.push(chapterId);
 
-                // Step 7: Create Slides for this chapter
+                // Step 7: Create Slides for this chapter (realSlides already excludes placeholders)
                 console.log(
-                    `[Course Creation] Creating ${session.slides.length} slides for chapter "${session.sessionTitle}"...`
+                    `[Course Creation] Creating ${realSlides.length} slides for chapter "${session.sessionTitle}"...`
                 );
-                for (let slideIndex = 0; slideIndex < session.slides.length; slideIndex++) {
-                    const slide = session.slides[slideIndex];
+                for (let slideIndex = 0; slideIndex < realSlides.length; slideIndex++) {
+                    const slide = realSlides[slideIndex];
                     if (!slide) continue;
                     if (setCreationProgress) {
                         setCreationProgress(
-                            `Creating slide ${slideIndex + 1}/${session.slides.length} in "${session.sessionTitle}"...`
+                            `Creating slide ${slideIndex + 1}/${realSlides.length} in "${session.sessionTitle}"...`
                         );
                     }
                     console.log(

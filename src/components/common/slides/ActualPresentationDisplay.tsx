@@ -411,7 +411,7 @@ export const ActualPresentationDisplay: React.FC<ActualPresentationDisplayProps>
                             <div className="relative h-full w-full p-1">
                  {currentSlideId && (
                                     <div className="h-full w-full transition-opacity duration-300 ease-in-out">
-                    <SlideRenderer currentSlideId={currentSlideId} editModeExcalidraw={true} editModeQuiz={false} />
+                    <SlideRenderer currentSlideId={currentSlideId} editModeExcalidraw={false} editModeQuiz={false} />
                                     </div>
                 )}
                             </div>

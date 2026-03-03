@@ -15,6 +15,7 @@ import {
     Clock,
     File,
     Layers,
+    BookOpen,
 } from 'lucide-react';
 import { SlideGeneration, SlideType, SessionProgress } from '../../../shared/types';
 
@@ -49,6 +50,10 @@ const getSlideIcon = (type: SlideType) => {
             return <Video className="h-3.5 w-3.5 text-red-600" />;
         case 'ai-video':
             return <Video className="h-3.5 w-3.5 text-purple-600" />;
+        case 'ai-slides':
+            return <Layers className="h-3.5 w-3.5 text-teal-600" />;
+        case 'ai-storybook':
+            return <BookOpen className="h-3.5 w-3.5 text-rose-600" />;
         case 'video-code':
         case 'ai-video-code':
             return (

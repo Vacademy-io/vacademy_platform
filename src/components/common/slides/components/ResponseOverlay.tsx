@@ -43,6 +43,10 @@ export const ResponseOverlay: React.FC<ResponseOverlayProps> = ({ sessionId, sli
     }, [slideData]);
 
     useEffect(() => {
+        // Reset state for the new slide so stale data from the previous slide is cleared
+        setIsLoading(true);
+        setResponses([]);
+
         // Function to fetch responses
         const fetchResponses = async () => {
             if (!sessionId || !slideData.id) return;

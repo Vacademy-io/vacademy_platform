@@ -482,7 +482,7 @@ const SlidesEditorComponent = ({
                     toast.success('Audio recording finished. Ready for playback/download.');
                     setIsRecording(false);
                     setIsRecordingPaused(false);
-                    stream.getTracks().forEach(track => track.clone().stop()); // Stop cloned tracks
+                    stream.getTracks().forEach(track => track.stop());
                 };
 
                 // Setup for recommendation interval recording (using a clone of the stream)
@@ -557,8 +557,10 @@ const SlidesEditorComponent = ({
                 mediaRecorderRef.current.start(1000); // Start main recording
 
                 // Start the recommendation recorder and the 5-minute interval
-                recommendationMediaRecorderRef.current.start();
-                startRecommendationInterval();
+                if (recommendationMediaRecorderRef.current && recommendationMediaRecorderRef.current.state === 'inactive') {
+                    recommendationMediaRecorderRef.current.start();
+                    startRecommendationInterval();
+                }
 
                 setIsRecording(true);
                 setIsRecordingPaused(false);
@@ -600,12 +602,11 @@ const SlidesEditorComponent = ({
             }
             console.log('[Rec AI] Transcript received:', transcript.text);
 
-            var promptText = transcript.text;
-            promptText = promptText + " When Generating Slides, Make one or two Excalidraw slides for Key Points Discussed Summary in an engaging way, one question for taking the feedback for learning"
+            const promptText = transcript.text + " When Generating Slides, Make one or two Excalidraw slides for Key Points Discussed Summary in an engaging way, one question for taking the feedback for learning";
             // 2. Generate slides from transcript
             const slideGenResponse = await authenticatedAxiosInstance.post(
                 GENERATE_SLIDES_FROM_TEXT_API_URL,
-                { language: 'English', text: transcript.text, institute_id: getInstituteId() },
+                { language: 'English', text: promptText, institute_id: getInstituteId() },
                 { headers: { 'Content-Type': 'application/json' } }
             );
 
@@ -1112,32 +1113,6 @@ const SlidesEditorComponent = ({
                     });
                     autoCreateNavigated = true;
                 }
-            }
-
-            // Handle auto-create success by updating URL and re-rendering
-            if (isAutoSave && !isEdit && response.data && response.data.id) {
-                const newPresentationId = response.data.id;
-                console.log(`Auto-create successful. New ${PRODUCT_NAME} ID: ${newPresentationId}. Navigating to edit mode.`);
-
-                // Preserve title and description from metaData for the new URL
-                // autoStartLive should be removed if present, as it's a one-time action
-                const newSearchParams = {
-                    id: newPresentationId,
-                    isEdit: 'true',
-                    title: metaData.title,
-                    description: metaData.description,
-                };
-                // router.state.location.search might contain other params; selectively carry them over if needed.
-                // For now, focusing on core params for the editor.
-
-                router.navigate({
-                    to: '/study-library/volt/add', // Target route for the editor
-                    search: newSearchParams,
-                    replace: true, // Replace history to avoid issues with back button
-                });
-                autoCreateNavigated = true; // Set flag
-                // setIsSaving is NOT called here; will be handled by useEffect after navigation
-                return;
             }
 
             if (isAutoSave) {

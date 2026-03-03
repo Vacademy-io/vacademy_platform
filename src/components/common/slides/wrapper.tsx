@@ -45,6 +45,15 @@ const ExcalidrawWrapper: React.FC<ExcalidrawWrapperProps> = ({
     const currentSlideIdRef = useRef<string | null>(null);
     const hasInitialCenteringHappenedRef = useRef<boolean>(false);
 
+    // Cleanup: remove this slide from the centered set when the component unmounts
+    // so it will auto-center correctly if the slide is revisited after content changes.
+    useEffect(() => {
+        const slideId = initialData.id;
+        return () => {
+            centeredSlides.delete(slideId);
+        };
+    }, [initialData.id]);
+
     // Separate effect for slide ID changes (without API dependency)
     useEffect(() => {
         const isNewSlide = currentSlideIdRef.current !== initialData.id;

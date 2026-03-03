@@ -73,8 +73,8 @@ public class Question {
     private AssessmentRichTextData explanationTextData;
 
     @OneToMany(mappedBy = "question", fetch = FetchType.LAZY)
+    @OrderBy("createdOn ASC")
     private List<Option> options = new ArrayList<>();
-
 
     public Question(QuestionDTO questionDTO) {
         this.id = questionDTO.getId();

@@ -15,7 +15,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import type { DisplaySettingsData } from '@/types/display-settings';
-import { TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
@@ -55,54 +55,54 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
     label: string;
     defaultValue: boolean;
 }> = [
-    {
-        key: 'overviewTab',
-        label: 'Overview Tab',
-        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.overviewTab,
-    },
-    { key: 'testTab', label: 'Test Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.testTab },
-    {
-        key: 'progressTab',
-        label: 'Progress Tab',
-        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.progressTab,
-    },
-    {
-        key: 'notificationTab',
-        label: 'Notification Tab',
-        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.notificationTab,
-    },
-    {
-        key: 'membershipTab',
-        label: 'Membership Tab',
-        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.membershipTab,
-    },
-    {
-        key: 'paymentHistoryTab',
-        label: 'Payment History Tab',
-        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.paymentHistoryTab,
-    },
-    {
-        key: 'userTaggingTab',
-        label: 'User Tagging Tab',
-        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.userTaggingTab,
-    },
-    { key: 'fileTab', label: 'File Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fileTab },
-    {
-        key: 'portalAccessTab',
-        label: 'Portal Access Tab',
-        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.portalAccessTab,
-    },
-    {
-        key: 'reportsTab',
-        label: 'Reports Tab',
-        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.reportsTab,
-    },
-    {
-        key: 'enrollDerollTab',
-        label: 'Enroll/Deroll Tab',
-        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.enrollDerollTab,
-    },
-];
+        {
+            key: 'overviewTab',
+            label: 'Overview Tab',
+            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.overviewTab,
+        },
+        { key: 'testTab', label: 'Test Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.testTab },
+        {
+            key: 'progressTab',
+            label: 'Progress Tab',
+            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.progressTab,
+        },
+        {
+            key: 'notificationTab',
+            label: 'Notification Tab',
+            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.notificationTab,
+        },
+        {
+            key: 'membershipTab',
+            label: 'Membership Tab',
+            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.membershipTab,
+        },
+        {
+            key: 'paymentHistoryTab',
+            label: 'Payment History Tab',
+            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.paymentHistoryTab,
+        },
+        {
+            key: 'userTaggingTab',
+            label: 'User Tagging Tab',
+            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.userTaggingTab,
+        },
+        { key: 'fileTab', label: 'File Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fileTab },
+        {
+            key: 'portalAccessTab',
+            label: 'Portal Access Tab',
+            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.portalAccessTab,
+        },
+        {
+            key: 'reportsTab',
+            label: 'Reports Tab',
+            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.reportsTab,
+        },
+        {
+            key: 'enrollDerollTab',
+            label: 'Enroll/Deroll Tab',
+            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.enrollDerollTab,
+        },
+    ];
 
 const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowPortalAccess: true,
@@ -115,32 +115,34 @@ const LEARNER_MANAGEMENT_OPTIONS: Array<{
     label: string;
     defaultValue: boolean;
 }> = [
-    {
-        key: 'allowPortalAccess',
-        label: 'Allow Learner Portal Access',
-        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowPortalAccess,
-    },
-    {
-        key: 'allowViewPassword',
-        label: 'Allow Viewing Learner Password',
-        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowViewPassword,
-    },
-    {
-        key: 'allowSendResetPasswordMail',
-        label: 'Allow Sending Reset Password Mail',
-        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowSendResetPasswordMail,
-    },
-];
+        {
+            key: 'allowPortalAccess',
+            label: 'Allow Learner Portal Access',
+            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowPortalAccess,
+        },
+        {
+            key: 'allowViewPassword',
+            label: 'Allow Viewing Learner Password',
+            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowViewPassword,
+        },
+        {
+            key: 'allowSendResetPasswordMail',
+            label: 'Allow Sending Reset Password Mail',
+            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowSendResetPasswordMail,
+        },
+    ];
 
-export default function TeacherDisplaySettings() {
+export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }) {
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
     const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
 
+    const displaySettingsKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${roleId}`;
+
     useEffect(() => {
         const run = async () => {
-            const s = await getDisplaySettingsWithFallback(TEACHER_DISPLAY_SETTINGS_KEY);
+            const s = await getDisplaySettingsWithFallback(displaySettingsKey);
             // Enforce constraint: teacher should never be able to view settings tab
             s.sidebar = s.sidebar
                 .filter((t) => t.id !== 'settings')
@@ -232,11 +234,12 @@ export default function TeacherDisplaySettings() {
                     canEditProfileDetails: settings.permissions.canEditProfileDetails ?? false,
                 },
             };
-            await saveDisplaySettings(TEACHER_DISPLAY_SETTINGS_KEY, fixed);
+            await saveDisplaySettings(displaySettingsKey, fixed);
             setHasChanges(false);
-            toast.success('Teacher display settings saved');
-        } catch (e) {
-            toast.error('Failed to save');
+            toast.success('Custom role display settings saved');
+        } catch (e: any) {
+            console.error('Failed to save settings:', e);
+            toast.error(`Failed to save: ${e?.response?.data?.message || e?.message || 'Unknown error'}`);
         } finally {
             setIsSaving(false);
         }
@@ -248,7 +251,7 @@ export default function TeacherDisplaySettings() {
         <div className="space-y-6 p-2">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-lg font-bold">Teacher Display Settings</h1>
+                    <h1 className="text-lg font-bold">Custom Role Display Settings</h1>
                     <p className="text-sm text-muted-foreground">
                         Control visibility, ordering, and widgets for Teachers.
                     </p>
@@ -499,8 +502,8 @@ export default function TeacherDisplaySettings() {
                         const enforcedVisible = isForcedVisible
                             ? true
                             : isForcedHidden
-                              ? false
-                              : cfg.visible;
+                                ? false
+                                : cfg.visible;
                         return (
                             <div
                                 key={id}
@@ -519,9 +522,9 @@ export default function TeacherDisplaySettings() {
                                                     tabs: (prev.courseList?.tabs || []).map((t) =>
                                                         t.id === id
                                                             ? {
-                                                                  ...t,
-                                                                  order: Number(e.target.value),
-                                                              }
+                                                                ...t,
+                                                                order: Number(e.target.value),
+                                                            }
                                                             : t
                                                     ),
                                                     defaultTab:
@@ -556,7 +559,7 @@ export default function TeacherDisplaySettings() {
                                     <label className="flex items-center gap-2 text-sm">
                                         <input
                                             type="radio"
-                                            name="teacher-course-list-default"
+                                            name="custom-role-course-list-default"
                                             checked={settings.courseList?.defaultTab === id}
                                             onChange={() =>
                                                 updateSettings((prev) => ({
@@ -623,9 +626,9 @@ export default function TeacherDisplaySettings() {
                                                         (t) =>
                                                             t.id === id
                                                                 ? {
-                                                                      ...t,
-                                                                      order: Number(e.target.value),
-                                                                  }
+                                                                    ...t,
+                                                                    order: Number(e.target.value),
+                                                                }
                                                                 : t
                                                     ),
                                                     defaultTab:
@@ -654,18 +657,18 @@ export default function TeacherDisplaySettings() {
                                                 };
                                                 const tabs = exists
                                                     ? prevTabs.map((t) =>
-                                                          t.id === id
-                                                              ? { ...t, visible: checked }
-                                                              : t
-                                                      )
+                                                        t.id === id
+                                                            ? { ...t, visible: checked }
+                                                            : t
+                                                    )
                                                     : [
-                                                          ...prevTabs,
-                                                          {
-                                                              id,
-                                                              order: orderForId[id] ?? 99,
-                                                              visible: checked,
-                                                          },
-                                                      ];
+                                                        ...prevTabs,
+                                                        {
+                                                            id,
+                                                            order: orderForId[id] ?? 99,
+                                                            visible: checked,
+                                                        },
+                                                    ];
                                                 return {
                                                     ...prev,
                                                     courseDetails: {
@@ -684,7 +687,7 @@ export default function TeacherDisplaySettings() {
                                     <label className="flex items-center gap-2 text-sm">
                                         <input
                                             type="radio"
-                                            name="teacher-course-details-default"
+                                            name="custom-role-course-details-default"
                                             checked={settings.courseDetails?.defaultTab === id}
                                             onChange={() =>
                                                 updateSettings((prev) => ({
@@ -847,8 +850,8 @@ export default function TeacherDisplaySettings() {
                                             cfg.visible === false
                                                 ? 'hidden'
                                                 : cfg.locked
-                                                  ? 'locked'
-                                                  : 'visible'
+                                                    ? 'locked'
+                                                    : 'visible'
                                         }
                                         onValueChange={(value) => {
                                             updateSettings((prev) => {
@@ -1033,9 +1036,9 @@ export default function TeacherDisplaySettings() {
                                                         sidebar: prev.sidebar.map((t) =>
                                                             t.id === tab.id
                                                                 ? {
-                                                                      ...t,
-                                                                      order: Number(e.target.value),
-                                                                  }
+                                                                    ...t,
+                                                                    order: Number(e.target.value),
+                                                                }
                                                                 : t
                                                         ),
                                                     }))
@@ -1064,8 +1067,8 @@ export default function TeacherDisplaySettings() {
                                                     tab.visible === false
                                                         ? 'hidden'
                                                         : tab.locked
-                                                          ? 'locked'
-                                                          : 'visible'
+                                                            ? 'locked'
+                                                            : 'visible'
                                                 }
                                                 onValueChange={(value) =>
                                                     updateSettings((prev) => ({
@@ -1144,22 +1147,22 @@ export default function TeacherDisplaySettings() {
                                                                         (t) =>
                                                                             t.id === tab.id
                                                                                 ? {
-                                                                                      ...t,
-                                                                                      subTabs: (
-                                                                                          t.subTabs ||
-                                                                                          []
-                                                                                      ).map((s) =>
-                                                                                          s.id ===
-                                                                                          sub.id
-                                                                                              ? {
-                                                                                                    ...s,
-                                                                                                    label: e
-                                                                                                        .target
-                                                                                                        .value,
-                                                                                                }
-                                                                                              : s
-                                                                                      ),
-                                                                                  }
+                                                                                    ...t,
+                                                                                    subTabs: (
+                                                                                        t.subTabs ||
+                                                                                        []
+                                                                                    ).map((s) =>
+                                                                                        s.id ===
+                                                                                            sub.id
+                                                                                            ? {
+                                                                                                ...s,
+                                                                                                label: e
+                                                                                                    .target
+                                                                                                    .value,
+                                                                                            }
+                                                                                            : s
+                                                                                    ),
+                                                                                }
                                                                                 : t
                                                                     ),
                                                                 }))
@@ -1177,24 +1180,24 @@ export default function TeacherDisplaySettings() {
                                                                         (t) =>
                                                                             t.id === tab.id
                                                                                 ? {
-                                                                                      ...t,
-                                                                                      subTabs: (
-                                                                                          t.subTabs ||
-                                                                                          []
-                                                                                      ).map((s) =>
-                                                                                          s.id ===
-                                                                                          sub.id
-                                                                                              ? {
-                                                                                                    ...s,
-                                                                                                    order: Number(
-                                                                                                        e
-                                                                                                            .target
-                                                                                                            .value
-                                                                                                    ),
-                                                                                                }
-                                                                                              : s
-                                                                                      ),
-                                                                                  }
+                                                                                    ...t,
+                                                                                    subTabs: (
+                                                                                        t.subTabs ||
+                                                                                        []
+                                                                                    ).map((s) =>
+                                                                                        s.id ===
+                                                                                            sub.id
+                                                                                            ? {
+                                                                                                ...s,
+                                                                                                order: Number(
+                                                                                                    e
+                                                                                                        .target
+                                                                                                        .value
+                                                                                                ),
+                                                                                            }
+                                                                                            : s
+                                                                                    ),
+                                                                                }
                                                                                 : t
                                                                     ),
                                                                 }))
@@ -1211,22 +1214,22 @@ export default function TeacherDisplaySettings() {
                                                                         (t) =>
                                                                             t.id === tab.id
                                                                                 ? {
-                                                                                      ...t,
-                                                                                      subTabs: (
-                                                                                          t.subTabs ||
-                                                                                          []
-                                                                                      ).map((s) =>
-                                                                                          s.id ===
-                                                                                          sub.id
-                                                                                              ? {
-                                                                                                    ...s,
-                                                                                                    route: e
-                                                                                                        .target
-                                                                                                        .value,
-                                                                                                }
-                                                                                              : s
-                                                                                      ),
-                                                                                  }
+                                                                                    ...t,
+                                                                                    subTabs: (
+                                                                                        t.subTabs ||
+                                                                                        []
+                                                                                    ).map((s) =>
+                                                                                        s.id ===
+                                                                                            sub.id
+                                                                                            ? {
+                                                                                                ...s,
+                                                                                                route: e
+                                                                                                    .target
+                                                                                                    .value,
+                                                                                            }
+                                                                                            : s
+                                                                                    ),
+                                                                                }
                                                                                 : t
                                                                     ),
                                                                 }))
@@ -1239,8 +1242,8 @@ export default function TeacherDisplaySettings() {
                                                                 sub.visible === false
                                                                     ? 'hidden'
                                                                     : sub.locked
-                                                                      ? 'locked'
-                                                                      : 'visible'
+                                                                        ? 'locked'
+                                                                        : 'visible'
                                                             }
                                                             onValueChange={(value) =>
                                                                 updateSettings((prev) => ({
@@ -1249,46 +1252,46 @@ export default function TeacherDisplaySettings() {
                                                                         (t) =>
                                                                             t.id === tab.id
                                                                                 ? {
-                                                                                      ...t,
-                                                                                      subTabs: (
-                                                                                          t.subTabs ||
-                                                                                          []
-                                                                                      ).map((s) => {
-                                                                                          if (
-                                                                                              s.id !==
-                                                                                              sub.id
-                                                                                          )
-                                                                                              return s;
-                                                                                          if (
-                                                                                              value ===
-                                                                                              'hidden'
-                                                                                          ) {
-                                                                                              return {
-                                                                                                  ...s,
-                                                                                                  visible:
-                                                                                                      false,
-                                                                                                  locked: false,
-                                                                                              };
-                                                                                          }
-                                                                                          if (
-                                                                                              value ===
-                                                                                              'locked'
-                                                                                          ) {
-                                                                                              return {
-                                                                                                  ...s,
-                                                                                                  visible:
-                                                                                                      true,
-                                                                                                  locked: true,
-                                                                                              };
-                                                                                          }
-                                                                                          return {
-                                                                                              ...s,
-                                                                                              visible:
-                                                                                                  true,
-                                                                                              locked: false,
-                                                                                          };
-                                                                                      }),
-                                                                                  }
+                                                                                    ...t,
+                                                                                    subTabs: (
+                                                                                        t.subTabs ||
+                                                                                        []
+                                                                                    ).map((s) => {
+                                                                                        if (
+                                                                                            s.id !==
+                                                                                            sub.id
+                                                                                        )
+                                                                                            return s;
+                                                                                        if (
+                                                                                            value ===
+                                                                                            'hidden'
+                                                                                        ) {
+                                                                                            return {
+                                                                                                ...s,
+                                                                                                visible:
+                                                                                                    false,
+                                                                                                locked: false,
+                                                                                            };
+                                                                                        }
+                                                                                        if (
+                                                                                            value ===
+                                                                                            'locked'
+                                                                                        ) {
+                                                                                            return {
+                                                                                                ...s,
+                                                                                                visible:
+                                                                                                    true,
+                                                                                                locked: true,
+                                                                                            };
+                                                                                        }
+                                                                                        return {
+                                                                                            ...s,
+                                                                                            visible:
+                                                                                                true,
+                                                                                            locked: false,
+                                                                                        };
+                                                                                    }),
+                                                                                }
                                                                                 : t
                                                                     ),
                                                                 }))
@@ -1620,9 +1623,9 @@ export default function TeacherDisplaySettings() {
                                                     widgets: prev.dashboard.widgets.map((x) =>
                                                         x.id === w.id
                                                             ? {
-                                                                  ...x,
-                                                                  order: Number(e.target.value),
-                                                              }
+                                                                ...x,
+                                                                order: Number(e.target.value),
+                                                            }
                                                             : x
                                                     ),
                                                 },
@@ -1677,7 +1680,7 @@ export default function TeacherDisplaySettings() {
                             <Switch
                                 checked={
                                     settings.permissions[
-                                        key as keyof DisplaySettingsData['permissions']
+                                    key as keyof DisplaySettingsData['permissions']
                                     ]
                                 }
                                 onCheckedChange={(checked) =>

@@ -1,5 +1,8 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { DropdownItem } from '@/components/design-system/utils/types/dropdown-types';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey, Authority } from '@/constants/auth/tokens';
@@ -20,7 +23,8 @@ export function getSlidesMenuOptions(): DropdownItem[] {
             Object.values(tokenData.authorities).some(
                 (auth: Authority) => Array.isArray(auth?.roles) && auth.roles.includes('ADMIN')
             );
-        const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
         const settings = getDisplaySettingsFromCache(roleKey);
         const slideView = settings?.slideView;
         return baseList.filter((item) => {

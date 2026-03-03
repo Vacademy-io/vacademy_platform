@@ -33,6 +33,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { fetchBatchesSummary, fetchCourseBatches, fetchEnrollInvites } from '../../admin-package-management/-services/package-service';
 import { useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -513,7 +514,20 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                                                                     key={org.sub_org_id || org.suborgId || org.subOrgId || org.suborg_id || org.id}
                                                                     value={org.sub_org_id || org.suborgId || org.subOrgId || org.suborg_id || org.id}
                                                                 >
-                                                                    {org.name || org.institute_name || org.instituteName || org.subOrgName || 'Unknown'}
+                                                                    <div className="flex items-center gap-2">
+                                                                        <Avatar className="h-6 w-6">
+                                                                            <AvatarImage src={org.institute_logo_file_id || org.logo} />
+                                                                            <AvatarFallback className="text-[10px]">{String(org.name || org.institute_name || org.instituteName || org.subOrgName || 'U').charAt(0).toUpperCase()}</AvatarFallback>
+                                                                        </Avatar>
+                                                                        <div className="flex flex-col text-left">
+                                                                            <span className="font-medium text-sm leading-tight">{org.name || org.institute_name || org.instituteName || org.subOrgName || 'Unknown'}</span>
+                                                                            {(org.email || org.phone) && (
+                                                                                <span className="text-[10px] text-gray-500 leading-tight">
+                                                                                    {org.email}{org.email && org.phone ? ' • ' : ''}{org.phone}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
                                                                 </SelectItem>
                                                             ))}
                                                         </ScrollArea>

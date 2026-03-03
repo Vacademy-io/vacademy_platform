@@ -169,6 +169,7 @@ export interface DisplaySettingsData {
     // 9) Course page level visibility toggles
     coursePage?: {
         viewInviteLinks: boolean;
+        viewShortInviteLinks: boolean;
         viewCourseConfiguration: boolean;
         viewCourseOverviewItem: boolean;
         viewContentNumbering: boolean;
@@ -201,3 +202,5 @@ export interface DisplaySettingsData {
 
 export const ADMIN_DISPLAY_SETTINGS_KEY = 'ADMIN_DISPLAY_SETTINGS' as const;
 export const TEACHER_DISPLAY_SETTINGS_KEY = 'TEACHER_DISPLAY_SETTINGS' as const;
+export const CUSTOM_ROLE_DISPLAY_SETTINGS_KEY = 'CUSTOM_ROLE_DISPLAY_SETTINGS_KEY' as const;
+

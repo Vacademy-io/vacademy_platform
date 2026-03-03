@@ -55,6 +55,9 @@ interface SidebarPanelProps {
     sidebarComponent?: React.ReactNode;
     showSupportButton?: boolean;
     instituteId?: string;
+    isPartnershipLinkage?: boolean;
+    mainInstituteLogoUrl?: string;
+    mainInstituteName?: string;
 }
 
 export const SidebarPanel: React.FC<SidebarPanelProps> = ({
@@ -68,6 +71,9 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
     sidebarComponent,
     showSupportButton = true,
     instituteId,
+    isPartnershipLinkage,
+    mainInstituteLogoUrl,
+    mainInstituteName,
 }) => {
     const navigate = useNavigate();
     const router = useRouter();
@@ -79,11 +85,11 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
         activeCategory === 'RECENT'
             ? [] // Recent items are handled separately
             : sidebarItems.filter((item) => {
-                  if (item.id === 'settings') return false; // Settings is on the rail
-                  const show = item.showForInstitute;
-                  const category = item.category || 'CRM';
-                  return (!show || show === instituteId) && category === activeCategory;
-              });
+                if (item.id === 'settings') return false; // Settings is on the rail
+                const show = item.showForInstitute;
+                const category = item.category || 'CRM';
+                return (!show || show === instituteId) && category === activeCategory;
+            });
 
     const recentTabs = activeCategory === 'RECENT' ? getRecentTabs() : [];
 
@@ -110,27 +116,50 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
             }}
         >
             {/* Logo + Institute Name Header */}
-            <div
-                className="flex cursor-pointer items-center gap-2.5 px-4 py-4"
-                onClick={() => {
-                    navigate({ to: '/dashboard' });
-                    onItemClick?.();
-                }}
-            >
-                {instituteLogo && (
-                    <img
-                        src={instituteLogo}
-                        alt="logo"
-                        className="h-8 w-auto max-w-[36px] flex-shrink-0 object-contain"
-                    />
+            <div className="flex flex-col border-b border-neutral-200">
+                <div
+                    className="flex cursor-pointer items-center gap-2.5 px-4 py-4"
+                    onClick={() => {
+                        navigate({ to: '/dashboard' });
+                        onItemClick?.();
+                    }}
+                >
+                    {instituteLogo && (
+                        <img
+                            src={instituteLogo}
+                            alt="logo"
+                            className="h-8 w-auto max-w-[36px] flex-shrink-0 object-contain"
+                        />
+                    )}
+                    <span className="truncate text-sm font-semibold text-neutral-800" title={instituteName}>
+                        {instituteName}
+                    </span>
+                </div>
+                {isPartnershipLinkage && mainInstituteName && (
+                    <div className="flex items-center gap-2 px-4 pb-3 pl-14 text-neutral-500">
+                        <span className="text-[10px] font-medium text-neutral-500 whitespace-nowrap">
+                            Powered by
+                        </span>
+                        {mainInstituteLogoUrl ? (
+                            <div className="flex shrink-0 items-center justify-center overflow-hidden rounded">
+                                <img
+                                    src={mainInstituteLogoUrl}
+                                    alt={mainInstituteName}
+                                    className="h-6 w-auto object-contain max-w-[100px]"
+                                    aria-hidden
+                                />
+                            </div>
+                        ) : (
+                            <span className="text-xs font-bold text-neutral-700 truncate">
+                                {mainInstituteName}
+                            </span>
+                        )}
+                    </div>
                 )}
-                <span className="truncate text-sm font-semibold text-neutral-800">
-                    {instituteName}
-                </span>
             </div>
 
             {/* Divider */}
-            <div className="mx-3 h-px bg-neutral-200" />
+            <div className="mx-3 my-1" />
 
             {/* Menu Items */}
             <div className="sidebar-content flex-1 overflow-y-auto px-1.5 py-2">

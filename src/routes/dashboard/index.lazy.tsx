@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { useLocation, useNavigate, useRouter } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -57,7 +60,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
     type DashboardWidgetId,
 } from '@/types/display-settings';
@@ -414,7 +417,8 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const roles = getUserRoles(accessToken);
         const isAdminRole = roles.includes('ADMIN');
-        const roleKey = isAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
         const cached = getDisplaySettingsFromCache(roleKey);
         if (cached) {
             setRoleDisplay(cached);

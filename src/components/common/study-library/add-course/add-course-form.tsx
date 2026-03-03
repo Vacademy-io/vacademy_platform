@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 // add-course-form.tsx
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
@@ -28,7 +31,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useCourseSettings } from '@/hooks/useCourseSettings';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import {
@@ -87,9 +90,8 @@ export const AddCourseForm = ({
             try {
                 const accessToken = getTokenFromCookie(TokenKey.accessToken);
                 const roles = getUserRoles(accessToken);
-                const roleKey = roles.includes('ADMIN')
-                    ? ADMIN_DISPLAY_SETTINGS_KEY
-                    : TEACHER_DISPLAY_SETTINGS_KEY;
+                const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
 
                 const cached = getDisplaySettingsFromCache(roleKey);
                 if (cached && isMounted) {

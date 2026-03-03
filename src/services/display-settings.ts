@@ -3,6 +3,7 @@ import { getInstituteId } from '@/constants/helper';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
     TEACHER_DISPLAY_SETTINGS_KEY,
+    CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { StorageKey } from '@/constants/storage/storage';
@@ -13,7 +14,7 @@ const CACHE_EXPIRY_HOURS = 24;
 const LEGACY_ADMIN_KEY = StorageKey.ADMIN_DISPLAY_SETTINGS;
 const LEGACY_TEACHER_KEY = StorageKey.TEACHER_DISPLAY_SETTINGS;
 
-type RoleKey = typeof ADMIN_DISPLAY_SETTINGS_KEY | typeof TEACHER_DISPLAY_SETTINGS_KEY;
+type RoleKey = string;
 
 interface CachedDisplaySettings {
     data: DisplaySettingsData;
@@ -22,18 +23,17 @@ interface CachedDisplaySettings {
 }
 
 function getLocalStorageKey(role: RoleKey, instituteId?: string | null): string {
-    const prefix =
-        role === ADMIN_DISPLAY_SETTINGS_KEY
-            ? StorageKey.ADMIN_DISPLAY_SETTINGS
-            : StorageKey.TEACHER_DISPLAY_SETTINGS;
+    let prefix: string = StorageKey.TEACHER_DISPLAY_SETTINGS;
+    if (role === ADMIN_DISPLAY_SETTINGS_KEY) prefix = StorageKey.ADMIN_DISPLAY_SETTINGS;
+    else if (role.startsWith(CUSTOM_ROLE_DISPLAY_SETTINGS_KEY)) prefix = role;
     const id = instituteId ?? getInstituteId();
     return id ? `${prefix}-${id}` : prefix;
 }
 
 function getDefaults(role: RoleKey): DisplaySettingsData {
-    return role === ADMIN_DISPLAY_SETTINGS_KEY
-        ? DEFAULT_ADMIN_DISPLAY_SETTINGS
-        : DEFAULT_TEACHER_DISPLAY_SETTINGS;
+    if (role === ADMIN_DISPLAY_SETTINGS_KEY) return DEFAULT_ADMIN_DISPLAY_SETTINGS;
+    // Both teacher and custom role can use teacher defaults as baseline
+    return DEFAULT_TEACHER_DISPLAY_SETTINGS;
 }
 
 function mergeArrayById<T extends { id: string }>(
@@ -97,12 +97,12 @@ function mergeDisplayWithDefaults(
             } as DisplaySettingsData['sidebar'][number]);
         const subTabsMerged = mergeArrayById(
             tab.subTabs as
-                | Array<
-                      Partial<
-                          NonNullable<DisplaySettingsData['sidebar'][number]['subTabs']>[number]
-                      >
-                  >
-                | undefined,
+            | Array<
+                Partial<
+                    NonNullable<DisplaySettingsData['sidebar'][number]['subTabs']>[number]
+                >
+            >
+            | undefined,
             defTab.subTabs || []
         );
         return {
@@ -134,8 +134,8 @@ function mergeDisplayWithDefaults(
     // Dashboard widgets merge
     const mergedWidgets = mergeArrayById(
         incoming?.dashboard?.widgets as
-            | Array<Partial<DisplaySettingsData['dashboard']['widgets'][number]>>
-            | undefined,
+        | Array<Partial<DisplaySettingsData['dashboard']['widgets'][number]>>
+        | undefined,
         defaults.dashboard.widgets
     );
     merged.dashboard.widgets = mergedWidgets.map((w) => {
@@ -182,13 +182,13 @@ function mergeDisplayWithDefaults(
         };
     const mergedCourseListTabs = mergeArrayById(
         incoming?.courseList?.tabs as
-            | Array<{
-                  id: string;
-                  label?: string;
-                  order?: number;
-                  visible?: boolean;
-              }>
-            | undefined,
+        | Array<{
+            id: string;
+            label?: string;
+            order?: number;
+            visible?: boolean;
+        }>
+        | undefined,
         defaultCourseList.tabs as Array<{
             id: string;
             label?: string;
@@ -200,10 +200,10 @@ function mergeDisplayWithDefaults(
         tabs: mergedCourseListTabs.map((t) => ({
             id: t.id as unknown as DisplaySettingsData['courseList'] extends infer C
                 ? C extends { tabs: Array<infer U> }
-                    ? U extends { id: infer I }
-                        ? I
-                        : never
-                    : never
+                ? U extends { id: infer I }
+                ? I
+                : never
+                : never
                 : never,
             label: t.label,
             order: t.order ?? 0,
@@ -211,8 +211,8 @@ function mergeDisplayWithDefaults(
         })) as NonNullable<DisplaySettingsData['courseList']>['tabs'],
         defaultTab: (incoming?.courseList?.defaultTab ||
             defaultCourseList.defaultTab) as NonNullable<
-            DisplaySettingsData['courseList']
-        >['defaultTab'],
+                DisplaySettingsData['courseList']
+            >['defaultTab'],
     };
 
     // Course Details merge with defaults
@@ -231,13 +231,13 @@ function mergeDisplayWithDefaults(
         };
     const mergedDetailsTabs = mergeArrayById(
         incoming?.courseDetails?.tabs as
-            | Array<{
-                  id: string;
-                  label?: string;
-                  order?: number;
-                  visible?: boolean;
-              }>
-            | undefined,
+        | Array<{
+            id: string;
+            label?: string;
+            order?: number;
+            visible?: boolean;
+        }>
+        | undefined,
         defaultDetails.tabs as Array<{
             id: string;
             label?: string;
@@ -249,10 +249,10 @@ function mergeDisplayWithDefaults(
         tabs: mergedDetailsTabs.map((t) => ({
             id: t.id as unknown as DisplaySettingsData['courseDetails'] extends infer C
                 ? C extends { tabs: Array<infer U> }
-                    ? U extends { id: infer I }
-                        ? I
-                        : never
-                    : never
+                ? U extends { id: infer I }
+                ? I
+                : never
+                : never
                 : never,
             label: t.label,
             order: t.order ?? 0,
@@ -260,8 +260,8 @@ function mergeDisplayWithDefaults(
         })) as NonNullable<DisplaySettingsData['courseDetails']>['tabs'],
         defaultTab: (incoming?.courseDetails?.defaultTab ||
             defaultDetails.defaultTab) as NonNullable<
-            DisplaySettingsData['courseDetails']
-        >['defaultTab'],
+                DisplaySettingsData['courseDetails']
+            >['defaultTab'],
     };
 
     // UI
@@ -304,12 +304,15 @@ function mergeDisplayWithDefaults(
     // Course Page Settings
     const defCoursePage = defaults.coursePage || {
         viewInviteLinks: true,
+        viewShortInviteLinks: false,
         viewCourseConfiguration: true,
         viewCourseOverviewItem: true,
         viewContentNumbering: true,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
+        viewShortInviteLinks:
+            incoming?.coursePage?.viewShortInviteLinks ?? defCoursePage.viewShortInviteLinks,
         viewCourseConfiguration:
             incoming?.coursePage?.viewCourseConfiguration ?? defCoursePage.viewCourseConfiguration,
         viewCourseOverviewItem:
@@ -505,11 +508,15 @@ export function clearDisplaySettingsCache(role?: RoleKey): void {
             localStorage.removeItem(
                 role === ADMIN_DISPLAY_SETTINGS_KEY ? LEGACY_ADMIN_KEY : LEGACY_TEACHER_KEY
             );
+            if (role.startsWith(CUSTOM_ROLE_DISPLAY_SETTINGS_KEY)) {
+                localStorage.removeItem(role);
+            }
             return;
         }
         if (instituteId) {
             localStorage.removeItem(getLocalStorageKey(ADMIN_DISPLAY_SETTINGS_KEY, instituteId));
             localStorage.removeItem(getLocalStorageKey(TEACHER_DISPLAY_SETTINGS_KEY, instituteId));
+            localStorage.removeItem(getLocalStorageKey(CUSTOM_ROLE_DISPLAY_SETTINGS_KEY, instituteId));
         }
         // Clean legacy keys as well
         localStorage.removeItem(LEGACY_ADMIN_KEY);
@@ -532,17 +539,36 @@ export async function getDisplaySettings(
     if (!instituteId) return getDefaults(role);
 
     try {
-        const res = await authenticatedAxiosInstance.get<{ data: DisplaySettingsData | null }>(
+        const isCustomRole = role.startsWith(CUSTOM_ROLE_DISPLAY_SETTINGS_KEY + '_');
+        const apiSettingKey = isCustomRole ? 'ROLE_DISPLAY_SETTINGS' : role;
+
+        const res = await authenticatedAxiosInstance.get<{ data: any | null }>(
             `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/institute/setting/v1/get`,
             {
                 params: {
                     instituteId,
-                    settingKey: role,
+                    settingKey: apiSettingKey,
                 },
             }
         );
 
-        const serverData = res.data?.data;
+        let serverData: any = null;
+        if (res.data) {
+            const resDataDynamic = res.data as any;
+            if (resDataDynamic[apiSettingKey] && resDataDynamic[apiSettingKey].data) {
+                serverData = resDataDynamic[apiSettingKey].data;
+            } else if (resDataDynamic.data && resDataDynamic.data[apiSettingKey] && resDataDynamic.data[apiSettingKey].data) {
+                serverData = resDataDynamic.data[apiSettingKey].data;
+            } else if (resDataDynamic.data) {
+                serverData = resDataDynamic.data;
+            }
+        }
+
+        if (isCustomRole && serverData) {
+            const roleId = role.split('_').pop() || '';
+            serverData = serverData[roleId] || null;
+        }
+
         const merged = mergeDisplayWithDefaults(
             serverData && Object.keys(serverData).length > 0 ? serverData : getDefaults(role),
             role
@@ -550,11 +576,14 @@ export async function getDisplaySettings(
         writeCache(role, merged);
         return merged;
     } catch (error: unknown) {
+        const isCustomRole = role.startsWith(CUSTOM_ROLE_DISPLAY_SETTINGS_KEY + '_');
+
         // if 510 or not found, use defaults and cache them
         const anyErr = error as { response?: { status?: number; data?: { ex?: string } } };
         if (
             anyErr.response?.status === 510 ||
-            anyErr.response?.data?.ex?.includes('Setting not found')
+            anyErr.response?.data?.ex?.includes('Setting not found') ||
+            (isCustomRole && anyErr.response?.status === 404) // Handle 404 for missing role setting
         ) {
             const defaults = mergeDisplayWithDefaults(getDefaults(role), role);
             writeCache(role, defaults);
@@ -588,18 +617,61 @@ export async function saveDisplaySettings(
 ): Promise<void> {
     const instituteId = getInstituteId();
     if (!instituteId) return;
+
+    const isCustomRole = role.startsWith(CUSTOM_ROLE_DISPLAY_SETTINGS_KEY + '_');
+    const apiSettingKey = isCustomRole ? 'ROLE_DISPLAY_SETTINGS' : role;
+
+    let finalSettingData: any = settings;
+
+    if (isCustomRole) {
+        const roleId = role.split('_').pop() || '';
+        let existingData: Record<string, any> = {};
+
+        try {
+            const res = await authenticatedAxiosInstance.get<{ data: any | null }>(
+                `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/institute/setting/v1/get`,
+                { params: { instituteId, settingKey: apiSettingKey } }
+            );
+            let tempExisting = null;
+            if (res.data) {
+                const resDataDynamic = res.data as any;
+                if (resDataDynamic[apiSettingKey] && resDataDynamic[apiSettingKey].data) {
+                    tempExisting = resDataDynamic[apiSettingKey].data;
+                } else if (resDataDynamic.data && resDataDynamic.data[apiSettingKey] && resDataDynamic.data[apiSettingKey].data) {
+                    tempExisting = resDataDynamic.data[apiSettingKey].data;
+                } else if (resDataDynamic.data) {
+                    tempExisting = resDataDynamic.data;
+                }
+            }
+
+            if (tempExisting) {
+                existingData = tempExisting;
+            }
+        } catch (e) {
+            // Ignore if not found
+        }
+
+        finalSettingData = {
+            ...existingData,
+            [roleId]: settings
+        };
+    }
+
     const requestData = {
         setting_name:
             role === ADMIN_DISPLAY_SETTINGS_KEY
                 ? 'Admin Display Settings'
-                : 'Teacher Display Settings',
-        setting_data: settings,
+                : isCustomRole
+                    ? 'Role Display Settings'
+                    : 'Teacher Display Settings',
+        setting_data: finalSettingData,
     };
+
     await authenticatedAxiosInstance.post(
         `${import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io'}/admin-core-service/institute/setting/v1/save-setting`,
         requestData,
         {
-            params: { instituteId, settingKey: role },
+            params: { instituteId, settingKey: apiSettingKey },
             headers: { 'Content-Type': 'application/json' },
         }
     );

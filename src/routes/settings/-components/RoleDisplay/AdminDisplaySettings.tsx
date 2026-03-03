@@ -275,6 +275,7 @@ export default function AdminDisplaySettings() {
                     {(
                         [
                             ['viewInviteLinks', 'View invite links'],
+                            ['viewShortInviteLinks', 'View short invite links'],
                             ['viewCourseConfiguration', 'View course configuration'],
                             ['viewCourseOverviewItem', 'View course overview item'],
                             ['viewContentNumbering', 'View content numbering'],
@@ -293,6 +294,8 @@ export default function AdminDisplaySettings() {
                                         coursePage: {
                                             viewInviteLinks:
                                                 prev.coursePage?.viewInviteLinks ?? true,
+                                            viewShortInviteLinks:
+                                                prev.coursePage?.viewShortInviteLinks ?? false,
                                             viewCourseConfiguration:
                                                 prev.coursePage?.viewCourseConfiguration ?? true,
                                             viewCourseOverviewItem:

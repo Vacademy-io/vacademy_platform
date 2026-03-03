@@ -63,7 +63,7 @@ export const LayoutContainer = ({
     const roleDisplay = getDisplaySettingsFromCache(roleKey);
     const { instituteDetails } = useInstituteDetailsStore();
     const hasFacultyPermission = hasFacultyAssignedPermission(instituteDetails?.id);
-    const showMainSidebar = !hasFacultyPermission && roleDisplay?.ui?.showSidebar !== false;
+    const showMainSidebar = roleDisplay?.ui?.showSidebar !== false;
 
     // Track previous sidebar config to detect actual changes vs re-renders
     const prevConfigRef = useRef<string | null>(null);

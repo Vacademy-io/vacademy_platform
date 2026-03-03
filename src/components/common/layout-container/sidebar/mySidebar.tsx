@@ -34,8 +34,8 @@ import {
 } from '../../../../types/layout-container/layout-container-types';
 import { SidebarItemsData } from './utils';
 import './scrollbarStyle.css';
-import { useSuspenseQuery } from '@tanstack/react-query';
-import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
+import { useSuspenseQuery, useQuery } from '@tanstack/react-query';
+import { useInstituteQuery, getSubOrgInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { filterMenuItems } from './helper';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
@@ -53,8 +53,9 @@ import useInstituteLogoStore from './institutelogo-global-zustand';
 import { useTabSettings } from '@/hooks/use-tab-settings';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { getEffectiveInstituteLogoFileId } from '@/lib/auth/facultyAccessUtils';
+import { getEffectiveInstituteLogoFileId, getSelectedSubOrgId, getSelectedSubOrgLinkageType } from '@/lib/auth/facultyAccessUtils';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 
 import { Lightning } from '@phosphor-icons/react';
 import { CategoryRail, type CategoryId } from './category-rail';
@@ -86,6 +87,15 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     const [isVoltSubdomain, setIsVoltSubdomain] = useState(false);
     const [activeCategory, setActiveCategory] = useState<CategoryId>('CRM');
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
+    const [mainInstituteLogoUrl, setMainInstituteLogoUrl] = useState<string>('');
+
+    const selectedSubOrgId = getSelectedSubOrgId();
+    const isPartnershipLinkage = getSelectedSubOrgLinkageType() === 'PARTNERSHIP';
+
+    const { data: subOrgInstituteDetails } = useQuery({
+        ...getSubOrgInstituteQuery(selectedSubOrgId ?? null),
+        enabled: !!selectedSubOrgId,
+    });
 
     useEffect(() => {
         setIsVoltSubdomain(
@@ -146,10 +156,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
 
     // Load display settings
     useEffect(() => {
-        const accessToken = getTokenFromCookie(TokenKey.accessToken);
-        const roles = getUserRoles(accessToken);
-        const isAdmin = roles.includes('ADMIN');
-        const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        const roleKey = getActiveRoleDisplaySettingsKey();
         const cached = getDisplaySettingsFromCache(roleKey);
         if (cached) {
             setRoleDisplay(cached);
@@ -243,26 +250,38 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     useEffect(() => {
         const timer = setTimeout(() => {
             const fetchPublicUrl = async () => {
-                const effectiveLogoId = getEffectiveInstituteLogoFileId(
-                    data?.institute_logo_file_id || undefined
-                );
+                const effectiveLogoId = subOrgInstituteDetails?.institute_logo_file_id
+                    ? subOrgInstituteDetails.institute_logo_file_id
+                    : getEffectiveInstituteLogoFileId(data?.institute_logo_file_id || undefined);
+
                 if (effectiveLogoId) {
                     const publicUrl = await getPublicUrl(effectiveLogoId);
                     setInstituteLogo(publicUrl || '');
                 } else {
                     setInstituteLogo('');
                 }
+
+                if (isPartnershipLinkage && data?.institute_logo_file_id) {
+                    const mainUrl = await getPublicUrl(data.institute_logo_file_id);
+                    setMainInstituteLogoUrl(mainUrl || '');
+                } else {
+                    setMainInstituteLogoUrl('');
+                }
             };
             fetchPublicUrl();
         }, 300);
         return () => clearTimeout(timer);
-    }, [data?.institute_logo_file_id, getPublicUrl, setInstituteLogo, currentRoute]);
+    }, [data?.institute_logo_file_id, subOrgInstituteDetails?.institute_logo_file_id, getPublicUrl, setInstituteLogo, currentRoute, isPartnershipLinkage]);
 
     if (isLoading) return <DashboardLoader />;
     if (roleDisplay?.ui?.showSidebar === false) return null;
 
     const isPanelOpen = state === 'expanded';
     const showSupportButton = roleDisplay?.ui?.showSupportButton !== false;
+
+    const effectiveInstituteName = subOrgInstituteDetails?.institute_name
+        ? subOrgInstituteDetails.institute_name
+        : (data?.institute_name || '');
 
     // ─── Mobile: Sheet/Drawer ──────────────────────────────────
     if (isMobile) {
@@ -289,12 +308,15 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                                 activeCategory={activeCategory}
                                 sidebarItems={finalSidebarItems}
                                 instituteLogo={instituteLogo}
-                                instituteName={data?.institute_name || ''}
+                                instituteName={effectiveInstituteName}
                                 roleDisplay={roleDisplay}
                                 onItemClick={() => setOpenMobile(false)}
                                 sidebarComponent={sidebarComponent}
                                 showSupportButton={showSupportButton}
                                 instituteId={data?.id}
+                                isPartnershipLinkage={isPartnershipLinkage}
+                                mainInstituteLogoUrl={mainInstituteLogoUrl}
+                                mainInstituteName={data?.institute_name || ''}
                             />
                         </div>
                     </TooltipProvider>
@@ -327,11 +349,14 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                         activeCategory={activeCategory}
                         sidebarItems={finalSidebarItems}
                         instituteLogo={instituteLogo}
-                        instituteName={data?.institute_name || ''}
+                        instituteName={effectiveInstituteName}
                         roleDisplay={roleDisplay}
                         sidebarComponent={sidebarComponent}
                         showSupportButton={showSupportButton}
                         instituteId={data?.id}
+                        isPartnershipLinkage={isPartnershipLinkage}
+                        mainInstituteLogoUrl={mainInstituteLogoUrl}
+                        mainInstituteName={data?.institute_name || ''}
                     />
                 </TooltipProvider>
             </SidebarContent>

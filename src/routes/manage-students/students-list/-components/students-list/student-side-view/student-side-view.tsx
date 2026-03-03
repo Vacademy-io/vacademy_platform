@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
 import { X } from '@phosphor-icons/react';
@@ -29,7 +32,7 @@ import {
 } from '@/services/display-settings';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type StudentSideViewSettings,
 } from '@/types/display-settings';
 import { Badge } from 'lucide-react';
@@ -73,7 +76,8 @@ export const StudentSidebar = ({
     useEffect(() => {
         const fetchTabSettings = async () => {
             const isAdmin = isUserAdmin();
-            const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+            const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
 
             // Try cache first
             const cachedSettings = getDisplaySettingsFromCache(roleKey);

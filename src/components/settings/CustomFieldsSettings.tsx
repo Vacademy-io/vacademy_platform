@@ -97,6 +97,7 @@ const visibilityLabels = [
     { key: 'liveSessionRegistration', label: 'Live Session Registration', icon: Calendar },
     { key: 'learnerProfile', label: 'Learner Profile', icon: User },
     { key: 'campaign', label: 'Campaign', icon: Megaphone },
+    { key: 'enquiry', label: 'Enquiry', icon: ClipboardList },
 ];
 
 // Sortable Item Components
@@ -221,6 +222,7 @@ const CustomFieldsSettings: React.FC = () => {
             assessmentRegistration: false,
             liveSessionRegistration: false,
             learnerProfile: false,
+            enquiry: false,
         },
     });
 
@@ -675,6 +677,7 @@ const CustomFieldsSettings: React.FC = () => {
                     assessmentRegistration: false,
                     liveSessionRegistration: false,
                     learnerProfile: false,
+                    enquiry: false,
                 },
             });
             setShowAddModal(false);
@@ -957,6 +960,7 @@ const CustomFieldsSettings: React.FC = () => {
                     assessmentRegistration: false,
                     liveSessionRegistration: false,
                     learnerProfile: false,
+                    enquiry: false,
                 },
             });
         }
@@ -2223,6 +2227,7 @@ const CustomFieldsSettings: React.FC = () => {
                                                         assessmentRegistration: false,
                                                         liveSessionRegistration: false,
                                                         learnerProfile: false,
+                                                        enquiry: false,
                                                     },
                                                 });
                                             }

@@ -27,8 +27,7 @@ export const GET_VIDEO_STYLE = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/video-style/v1/get?institute_id=${instituteId}`;
 export const UPDATE_VIDEO_STYLE = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/video-style/v1/update?institute_id=${instituteId}`;
-export const GET_VIDEO_TEMPLATES = () =>
-    `${AI_SERVICE_BASE_URL}/institute/video-templates/v1/list`;
+export const GET_VIDEO_TEMPLATES = () => `${AI_SERVICE_BASE_URL}/institute/video-templates/v1/list`;
 
 // Institute IDs from environment variables for multi-org deployment
 export const SSDC_INSTITUTE_ID =
@@ -576,3 +575,8 @@ export const ROLES_BASE = `${BASE_URL}/auth-service/v1/institute`;
 // Role Display Settings
 export const GET_ALL_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/setting/get-all`;
 export const SAVE_GENERIC_SETTING = `${BASE_URL}/admin-core-service/institute/v1/setting/generic/save`;
+
+// Application Stage
+export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/application/stage`;
+
+export const GET_APPLICATION_STAGES = `${BASE_URL}/admin-core-service/v1/application/stages`;

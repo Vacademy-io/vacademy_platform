@@ -85,6 +85,10 @@ export interface SessionDetailsResponse {
     allow_learner_hand_raise: boolean;
     default_seconds_for_question: number;
     student_attempts: number;
+    points_per_correct_answer: number;
+    negative_marking_enabled: boolean;
+    negative_marks_per_wrong_answer: number;
+    slide_start_timestamp: number | null; // epoch millis when current slide was activated
     excalidraw_data: any | null; // Define if structure is known
     allow_after_start: boolean;
     slides: PresentationSlides;
@@ -106,6 +110,8 @@ export interface SseEventData {
     type: 'SESSION_STATUS' | 'SLIDE_UPDATE' | 'SESSION_END' | 'ERROR' | string; // Backend specific event types
     currentSlideIndex?: number;
     totalSlides?: number;
+    slideStartTimestamp?: number; // epoch millis when slide was activated
+    defaultSecondsForQuestion?: number;
     slide_data?: Slide; // If backend sends full slide data on change
     // ... other potential fields from SSE
 }

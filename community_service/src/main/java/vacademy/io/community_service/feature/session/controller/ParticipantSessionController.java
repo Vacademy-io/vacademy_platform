@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import vacademy.io.community_service.feature.session.dto.admin.LeaderboardEntryDto;
 import vacademy.io.community_service.feature.session.dto.admin.LiveSessionDto;
 import vacademy.io.community_service.feature.session.dto.admin.ParticipantDto;
 
@@ -12,6 +13,7 @@ import vacademy.io.community_service.feature.session.dto.participant.MarkRespons
 import vacademy.io.community_service.feature.session.manager.LiveSessionService;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -25,11 +27,11 @@ public class ParticipantSessionController {
     LiveSessionService liveSessionService;
 
     @PostMapping("/get-details/{inviteCode}")
-    public ResponseEntity<LiveSessionDto> joinSession(@PathVariable String inviteCode, @RequestBody ParticipantDto participantDto) {
+    public ResponseEntity<LiveSessionDto> joinSession(@PathVariable String inviteCode,
+            @RequestBody ParticipantDto participantDto) {
         LiveSessionDto session = liveSessionService.getDetailsSession(inviteCode, participantDto);
         return ResponseEntity.ok(session);
     }
-
 
     @GetMapping("/get-updated-details/{sessionId}")
     public ResponseEntity<LiveSessionDto> getUpdatedSession(@PathVariable String sessionId) {
@@ -46,7 +48,8 @@ public class ParticipantSessionController {
         final ScheduledExecutorService heartBeatExecutor = Executors.newSingleThreadScheduledExecutor();
         Runnable heartbeatTask = () -> {
             try {
-                emitter.send(SseEmitter.event().name("learner_heartbeat").id(UUID.randomUUID().toString()).data("ping"));
+                emitter.send(
+                        SseEmitter.event().name("learner_heartbeat").id(UUID.randomUUID().toString()).data("ping"));
             } catch (IOException e) {
                 if (!heartBeatExecutor.isShutdown()) {
                     heartBeatExecutor.shutdown();
@@ -56,15 +59,19 @@ public class ParticipantSessionController {
         heartBeatExecutor.scheduleAtFixedRate(heartbeatTask, 0, 30, TimeUnit.SECONDS);
 
         emitter.onCompletion(() -> {
-            if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
+            if (!heartBeatExecutor.isShutdown())
+                heartBeatExecutor.shutdown();
             // Service's addStudentEmitter handles app logic cleanup
         });
         emitter.onTimeout(() -> {
-            if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
-            // emitter.complete(); // SseEmitter infrastructure typically calls complete internally on timeout
+            if (!heartBeatExecutor.isShutdown())
+                heartBeatExecutor.shutdown();
+            // emitter.complete(); // SseEmitter infrastructure typically calls complete
+            // internally on timeout
         });
         emitter.onError(e -> {
-            if (!heartBeatExecutor.isShutdown()) heartBeatExecutor.shutdown();
+            if (!heartBeatExecutor.isShutdown())
+                heartBeatExecutor.shutdown();
         });
         return emitter;
     }
@@ -87,5 +94,13 @@ public class ParticipantSessionController {
         // For now, using username from request body as specified.
         liveSessionService.recordParticipantResponse(sessionId, slideId, responseRequest);
         return ResponseEntity.ok().build();
+    }
+
+    // Leaderboard endpoint for participants
+    @GetMapping("/{sessionId}/leaderboard")
+    public ResponseEntity<List<LeaderboardEntryDto>> getParticipantLeaderboard(
+            @PathVariable String sessionId) {
+        List<LeaderboardEntryDto> leaderboard = liveSessionService.computeLeaderboard(sessionId);
+        return ResponseEntity.ok(leaderboard);
     }
 }

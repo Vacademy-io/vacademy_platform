@@ -145,6 +145,10 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
 
           if (conditionForSlideUpdate) {
             newSessionData = { ...newSessionData!, current_slide_index: eventData.currentSlideIndex as number };
+            // Capture slide start timestamp for timer
+            if (eventData.slideStartTimestamp !== undefined && eventData.slideStartTimestamp !== null && eventData.slideStartTimestamp > 0) {
+              newSessionData = { ...newSessionData, slide_start_timestamp: eventData.slideStartTimestamp };
+            }
             const targetSlide = newSessionData.slides.added_slides.find((s: Slide) => s.slide_order === eventData.currentSlideIndex);
 
             if (targetSlide) {

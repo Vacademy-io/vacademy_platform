@@ -25,8 +25,12 @@ public class LiveSessionDto {
     private Boolean isSessionRecorded = false;
     private Integer defaultSecondsForQuestion = 60;
     private Integer studentAttempts = 1;
+    private Integer pointsPerCorrectAnswer = 10;
+    private Boolean negativeMarkingEnabled = false;
+    private Double negativeMarksPerWrongAnswer = 0.0;
     private String excalidrawData;
     private boolean allowAfterStart = true;
+    private Long slideStartTimestamp; // epoch millis when current slide was activated
     private AddPresentationDto slides;
     @JsonIgnore
     private CreateSessionDto createSessionDto;

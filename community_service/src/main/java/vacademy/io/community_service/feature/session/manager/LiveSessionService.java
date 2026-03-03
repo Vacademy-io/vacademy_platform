@@ -160,6 +160,9 @@ public class LiveSessionService {
         session.setDefaultSecondsForQuestion(createSessionDto.getDefaultSecondsForQuestion());
         session.setShowResultsAtLastSlide(createSessionDto.getShowResultsAtLastSlide());
         session.setStudentAttempts(createSessionDto.getStudentAttempts());
+        session.setPointsPerCorrectAnswer(createSessionDto.getPointsPerCorrectAnswer());
+        session.setNegativeMarkingEnabled(createSessionDto.getNegativeMarkingEnabled());
+        session.setNegativeMarksPerWrongAnswer(createSessionDto.getNegativeMarksPerWrongAnswer());
         session.setInviteCode(generateInviteCode());
         session.setCreateSessionDto(createSessionDto);
         session.setSessionStatus("INIT");
@@ -194,6 +197,12 @@ public class LiveSessionService {
                                 "totalSlides",
                                 (session.getSlides() != null && session.getSlides().getAddedSlides() != null)
                                         ? session.getSlides().getAddedSlides().size()
+                                        : 0,
+                                "slideStartTimestamp",
+                                session.getSlideStartTimestamp() != null ? session.getSlideStartTimestamp() : 0L,
+                                "defaultSecondsForQuestion",
+                                session.getDefaultSecondsForQuestion() != null
+                                        ? session.getDefaultSecondsForQuestion()
                                         : 0));
                 emitter.send(event);
             } catch (IllegalStateException e) {
@@ -496,6 +505,7 @@ public class LiveSessionService {
 
         session.setSessionStatus("LIVE");
         session.setCurrentSlideIndex(0); // Start from the first slide
+        session.setSlideStartTimestamp(System.currentTimeMillis());
         session.setStartTime(new Date(System.currentTimeMillis()));
         sendSlideToStudents(session); // Notify students about the first slide
         notifyTeacherAboutParticipants(session); // Update teacher
@@ -522,6 +532,7 @@ public class LiveSessionService {
                     "Invalid slide index: " + targetIndex + ". Must be between 0 and " + (totalSlides - 1));
         }
         session.setCurrentSlideIndex(targetIndex);
+        session.setSlideStartTimestamp(System.currentTimeMillis());
         sendSlideToStudents(session);
         // Optionally, notify teacher about the move as well if they need specific
         // confirmation
@@ -648,6 +659,16 @@ public class LiveSessionService {
             throw new VacademyException("Invalid slide ID: " + slideId + " for this session.");
         }
 
+        // Timer enforcement: reject responses after time limit expires
+        if (session.getDefaultSecondsForQuestion() != null && session.getDefaultSecondsForQuestion() > 0
+                && session.getSlideStartTimestamp() != null) {
+            long elapsedMs = System.currentTimeMillis() - session.getSlideStartTimestamp();
+            long allowedMs = session.getDefaultSecondsForQuestion() * 1000L + 2000L; // 2s grace for network latency
+            if (elapsedMs > allowedMs) {
+                throw new VacademyException("Time limit exceeded for this question.");
+            }
+        }
+
         ParticipantResponseDto participantResponse = new ParticipantResponseDto(responseRequest.getUsername(),
                 responseRequest.getTimeToResponseMillis(), System.currentTimeMillis(),
                 new SubmittedResponseDataDto(responseRequest.getResponseType(), responseRequest.getSelectedOptionIds(),
@@ -716,8 +737,15 @@ public class LiveSessionService {
         }
 
         List<AdminSlideResponseViewDto> adminViews = new ArrayList<>();
+        boolean hideCorrectness = Boolean.TRUE.equals(session.getShowResultsAtLastSlide())
+                && "LIVE".equals(session.getSessionStatus());
         for (ParticipantResponseDto pResponse : slideLog.getResponses()) {
             Boolean isCorrect = evaluateResponse(pResponse, currentSlide.getAddedQuestion());
+            // If showResultsAtLastSlide is enabled and session is still live, hide
+            // correctness
+            if (hideCorrectness) {
+                isCorrect = null;
+            }
             adminViews.add(new AdminSlideResponseViewDto(pResponse.getUsername(), pResponse.getTimeToResponseMillis(),
                     pResponse.getSubmittedAt(), pResponse.getResponseData(), isCorrect));
         }
@@ -1199,6 +1227,151 @@ public class LiveSessionService {
             System.err.println("Failed to parse JSON response from AI. Raw content was: " + jsonContent);
             throw new RuntimeException("Failed to parse AI response content. See server logs for details.", e);
         }
+    }
+
+    /**
+     * Computes the leaderboard for a session.
+     * Iterates all MCQ question slides, evaluates each participant's responses,
+     * and ranks by score (desc), then total response time (asc).
+     */
+    public List<LeaderboardEntryDto> computeLeaderboard(String sessionId) {
+        LiveSessionDto session = sessions.get(sessionId);
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        if (session == null) {
+            throw new VacademyException("Session not found: " + sessionId);
+        }
+
+        int pointsPerCorrect = session.getPointsPerCorrectAnswer() != null ? session.getPointsPerCorrectAnswer() : 10;
+        boolean negativeEnabled = Boolean.TRUE.equals(session.getNegativeMarkingEnabled());
+        double negativeMarks = session.getNegativeMarksPerWrongAnswer() != null
+                ? session.getNegativeMarksPerWrongAnswer()
+                : 0.0;
+
+        // Collect all MCQ question slides
+        List<PresentationSlideDto> mcqSlides = new ArrayList<>();
+        if (session.getSlides() != null && session.getSlides().getAddedSlides() != null) {
+            for (PresentationSlideDto slide : session.getSlides().getAddedSlides()) {
+                if (slide.getAddedQuestion() != null) {
+                    String qType = slide.getAddedQuestion().getQuestionType();
+                    if ("MCQS".equalsIgnoreCase(qType) || "MCQM".equalsIgnoreCase(qType)) {
+                        mcqSlides.add(slide);
+                    }
+                }
+            }
+        }
+
+        int totalMcqQuestions = mcqSlides.size();
+        if (totalMcqQuestions == 0) {
+            return Collections.emptyList();
+        }
+
+        // Gather all unique participant usernames from all slides
+        Set<String> allUsernames = new LinkedHashSet<>();
+        // Map: slideId -> parsed SlideResponsesLogDto
+        Map<String, SlideResponsesLogDto> slideLogsMap = new HashMap<>();
+
+        for (PresentationSlideDto slide : mcqSlides) {
+            String responsesJson = session.getSlideStatsJson().get(slide.getId());
+            if (responsesJson != null) {
+                try {
+                    SlideResponsesLogDto slideLog = objectMapper.readValue(responsesJson, SlideResponsesLogDto.class);
+                    slideLogsMap.put(slide.getId(), slideLog);
+                    for (ParticipantResponseDto r : slideLog.getResponses()) {
+                        allUsernames.add(r.getUsername());
+                    }
+                } catch (JsonProcessingException e) {
+                    System.err.println("Error parsing slide responses for leaderboard, slide " + slide.getId() + ": "
+                            + e.getMessage());
+                }
+            }
+        }
+
+        // Also add participants who haven't answered any question
+        if (session.getParticipants() != null) {
+            for (ParticipantDto p : session.getParticipants()) {
+                allUsernames.add(p.getUsername());
+            }
+        }
+
+        // For each participant, compute score and total time across all MCQ slides
+        List<LeaderboardEntryDto> entries = new ArrayList<>();
+
+        for (String username : allUsernames) {
+            double score = 0;
+            long totalTime = 0;
+            int correct = 0;
+            int wrong = 0;
+            int unanswered = 0;
+
+            for (PresentationSlideDto slide : mcqSlides) {
+                SlideResponsesLogDto slideLog = slideLogsMap.get(slide.getId());
+                if (slideLog == null) {
+                    unanswered++;
+                    continue;
+                }
+
+                // Find the LAST response by this user for this slide (in case of multiple
+                // attempts)
+                ParticipantResponseDto latestResponse = null;
+                for (ParticipantResponseDto r : slideLog.getResponses()) {
+                    if (username.equals(r.getUsername())) {
+                        latestResponse = r; // keep overwriting to get the last one
+                    }
+                }
+
+                if (latestResponse == null) {
+                    unanswered++;
+                    continue;
+                }
+
+                Boolean isCorrect = evaluateResponse(latestResponse, slide.getAddedQuestion());
+
+                if (Boolean.TRUE.equals(isCorrect)) {
+                    correct++;
+                    score += pointsPerCorrect;
+                } else if (Boolean.FALSE.equals(isCorrect)) {
+                    wrong++;
+                    if (negativeEnabled) {
+                        score -= negativeMarks;
+                    }
+                } else {
+                    // null means unevaluable (e.g., no auto_evaluation_json)
+                    unanswered++;
+                }
+
+                if (latestResponse.getTimeToResponseMillis() != null) {
+                    totalTime += latestResponse.getTimeToResponseMillis();
+                }
+            }
+
+            LeaderboardEntryDto entry = new LeaderboardEntryDto();
+            entry.setUsername(username);
+            entry.setTotalScore(score);
+            entry.setTotalTimeMillis(totalTime);
+            entry.setCorrectCount(correct);
+            entry.setWrongCount(wrong);
+            entry.setUnansweredCount(unanswered);
+            entry.setTotalMcqQuestions(totalMcqQuestions);
+            entries.add(entry);
+        }
+
+        // Sort: score DESC, then totalTimeMillis ASC
+        entries.sort(Comparator
+                .comparingDouble(LeaderboardEntryDto::getTotalScore).reversed()
+                .thenComparingLong(LeaderboardEntryDto::getTotalTimeMillis));
+
+        // Assign ranks (handle ties by score+time)
+        for (int i = 0; i < entries.size(); i++) {
+            if (i > 0 && entries.get(i).getTotalScore() == entries.get(i - 1).getTotalScore()
+                    && entries.get(i).getTotalTimeMillis() == entries.get(i - 1).getTotalTimeMillis()) {
+                entries.get(i).setRank(entries.get(i - 1).getRank()); // tied rank
+            } else {
+                entries.get(i).setRank(i + 1);
+            }
+        }
+
+        return entries;
     }
 
 }

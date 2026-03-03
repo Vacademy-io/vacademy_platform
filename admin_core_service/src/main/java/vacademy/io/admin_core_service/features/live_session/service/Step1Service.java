@@ -165,10 +165,13 @@ public class Step1Service {
                 }
 
                 String dayOfWeek = dto.getDay().toUpperCase();
+                Time dtoStartTime = Time.valueOf(dto.getStartTime());
 
-                // Get existing schedules for this day (including past ones for reference)
+                // Get existing schedules for this day AND start_time
+                // (to correctly handle multiple time slots on the same day)
                 List<SessionSchedule> existingSchedulesForDay = existingSchedules.stream()
-                        .filter(s -> s.getRecurrenceKey() != null && s.getRecurrenceKey().equalsIgnoreCase(dayOfWeek))
+                        .filter(s -> s.getRecurrenceKey() != null && s.getRecurrenceKey().equalsIgnoreCase(dayOfWeek)
+                                && s.getStartTime() != null && s.getStartTime().equals(dtoStartTime))
                         .sorted((a, b) -> toLocalDate(a.getMeetingDate()).compareTo(toLocalDate(b.getMeetingDate())))
                         .toList();
 
@@ -231,6 +234,12 @@ public class Step1Service {
                                 : getLinkTypeFromUrl(request.getDefaultMeetLink()));
                         schedule.setCustomWaitingRoomMediaId(null);
 
+                        if (dto.getDefaultClassLink() != null) {
+                            schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                            schedule.setDefaultClassName(dto.getDefaultClassName());
+                            schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                        }
+
                         scheduleRepository.save(schedule);
                         System.out.println("Created new schedule for " + dayOfWeek + " on " + current);
                         current = current.plusWeeks(1);
@@ -268,6 +277,12 @@ public class Step1Service {
                                     ? getLinkTypeFromUrl(dto.getLink())
                                     : getLinkTypeFromUrl(request.getDefaultMeetLink()));
                             schedule.setCustomWaitingRoomMediaId(null);
+
+                            if (dto.getDefaultClassLink() != null) {
+                                schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                                schedule.setDefaultClassName(dto.getDefaultClassName());
+                                schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                            }
 
                             scheduleRepository.save(schedule);
                             System.out.println(

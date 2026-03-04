@@ -145,9 +145,18 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
 
           if (conditionForSlideUpdate) {
             newSessionData = { ...newSessionData!, current_slide_index: eventData.currentSlideIndex as number };
-            // Capture slide start timestamp for timer
+            // Capture slide start timestamp and timer duration from SSE
             if (eventData.slideStartTimestamp !== undefined && eventData.slideStartTimestamp !== null && eventData.slideStartTimestamp > 0) {
-              newSessionData = { ...newSessionData, slide_start_timestamp: eventData.slideStartTimestamp };
+              newSessionData = { 
+                ...newSessionData, 
+                slide_start_timestamp: eventData.slideStartTimestamp,
+                default_seconds_for_question: eventData.defaultSecondsForQuestion || newSessionData.default_seconds_for_question
+              };
+            } else if (eventData.defaultSecondsForQuestion !== undefined) {
+              newSessionData = {
+                ...newSessionData,
+                default_seconds_for_question: eventData.defaultSecondsForQuestion
+              };
             }
             const targetSlide = newSessionData.slides.added_slides.find((s: Slide) => s.slide_order === eventData.currentSlideIndex);
 
@@ -188,12 +197,33 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
     };
     newEventSource.addEventListener('session_event_learner', sessionEventListener);
 
-    const heartbeatListener = (_event: MessageEvent) => {
+    const sessionEndListener = () => {
+      console.log('[SSE] Session Ended.');
+      setSessionState(prev => {
+        let newSessionData = prev.sessionData;
+        if (newSessionData) {
+          newSessionData = { ...newSessionData, session_status: 'ENDED' };
+        }
+        return { ...prev, sessionData: newSessionData, sseStatus: 'disconnected' };
+      });
+      if (eventSourceRef.current) eventSourceRef.current.close();
+      if (clientHeartbeatTimerRef.current) clearInterval(clientHeartbeatTimerRef.current);
+      toast.info("Session Ended", { description: "The session has concluded." });
+    };
+    newEventSource.addEventListener('session_end', sessionEndListener);
+
+    const errorListener = (_event: MessageEvent) => {
+      console.error('[SSE] Received explicit error event.', _event);
+      // Optional: handle specific error events from server
+    };
+    newEventSource.addEventListener('error_event', errorListener);
+
+    const heartbeatListener = () => {
       // Server heartbeat acknowledgement — no action needed
     };
     newEventSource.addEventListener('learner_heartbeat', heartbeatListener);
 
-    const updateSlidesListener = async (_event: MessageEvent) => {
+    const updateSlidesListener = async () => {
       try {
         toast.info("Checking for presentation updates...");
 
@@ -234,7 +264,6 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
     };
   // session_status intentionally excluded — it caused a reconnection loop on every status change.
   // sessionIdRef is used instead of sessionState.sessionId to avoid that dep as well.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, updateSessionState, sendClientHeartbeat]);
 
 

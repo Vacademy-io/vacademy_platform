@@ -25,15 +25,102 @@ interface ResponseData {
 interface ResponseOverlayProps {
     sessionId: string;
     slideData: QuizSlideData;
+    slideStartTimestamp: number | null;
+    defaultSecondsForQuestion: number;
 }
 
-export const ResponseOverlay: React.FC<ResponseOverlayProps> = ({ sessionId, slideData }) => {
+// Countdown Timer Component for Admin
+const CountdownTimer: React.FC<{ secondsRemaining: number; totalSeconds: number; isExpired: boolean }> = ({
+    secondsRemaining,
+    totalSeconds,
+    isExpired,
+  }) => {
+    const percentage = totalSeconds > 0 ? (secondsRemaining / totalSeconds) * 100 : 0;
+    const circumference = 2 * Math.PI * 18; // radius = 18
+    const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+    const getColor = () => {
+      if (isExpired) return 'text-red-500';
+      if (secondsRemaining <= 5) return 'text-red-400';
+      if (secondsRemaining <= 15) return 'text-amber-400';
+      return 'text-emerald-400';
+    };
+
+    const getStrokeColor = () => {
+      if (isExpired) return '#ef4444';
+      if (secondsRemaining <= 5) return '#f87171';
+      if (secondsRemaining <= 15) return '#fbbf24';
+      return '#34d399';
+    };
+
+    return (
+      <div className="flex items-center gap-2 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-xl px-3 py-1.5 shadow-lg">
+        <div className="relative w-10 h-10">
+          <svg className="w-10 h-10 -rotate-90" viewBox="0 0 40 40">
+            <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
+            <circle
+              cx="20"
+              cy="20"
+              r="18"
+              fill="none"
+              stroke={getStrokeColor()}
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              className="transition-all duration-1000 ease-linear"
+            />
+          </svg>
+          <div className={`absolute inset-0 flex items-center justify-center text-xs font-bold ${getColor()}`}>
+            {isExpired ? '0' : secondsRemaining}
+          </div>
+        </div>
+        {isExpired ? (
+          <span className="text-red-400 text-xs font-semibold animate-pulse">Time's up!</span>
+        ) : (
+          <span className={`text-xs font-medium ${getColor()}`}>
+            Seconds
+          </span>
+        )}
+      </div>
+    );
+  };
+
+export const ResponseOverlay: React.FC<ResponseOverlayProps> = ({ sessionId, slideData, slideStartTimestamp, defaultSecondsForQuestion }) => {
     const [responses, setResponses] = useState<ResponseData[]>([]);
     const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
     const [isDistributionOpen, setIsDistributionOpen] = useState(false);
     const [isWordCloudOpen, setIsWordCloudOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Timer state
+    const [secondsRemaining, setSecondsRemaining] = useState(defaultSecondsForQuestion);
+    const [isTimerExpired, setIsTimerExpired] = useState(false);
+
+    useEffect(() => {
+        if (defaultSecondsForQuestion > 0) {
+            const startTs = slideStartTimestamp || Date.now();
+            const timer = setInterval(() => {
+                const elapsedMs = Date.now() - startTs;
+                const elapsedSecs = Math.floor(elapsedMs / 1000);
+                const remaining = Math.max(0, defaultSecondsForQuestion - elapsedSecs);
+
+                setSecondsRemaining(remaining);
+                if (remaining <= 0) {
+                    setIsTimerExpired(true);
+                    clearInterval(timer);
+                } else {
+                    setIsTimerExpired(false);
+                }
+            }, 1000);
+            return () => clearInterval(timer);
+        } else {
+            setIsTimerExpired(false);
+            setSecondsRemaining(0);
+            return undefined;
+        }
+    }, [slideStartTimestamp, defaultSecondsForQuestion]);
 
     const isMcqQuestion = useMemo(() => {
         return (
@@ -86,12 +173,23 @@ export const ResponseOverlay: React.FC<ResponseOverlayProps> = ({ sessionId, sli
 
     return (
         <>
-            <div className="absolute bottom-14 left-1/2 z-[1005] flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-3 text-white shadow-2xl backdrop-blur-xl transition-all duration-300 ease-in-out">
+            <div className="absolute bottom-20 left-1/2 z-[1005] flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/10 bg-black/30 p-3 text-white shadow-2xl backdrop-blur-xl transition-all duration-300 ease-in-out pointer-events-auto">
                 {/* Enhanced background effects */}
                 <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-r from-slate-900/20 via-transparent to-slate-900/20" />
 
+                {/* Countdown Timer Display */}
+                {defaultSecondsForQuestion > 0 && (
+                    <div className="relative flex items-center pr-3 border-r border-white/20">
+                        <CountdownTimer
+                            secondsRemaining={secondsRemaining}
+                            totalSeconds={defaultSecondsForQuestion}
+                            isExpired={isTimerExpired}
+                        />
+                    </div>
+                )}
+
                 {/* Response counter section */}
-                <div className="relative flex items-center gap-3 border-r border-white/20 pr-4">
+                <div className="relative flex items-center gap-3 border-r border-white/20 pr-4 pl-1">
                     <div className="rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 p-2 shadow-lg">
                         <Activity size={20} className="text-white" />
                     </div>

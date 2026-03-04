@@ -8,7 +8,7 @@ import YouTubePlayer from './youtube-player';
 import { toast } from 'sonner';
 import { GET_VIDEO_URLS } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { AIVideoPlayer } from '@/components/ai-video-player/AIVideoPlayer';
+import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import { SplitScreenSlide } from './split-screen-slide';
 
 const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedUrl?: string }) => {
@@ -31,7 +31,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
     // HTML_VIDEO state
     const [htmlVideoData, setHtmlVideoData] = useState<{
         htmlUrl: string;
-        audioUrl: string;
+        audioUrl: string | null;
     } | null>(null);
     const [isLoadingHtmlVideo, setIsLoadingHtmlVideo] = useState(false);
 
@@ -79,13 +79,13 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                     return;
                 }
 
-                if (!response.data.html_url || !response.data.audio_url) {
-                    throw new Error('Invalid response: missing html_url or audio_url');
+                if (!response.data.html_url) {
+                    throw new Error('Invalid response: missing html_url');
                 }
 
                 setHtmlVideoData({
                     htmlUrl: response.data.html_url,
-                    audioUrl: response.data.audio_url,
+                    audioUrl: response.data.audio_url || null,
                 });
             } catch (err: any) {
                 console.error('[VideoSlidePreview] Error fetching HTML video URLs:', err);
@@ -264,7 +264,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                 timestamp: Date.now(),
                 splitType: 'CODE',
                 // Include htmlVideoData if available (will trigger re-render when fetched)
-                ...(htmlVideoData?.htmlUrl && htmlVideoData?.audioUrl ? {
+                ...(htmlVideoData?.htmlUrl ? {
                     htmlVideoData: {
                         htmlUrl: htmlVideoData.htmlUrl,
                         audioUrl: htmlVideoData.audioUrl,
@@ -312,12 +312,12 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
         }
 
         // Show video if data is available
-        if (htmlVideoData?.htmlUrl && htmlVideoData?.audioUrl) {
+        if (htmlVideoData?.htmlUrl) {
             return (
                 <div key={`html-video-${activeItem.id}`} className="w-full overflow-hidden rounded-lg flex flex-col" style={{ maxHeight: 'calc(100vh - 200px)' }}>
-                    <AIVideoPlayer
+                    <AIContentPlayer
                         timelineUrl={htmlVideoData.htmlUrl}
-                        audioUrl={htmlVideoData.audioUrl}
+                        audioUrl={htmlVideoData.audioUrl ?? undefined}
                         className="w-full"
                     />
                 </div>

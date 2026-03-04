@@ -102,6 +102,18 @@ export const ActualPresentationDisplay: React.FC<ActualPresentationDisplayProps>
         }
     }, [currentSlideId, setGlobalCurrentSlideId]);
 
+    // Local state to keep track of slideStartTimestamp for timer
+    const [localSlideStart, setLocalSlideStart] = useState<number | null>(
+        liveSessionData?.slide_start_timestamp || null
+    );
+
+    // Update local start time when liveSessionData changes (e.g. initial load)
+    useEffect(() => {
+        if (liveSessionData?.slide_start_timestamp) {
+            setLocalSlideStart(liveSessionData.slide_start_timestamp);
+        }
+    }, [liveSessionData?.slide_start_timestamp]);
+
     // SSE Connection useEffect (adapted from ParticipantsSidePanel)
     useEffect(() => {
         if (!liveSessionData?.session_id) {
@@ -270,10 +282,13 @@ export const ActualPresentationDisplay: React.FC<ActualPresentationDisplayProps>
             setCurrentSlideId(nextSlide.id);
             if (liveSessionData?.session_id) {
                 try {
-                    await authenticatedAxiosInstance.post(MOVE_SLIDE_API_URL, {
+                    const res = await authenticatedAxiosInstance.post(MOVE_SLIDE_API_URL, {
                         session_id: liveSessionData.session_id,
                         move_to: nextSlide.slide_order,
                     });
+                    if (res.data?.slide_start_timestamp) {
+                        setLocalSlideStart(res.data.slide_start_timestamp);
+                    }
                     // toast.success(`Moved to slide ${nextSlide.slide_order + 1}`);
                 } catch (error) {
                     console.error('Error moving to next slide (API):', error);
@@ -294,10 +309,13 @@ export const ActualPresentationDisplay: React.FC<ActualPresentationDisplayProps>
             setCurrentSlideId(prevSlide.id);
             if (liveSessionData?.session_id) {
                 try {
-                    await authenticatedAxiosInstance.post(MOVE_SLIDE_API_URL, {
+                    const res = await authenticatedAxiosInstance.post(MOVE_SLIDE_API_URL, {
                         session_id: liveSessionData.session_id,
                         move_to: prevSlide.slide_order,
                     });
+                    if (res.data?.slide_start_timestamp) {
+                        setLocalSlideStart(res.data.slide_start_timestamp);
+                    }
                     // toast.success(`Moved to slide ${prevSlide.slide_order + 1}`);
                 } catch (error) {
                     console.error('Error moving to previous slide (API):', error);
@@ -420,8 +438,13 @@ export const ActualPresentationDisplay: React.FC<ActualPresentationDisplayProps>
                 </div>
 
                 {isQuestionSlideForResponses && liveSessionData && currentSlideData && (
-                    <div className="absolute inset-0 transition-all duration-300 ease-in-out">
-                    <ResponseOverlay sessionId={liveSessionData.session_id} slideData={currentSlideData} />
+                    <div className="absolute inset-0 transition-all duration-300 ease-in-out z-10 pointer-events-none">
+                        <ResponseOverlay
+                            sessionId={liveSessionData.session_id}
+                            slideData={currentSlideData}
+                            slideStartTimestamp={localSlideStart}
+                            defaultSecondsForQuestion={(liveSessionData as any).default_seconds_for_question || 0}
+                        />
                     </div>
                 )}
             </div>

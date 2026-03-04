@@ -208,26 +208,26 @@ export const QuizSlide: React.FC<QuizSlideProps> = ({
                         {questionType === SlideTypeEnum.Quiz &&
                             displayData?.singleChoiceOptions &&
                             Array.isArray(displayData.singleChoiceOptions) && (
-                                <div className="mx-auto w-full max-w-4xl space-y-3 lg:space-y-4">
+                                <div className="mx-auto w-full max-w-4xl space-y-3 lg:space-y-4 pb-24"> {/* Added pb-24 to prevent overlap with bottom action bar/overlay */}
                                     {displayData.singleChoiceOptions.map(
                                         (option: any, index: number) => (
                                             <div
                                                 key={option.id || `option-${index}`}
-                                                className="group relative rounded-xl lg:rounded-2xl border border-slate-200/50 bg-white/80 backdrop-blur-sm p-3 lg:p-4 text-left shadow-lg hover:shadow-xl transition-all duration-300 ease-out hover:scale-[1.02] hover:border-blue-300/50 cursor-pointer"
+                                                className="group relative rounded-xl lg:rounded-2xl border border-slate-200/50 bg-white/80 backdrop-blur-sm p-3 lg:p-4 text-left shadow-lg hover:shadow-xl transition-all duration-300 ease-out hover:scale-[1.02] hover:border-blue-300/50 cursor-pointer h-auto min-h-[3.5rem]"
                                             >
                                                 {/* Subtle gradient overlay */}
                                                 <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-transparent to-purple-500/5 rounded-xl lg:rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-                                                <div className="relative flex items-center">
-                                                    <span className="mr-3 lg:mr-4 flex-shrink-0 flex items-center justify-center w-7 h-7 lg:w-8 lg:h-8 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold text-sm lg:text-base rounded-full shadow-lg group-hover:scale-110 transition-transform duration-200">
+                                                <div className="relative flex items-start"> {/* Changed items-center to items-start for multi-line support */}
+                                                    <span className="mr-3 lg:mr-4 mt-0.5 flex-shrink-0 flex items-center justify-center w-7 h-7 lg:w-8 lg:h-8 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold text-sm lg:text-base rounded-full shadow-lg group-hover:scale-110 transition-transform duration-200">
                                                         {String.fromCharCode(65 + index)}
-                                                </span>
-                                                <span
-                                                        className="text-sm lg:text-lg font-medium text-slate-700 group-hover:text-slate-800 transition-colors duration-200"
-                                                    dangerouslySetInnerHTML={{
+                                                    </span>
+                                                    <span
+                                                        className="text-sm lg:text-lg font-medium text-slate-700 group-hover:text-slate-800 transition-colors duration-200 break-words whitespace-normal" // Added break-words whitespace-normal to fix trimming
+                                                        dangerouslySetInnerHTML={{
                                                             __html: option.name || 'Option text missing',
-                                                    }}
-                                                />
+                                                        }}
+                                                    />
                                                 </div>
                                             </div>
                                         )

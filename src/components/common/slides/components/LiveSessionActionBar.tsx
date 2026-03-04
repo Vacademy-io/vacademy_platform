@@ -213,18 +213,18 @@ export const LiveSessionActionBar: React.FC<LiveSessionActionBarProps> = ({
                 )}
 
                 {/* Always visible QR Code with invite code */}
-                <div className="flex items-center gap-4 rounded-xl border border-white/20 bg-white/10 px-4 py-2 shadow-lg backdrop-blur-sm">
+                <div className="flex items-center gap-4 group relative rounded-xl border border-white/20 bg-white/10 px-4 py-2 shadow-lg backdrop-blur-sm cursor-help hover:z-50 transition-all duration-300">
                     {/* QR Code - Centered and Bigger */}
-                    <div className="relative flex items-center justify-center">
+                    <div className="relative flex items-center justify-center transition-transform duration-300 group-hover:scale-[3] group-hover:translate-y-12 group-hover:translate-x-12 origin-top-left z-50">
                         <div
                             ref={qrRef}
-                            className="flex size-14 items-center justify-center overflow-hidden rounded-lg border border-orange-400/50 bg-white p-1 shadow-lg"
+                            className="flex size-14 items-center justify-center overflow-hidden rounded-lg border border-orange-400/50 bg-white p-1 shadow-lg transition-transform duration-300 group-hover:border-orange-500"
                             style={{
                                 width: '56px',
                                 height: '56px',
                             }}
                         />
-                        <div className="pointer-events-none absolute inset-0 rounded-lg bg-gradient-to-r from-orange-400/10 to-orange-600/10" />
+                        <div className="pointer-events-none absolute inset-0 rounded-lg bg-gradient-to-r from-orange-400/10 to-orange-600/10 transition-opacity duration-300 group-hover:opacity-0" />
                     </div>
 
                     {/* Invite code and copy button */}

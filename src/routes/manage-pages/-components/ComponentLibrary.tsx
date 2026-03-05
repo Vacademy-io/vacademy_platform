@@ -33,7 +33,7 @@ const LAYOUT_PRESETS = [
 ] as const;
 
 // Template keys that are layout containers — excluded from the content list
-const LAYOUT_KEYS = new Set(LAYOUT_PRESETS.map((p) => p.key));
+const LAYOUT_KEYS = new Set<string>(LAYOUT_PRESETS.map((p) => p.key));
 
 /** Each component in the library is individually draggable */
 const DraggableComponentItem = ({

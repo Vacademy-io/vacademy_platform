@@ -12,12 +12,15 @@ interface CourseCataloguePageProps {
   tagName: string;
   instituteId: string;
   instituteThemeCode?: string | null;
+  /** When set, renders the page matching this route slug instead of the home page */
+  pageSlug?: string;
 }
 
 export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   tagName,
   instituteId,
   instituteThemeCode,
+  pageSlug,
 }) => {
   console.log("[CourseCataloguePage] Component mounted with props:", {
     tagName,
@@ -339,10 +342,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               </div>
             </div>
           )}
-          {/*           
-          Render only homepage components from JSON */}
+          {/* Render the matching page (home page by default, or specific slug) */}
           {catalogueData.pages
-            .filter(page => page.id === "home" || page.route === "homepage")
+            .filter(page => {
+              if (pageSlug) {
+                // Match custom page by route slug
+                return page.route === pageSlug || page.route === `/${pageSlug}`;
+              }
+              // Default: home / root page
+              return page.id === "home" || page.route === "homepage" || page.route === "/" || page.route === "";
+            })
             .map((page) => (
               <JsonRenderer
                 key={page.id}

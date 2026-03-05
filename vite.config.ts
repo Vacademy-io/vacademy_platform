@@ -239,6 +239,9 @@ export default defineConfig({
         reportCompressedSize: false, // Skip compressed size reporting to save memory
         // Worker-specific options are configured at the top-level `worker` field if needed
     },
+    define: {
+        __VERSION__: JSON.stringify('0.16.11'),
+    },
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './src'),

@@ -36,6 +36,12 @@ public interface LiveSessionProviderStrategy {
     List<MeetingAttendeeDTO> getAttendance(String providerMeetingId, String instituteId);
 
     /**
+     * Connect and authenticate an institute with the provider (OAuth, API keys).
+     */
+    vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig connectProvider(
+            vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO request);
+
+    /**
      * Returns the provider name (for logging/validation).
      */
     String getProviderName();

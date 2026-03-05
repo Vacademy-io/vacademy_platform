@@ -42,6 +42,7 @@ public class LiveSessionLogs {
 
     /**
      * ISO-8601 join time from the meeting provider (e.g. Zoho).
+     * Includes provider-specific timezone offsets dynamically if returned.
      * Populated by the hourly sync scheduler.
      */
     @Column(name = "provider_join_time", length = 50)

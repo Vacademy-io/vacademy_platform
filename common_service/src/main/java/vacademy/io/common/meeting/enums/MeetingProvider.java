@@ -8,7 +8,10 @@ public enum MeetingProvider {
             throw new IllegalArgumentException("Meeting provider name cannot be null or empty");
         }
         try {
-            return MeetingProvider.valueOf(name.trim().toUpperCase());
+            String clean = name.trim().toUpperCase();
+            if (clean.equals("ZOHO"))
+                return ZOHO_MEETING;
+            return MeetingProvider.valueOf(clean);
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("Unsupported meeting provider: " + name);
         }

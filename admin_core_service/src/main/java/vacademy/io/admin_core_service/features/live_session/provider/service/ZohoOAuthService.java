@@ -229,7 +229,10 @@ public class ZohoOAuthService {
             // Zoho returns ZSOID as the numeric user ID used in Meeting API paths
             String zsid = response.path("ZSOID").asText(null);
             if (zsid == null || zsid.isBlank()) {
-                zsid = response.path("id").asText(null); // fallback
+                zsid = response.path("ZUID").asText(null); // fallback 1
+            }
+            if (zsid == null || zsid.isBlank()) {
+                zsid = response.path("id").asText(null); // fallback 2
             }
             if (zsid == null || zsid.isBlank()) {
                 log.warn("Zoho user info response: {}", response);

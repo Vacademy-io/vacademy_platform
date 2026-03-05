@@ -4,12 +4,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderFactory;
 import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderStrategy;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderMeetingCreateRequestDTO;
-import vacademy.io.admin_core_service.features.live_session.provider.dto.ZohoConnectRequestDTO;
+import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig;
 import vacademy.io.admin_core_service.features.live_session.provider.repository.LiveSessionProviderConfigRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
@@ -46,17 +45,9 @@ public class LiveSessionProviderService {
     // OAuth connect
     // -----------------------------------------------------------------------
 
-    public LiveSessionProviderConfig connectZoho(ZohoConnectRequestDTO request) {
-        String domain = (request.getDomain() != null && !request.getDomain().isBlank())
-                ? request.getDomain()
-                : "zoho.com";
-        return zohoOAuthService.connectZoho(
-                request.getInstituteId(),
-                request.getClientId(),
-                request.getClientSecret(),
-                request.getAuthorizationCode(),
-                domain,
-                request.getZohoUserId());
+    public LiveSessionProviderConfig connectProvider(String providerName, ProviderConnectRequestDTO request) {
+        String normalizedProvider = MeetingProvider.fromString(providerName).name();
+        return providerFactory.getStrategy(normalizedProvider).connectProvider(request);
     }
 
     public boolean isZohoConnected(String instituteId) {

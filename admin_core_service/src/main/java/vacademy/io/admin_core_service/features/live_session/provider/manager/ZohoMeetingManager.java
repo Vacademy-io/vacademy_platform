@@ -35,6 +35,25 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
     }
 
     // -----------------------------------------------------------------------
+    // Connect mapping
+    // -----------------------------------------------------------------------
+
+    @Override
+    public vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig connectProvider(
+            vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO request) {
+        String domain = (request.getDomain() != null && !request.getDomain().isBlank())
+                ? request.getDomain()
+                : "zoho.com";
+        return oAuthService.connectZoho(
+                request.getInstituteId(),
+                request.getClientId(),
+                request.getClientSecret(),
+                request.getAuthorizationCode(),
+                domain,
+                request.getVendorUserId());
+    }
+
+    // -----------------------------------------------------------------------
     // Create meeting
     // POST /api/v2/{zohoUserId}/sessions.json
     // -----------------------------------------------------------------------
@@ -109,13 +128,17 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         String userId = (String) cfg.get("zohoUserId");
         String apiBase = ZohoOAuthService.buildApiBase(domain);
 
-        String url = apiBase + "/api/v2/" + userId + "/sessions/" + providerMeetingId + "/recordings.json";
+        String url = apiBase + "/meeting/api/v2/" + userId + "/recordings/" + providerMeetingId + ".json";
         JsonNode response = webClientBuilder.build()
                 .get().uri(url)
                 .header("Authorization", "Zoho-oauthtoken " + token)
                 .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class).map(body -> {
+                            log.error("Zoho recordings API failed: {}", body);
+                            return new VacademyException("Zoho recordings error: " + body);
+                        }))
                 .bodyToMono(JsonNode.class)
-                .onErrorReturn(com.fasterxml.jackson.databind.node.NullNode.getInstance())
                 .block();
 
         return parseRecordingsResponse(response, providerMeetingId);
@@ -134,13 +157,17 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         String userId = (String) cfg.get("zohoUserId");
         String apiBase = ZohoOAuthService.buildApiBase(domain);
 
-        String url = apiBase + "/api/v2/" + userId + "/sessions/" + providerMeetingId + "/attendees.json";
+        String url = apiBase + "/api/v2/" + userId + "/participant/" + providerMeetingId + ".json?index=1&count=100";
         JsonNode response = webClientBuilder.build()
                 .get().uri(url)
                 .header("Authorization", "Zoho-oauthtoken " + token)
                 .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class).map(body -> {
+                            log.error("Zoho attendance API failed: {}", body);
+                            return new VacademyException("Zoho attendance error: " + body);
+                        }))
                 .bodyToMono(JsonNode.class)
-                .onErrorReturn(com.fasterxml.jackson.databind.node.NullNode.getInstance())
                 .block();
 
         return parseAttendeesResponse(response);
@@ -178,9 +205,13 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         List<MeetingRecordingDTO> list = new ArrayList<>();
         if (response == null || response.isNull() || response.isMissingNode())
             return list;
-        JsonNode node = response.path("recordings");
+
+        JsonNode firstElement = response.isArray() && response.size() > 0 ? response.get(0) : response;
+        JsonNode node = firstElement.has("recordings") ? firstElement.get("recordings") : response;
+
         if (!node.isArray())
             return list;
+
         for (JsonNode rec : node) {
             list.add(MeetingRecordingDTO.builder()
                     .recordingId(rec.path("recordingId").asText(null))
@@ -198,9 +229,13 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         List<MeetingAttendeeDTO> list = new ArrayList<>();
         if (response == null || response.isNull() || response.isMissingNode())
             return list;
-        JsonNode node = response.path("attendees");
+
+        JsonNode firstElement = response.isArray() && response.size() > 0 ? response.get(0) : response;
+        JsonNode node = firstElement.has("attendees") ? firstElement.get("attendees") : response;
+
         if (!node.isArray())
             return list;
+
         for (JsonNode att : node) {
             list.add(MeetingAttendeeDTO.builder()
                     .name(att.path("name").asText(null))

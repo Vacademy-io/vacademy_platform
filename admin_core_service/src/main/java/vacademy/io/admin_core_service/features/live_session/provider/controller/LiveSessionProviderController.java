@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderMeetingCreateRequestDTO;
-import vacademy.io.admin_core_service.features.live_session.provider.dto.ZohoConnectRequestDTO;
+import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig;
 import vacademy.io.admin_core_service.features.live_session.provider.service.LiveSessionProviderService;
 import vacademy.io.common.meeting.dto.CreateMeetingResponseDTO;
@@ -34,12 +34,13 @@ public class LiveSessionProviderController {
      * Admin generates the auth code from Zoho API Console → Self Client → Generate
      * Code.
      *
-     * POST /admin-core/live-session/provider/connect/zoho
+     * POST /admin-core/live-session/provider/connect/{providerName}
      */
-    @PostMapping("/connect/zoho")
-    public ResponseEntity<LiveSessionProviderConfig> connectZoho(
-            @RequestBody ZohoConnectRequestDTO request) {
-        LiveSessionProviderConfig config = providerService.connectZoho(request);
+    @PostMapping("/connect/{providerName}")
+    public ResponseEntity<LiveSessionProviderConfig> connectProvider(
+            @PathVariable String providerName,
+            @RequestBody ProviderConnectRequestDTO request) {
+        LiveSessionProviderConfig config = providerService.connectProvider(providerName, request);
         // Mask secrets before responding — configJson is not exposed in the entity
         // response
         config.setConfigJson(null);

@@ -49,6 +49,7 @@ interface LevelDetails {
     parent_id?: string | null;
     add_faculty_to_course: AddFacultyToCourse[];
     group: GroupDetails;
+    subgroups?: { id?: string; name: string }[];
 }
 
 export interface SessionDetails {
@@ -68,6 +69,13 @@ export interface FormattedCourseData {
     course_html_description: string;
     contain_levels: boolean;
     sessions: SessionDetails[];
+    /**
+     * Optional subgroup configuration for the course.
+     * When true, the backend will create child batches (package_session rows)
+     * for each provided subgroup under the first active parent batch.
+     */
+    contains_subgroup?: boolean;
+    subgroups?: { name: string }[];
     is_course_published_to_catalaouge: boolean;
     course_preview_image_media_id: string;
     course_banner_media_id: string;
@@ -89,6 +97,40 @@ type FormattedLevel = FormattedSession['levels'][0];
 export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCourseData => {
     const hasLevels = formData.hasLevels === 'yes';
     const hasSessions = formData.hasSessions === 'yes';
+
+    // Collect subgroup names from both the legacy top-level form data and from
+    // any per-level subgroup configuration, if present.
+    const topLevelSubgroupNames: string[] = Array.isArray(
+        (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups
+    )
+        ? (
+              (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? []
+          )
+              .map((sg) => (sg.subgroupName || '').trim())
+              .filter(Boolean)
+        : [];
+
+    const levelSubgroupNames: string[] = Array.isArray(formData.sessions)
+        ? formData.sessions.flatMap((session: any) =>
+              (session.levels ?? []).flatMap((level: any) =>
+                  (level.subgroups ?? [])
+                      .map((sg: any) => (sg?.subgroupName || '').trim())
+                      .filter(Boolean)
+              )
+          )
+        : [];
+
+    const allSubgroupNames = [...topLevelSubgroupNames, ...levelSubgroupNames];
+    const containsSubgroup = allSubgroupNames.length > 0;
+
+    // For the new nested model, we only send the legacy root-level `subgroups`
+    // when there are top-level entries AND no nested level subgroups. When
+    // nested subgroups exist, they are sent per level and the root list is
+    // omitted so the backend uses the new per-(session, level) behaviour.
+    const formattedSubgroups =
+        containsSubgroup && levelSubgroupNames.length === 0
+            ? topLevelSubgroupNames.map((name) => ({ name }))
+            : undefined;
 
     const mapUser = (user: { id: string; name: string; email: string; profilePicId: string }) => ({
         user: {
@@ -117,23 +159,37 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
             name: string;
             userIds: { id: string; name: string; email: string; profilePicId: string }[];
             newLevel: boolean;
+            subgroups?: { subgroupName?: string }[];
         }>
     ): FormattedLevel[] =>
-        levels.map((level) => ({
-            id: level.id,
-            new_level: level.newLevel,
-            level_name: level.name,
-            duration_in_days: 0,
-            thumbnail_file_id: '',
-            package_id: '',
-            add_faculty_to_course: [...(level.userIds?.map(mapUser) ?? [])],
-            group: {
-                id: '',
-                group_name: '',
-                group_value: '',
-                new_group: true,
-            },
-        }));
+        levels.map((level) => {
+            const nestedSubgroups =
+                Array.isArray(level.subgroups) && level.subgroups.length > 0
+                    ? level.subgroups
+                          .map((sg) => (sg.subgroupName || '').trim())
+                          .filter(Boolean)
+                          .map((name) => ({ name }))
+                    : undefined;
+
+            return {
+                id: level.id,
+                new_level: level.newLevel,
+                level_name: level.name,
+                duration_in_days: 0,
+                thumbnail_file_id: '',
+                package_id: '',
+                add_faculty_to_course: [...(level.userIds?.map(mapUser) ?? [])],
+                group: {
+                    id: '',
+                    group_name: '',
+                    group_value: '',
+                    new_group: true,
+                },
+                ...(nestedSubgroups && nestedSubgroups.length > 0
+                    ? { subgroups: nestedSubgroups }
+                    : {}),
+            } as FormattedLevel;
+        });
 
     let sessions: FormattedSession[] = [];
 
@@ -247,6 +303,8 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         thumbnail_file_id: '',
         contain_levels: hasLevels || hasSessions,
         sessions,
+        contains_subgroup: containsSubgroup,
+        subgroups: formattedSubgroups,
         is_course_published_to_catalaouge: formData.publishToCatalogue,
         course_preview_image_media_id: formData.coursePreview || '',
         course_banner_media_id: formData.courseBanner || '',
@@ -276,6 +334,34 @@ export const convertToApiCourseFormatUpdate = (
 ): FormattedCourseData => {
     const hasLevels = formData.hasLevels === 'yes';
     const hasSessions = formData.hasSessions === 'yes';
+
+    // Derive subgroup configuration for update requests in the same way as creation.
+    const topLevelSubgroupNames: string[] = Array.isArray(
+        (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups
+    )
+        ? (
+              (formData as unknown as { subgroups?: { subgroupName?: string }[] }).subgroups ?? []
+          )
+              .map((sg) => (sg.subgroupName || '').trim())
+              .filter(Boolean)
+        : [];
+
+    const levelSubgroupNames: string[] = Array.isArray(formData.sessions)
+        ? formData.sessions.flatMap((session: any) =>
+              (session.levels ?? []).flatMap((level: any) =>
+                  (level.subgroups ?? [])
+                      .map((sg: any) => (sg?.subgroupName || '').trim())
+                      .filter(Boolean)
+              )
+          )
+        : [];
+
+    const allSubgroupNames = [...topLevelSubgroupNames, ...levelSubgroupNames];
+    const containsSubgroup = allSubgroupNames.length > 0;
+    const formattedSubgroups =
+        containsSubgroup && levelSubgroupNames.length === 0
+            ? topLevelSubgroupNames.map((name) => ({ name }))
+            : undefined;
 
     const findById = <T extends { id: string }>(list: T[], id: string) =>
         list.find((item) => item.id === id);
@@ -382,6 +468,19 @@ export const convertToApiCourseFormatUpdate = (
 
             const add_faculty_to_course = [...deletedUsers, ...addedUsers, ...existingUsers];
 
+            const subgroupList = Array.isArray((current as unknown as { subgroups?: { id?: string; subgroupName?: string; name?: string }[] })?.subgroups)
+                ? (current as unknown as { subgroups: { id?: string; subgroupName?: string; name?: string }[] })
+                      .subgroups.map((sg) => {
+                          const name = (sg.subgroupName ?? sg.name ?? '').trim();
+                          return name.length > 0
+                              ? { ...(sg.id ? { id: sg.id } : {}), name }
+                              : null;
+                      })
+                      .filter((n): n is { id?: string; name: string } => n !== null)
+                : undefined;
+            const subgroupPayload =
+                subgroupList !== undefined && subgroupList.length >= 0 ? subgroupList : undefined;
+
             return {
                 id: level?.id || '',
                 new_level: level?.newLevel ?? false,
@@ -406,6 +505,7 @@ export const convertToApiCourseFormatUpdate = (
                     group_value: '',
                     new_group: false,
                 },
+                ...(subgroupPayload !== undefined ? { subgroups: subgroupPayload } : {}),
             };
         });
     };
@@ -457,6 +557,8 @@ export const convertToApiCourseFormatUpdate = (
         thumbnail_file_id: '',
         contain_levels: hasLevels || hasSessions,
         sessions,
+        contains_subgroup: containsSubgroup,
+        subgroups: formattedSubgroups,
         is_course_published_to_catalaouge: formData.publishToCatalogue,
         course_preview_image_media_id: formData.coursePreview || '',
         course_banner_media_id: formData.courseBanner || '',
@@ -525,8 +627,22 @@ export function transformCourseData(course: CourseDetailsFormValues) {
                     roles: inst.roles,
                 })),
                 newLevel: level.newLevel ?? false,
+                subgroups: Array.isArray((level as { subgroups?: { id?: string; name: string }[] }).subgroups)
+                    ? (level as { subgroups: { id?: string; name: string }[] }).subgroups.map((s) => ({
+                          ...(s.id ? { id: s.id } : {}),
+                          subgroupName: s.name ?? '',
+                      }))
+                    : undefined,
+                containsSubgroup:
+                    ((level as { subgroups?: unknown[] }).subgroups?.length ?? 0) > 0,
             })),
         })),
+        containsSubgroup:
+            course.courseData.sessions?.some((s) =>
+                (s.levelDetails ?? []).some(
+                    (l) => ((l as { subgroups?: unknown[] }).subgroups?.length ?? 0) > 0
+                )
+            ) ?? false,
         selectedInstructors: extractInstructors(sessions),
         instructors: [],
         publishToCatalogue: course.courseData.isCoursePublishedToCatalaouge ?? false,

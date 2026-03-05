@@ -32,6 +32,11 @@ export interface GroupDTO {
 
 export interface PackageSessionDTO {
     id: string;
+    /**
+     * Optional display name for this package session (child batch),
+     * backed by the `name` column on the package_session table.
+     */
+    name?: string | null;
     level: LevelDTO;
     session: SessionDTO;
     start_time: string;

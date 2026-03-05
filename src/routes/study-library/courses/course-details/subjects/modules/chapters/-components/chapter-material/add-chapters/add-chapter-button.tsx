@@ -12,6 +12,8 @@ interface AddChapterButtonProps {
     sessionId?: string;
     levelId?: string;
     subjectId?: string;
+    /** Optional current package_session_id (selected Batch/Subgroup) */
+    packageSessionId?: string;
 }
 
 // Add Chapter Header Actions Component
@@ -44,6 +46,7 @@ export const AddChapterButton = ({
     sessionId,
     levelId,
     subjectId,
+    packageSessionId,
 }: AddChapterButtonProps) => {
     const [openDialog, setOpenDialog] = useState(false);
 
@@ -104,6 +107,7 @@ export const AddChapterButton = ({
                 session_id={sessionId}
                 level_id={levelId}
                 subject_id={subjectId}
+                package_session_id_override={packageSessionId}
                 onSubmitSuccess={handleSubmitSuccess}
                 mode="create"
                 hideSubmitButton={true}

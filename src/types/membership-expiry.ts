@@ -90,6 +90,11 @@ export interface MembershipDetail {
         session_name: string;
         package_name: string;
         level_name: string;
+        /**
+         * Optional display name coming from package_session.name.
+         * When present, frontend prefers `package_name + " " + name`.
+         */
+        name?: string | null;
     }>;
 }
 

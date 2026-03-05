@@ -30,12 +30,19 @@ import { CourseSettingsData } from '@/types/course-settings';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import type { CourseCreationSettings } from '@/types/display-settings';
 
+interface Subgroup {
+    id?: string;
+    subgroupName: string;
+}
+
 interface Level {
     id: string;
     name: string;
     userIds: Instructor[];
     batchId: string;
     newLevel?: boolean;
+    containsSubgroup: boolean;
+    subgroups: Subgroup[];
 }
 
 interface Session {
@@ -56,62 +63,113 @@ interface Instructor {
 }
 
 // Update the schema
-export const step2Schema = z.object({
-    levelStructure: z.number(),
-    hasLevels: z.string(),
-    hasSessions: z.string(),
-    sessions: z
-        .array(
-            z.object({
-                id: z.string(),
-                name: z.string(),
-                startDate: z.string(),
-                newSession: z.boolean().default(false),
-                levels: z.array(
-                    z.object({
-                        id: z.string(),
-                        name: z.string(),
-                        userIds: z
-                            .array(
-                                z.object({
-                                    id: z.string(),
-                                    email: z.string(),
-                                    name: z.string(),
-                                    profilePicId: z.string(),
-                                    roles: z.array(z.string()).optional(),
-                                })
-                            )
-                            .default([]),
-                        newLevel: z.boolean().default(false),
-                    })
-                ),
-            })
-        )
-        .default([]),
-    selectedInstructors: z
-        .array(
-            z.object({
-                id: z.string(),
-                name: z.string(),
-                email: z.string(),
-                profilePicId: z.string(),
-                roles: z.array(z.string()).optional(),
-            })
-        )
-        .default([]),
-    instructors: z
-        .array(
-            z.object({
-                id: z.string(),
-                name: z.string(),
-                email: z.string(),
-                profilePicId: z.string(),
-                roles: z.array(z.string()).optional(),
-            })
-        )
-        .optional(),
-    publishToCatalogue: z.boolean(),
-});
+export const step2Schema = z
+    .object({
+        levelStructure: z.number(),
+        hasLevels: z.string(),
+        hasSessions: z.string(),
+        // Top-level subgroup configuration for the course. When true, the UI
+        // enables subgroup configuration per level (nested under sessions[i].levels[j]).
+        // The legacy top-level `subgroups` array is kept for backward compatibility
+        // but is no longer required by validation.
+        containsSubgroup: z.boolean().optional().default(false),
+        subgroups: z
+            .array(
+                z.object({
+                    subgroupName: z.string().min(1, 'Subgroup name is required'),
+                })
+            )
+            .optional()
+            .default([]),
+        sessions: z
+            .array(
+                z.object({
+                    id: z.string(),
+                    name: z.string(),
+                    startDate: z.string(),
+                    newSession: z.boolean().default(false),
+                    levels: z.array(
+                        z.object({
+                            id: z.string(),
+                            name: z.string(),
+                            userIds: z
+                                .array(
+                                    z.object({
+                                        id: z.string(),
+                                        email: z.string(),
+                                        name: z.string(),
+                                        profilePicId: z.string(),
+                                        roles: z.array(z.string()).optional(),
+                                    })
+                                )
+                                .default([]),
+                            newLevel: z.boolean().default(false),
+                            containsSubgroup: z.boolean().optional().default(false),
+                            subgroups: z
+                                .array(
+                                    z.object({
+                                        id: z.string().optional(),
+                                        subgroupName: z
+                                            .string()
+                                            .min(1, 'Subgroup name is required'),
+                                    })
+                                )
+                                .optional()
+                                .default([]),
+                        })
+                    ),
+                })
+            )
+            .default([]),
+        selectedInstructors: z
+            .array(
+                z.object({
+                    id: z.string(),
+                    name: z.string(),
+                    email: z.string(),
+                    profilePicId: z.string(),
+                    roles: z.array(z.string()).optional(),
+                })
+            )
+            .default([]),
+        instructors: z
+            .array(
+                z.object({
+                    id: z.string(),
+                    name: z.string(),
+                    email: z.string(),
+                    profilePicId: z.string(),
+                    roles: z.array(z.string()).optional(),
+                })
+            )
+            .optional(),
+        publishToCatalogue: z.boolean(),
+    })
+    .superRefine((data, ctx) => {
+        if (!data.containsSubgroup) return;
+
+        // Accept either the legacy top-level subgroups OR the new nested
+        // per-level subgroups. Prefer nested validation for the new UI.
+        const hasTopLevel =
+            Array.isArray(data.subgroups) && data.subgroups.some((sg) => !!sg.subgroupName?.trim());
+        const hasNested =
+            Array.isArray(data.sessions) &&
+            data.sessions.some((session) =>
+                (session.levels ?? []).some(
+                    (level) =>
+                        Array.isArray(level.subgroups) &&
+                        level.subgroups.some((sg) => !!sg.subgroupName?.trim())
+                )
+            );
+
+        if (!hasTopLevel && !hasNested) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Please add at least one subgroup for at least one level',
+                path: ['sessions'],
+            });
+        }
+    });
 
 export type Step2Data = z.infer<typeof step2Schema>;
 
@@ -286,6 +344,8 @@ export const AddCourseStep2 = ({
             levels: session.levels.map((level) => ({
                 ...level,
                 batchId: (level as Level).batchId || level.id,
+                containsSubgroup: (level as Level).containsSubgroup ?? false,
+                subgroups: (level as Level).subgroups ?? [],
             })),
         }))
     );
@@ -346,6 +406,12 @@ export const AddCourseStep2 = ({
         [sessions]
     );
     const canAddMoreLevels = !limitLevelsToOne || totalLevels < 1;
+
+    // Subgroup-related controls should only be available when the global
+    // course settings default filter is constrained to parents/children.
+    const courseFilterType = courseSettings?.permissions?.courseFilterType;
+    const enableSubgroupControls =
+        courseFilterType === 'PARENTS_ONLY' || courseFilterType === 'CHILDREN_ONLY';
 
     useEffect(() => {
         if (!allowAdvancedSettings) {
@@ -442,6 +508,8 @@ export const AddCourseStep2 = ({
                       2,
                   hasLevels: initialData.hasLevels ?? getInitialHasLevels(),
                   hasSessions: initialData.hasSessions ?? getInitialHasSessions(),
+                  containsSubgroup: initialData.containsSubgroup ?? false,
+                  subgroups: initialData.subgroups ?? [],
                   sessions: initialData.sessions ?? [],
                   selectedInstructors: initialData.selectedInstructors ?? [],
                   instructors: initialData.instructors ?? [],
@@ -451,12 +519,38 @@ export const AddCourseStep2 = ({
                   levelStructure: courseSettings?.courseStructure?.defaultDepth || 2,
                   hasLevels: 'yes',
                   hasSessions: 'yes',
+                  containsSubgroup: false,
+                  subgroups: [],
                   sessions: [],
                   selectedInstructors: [],
                   instructors: [],
                   publishToCatalogue: false,
               },
     });
+
+    const containsSubgroup = form.watch('containsSubgroup');
+
+    const handleToggleContainsSubgroup = (value: 'yes' | 'no') => {
+        const isYes = value === 'yes';
+        form.setValue('containsSubgroup', isYes);
+
+        // When turning subgroups OFF, clear all nested subgroups from every level
+        // so the payload does not carry stale subgroup data.
+        if (!isYes) {
+            setSessions((prev) => {
+                const updatedSessions = prev.map((session) => ({
+                    ...session,
+                    levels: session.levels.map((level) => ({
+                        ...level,
+                        containsSubgroup: false,
+                        subgroups: [],
+                    })),
+                }));
+                form.setValue('sessions', ensureNewSessionAndLevelFlags(updatedSessions));
+                return updatedSessions;
+            });
+        }
+    };
 
     // Session management functions
     const addSession = () => {
@@ -518,6 +612,8 @@ export const AddCourseStep2 = ({
                 userIds: [],
                 batchId: id,
                 newLevel: true,
+                containsSubgroup: false,
+                subgroups: [],
             };
             const updatedSessions = sessions.map((session) =>
                 session.id === sessionId
@@ -568,6 +664,89 @@ export const AddCourseStep2 = ({
             publishToCatalogue: data.publishToCatalogue,
         };
         onSubmit(completeData);
+    };
+
+    // ---- Per-level subgroup handlers (nested model) -------------------------
+    const handleAddLevelSubgroup = (sessionId: string, levelBatchId: string) => {
+        setSessions((prev) => {
+            const updated = prev.map((session) => {
+                if (session.id !== sessionId) return session;
+                return {
+                    ...session,
+                    levels: session.levels.map((level) => {
+                        if ((level as Level).batchId !== levelBatchId) return level;
+                        const currentLevel = level as Level;
+                        const newSubgroups = [...(currentLevel.subgroups ?? []), { subgroupName: '' }];
+                        return {
+                            ...currentLevel,
+                            containsSubgroup: true,
+                            subgroups: newSubgroups,
+                        };
+                    }),
+                };
+            });
+            form.setValue('sessions', ensureNewSessionAndLevelFlags(updated));
+            return updated;
+        });
+    };
+
+    const handleLevelSubgroupNameChange = (
+        sessionId: string,
+        levelBatchId: string,
+        index: number,
+        name: string
+    ) => {
+        setSessions((prev) => {
+            const updated = prev.map((session) => {
+                if (session.id !== sessionId) return session;
+                return {
+                    ...session,
+                    levels: session.levels.map((level) => {
+                        if ((level as Level).batchId !== levelBatchId) return level;
+                        const currentLevel = level as Level;
+                        const subgroups = [...(currentLevel.subgroups ?? [])];
+                        if (!subgroups[index]) return currentLevel;
+                        subgroups[index] = { ...subgroups[index], subgroupName: name };
+                        return {
+                            ...currentLevel,
+                            containsSubgroup: subgroups.length > 0,
+                            subgroups,
+                        };
+                    }),
+                };
+            });
+            form.setValue('sessions', ensureNewSessionAndLevelFlags(updated));
+            return updated;
+        });
+    };
+
+    const handleRemoveLevelSubgroupRow = (
+        sessionId: string,
+        levelBatchId: string,
+        index: number
+    ) => {
+        setSessions((prev) => {
+            const updated = prev.map((session) => {
+                if (session.id !== sessionId) return session;
+                return {
+                    ...session,
+                    levels: session.levels.map((level) => {
+                        if ((level as Level).batchId !== levelBatchId) return level;
+                        const currentLevel = level as Level;
+                        const remaining = (currentLevel.subgroups ?? []).filter(
+                            (_: Subgroup, i: number) => i !== index
+                        );
+                        return {
+                            ...currentLevel,
+                            containsSubgroup: remaining.length > 0,
+                            subgroups: remaining,
+                        };
+                    }),
+                };
+            });
+            form.setValue('sessions', ensureNewSessionAndLevelFlags(updated));
+            return updated;
+        });
     };
 
     const handleInviteSuccess = (
@@ -672,6 +851,8 @@ export const AddCourseStep2 = ({
                                     userIds: [newInstructor],
                                     batchId: 'DEFAULT',
                                     newLevel: true,
+                                    containsSubgroup: false,
+                                    subgroups: [],
                                 },
                             ];
                         } else {
@@ -768,6 +949,8 @@ export const AddCourseStep2 = ({
                 userIds: [],
                 batchId: id,
                 newLevel: true,
+                containsSubgroup: false,
+                subgroups: [],
             };
             const standaloneSession = sessions.find((s) => s.id === 'DEFAULT');
             if (!standaloneSession) {
@@ -809,6 +992,8 @@ export const AddCourseStep2 = ({
                 userIds: [],
                 batchId: batch.id,
                 newLevel: false,
+                containsSubgroup: false,
+                subgroups: [],
             };
 
             const nextSessions = standaloneSession
@@ -915,6 +1100,8 @@ export const AddCourseStep2 = ({
                                     name: '',
                                     userIds: selectedInstructors.map((instructor) => instructor),
                                     batchId: 'DEFAULT',
+                                    containsSubgroup: false,
+                                    subgroups: [],
                                 },
                             ],
                         },
@@ -972,6 +1159,8 @@ export const AddCourseStep2 = ({
                                             name: '',
                                             userIds: [instructorObj],
                                             batchId: 'DEFAULT',
+                                            containsSubgroup: false,
+                                            subgroups: [],
                                         },
                                     ];
                                 } else if (
@@ -1451,6 +1640,92 @@ export const AddCourseStep2 = ({
                                                     </Label>
                                                 </div>
                                             </RadioGroup>
+                                        </div>
+                                    )}
+
+                                {/* Contains Subgroup Radio
+                                 * Only show when sessions are enabled for the course
+                                 * AND the global course settings default filter is
+                                 * restricted to parents/children (not ALL).
+                                 */}
+                                {hasSessions === 'yes' && enableSubgroupControls && (
+                                    <>
+                                        <Separator className="bg-gray-200" />
+                                        <div className="space-y-2">
+                                            <Label className="block text-base font-medium text-gray-900">
+                                                Contains subgroup?
+                                            </Label>
+                                            <p className="text-sm text-gray-600">
+                                                Subgroups let you split a single batch into smaller
+                                                groups (for example, Morning Batch A, Morning Batch B).
+                                                All subgroups will be created under the same{' '}
+                                                {getTerminology(
+                                                    ContentTerms.Session,
+                                                    SystemTerms.Session
+                                                ).toLocaleLowerCase()}{' '}
+                                                and{' '}
+                                                {getTerminology(
+                                                    ContentTerms.Level,
+                                                    SystemTerms.Level
+                                                ).toLocaleLowerCase()}{' '}
+                                                configured for this{' '}
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                ).toLocaleLowerCase()}
+                                                .
+                                            </p>
+                                            <RadioGroup
+                                                value={containsSubgroup ? 'yes' : 'no'}
+                                                onValueChange={(value) =>
+                                                    handleToggleContainsSubgroup(
+                                                        value as 'yes' | 'no'
+                                                    )
+                                                }
+                                                className="flex gap-6"
+                                            >
+                                                <div className="flex items-center space-x-2">
+                                                    <RadioGroupItem
+                                                        value="yes"
+                                                        id="subgroup-yes"
+                                                    />
+                                                    <Label
+                                                        htmlFor="subgroup-yes"
+                                                        className="text-sm font-normal"
+                                                    >
+                                                        Yes
+                                                    </Label>
+                                                </div>
+                                                <div className="flex items-center space-x-2">
+                                                    <RadioGroupItem
+                                                        value="no"
+                                                        id="subgroup-no"
+                                                    />
+                                                    <Label
+                                                        htmlFor="subgroup-no"
+                                                        className="text-sm font-normal"
+                                                    >
+                                                        No
+                                                    </Label>
+                                                </div>
+                                            </RadioGroup>
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* Subgroups configuration */}
+                                {hasSessions === 'yes' &&
+                                    enableSubgroupControls &&
+                                    containsSubgroup && (
+                                        <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                            <Label className="text-base font-medium text-gray-900">
+                                                Subgroups
+                                            </Label>
+                                            <p className="text-sm text-gray-600">
+                                                Subgroups are now configured separately for each level
+                                                inside the session cards below. Enable this option to
+                                                reveal per-level subgroup inputs.
+                                            </p>
                                         </div>
                                     )}
 
@@ -2155,6 +2430,10 @@ export const AddCourseStep2 = ({
                                                                                                 batch.id, // <-- set batchId here
                                                                                             newLevel:
                                                                                                 false,
+                                                                                                containsSubgroup:
+                                                                                                    false,
+                                                                                                subgroups:
+                                                                                                    [],
                                                                                         }
                                                                                     );
                                                                                 }
@@ -2327,6 +2606,9 @@ export const AddCourseStep2 = ({
                                                                                             batch.id, // <-- set batchId here
                                                                                         newLevel:
                                                                                             false,
+                                                                                        containsSubgroup:
+                                                                                            false,
+                                                                                        subgroups: [],
                                                                                     });
                                                                                 }
                                                                             }
@@ -2435,6 +2717,16 @@ export const AddCourseStep2 = ({
                                                             sessionId,
                                                             (batchId || '').toString()
                                                         )
+                                                    }
+                                                    hasSessionsFlag={hasSessions === 'yes'}
+                                                    containsSubgroupFlag={containsSubgroup}
+                                                    enableSubgroupControlsFlag={enableSubgroupControls}
+                                                    onAddLevelSubgroup={handleAddLevelSubgroup}
+                                                    onLevelSubgroupNameChange={
+                                                        handleLevelSubgroupNameChange
+                                                    }
+                                                    onRemoveLevelSubgroupRow={
+                                                        handleRemoveLevelSubgroupRow
                                                     }
                                                     existingBatches={availableExistingBatches}
                                                     onMarkBatchesAsUsed={(batchIds) => {
@@ -2690,6 +2982,9 @@ export const AddCourseStep2 = ({
                                                                                     batchId:
                                                                                         batch.id, // <-- set batchId here
                                                                                     newLevel: false,
+                                                                                    containsSubgroup:
+                                                                                        false,
+                                                                                    subgroups: [],
                                                                                 });
                                                                             }
                                                                         }
@@ -3020,6 +3315,10 @@ export const AddCourseStep2 = ({
                                                                                                                 'DEFAULT',
                                                                                                             newLevel:
                                                                                                                 true,
+                                                                                                            containsSubgroup:
+                                                                                                                 false,
+                                                                                                             subgroups:
+                                                                                                                 [],
                                                                                                         },
                                                                                                     ];
                                                                                             } else if (
@@ -3961,6 +4260,21 @@ const SessionCard: React.FC<{
     onRemoveSession: (sessionId: string, batchId?: string) => void;
     onAddLevel: (sessionId: string, levelName: string, levelId?: string) => void;
     onRemoveLevel: (sessionId: string, batchId: string) => void;
+    hasSessionsFlag: boolean;
+    containsSubgroupFlag: boolean;
+    enableSubgroupControlsFlag: boolean;
+    onAddLevelSubgroup: (sessionId: string, levelBatchId: string) => void;
+    onLevelSubgroupNameChange: (
+        sessionId: string,
+        levelBatchId: string,
+        index: number,
+        name: string
+    ) => void;
+    onRemoveLevelSubgroupRow: (
+        sessionId: string,
+        levelBatchId: string,
+        index: number
+    ) => void;
     existingBatches?: ExistingBatch[];
     onMarkBatchesAsUsed?: (batchIds: string[]) => void;
     limitLevelsToOne: boolean;
@@ -3971,6 +4285,12 @@ const SessionCard: React.FC<{
     onRemoveSession,
     onAddLevel,
     onRemoveLevel,
+    hasSessionsFlag,
+    containsSubgroupFlag,
+    enableSubgroupControlsFlag,
+    onAddLevelSubgroup,
+    onLevelSubgroupNameChange,
+    onRemoveLevelSubgroupRow,
     existingBatches = [],
     onMarkBatchesAsUsed,
     limitLevelsToOne,
@@ -4319,27 +4639,120 @@ const SessionCard: React.FC<{
                         )}
 
                         {session.levels.length > 0 && (
-                            <div className="space-y-2">
-                                {session.levels.map((level) => (
-                                    <div
-                                        key={level.batchId}
-                                        className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-2"
-                                    >
-                                        <span className="text-sm font-medium text-gray-900">
-                                            {level.name}
-                                        </span>
-                                        <MyButton
-                                            type="button"
-                                            buttonType="text"
-                                            scale="medium"
-                                            layoutVariant="icon"
-                                            onClick={() => onRemoveLevel(session.id, level.batchId)}
-                                            className="text-red-600 hover:text-red-700"
+                            <div className="space-y-3">
+                                                    {session.levels.map((level) => {
+                                    const levelSubgroups = (level as Level).subgroups ?? [];
+                                    return (
+                                        <div
+                                            key={level.batchId}
+                                            className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-2"
                                         >
-                                            <Trash2 className="size-3" />
-                                        </MyButton>
-                                    </div>
-                                ))}
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-medium text-gray-900">
+                                                    {level.name}
+                                                </span>
+                                                <MyButton
+                                                    type="button"
+                                                    buttonType="text"
+                                                    scale="medium"
+                                                    layoutVariant="icon"
+                                                    onClick={() =>
+                                                        onRemoveLevel(session.id, level.batchId)
+                                                    }
+                                                    className="text-red-600 hover:text-red-700"
+                                                >
+                                                    <Trash2 className="size-3" />
+                                                </MyButton>
+                                            </div>
+
+                                            {/* Per-level subgroups UI (new nested model).
+                                             * Only shown when global "Contains subgroup?"
+                                             * is enabled and subgroup controls are allowed
+                                             * by course settings.
+                                             */}
+                                            {hasSessionsFlag &&
+                                                hasLevels &&
+                                                enableSubgroupControlsFlag &&
+                                                containsSubgroupFlag && (
+                                                    <div className="mt-1 space-y-2 rounded-md border border-dashed border-gray-200 bg-white p-2">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <div>
+                                                                <Label className="text-xs font-medium text-gray-800">
+                                                                    Subgroups
+                                                                </Label>
+                                                                <p className="text-xs text-gray-500">
+                                                                    Add subgroup names for this level
+                                                                    in this session.
+                                                                </p>
+                                                            </div>
+                                                            <MyButton
+                                                                type="button"
+                                                                buttonType="secondary"
+                                                                scale="small"
+                                                                layoutVariant="default"
+                                                                onClick={() =>
+                                                                    onAddLevelSubgroup(
+                                                                        session.id,
+                                                                        level.batchId as string
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Plus className="mr-1 h-3 w-3" />
+                                                                Add subgroup
+                                                            </MyButton>
+                                                        </div>
+                                                        {levelSubgroups.length === 0 && (
+                                                            <p className="text-xs text-gray-400">
+                                                                No subgroups added yet.
+                                                            </p>
+                                                        )}
+                                                        <div className="space-y-1">
+                                                            {levelSubgroups.map(
+                                                                (sg, sgIndex) => (
+                                                                    <div
+                                                                        key={sgIndex}
+                                                                        className="flex items-center gap-2"
+                                                                    >
+                                                                        <Input
+                                                                            placeholder="e.g., Morning Batch A"
+                                                                            value={
+                                                                                sg.subgroupName
+                                                                            }
+                                                                                onChange={(e) =>
+                                                                                    onLevelSubgroupNameChange(
+                                                                                        session.id,
+                                                                                        level.batchId as string,
+                                                                                        sgIndex,
+                                                                                        e.target.value
+                                                                                    )
+                                                                                }
+                                                                            className="h-8 flex-1 border-gray-300 text-xs"
+                                                                        />
+                                                                        <MyButton
+                                                                            type="button"
+                                                                            buttonType="text"
+                                                                            scale="small"
+                                                                            layoutVariant="default"
+                                                                            onClick={() =>
+                                                                                onRemoveLevelSubgroupRow(
+                                                                                    session.id,
+                                                                                    level.batchId as string,
+                                                                                    sgIndex
+                                                                                )
+                                                                            }
+                                                                            className="px-1 text-red-600 hover:text-red-700"
+                                                                        >
+                                                                            <Trash2 className="h-3 w-3" />
+                                                                        </MyButton>
+                                                                    </div>
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </>
@@ -4356,6 +4769,8 @@ function ensureBatchIdInLevels(sessions: Session[]): Session[] {
         levels: session.levels.map((level) => ({
             ...level,
             batchId: (level as Level).batchId || level.id,
+            containsSubgroup: (level as Level).containsSubgroup ?? false,
+            subgroups: (level as Level).subgroups ?? [],
         })),
     }));
 }
@@ -4368,6 +4783,8 @@ function ensureNewSessionAndLevelFlags(sessions: Session[]) {
         levels: session.levels.map((level) => ({
             ...level,
             newLevel: level.newLevel === true,
+            containsSubgroup: (level as Level).containsSubgroup ?? false,
+            subgroups: (level as Level).subgroups ?? [],
         })),
     }));
 }

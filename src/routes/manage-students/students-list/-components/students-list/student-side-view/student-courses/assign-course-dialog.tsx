@@ -95,8 +95,11 @@ export const AssignCourseDialog = ({
     const goToConfigure = () => {
         const configs: PackageSessionConfig[] = Array.from(selectedPSIds).map((psId) => {
             const batch = batches.find((b) => b.id === psId);
+
             const name = batch
-                ? `${batch.package_dto.package_name} · ${batch.level.level_name} · ${batch.session.session_name}`
+                ? batch.name
+                    ? `${batch.package_dto.package_name} ${batch.name}`
+                    : `${batch.package_dto.package_name} · ${batch.level.level_name} · ${batch.session.session_name}`
                 : psId;
 
             // Preserve existing config if already set
@@ -269,7 +272,9 @@ export const AssignCourseDialog = ({
                                     />
                                     <div className="min-w-0 flex-1">
                                         <p className="truncate text-sm font-medium text-neutral-800">
-                                            {b.package_dto.package_name}
+                                            {b.name
+                                                ? `${b.package_dto.package_name} ${b.name}`
+                                                : b.package_dto.package_name}
                                         </p>
                                         <p className="truncate text-xs text-neutral-500">
                                             {b.level.level_name} · {b.session.session_name}

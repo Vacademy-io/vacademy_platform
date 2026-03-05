@@ -12,6 +12,7 @@ import {
     UPDATE_USER_INVITATION_URL,
     // GET_ALL_FACULTY,
     GET_FACULTY_BY_INSTITUTE_CREATORS_ONLY,
+    GET_ALL_FACULTY_V2,
     GET_DOUBTS,
     ANALYTICS_USER_ACTIVITY,
     ANALYTICS_ACTIVE_USERS_REALTIME,
@@ -65,7 +66,43 @@ export const fetchFacultyList = async (
             data: filters,
         });
         return response.data;
-    } catch (error) {
+    } catch (error: unknown) {
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 403) {
+            try {
+                const fallbackResponse = await authenticatedAxiosInstance({
+                    method: 'POST',
+                    url: GET_ALL_FACULTY_V2,
+                    params: {
+                        instituteId,
+                        pageNo,
+                        pageSize,
+                    },
+                    data: {
+                        name: filters.name,
+                        subjects: filters.subjects,
+                        batches: filters.batches,
+                        status: filters.status,
+                        sortColumns: filters.sort_columns,
+                    },
+                });
+                const data = fallbackResponse.data as Record<string, unknown>;
+                if (data && typeof data === 'object') {
+                    return {
+                        content: data.content ?? [],
+                        page_no: data.page_no ?? data.pageNo ?? pageNo,
+                        page_size: data.page_size ?? data.pageSize ?? pageSize,
+                        total_elements: data.total_elements ?? data.totalElements ?? 0,
+                        total_pages: data.total_pages ?? data.totalPages ?? 0,
+                        last: data.last ?? true,
+                    };
+                }
+                return fallbackResponse.data;
+            } catch (fallbackError) {
+                console.error('Fallback faculty list also failed:', fallbackError);
+                throw fallbackError;
+            }
+        }
         console.error('Error fetching faculty list:', error);
         throw error;
     }

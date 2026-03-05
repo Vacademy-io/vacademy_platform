@@ -241,11 +241,18 @@ export const CourseStructureDetails = ({
     selectedLevel,
     courseStructure,
     isReadOnly,
+    selectedBatchId,
 }: {
     selectedSession: string;
     selectedLevel: string;
     courseStructure: number;
     isReadOnly?: boolean;
+    /**
+     * Selected Batch/Subgroup id (package_session_id). When provided, Outline and
+     * Content Structure should load chapters/slides for this batch; otherwise
+     * fall back to session+level mapped packageSessionId.
+     */
+    selectedBatchId?: string;
 }) => {
     const router = useRouter();
     const searchParams = router.state.location.search;
@@ -507,7 +514,7 @@ export const CourseStructureDetails = ({
     useEffect(() => {
         const newSubjects = getCourseSubjects(courseId, selectedSession || '', levelId);
         setSubjects(newSubjects);
-    }, [selectedSession, studyLibraryData, courseId, levelId]);
+    }, [selectedSession, studyLibraryData, courseId, levelId, selectedBatchId]);
 
     // Try to get packageSessionId from course-init API first (new approach)
     const packageSessionIdFromCourseInit = useGetPackageSessionIdFromCourseInit(
@@ -518,8 +525,16 @@ export const CourseStructureDetails = ({
     // Fallback to institute details if course-init doesn't have it
     const packageSessionIdFromInstitute =
         useGetPackageSessionId(courseId, selectedSession || '', levelId) || '';
-    // Prefer course-init data, fallback to institute details
-    const packageSessionIds = packageSessionIdFromCourseInit || packageSessionIdFromInstitute;
+
+    // Canonical packageSessionId used across tabs.
+    // If Batch/Subgroup is selected, use it; otherwise fall back to session+level mapping.
+    const contentPackageSessionId =
+        selectedBatchId || packageSessionIdFromCourseInit || packageSessionIdFromInstitute;
+
+    // Outline + Content Structure fetches use this id.
+    const packageSessionIds = contentPackageSessionId;
+    // Batch-oriented tabs (Teacher/Learner/Assessment/Planning/Activity) also use the same id.
+    const batchPackageSessionId = contentPackageSessionId;
 
     const useSlidesByChapterMutation = () => {
         return useMutation({
@@ -572,15 +587,21 @@ export const CourseStructureDetails = ({
     const { mutateAsync: fetchModules } = useModulesMutation();
 
     const handleAddModule = (subjectId: string, module: Module) => {
+        // Ensure we have a concrete package session id for this operation.
+        if (!packageSessionIds) {
+            console.error(
+                'Cannot add module: missing packageSessionIds (no Batch/Subgroup or session+level mapping found).'
+            );
+            return;
+        }
+
         addModuleMutation.mutate(
             {
                 subjectId,
-                packageSessionIds:
-                    getPackageSessionId({
-                        courseId: courseId,
-                        levelId: levelId,
-                        sessionId: selectedSession || '',
-                    }) || '',
+                // Always use the resolved packageSessionIds so modules/chapters
+                // are created under the currently selected Batch/Subgroup (or
+                // the legacy session+level mapping when no batch is selected).
+                packageSessionIds,
                 module,
             },
             {
@@ -607,6 +628,9 @@ export const CourseStructureDetails = ({
         const loadModules = async () => {
             if (subjects.length > 0 && packageSessionIds) {
                 try {
+                    // Clear previous data when packageSession changes to avoid showing stale structure.
+                    setSubjectModulesMap({});
+                    setChapterSlidesMap({});
                     const modulesMap = await fetchModules({ subjects, packageSessionIds });
                     setSubjectModulesMap(modulesMap);
 
@@ -635,7 +659,7 @@ export const CourseStructureDetails = ({
             }
         };
         loadModules();
-    }, [subjects, packageSessionIds, fetchModules]);
+    }, [subjects, packageSessionIds, fetchModules, selectedBatchId]);
 
     useEffect(() => {
         const loadSlides = async () => {
@@ -662,7 +686,7 @@ export const CourseStructureDetails = ({
         } else {
             setChapterSlidesMap({});
         }
-    }, [subjectModulesMap, packageSessionIds, fetchSlides]);
+    }, [subjectModulesMap, packageSessionIds, fetchSlides, selectedBatchId]);
 
     // Auto-expand items based on course settings (only for outline tab)
     useEffect(() => {
@@ -732,7 +756,7 @@ export const CourseStructureDetails = ({
             }
         };
         loadDirectSlides();
-    }, [courseStructure, packageSessionIds]);
+    }, [courseStructure, packageSessionIds, selectedBatchId]);
 
     // Load drip conditions settings
     useEffect(() => {
@@ -1594,6 +1618,10 @@ export const CourseStructureDetails = ({
                                                                                                 subjectId={
                                                                                                     subject.id
                                                                                                 }
+                                                                                                packageSessionId={
+                                                                                                    batchPackageSessionId ??
+                                                                                                    ''
+                                                                                                }
                                                                                                 isTextButton
                                                                                             />
                                                                                             <Sortable
@@ -2223,6 +2251,10 @@ export const CourseStructureDetails = ({
                                                                                                 subjectId={
                                                                                                     subject.id
                                                                                                 }
+                                                                                                packageSessionId={
+                                                                                                    batchPackageSessionId ??
+                                                                                                    ''
+                                                                                                }
                                                                                                 isTextButton
                                                                                             />
                                                                                             <Sortable
@@ -2725,6 +2757,10 @@ export const CourseStructureDetails = ({
                                                                                                 subjectId={
                                                                                                     subject.id
                                                                                                 }
+                                                                                                packageSessionId={
+                                                                                                    batchPackageSessionId ??
+                                                                                                    ''
+                                                                                                }
                                                                                                 isTextButton
                                                                                             />
                                                                                             <Sortable
@@ -3219,7 +3255,7 @@ export const CourseStructureDetails = ({
             <div className="rounded-md bg-white p-6 py-2 text-sm text-gray-600 shadow-sm">
                 {currentSession && (
                     <Students
-                        packageSessionId={packageSessionIds ?? ''}
+                        packageSessionId={batchPackageSessionId ?? ''}
                         currentSession={currentSession}
                     />
                 )}
@@ -3241,14 +3277,14 @@ export const CourseStructureDetails = ({
                             s assigned to this batch.
                         </p>
                     </div>
-                    <AddTeachers packageSessionId={packageSessionIds ?? ''} />
+                    <AddTeachers packageSessionId={batchPackageSessionId ?? ''} />
                 </div>
-                <TeachersList packageSessionId={packageSessionIds ?? ''} />
+                <TeachersList packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
         [TabType.ASSESSMENT]: (
             <div className="rounded-md bg-white p-6 py-2 text-sm text-gray-600 shadow-sm">
-                <Assessments packageSessionId={packageSessionIds ?? ''} />
+                <Assessments packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
         [TabType.CONTENT_STRUCTURE]: (
@@ -4213,6 +4249,7 @@ export const CourseStructureDetails = ({
                                         ? selectedSubjectId
                                         : subjects[0]?.id || ''
                                 }
+                                packageSessionId={batchPackageSessionId ?? ''}
                                 isTextButton={false}
                             />
                         </div>
@@ -4240,12 +4277,12 @@ export const CourseStructureDetails = ({
         ),
         [TabType.PLANNING]: (
             <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
-                <Planning packageSessionId={packageSessionIds ?? ''} />
+                <Planning packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
         [TabType.ACTIVITY]: (
             <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
-                <Activity packageSessionId={packageSessionIds ?? ''} />
+                <Activity packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
     };

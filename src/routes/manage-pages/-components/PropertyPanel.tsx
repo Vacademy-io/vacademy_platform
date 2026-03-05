@@ -17,6 +17,7 @@ export const PropertyPanel = () => {
         selectedComponentId,
         selectedPageId,
         selectedGlobalSettings,
+        selectedGlobalLayout,
         updateComponent,
         updateGlobalSettings,
         deleteComponent,
@@ -31,6 +32,17 @@ export const PropertyPanel = () => {
     // Global Settings Editor
     if (selectedGlobalSettings) {
         return <GlobalSettingsEditor config={config} updateGlobalSettings={updateGlobalSettings} />;
+    }
+
+    // Global Header / Footer Editor
+    if (selectedGlobalLayout === 'header' || selectedGlobalLayout === 'footer') {
+        return (
+            <GlobalLayoutEditor
+                config={config}
+                section={selectedGlobalLayout}
+                updateGlobalSettings={updateGlobalSettings}
+            />
+        );
     }
 
     if (selectedComponentId) {
@@ -214,6 +226,59 @@ export const PropertyPanel = () => {
     }
 
     return <div className="p-8 text-center text-gray-400">Select an item to edit</div>;
+};
+
+// Global Layout Editor — edits globalSettings.layout.header or .footer
+const GlobalLayoutEditor = ({
+    config,
+    section,
+    updateGlobalSettings,
+}: {
+    config: any;
+    section: 'header' | 'footer';
+    updateGlobalSettings: (updates: any) => void;
+}) => {
+    const layoutData = config.globalSettings?.layout?.[section];
+    const props = layoutData?.props || {};
+
+    // Wrap in a fake component shape for HeaderEditor / FooterEditor
+    const fakeComponent = { id: '__global__', type: section, enabled: true, props };
+    const fakeUpdateComponent = (_pageId: string, _id: string, patch: any) => {
+        if (patch.props) {
+            updateGlobalSettings({
+                layout: {
+                    ...config.globalSettings.layout,
+                    [section]: { ...layoutData, props: { ...props, ...patch.props } },
+                },
+            });
+        }
+    };
+
+    return (
+        <div className="flex flex-col gap-6 p-4">
+            <div className="border-b pb-3">
+                <h3 className="text-base font-semibold capitalize">
+                    Global {section === 'header' ? 'Header' : 'Footer'}
+                </h3>
+                <p className="mt-0.5 text-xs text-purple-600">
+                    Appears on every page
+                </p>
+            </div>
+            {section === 'header' ? (
+                <HeaderEditor
+                    component={fakeComponent}
+                    pageId="__global__"
+                    updateComponent={fakeUpdateComponent}
+                />
+            ) : (
+                <FooterEditor
+                    component={fakeComponent}
+                    pageId="__global__"
+                    updateComponent={fakeUpdateComponent}
+                />
+            )}
+        </div>
+    );
 };
 
 // Global Settings Editor Component
@@ -928,6 +993,7 @@ const GenericEditor = ({ component, pageId, updateComponent }: any) => {
 const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const [expandedNav, setExpandedNav] = useState<number | null>(null);
+    const [expandedAuth, setExpandedAuth] = useState<number | null>(null);
 
     const updateProp = (key: string, value: any) => {
         updateComponent(pageId, component.id, {
@@ -947,10 +1013,21 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
     };
 
     const deleteNavItem = (index: number) => {
-        updateProp(
-            'navigation',
-            props.navigation.filter((_: any, i: number) => i !== index)
-        );
+        updateProp('navigation', (props.navigation || []).filter((_: any, i: number) => i !== index));
+    };
+
+    const addAuthLink = () => {
+        updateProp('authLinks', [...(props.authLinks || []), { label: 'Login', route: 'login' }]);
+    };
+
+    const updateAuthLink = (index: number, field: string, value: any) => {
+        const updated = [...(props.authLinks || [])];
+        updated[index] = { ...updated[index], [field]: value };
+        updateProp('authLinks', updated);
+    };
+
+    const deleteAuthLink = (index: number) => {
+        updateProp('authLinks', (props.authLinks || []).filter((_: any, i: number) => i !== index));
     };
 
     return (
@@ -990,14 +1067,15 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                 onChange={(c) => updateProp('textColor', c)}
             />
 
+            {/* Navigation Links */}
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <Label>Navigation Items</Label>
+                    <Label>Navigation Links</Label>
                     <Button size="sm" variant="outline" onClick={addNavItem}>
                         <Plus className="mr-1 size-3" /> Add
                     </Button>
                 </div>
-                {props.navigation?.map((item: any, index: number) => (
+                {(props.navigation || []).map((item: any, index: number) => (
                     <div key={index} className="rounded border bg-gray-50 p-2">
                         <div className="flex items-center justify-between">
                             <button
@@ -1028,19 +1106,71 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                     onChange={(e) => updateNavItem(index, 'label', e.target.value)}
                                 />
                                 <Input
-                                    placeholder="Route"
+                                    placeholder="Route (e.g. /about or https://...)"
                                     value={item.route}
                                     onChange={(e) => updateNavItem(index, 'route', e.target.value)}
                                 />
                                 <div className="flex items-center justify-between">
                                     <Label className="text-xs">Open in same tab</Label>
                                     <Switch
-                                        checked={item.openInSameTab}
+                                        checked={!!item.openInSameTab}
                                         onCheckedChange={(c) =>
                                             updateNavItem(index, 'openInSameTab', c)
                                         }
                                     />
                                 </div>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {/* Auth / CTA Buttons */}
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <Label>Auth / CTA Buttons</Label>
+                    <Button size="sm" variant="outline" onClick={addAuthLink}>
+                        <Plus className="mr-1 size-3" /> Add
+                    </Button>
+                </div>
+                <p className="text-[11px] text-gray-400">
+                    Buttons shown on the right side of the header (e.g. Login, Sign Up).
+                </p>
+                {(props.authLinks || []).map((link: any, index: number) => (
+                    <div key={index} className="rounded border bg-gray-50 p-2">
+                        <div className="flex items-center justify-between">
+                            <button
+                                onClick={() => setExpandedAuth(expandedAuth === index ? null : index)}
+                                className="flex-1 text-left text-sm font-medium"
+                            >
+                                {expandedAuth === index ? (
+                                    <ChevronUp className="mr-1 inline size-3" />
+                                ) : (
+                                    <ChevronDown className="mr-1 inline size-3" />
+                                )}
+                                {link.label || `Button ${index + 1}`}
+                            </button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => deleteAuthLink(index)}
+                                className="size-6 p-0 text-red-600"
+                            >
+                                <Trash2 className="size-3" />
+                            </Button>
+                        </div>
+                        {expandedAuth === index && (
+                            <div className="mt-2 space-y-2">
+                                <Input
+                                    placeholder="Label (e.g. Login)"
+                                    value={link.label || ''}
+                                    onChange={(e) => updateAuthLink(index, 'label', e.target.value)}
+                                />
+                                <Input
+                                    placeholder="Route (e.g. login, signup, /contact)"
+                                    value={link.route || ''}
+                                    onChange={(e) => updateAuthLink(index, 'route', e.target.value)}
+                                />
                             </div>
                         )}
                     </div>
@@ -1064,6 +1194,45 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp('leftSection', { ...props.leftSection, [field]: value });
     };
 
+    // Helper to update a right section's field
+    const updateRightSection = (sectionKey: string, field: string, value: any) => {
+        updateProp(sectionKey, { ...(props[sectionKey] || {}), [field]: value });
+    };
+
+    // Helper to update a specific link within a right section
+    const updateRightSectionLink = (sectionKey: string, linkIndex: number, field: string, value: any) => {
+        const section = props[sectionKey] || { title: '', links: [] };
+        const links = [...(section.links || [])];
+        links[linkIndex] = { ...links[linkIndex], [field]: value };
+        updateProp(sectionKey, { ...section, links });
+    };
+
+    const addRightSectionLink = (sectionKey: string) => {
+        const section = props[sectionKey] || { title: '', links: [] };
+        const links = [...(section.links || []), { label: 'New Link', route: '/' }];
+        updateProp(sectionKey, { ...section, links });
+    };
+
+    const deleteRightSectionLink = (sectionKey: string, linkIndex: number) => {
+        const section = props[sectionKey] || { title: '', links: [] };
+        const links = (section.links || []).filter((_: any, i: number) => i !== linkIndex);
+        updateProp(sectionKey, { ...section, links });
+    };
+
+    const layout = props.layout || 'four-column';
+    // Determine which right sections to show based on layout
+    const rightSectionKeys = layout === 'two-column'
+        ? ['rightSection1']
+        : layout === 'three-column'
+        ? ['rightSection1', 'rightSection2']
+        : ['rightSection1', 'rightSection2', 'rightSection3'];
+
+    const sectionLabels: Record<string, string> = {
+        rightSection1: 'Column 2',
+        rightSection2: 'Column 3',
+        rightSection3: 'Column 4',
+    };
+
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">Footer Settings</h4>
@@ -1078,7 +1247,7 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label>Layout</Label>
                 <select
                     className="w-full rounded border px-3 py-2 text-sm"
-                    value={props.layout || 'four-column'}
+                    value={layout}
                     onChange={(e) => updateProp('layout', e.target.value)}
                 >
                     <option value="two-column">Two Column</option>
@@ -1087,8 +1256,9 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                 </select>
             </div>
 
+            {/* Left Section */}
             <div className="space-y-3 rounded border bg-gray-50 p-3">
-                <h5 className="text-xs font-semibold">Left Section</h5>
+                <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Column 1 — Brand</h5>
                 <div className="space-y-2">
                     <Label className="text-xs">Title</Label>
                     <Input
@@ -1104,10 +1274,69 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                 />
             </div>
 
+            {/* Right Sections (link columns) */}
+            {rightSectionKeys.map((sectionKey) => {
+                const section = props[sectionKey] || { title: '', links: [] };
+                return (
+                    <div key={sectionKey} className="space-y-3 rounded border bg-gray-50 p-3">
+                        <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            {sectionLabels[sectionKey]}
+                        </h5>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Section Title</Label>
+                            <Input
+                                value={section.title || ''}
+                                placeholder="e.g. Quick Links"
+                                onChange={(e) => updateRightSection(sectionKey, 'title', e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs">Links</Label>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => addRightSectionLink(sectionKey)}
+                                >
+                                    <Plus className="mr-1 size-3" /> Add
+                                </Button>
+                            </div>
+                            {(section.links || []).map((link: any, li: number) => (
+                                <div key={li} className="flex items-center gap-1.5">
+                                    <Input
+                                        className="h-7 text-xs"
+                                        placeholder="Label"
+                                        value={link.label || ''}
+                                        onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
+                                    />
+                                    <Input
+                                        className="h-7 text-xs"
+                                        placeholder="Route"
+                                        value={link.route || ''}
+                                        onChange={(e) => updateRightSectionLink(sectionKey, li, 'route', e.target.value)}
+                                    />
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="size-7 shrink-0 p-0 text-red-500"
+                                        onClick={() => deleteRightSectionLink(sectionKey, li)}
+                                    >
+                                        <Trash2 className="size-3" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+
+            {/* Bottom Note */}
             <div className="space-y-2">
                 <Label>Bottom Note</Label>
                 <Input
                     value={props.bottomNote || ''}
+                    placeholder="© 2025 Your Company. All rights reserved."
                     onChange={(e) => updateProp('bottomNote', e.target.value)}
                 />
             </div>

@@ -28,16 +28,23 @@ export const PreviewPanel = ({ tagName, onComponentSelected, selectedComponentId
     const config = useEditorStore((state) => state.config);
     const viewport = useEditorStore((state) => state.previewViewport);
     const setViewport = useEditorStore((state) => state.setViewport);
+    const selectedPageId = useEditorStore((state) => state.selectedPageId);
     const { instituteDetails, setInstituteDetails } = useInstituteDetailsStore();
 
-    // Set default page route when config loads
+    // Set default page route when config loads (first load only)
     useEffect(() => {
         if (config?.pages && config.pages.length > 0 && !selectedPageRoute) {
-            // Default to first page or '/' for home
             const firstPage = config.pages[0];
             setSelectedPageRoute(firstPage?.route || '');
         }
     }, [config, selectedPageRoute]);
+
+    // Sync iframe page when selectedPageId changes (PageTabs click)
+    useEffect(() => {
+        if (!config || !selectedPageId) return;
+        const page = config.pages.find((p) => p.id === selectedPageId);
+        if (page) setSelectedPageRoute(page.route);
+    }, [selectedPageId, config]);
 
     useEffect(() => {
         if (!instituteDetails) {

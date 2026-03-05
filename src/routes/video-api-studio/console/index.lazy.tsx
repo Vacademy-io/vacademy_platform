@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
+import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Video, Sparkles, Loader2, Menu } from 'lucide-react';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Video, Loader2, History as HistoryIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import {
@@ -28,8 +29,6 @@ import { GenerationProgress } from '../-components/GenerationProgress';
 import { VideoResult } from '../-components/VideoResult';
 import { ContentSelector } from '../-components/ContentSelector';
 import { DEFAULT_OPTIONS } from '../-services/video-generation';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { AiCreditsPanel } from '@/components/common/ai-credits/AiCreditsPanel';
 
 export const Route = createLazyFileRoute('/video-api-studio/console/')({
     component: VideoConsole,
@@ -47,11 +46,26 @@ interface CurrentGeneration {
     htmlUrl?: string;
     audioUrl?: string;
     wordsUrl?: string;
+    scriptUrl?: string;
+    options: Omit<GenerateVideoRequest, 'prompt'>;
+}
+
+/** Persisted across page navigations so polling can resume after SSE disconnect */
+const PENDING_GENERATION_KEY = 'video-console-pending-gen';
+
+/** Content types that produce no audio — html_url alone is sufficient for "complete" */
+const NO_AUDIO_TYPES = new Set<ContentType>(['SLIDES']);
+const needsAudio = (contentType?: ContentType | string) =>
+    !NO_AUDIO_TYPES.has(contentType as ContentType);
+
+interface PendingGeneration {
+    videoId: string;
+    prompt: string;
+    contentType: ContentType;
     options: Omit<GenerateVideoRequest, 'prompt'>;
 }
 
 function VideoConsole() {
-    const navigate = useNavigate();
     const instituteId = getInstituteId();
 
     const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
@@ -60,6 +74,8 @@ function VideoConsole() {
     const [history, setHistory] = useState<HistoryItem[]>([]);
     const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
     const [consoleState, setConsoleState] = useState<ConsoleState>('idle');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
 
     // Lifted state for prompt and options
     const [prompt, setPrompt] = useState(() => localStorage.getItem('video-studio-prompt') || '');
@@ -87,9 +103,9 @@ function VideoConsole() {
 
     const [currentGeneration, setCurrentGeneration] = useState<CurrentGeneration | null>(null);
     const [isLoadingVideoUrls, setIsLoadingVideoUrls] = useState(false);
-    const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
 
     const abortRef = useRef<(() => void) | null>(null);
+    const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Load API keys
     useEffect(() => {
@@ -164,17 +180,104 @@ function VideoConsole() {
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            if (abortRef.current) {
-                abortRef.current();
-            }
+            if (abortRef.current) abortRef.current();
+            if (pollingRef.current) clearInterval(pollingRef.current);
         };
     }, []);
+
+    /**
+     * Poll /urls/{videoId} until html_url + audio_url are available.
+     * Used when SSE connection is lost (page navigation) or when opening a
+     * still-generating history item.
+     */
+    const startPollingForVideo = useCallback(
+        (pending: PendingGeneration, apiKey: string) => {
+            // Cancel any existing poll
+            if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+                pollingRef.current = null;
+            }
+
+            setConsoleState('generating');
+            setSelectedHistoryId(pending.videoId);
+            setCurrentGeneration({
+                videoId: pending.videoId,
+                prompt: pending.prompt,
+                contentType: pending.contentType,
+                stage: 'PENDING',
+                percentage: 0,
+                message: 'Reconnecting… checking generation status',
+                options: pending.options,
+            });
+
+            const poll = async () => {
+                try {
+                    const urls = await getVideoUrls(pending.videoId, apiKey);
+                    // Only treat as complete when html_url is actually present
+                    // (backend can return status=COMPLETED with null URLs mid-run)
+                    if (urls.html_url && (urls.audio_url || !needsAudio(pending.contentType))) {
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        pollingRef.current = null;
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
+                        setCurrentGeneration((prev) =>
+                            prev
+                                ? {
+                                      ...prev,
+                                      stage: urls.current_stage || 'HTML',
+                                      percentage: 100,
+                                      message: '',
+                                      htmlUrl: urls.html_url!,
+                                      audioUrl: urls.audio_url ?? undefined,
+                                      wordsUrl: urls.words_url ?? undefined,
+                                  }
+                                : null
+                        );
+                        setConsoleState('complete');
+                        toast.success('Content is ready!');
+                    }
+                } catch (err) {
+                    console.warn('[Polling] Error fetching video URLs:', err);
+                }
+            };
+
+            poll(); // immediate first check
+            pollingRef.current = setInterval(poll, 10_000);
+        },
+        []
+    );
+
+    /**
+     * On mount: if we previously stored a pending generation (SSE dropped),
+     * resume polling so the user doesn't see a blank screen.
+     */
+    useEffect(() => {
+        if (!activeApiKey) return;
+        // Don't interrupt an active SSE session
+        if (consoleState === 'generating') return;
+
+        const raw = localStorage.getItem(PENDING_GENERATION_KEY);
+        if (!raw) return;
+
+        try {
+            const pending: PendingGeneration = JSON.parse(raw);
+            startPollingForVideo(pending, activeApiKey);
+        } catch {
+            localStorage.removeItem(PENDING_GENERATION_KEY);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeApiKey]); // intentionally run only when key first becomes available
 
     const handleGenerate = useCallback(
         async (request: GenerateVideoRequest) => {
             if (!activeApiKey) {
                 toast.error('No API key available');
                 return;
+            }
+
+            // Cancel any active poll (new generation takes over)
+            if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+                pollingRef.current = null;
             }
 
             // Reset state
@@ -205,6 +308,7 @@ function VideoConsole() {
                         const audioUrl = event.files?.audio?.s3_url;
                         const timelineUrl = event.files?.timeline?.s3_url;
                         const wordsUrl = event.files?.words?.s3_url;
+                        const scriptUrl = event.files?.script?.s3_url;
 
                         setCurrentGeneration((prev) => ({
                             videoId,
@@ -216,6 +320,7 @@ function VideoConsole() {
                             htmlUrl: timelineUrl || prev?.htmlUrl,
                             audioUrl: audioUrl || prev?.audioUrl,
                             wordsUrl: wordsUrl || prev?.wordsUrl,
+                            scriptUrl: scriptUrl || prev?.scriptUrl,
                             options: {
                                 content_type: contentType,
                                 language: request.language,
@@ -260,7 +365,7 @@ function VideoConsole() {
                             if (
                                 event.stage === 'HTML' &&
                                 (timelineUrl || prev?.htmlUrl) &&
-                                prev?.audioUrl
+                                (prev?.audioUrl || !needsAudio(contentType))
                             ) {
                                 // HTML stage complete = content ready, show result
                                 setConsoleState('complete');
@@ -277,6 +382,7 @@ function VideoConsole() {
                         });
                     } else if (event.type === 'completed') {
                         // Content is complete
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
                         setConsoleState('complete');
                         toast.success('Content generated successfully!');
 
@@ -318,7 +424,8 @@ function VideoConsole() {
 
                         setCurrentGeneration((prev) => {
                             // If we have HTML URLs, keep showing the player
-                            if (prev?.htmlUrl && prev?.audioUrl && hasContent) {
+                            if (prev?.htmlUrl && (prev?.audioUrl || !needsAudio(contentType)) && hasContent) {
+                                localStorage.removeItem(PENDING_GENERATION_KEY);
                                 toast.error(
                                     'Generation encountered an issue. Content is still available.'
                                 );
@@ -328,6 +435,7 @@ function VideoConsole() {
                                     message: 'Generation completed with issues',
                                 };
                             } else {
+                                localStorage.removeItem(PENDING_GENERATION_KEY);
                                 toast.error(event.message || 'Generation failed');
                                 setConsoleState('idle');
                                 return null;
@@ -358,12 +466,35 @@ function VideoConsole() {
                     }
                 },
                 (error) => {
+                    localStorage.removeItem(PENDING_GENERATION_KEY);
                     toast.error(`Generation failed: ${error.message}`);
                     setConsoleState('idle');
                 }
             );
 
             abortRef.current = abort;
+
+            // Persist so polling can resume if the user navigates away
+            const pendingOptions = {
+                content_type: contentType,
+                language: request.language,
+                captions_enabled: request.captions_enabled,
+                html_quality: request.html_quality,
+                target_audience: request.target_audience,
+                voice_gender: request.voice_gender,
+                tts_provider: request.tts_provider,
+                target_duration: request.target_duration,
+                model: request.model,
+            };
+            localStorage.setItem(
+                PENDING_GENERATION_KEY,
+                JSON.stringify({
+                    videoId,
+                    prompt: request.prompt,
+                    contentType,
+                    options: pendingOptions,
+                } satisfies PendingGeneration)
+            );
 
             // Initialize generation state
             setCurrentGeneration({
@@ -373,17 +504,7 @@ function VideoConsole() {
                 stage: 'PENDING',
                 percentage: 0,
                 message: 'Starting generation...',
-                options: {
-                    content_type: contentType,
-                    language: request.language,
-                    captions_enabled: request.captions_enabled,
-                    html_quality: request.html_quality,
-                    target_audience: request.target_audience,
-                    voice_gender: request.voice_gender,
-                    tts_provider: request.tts_provider,
-                    target_duration: request.target_duration,
-                    model: request.model,
-                },
+                options: pendingOptions,
             });
 
             // Save initial history entry
@@ -414,11 +535,9 @@ function VideoConsole() {
     const handleSelectHistory = useCallback(
         async (item: HistoryItem) => {
             setSelectedHistoryId(item.video_id);
-            // Close mobile menu if open
-            setIsMobileHistoryOpen(false);
 
             // If we have URLs locally, use them directly
-            if (item.html_url && item.audio_url) {
+            if (item.html_url && (item.audio_url || !needsAudio(item.content_type))) {
                 setCurrentGeneration({
                     videoId: item.video_id,
                     prompt: item.prompt,
@@ -447,12 +566,30 @@ function VideoConsole() {
                 try {
                     const urls = await getVideoUrls(item.video_id, activeApiKey);
 
+                    // Backend can return status=COMPLETED with null URLs when the job
+                    // finished a mid-stage (e.g. current_stage=SCRIPT). Only show the
+                    // player when the required URLs are actually present.
+                    if (!urls.html_url || (!urls.audio_url && needsAudio(item.content_type))) {
+                        setIsLoadingVideoUrls(false);
+                        toast.info('Content is still being generated. Waiting for completion…');
+                        startPollingForVideo(
+                            {
+                                videoId: item.video_id,
+                                prompt: item.prompt,
+                                contentType: item.content_type || 'VIDEO',
+                                options: item.options,
+                            },
+                            activeApiKey
+                        );
+                        return;
+                    }
+
                     // Update history with fetched URLs
                     const updatedItem: HistoryItem = {
                         ...item,
                         html_url: urls.html_url,
-                        audio_url: urls.audio_url,
-                        words_url: urls.words_url,
+                        audio_url: urls.audio_url ?? undefined,
+                        words_url: urls.words_url ?? undefined,
                         status: 'completed',
                     };
 
@@ -468,8 +605,8 @@ function VideoConsole() {
                         percentage: 100,
                         message: '',
                         htmlUrl: urls.html_url,
-                        audioUrl: urls.audio_url,
-                        wordsUrl: urls.words_url,
+                        audioUrl: urls.audio_url ?? undefined,
+                        wordsUrl: urls.words_url ?? undefined,
                         options: item.options,
                     });
                     setConsoleState('complete');
@@ -487,11 +624,25 @@ function VideoConsole() {
                 return;
             }
 
-            // For pending/generating/failed items without URLs
+            // For pending/generating items: start polling so the UI stays alive
+            if ((item.status === 'generating' || item.status === 'pending') && activeApiKey) {
+                startPollingForVideo(
+                    {
+                        videoId: item.video_id,
+                        prompt: item.prompt,
+                        contentType: item.content_type || 'VIDEO',
+                        options: item.options,
+                    },
+                    activeApiKey
+                );
+                return;
+            }
+
+            // Failed items with no content to show
             setConsoleState('idle');
             setCurrentGeneration(null);
         },
-        [activeApiKey]
+        [activeApiKey, startPollingForVideo]
     );
 
     const handleDeleteHistory = useCallback(
@@ -513,10 +664,14 @@ function VideoConsole() {
             abortRef.current();
             abortRef.current = null;
         }
+        if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+        }
+        localStorage.removeItem(PENDING_GENERATION_KEY);
         setSelectedHistoryId(null);
         setCurrentGeneration(null);
         setConsoleState('idle');
-        setIsMobileHistoryOpen(false);
     }, []);
 
     // No API keys or no stored full key - redirect to main page
@@ -547,8 +702,7 @@ function VideoConsole() {
                                 ? 'You need an active API key to use the Content Console'
                                 : 'Please generate a new API key to use the Content Console'}
                         </p>
-                        <Button onClick={() => navigate({ to: '/video-api-studio' })}>
-                            <ArrowLeft className="mr-2 size-4" />
+                        <Button onClick={() => window.history.back()}>
                             Go to API Studio
                         </Button>
                     </div>
@@ -560,73 +714,67 @@ function VideoConsole() {
     const isGenerating = consoleState === 'generating';
 
     return (
-        <div className="relative flex h-screen w-full overflow-hidden bg-background">
-            {/* Sidebar Desktop */}
-            <div className="hidden h-full md:block">
+        <LayoutContainer
+            intrnalMargin={false}
+            hasInternalSidebarComponent={true}
+        >
+        <div className="relative flex h-[calc(100vh-56px)] w-full overflow-hidden bg-background md:h-[calc(100vh-72px)]">
+            {/* Mobile History Drawer */}
+            <Sheet open={isMobileHistoryOpen} onOpenChange={setIsMobileHistoryOpen}>
+                <SheetContent side="left" className="w-[280px] p-0">
+                    <SheetTitle className="sr-only">History</SheetTitle>
+                    <HistorySidebar
+                        history={history}
+                        selectedId={selectedHistoryId}
+                        onSelect={(item) => {
+                            handleSelectHistory(item);
+                            setIsMobileHistoryOpen(false);
+                        }}
+                        onDelete={handleDeleteHistory}
+                        onNewVideo={() => {
+                            handleNewVideo();
+                            setIsMobileHistoryOpen(false);
+                        }}
+                        isCollapsed={false}
+                        onToggleCollapse={() => setIsMobileHistoryOpen(false)}
+                    />
+                </SheetContent>
+            </Sheet>
+
+            {/* Collapsible History Sidebar (desktop only) */}
+            <div
+                className="hidden flex-shrink-0 flex-col border-r bg-white dark:bg-card md:flex"
+                style={{
+                    width: isSidebarOpen ? 280 : 48,
+                    transition: 'width 0.25s ease',
+                    overflow: 'hidden',
+                }}
+            >
                 <HistorySidebar
                     history={history}
                     selectedId={selectedHistoryId}
                     onSelect={handleSelectHistory}
                     onDelete={handleDeleteHistory}
                     onNewVideo={handleNewVideo}
+                    isCollapsed={!isSidebarOpen}
+                    onToggleCollapse={() => setIsSidebarOpen((prev) => !prev)}
                 />
             </div>
 
             {/* Main Content */}
             <div className="flex min-w-0 flex-1 flex-col bg-secondary/10">
-                {/* Header */}
-                <div className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background/50 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 md:hidden">
-                            <Sheet open={isMobileHistoryOpen} onOpenChange={setIsMobileHistoryOpen}>
-                                <SheetTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="-ml-2 size-8">
-                                        <Menu className="size-4" />
-                                    </Button>
-                                </SheetTrigger>
-                                <SheetContent side="left" className="w-96 p-0">
-                                    <HistorySidebar
-                                        history={history}
-                                        selectedId={selectedHistoryId}
-                                        onSelect={handleSelectHistory}
-                                        onDelete={handleDeleteHistory}
-                                        onNewVideo={handleNewVideo}
-                                    />
-                                </SheetContent>
-                            </Sheet>
-                        </div>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="-ml-2 hidden size-8 text-muted-foreground hover:text-foreground md:flex"
-                            onClick={() => navigate({ to: '/video-api-studio' })}
+                {/* Mobile: History access button (shown only on mobile, hidden on md+) */}
+                {history.length > 0 && (
+                    <div className="flex items-center border-b px-3 py-1.5 md:hidden">
+                        <button
+                            onClick={() => setIsMobileHistoryOpen(true)}
+                            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         >
-                            <ArrowLeft className="size-4" />
-                        </Button>
-                        <div className="hidden h-4 w-px bg-border sm:block" />
-                        <div>
-                            <h1 className="flex items-center gap-2 text-sm font-semibold sm:text-base">
-                                <div className="rounded bg-violet-100 p-1 text-violet-600">
-                                    <Sparkles className="size-3.5" />
-                                </div>
-                                Create AI Content
-                            </h1>
-                        </div>
+                            <HistoryIcon className="size-3.5" />
+                            History ({history.length})
+                        </button>
                     </div>
-                    <div className="flex items-center gap-2">
-                        {/* AI Credits */}
-                        <AiCreditsPanel />
-                        {/* Mobile Back Button */}
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="flex size-8 text-muted-foreground md:hidden"
-                            onClick={() => navigate({ to: '/video-api-studio' })}
-                        >
-                            <ArrowLeft className="size-4" />
-                        </Button>
-                    </div>
-                </div>
+                )}
 
                 {/* Content Area */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth p-2 sm:p-3">
@@ -663,19 +811,22 @@ function VideoConsole() {
                     )}
 
                     {consoleState === 'generating' && currentGeneration && (
-                        <div className="mx-auto flex size-full max-w-2xl items-center justify-center">
+                        <div className="mx-auto w-full max-w-3xl px-2 py-4 sm:px-4">
                             <GenerationProgress
                                 currentStage={currentGeneration.stage}
                                 percentage={currentGeneration.percentage}
                                 message={currentGeneration.message}
                                 contentType={currentGeneration.contentType}
+                                scriptUrl={currentGeneration.scriptUrl}
+                                audioUrl={currentGeneration.audioUrl}
+                                wordsUrl={currentGeneration.wordsUrl}
                             />
                         </div>
                     )}
 
                     {consoleState === 'complete' &&
                         currentGeneration?.htmlUrl &&
-                        currentGeneration?.audioUrl && (
+                        (currentGeneration?.audioUrl || !needsAudio(currentGeneration?.contentType)) && (
                             <VideoResult
                                 videoId={currentGeneration.videoId}
                                 htmlUrl={currentGeneration.htmlUrl}
@@ -701,5 +852,6 @@ function VideoConsole() {
                 </div>
             </div>
         </div>
+        </LayoutContainer>
     );
 }

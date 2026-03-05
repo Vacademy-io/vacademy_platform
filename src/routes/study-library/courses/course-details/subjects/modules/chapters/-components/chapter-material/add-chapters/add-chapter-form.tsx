@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { ControllerRenderProps, useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,7 +26,7 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId, isUserAdmin } from '@/utils/userDetails';
 import { Upload, X } from 'lucide-react';
 import { getDisplaySettingsWithFallback } from '@/services/display-settings';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 
 const formSchema = z.object({
     chapterName: z.string().min(1, 'Chapter name is required'),
@@ -216,7 +219,8 @@ export const AddChapterForm = ({
     useEffect(() => {
         const loadDisplaySettings = async () => {
             const isAdmin = isUserAdmin();
-            const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+            const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
 
             try {
                 const displaySettings = await getDisplaySettingsWithFallback(roleKey);

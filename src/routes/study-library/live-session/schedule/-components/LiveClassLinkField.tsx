@@ -2,18 +2,21 @@ import { useState } from 'react';
 import { MyInput } from '@/components/design-system/input';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
-import { Calendar, Repeat } from 'lucide-react';
+import { Calendar, Repeat, CalendarDays, RefreshCw } from 'lucide-react';
+
+type RecurrenceScope = 'ONLY_THIS' | 'ALL_FUTURE' | 'CURRENT_DAY_ALL_SESSIONS' | 'ALL_FUTURE_ALL_SESSIONS';
 
 interface LiveClassLinkFieldProps {
     value: string;
     onChange: (value: string) => void;
-    onApplyWithScope: (scope: 'ONLY_THIS' | 'ALL_FUTURE') => void;
+    onApplyWithScope: (scope: RecurrenceScope) => void;
     isEdit: boolean;
+    dayName?: string;
 }
 
-export const LiveClassLinkField = ({ value, onChange, onApplyWithScope, isEdit }: LiveClassLinkFieldProps) => {
+export const LiveClassLinkField = ({ value, onChange, onApplyWithScope, isEdit, dayName = 'this day' }: LiveClassLinkFieldProps) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [selectedScope, setSelectedScope] = useState<'ONLY_THIS' | 'ALL_FUTURE' | null>(null);
+    const [selectedScope, setSelectedScope] = useState<RecurrenceScope | null>(null);
 
     const handleApplyClick = () => {
         setIsDialogOpen(true);
@@ -67,13 +70,30 @@ export const LiveClassLinkField = ({ value, onChange, onApplyWithScope, isEdit }
                                 </div>
                                 <div>
                                     <h3 className="font-semibold text-gray-900">Only This Session</h3>
-                                    <p className="mt-1 text-sm text-gray-500">Apply the new link only for today's class</p>
-                                    <p className="mt-2 text-xs font-medium text-gray-400">Example: Only Feb 19 Monday will have the new link</p>
+                                    <p className="mt-1 text-sm text-gray-500">Apply the new link only for this particular session</p>
+                                    <p className="mt-2 text-xs font-medium text-gray-400">Example: Only this {dayName} session will have the new link</p>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Option 2: All Upcoming Sessions */}
+                        {/* Option 2: Current Day All Sessions */}
+                        <div
+                            className={`cursor-pointer rounded-xl border-2 p-4 transition-all hover:bg-gray-50 ${selectedScope === 'CURRENT_DAY_ALL_SESSIONS' ? 'border-primary-500 bg-primary-50' : 'border-gray-200'}`}
+                            onClick={() => setSelectedScope('CURRENT_DAY_ALL_SESSIONS')}
+                        >
+                            <div className="flex items-start gap-3">
+                                <div className="rounded-full bg-green-100 p-2 text-green-600">
+                                    <CalendarDays className="size-6" />
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-gray-900">Current {dayName} All Sessions</h3>
+                                    <p className="mt-1 text-sm text-gray-500">Apply the new link for all sessions on this {dayName}</p>
+                                    <p className="mt-2 text-xs font-medium text-gray-400">Example: All sessions on this {dayName} will have the new link</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Option 3: All Upcoming Sessions (same time slot) */}
                         <div
                             className={`cursor-pointer rounded-xl border-2 p-4 transition-all hover:bg-gray-50 ${selectedScope === 'ALL_FUTURE' ? 'border-primary-500 bg-primary-50' : 'border-gray-200'}`}
                             onClick={() => setSelectedScope('ALL_FUTURE')}
@@ -84,8 +104,25 @@ export const LiveClassLinkField = ({ value, onChange, onApplyWithScope, isEdit }
                                 </div>
                                 <div>
                                     <h3 className="font-semibold text-gray-900">All Upcoming Sessions</h3>
-                                    <p className="mt-1 text-sm text-gray-500">Apply the new link for today and all future sessions</p>
-                                    <p className="mt-2 text-xs font-medium text-gray-400">Example: Feb 19, Feb 26... all Mondays will have the new link</p>
+                                    <p className="mt-1 text-sm text-gray-500">Apply the new link for today and all future sessions at this time slot</p>
+                                    <p className="mt-2 text-xs font-medium text-gray-400">Example: All upcoming {dayName}s at this session time will have the new link</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Option 4: All Upcoming Days All Sessions */}
+                        <div
+                            className={`cursor-pointer rounded-xl border-2 p-4 transition-all hover:bg-gray-50 ${selectedScope === 'ALL_FUTURE_ALL_SESSIONS' ? 'border-primary-500 bg-primary-50' : 'border-gray-200'}`}
+                            onClick={() => setSelectedScope('ALL_FUTURE_ALL_SESSIONS')}
+                        >
+                            <div className="flex items-start gap-3">
+                                <div className="rounded-full bg-orange-100 p-2 text-orange-600">
+                                    <RefreshCw className="size-6" />
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-gray-900">Upcoming {dayName}s All Sessions</h3>
+                                    <p className="mt-1 text-sm text-gray-500">Apply the new link for all sessions on all upcoming {dayName}s</p>
+                                    <p className="mt-2 text-xs font-medium text-gray-400">Example: All sessions on every future {dayName} will have the new link</p>
                                 </div>
                             </div>
                         </div>

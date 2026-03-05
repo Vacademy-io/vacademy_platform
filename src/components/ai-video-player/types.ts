@@ -18,7 +18,8 @@ export type ContentType =
     | 'WORKSHEET' // Printable worksheets
     | 'CODE_PLAYGROUND' // Code editor exercises
     | 'TIMELINE' // Chronological visualization
-    | 'CONVERSATION'; // Language dialogues
+    | 'CONVERSATION' // Language dialogues
+    | 'SLIDES'; // HTML presentation / PPT-style slide deck
 
 /**
  * Navigation modes for content playback
@@ -67,6 +68,17 @@ export interface BrandingConfig {
 }
 
 /**
+ * MCQ question shown at a specific timestamp during VIDEO playback
+ */
+export interface MCQQuestion {
+    time: number;        // Video timestamp (seconds) at which to pause and show the question
+    question: string;    // Question text
+    options: string[];   // Exactly 4 answer options
+    correct: number;     // 0-indexed position of the correct option
+    explanation: string; // Brief explanation shown after the student answers
+}
+
+/**
  * Timeline metadata supporting all content types
  */
 export interface TimelineMeta {
@@ -74,6 +86,9 @@ export interface TimelineMeta {
     content_type: ContentType;
     navigation: NavigationType;
     entry_label: string;
+
+    // Language of the content (e.g. "English", "French") — used by TTS and captions
+    language?: string;
 
     // Audio/timing information
     audio_start_at: number;
@@ -93,6 +108,15 @@ export interface TimelineMeta {
     outro_duration?: number;
     content_starts_at?: number;
     content_ends_at?: number;
+
+    // Chapter markers for progress bar navigation
+    chapters?: Array<{ time: number; label: string }>;
+
+    // Glossary terms with the video time they were first introduced
+    glossary?: Array<{ term: string; time: number }>;
+
+    // MCQ questions shown at specific timestamps during video playback
+    questions?: MCQQuestion[];
 }
 
 /**
@@ -141,6 +165,7 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
     CODE_PLAYGROUND: '💻 Code',
     TIMELINE: '⏳ Timeline',
     CONVERSATION: '🗣️ Conversation',
+    SLIDES: '🖼️ Slides',
 };
 
 /**
@@ -159,6 +184,7 @@ export const CONTENT_TYPE_NAVIGATION: Record<ContentType, NavigationType> = {
     CODE_PLAYGROUND: 'self_contained',
     TIMELINE: 'user_driven',
     CONVERSATION: 'user_driven',
+    SLIDES: 'user_driven',
 };
 
 /**
@@ -172,11 +198,12 @@ export const CONTENT_TYPE_ENTRY_LABELS: Record<ContentType, string> = {
     PUZZLE_BOOK: 'puzzle',
     SIMULATION: 'simulation',
     FLASHCARDS: 'card',
-    MAP_EXPLORATION: 'location',
+    MAP_EXPLORATION: 'region',
     WORKSHEET: 'exercise',
     CODE_PLAYGROUND: 'exercise',
     TIMELINE: 'event',
     CONVERSATION: 'exchange',
+    SLIDES: 'slide',
 };
 
 /**

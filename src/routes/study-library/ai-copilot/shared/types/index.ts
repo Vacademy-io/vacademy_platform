@@ -10,6 +10,8 @@ export type SlideType =
     | 'pdf'
     | 'video'
     | 'ai-video'
+    | 'ai-slides'
+    | 'ai-storybook'
     | 'video-code'
     | 'ai-video-code'
     | 'image'

@@ -5,7 +5,7 @@ export interface ContentGenerationRequest {
         todos: Array<{
             name: string;
             title: string;
-            type: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO";
+            type: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO" | "AI_SLIDES" | "AI_STORYBOOK" | "VIDEO_CODE" | "AI_VIDEO_CODE";
             path: string;
             action_type: "ADD" | "UPDATE";
             prompt: string;
@@ -15,6 +15,7 @@ export interface ContentGenerationRequest {
         }>;
     };
     institute_id?: string;
+    language?: string;
 }
 
 export interface ContentUpdate {
@@ -22,7 +23,7 @@ export interface ContentUpdate {
     path: string;
     status: boolean | string; // Can be boolean or "COMPLETED" | "GENERATING" for AI_VIDEO
     actionType: "ADD" | "UPDATE";
-    slideType: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO";
+    slideType: "DOCUMENT" | "ASSESSMENT" | "VIDEO" | "AI_VIDEO" | "AI_SLIDES" | "AI_STORYBOOK" | "VIDEO_CODE" | "AI_VIDEO_CODE";
     title?: string;
     contentData: any;
     errorMessage?: string;
@@ -42,7 +43,8 @@ export async function generateContent(
     onUpdate: (update: ContentUpdate) => void,
     onError: (error: string) => void,
     onProgress?: (message: string) => void,
-    retryCount = 0
+    retryCount = 0,
+    language = 'English'
 ): Promise<void> {
     const apiUrl = `${AI_SERVICE_BASE_URL}/course/content/v1/generate`;
     
@@ -78,6 +80,7 @@ export async function generateContent(
                 body: JSON.stringify({
                     course_tree: { todos },
                     institute_id: instituteId,
+                    language: language,
                 }),
                 signal: controller.signal,
             });

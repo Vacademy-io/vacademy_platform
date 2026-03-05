@@ -411,18 +411,32 @@ export async function createCourseWithContent(
         console.log('[Course Creation] Module created successfully:', moduleId);
 
         // Step 6: Create Chapters and Slides for each session
+        // Chapters are created sequentially (need ordered IDs), but slides within
+        // each chapter are created in parallel for ~4× speedup.
         if (setCreationProgress) {
             setCreationProgress('Creating chapters and slides...');
         }
         const chapterIds: string[] = [];
 
-        console.log(`[Course Creation] Creating ${sessions.length} chapters with slides...`);
+        console.log(`[Course Creation] Creating ${sessions.length} chapters with slides (parallel slide creation)...`);
 
         for (let sessionIndex = 0; sessionIndex < sessions.length; sessionIndex++) {
             const session = sessions[sessionIndex];
             if (!session) continue;
+
+            // Skip sessions that have no real slides (only placeholders or completely empty)
+            const realSlides = session.slides.filter(
+                (s) => s && s.slideTitle !== '_placeholder_'
+            );
+            if (realSlides.length === 0) {
+                console.log(
+                    `[Course Creation] Skipping empty session "${session.sessionTitle}" (no real slides)`
+                );
+                continue;
+            }
+
             console.log(
-                `[Course Creation] Processing session ${sessionIndex + 1}/${sessions.length}: "${session.sessionTitle}" with ${session.slides.length} slides`
+                `[Course Creation] Processing session ${sessionIndex + 1}/${sessions.length}: "${session.sessionTitle}" with ${realSlides.length} slides`
             );
 
             // Create Chapter
@@ -456,56 +470,57 @@ export async function createCourseWithContent(
                 console.log(`[Course Creation] Chapter response full data:`, chapterResponse.data);
                 chapterIds.push(chapterId);
 
-                // Step 7: Create Slides for this chapter
+                // Step 7: Create ALL slides for this chapter in PARALLEL
+                // Slides within a chapter have no inter-dependencies
                 console.log(
-                    `[Course Creation] Creating ${session.slides.length} slides for chapter "${session.sessionTitle}"...`
+                    `[Course Creation] Creating ${realSlides.length} slides in parallel for chapter "${session.sessionTitle}"...`
                 );
-                for (let slideIndex = 0; slideIndex < session.slides.length; slideIndex++) {
-                    const slide = session.slides[slideIndex];
-                    if (!slide) continue;
-                    if (setCreationProgress) {
-                        setCreationProgress(
-                            `Creating slide ${slideIndex + 1}/${session.slides.length} in "${session.sessionTitle}"...`
-                        );
-                    }
-                    console.log(
-                        `[Course Creation] Creating slide ${slideIndex + 1}/${session.slides.length}: "${slide.slideTitle}" (type: ${slide.slideType})`
+                if (setCreationProgress) {
+                    setCreationProgress(
+                        `Creating ${realSlides.length} slides in "${session.sessionTitle}"...`
                     );
-                    console.log(`[Course Creation] Slide details:`, {
-                        id: slide.id,
-                        title: slide.slideTitle,
-                        type: slide.slideType,
-                        status: slide.status,
-                        hasContent: !!slide.content,
-                        hasAiVideoData: !!slide.aiVideoData,
-                    });
-                    try {
-                        await createSlide({
+                }
+
+                const slidePromises = realSlides
+                    .filter((slide) => !!slide)
+                    .map((slide, slideIndex) => {
+                        console.log(
+                            `[Course Creation] Queuing slide ${slideIndex + 1}/${realSlides.length}: "${slide.slideTitle}" (type: ${slide.slideType})`
+                        );
+                        return createSlide({
                             slide,
                             chapterId,
                             moduleId,
                             subjectId,
                             packageSessionIds,
-                            instituteId: INSTITUTE_ID,
+                            instituteId: INSTITUTE_ID || '',
                             slideOrder: slideIndex,
-                        });
-                        console.log(
-                            `[Course Creation] ✓ Slide "${slide.slideTitle}" (type: ${slide.slideType}) created successfully`
-                        );
-                    } catch (slideError) {
-                        console.error(
-                            `[Course Creation] ❌ Failed to create slide "${slide.slideTitle}" (type: ${slide.slideType}):`,
-                            slideError
-                        );
-                        if (slideError instanceof Error) {
-                            console.error(`[Course Creation] Error details:`, {
-                                message: slideError.message,
-                                stack: slideError.stack,
+                        })
+                            .then(() => {
+                                console.log(
+                                    `[Course Creation] ✓ Slide "${slide.slideTitle}" (type: ${slide.slideType}) created successfully`
+                                );
+                            })
+                            .catch((slideError) => {
+                                console.error(
+                                    `[Course Creation] ❌ Failed to create slide "${slide.slideTitle}" (type: ${slide.slideType}):`,
+                                    slideError
+                                );
+                                if (slideError instanceof Error) {
+                                    console.error(`[Course Creation] Error details:`, {
+                                        message: slideError.message,
+                                        stack: slideError.stack,
+                                    });
+                                }
+                                // Don't re-throw — let other slides continue
                             });
-                        }
-                        // Continue with next slide instead of failing entire process
-                    }
-                }
+                    });
+
+                // Wait for all slides in this chapter to complete
+                await Promise.allSettled(slidePromises);
+                console.log(
+                    `[Course Creation] ✓ All slides created for chapter "${session.sessionTitle}"`
+                );
             } catch (chapterError) {
                 console.error(
                     `[Course Creation] Failed to create chapter for session "${session.sessionTitle}":`,
@@ -574,10 +589,12 @@ async function createSlide(params: CreateSlideParams): Promise<void> {
                 await createVideoSlide(params);
                 break;
             case 'ai-video':
-                // For ai-video, ALWAYS create HTML_VIDEO slide type
-                // Allow creation after script generation, video can generate in background
+            case 'ai-slides':
+            case 'ai-storybook':
+                // ai-video, ai-slides, and ai-storybook all use the HTML_VIDEO slide type
+                // and render via the same player on the frontend
                 console.log(
-                    `[Course Creation] Routing to createHtmlVideoSlide for: ${slide.slideTitle}`
+                    `[Course Creation] Routing to createHtmlVideoSlide for: ${slide.slideTitle} (type: ${slide.slideType})`
                 );
                 await createHtmlVideoSlide(params);
                 break;

@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { QueryClient } from '@tanstack/react-query';
 import { createRootRouteWithContext, Outlet, redirect } from '@tanstack/react-router';
 import React, { Suspense } from 'react';
@@ -10,7 +13,7 @@ import {
 } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getUserRoles } from '@/lib/auth/sessionUtility';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
 const TanStackRouterDevtools =
@@ -115,7 +118,8 @@ const handleAuthenticatedUserLoginAccess = (location: any) => {
             const accessToken = getTokenFromCookie(TokenKey.accessToken);
             const roles = getUserRoles(accessToken);
             const isAdminRole = roles.includes('ADMIN');
-            const roleKey = isAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+            const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
             const fromCache = getDisplaySettingsFromCache(roleKey);
             const to = fromCache?.postLoginRedirectRoute || '/dashboard';
             throw redirect({ to });

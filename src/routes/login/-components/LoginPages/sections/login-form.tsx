@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { MyInput } from '@/components/design-system/input';
 import { MyButton } from '@/components/design-system/button';
 import { Link } from '@tanstack/react-router';
@@ -30,7 +33,7 @@ import { handleLoginFlow } from '@/lib/auth/loginFlowHandler';
 import { getCachedInstituteBranding } from '@/services/domain-routing';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 
 type FormValues = z.infer<typeof loginSchema>;
 
@@ -386,7 +389,8 @@ export function LoginForm() {
             const accessToken = getTokenFromCookie(TokenKey.accessToken);
             const roles = getUserRoles(accessToken);
             const isAdminRole = roles.includes('ADMIN');
-            const roleKey = isAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+            const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
 
             let ds: { postLoginRedirectRoute?: string } | null = getDisplaySettingsFromCache(roleKey);
 

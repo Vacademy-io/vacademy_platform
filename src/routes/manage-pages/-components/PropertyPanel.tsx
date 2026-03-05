@@ -4,8 +4,12 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Trash2, ChevronDown, ChevronUp, Settings } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, Settings, Copy, ArrowUp, ArrowDown } from 'lucide-react';
 import { useState } from 'react';
+import { ColorPickerField } from './ColorPickerField';
+import { ImageUploadField } from './ImageUploadField';
+import { VariantSwitcher } from './VariantSwitcher';
+import { RichTextField } from './RichTextField';
 
 export const PropertyPanel = () => {
     const {
@@ -13,8 +17,14 @@ export const PropertyPanel = () => {
         selectedComponentId,
         selectedPageId,
         selectedGlobalSettings,
+        selectedGlobalLayout,
         updateComponent,
         updateGlobalSettings,
+        deleteComponent,
+        duplicateComponent,
+        reorderComponents,
+        togglePagePublished,
+        updatePageSeo,
     } = useEditorStore();
 
     if (!config) return null;
@@ -22,6 +32,17 @@ export const PropertyPanel = () => {
     // Global Settings Editor
     if (selectedGlobalSettings) {
         return <GlobalSettingsEditor config={config} updateGlobalSettings={updateGlobalSettings} />;
+    }
+
+    // Global Header / Footer Editor
+    if (selectedGlobalLayout === 'header' || selectedGlobalLayout === 'footer') {
+        return (
+            <GlobalLayoutEditor
+                config={config}
+                section={selectedGlobalLayout}
+                updateGlobalSettings={updateGlobalSettings}
+            />
+        );
     }
 
     if (selectedComponentId) {
@@ -39,11 +60,77 @@ export const PropertyPanel = () => {
 
         if (!component) return <div className="p-4">Component not found</div>;
 
+        // Compute position within page for reorder
+        const pageComponents = config.pages.find((p) => p.id === pageId)?.components ?? [];
+        const componentIndex = pageComponents.findIndex((c) => c.id === component!.id);
+        const isFirst = componentIndex === 0;
+        const isLast = componentIndex === pageComponents.length - 1;
+
+        const moveUp = () => {
+            if (isFirst) return;
+            const next = [...pageComponents];
+            [next[componentIndex - 1], next[componentIndex]] = [next[componentIndex]!, next[componentIndex - 1]!];
+            reorderComponents(pageId, next);
+        };
+
+        const moveDown = () => {
+            if (isLast) return;
+            const next = [...pageComponents];
+            [next[componentIndex], next[componentIndex + 1]] = [next[componentIndex + 1]!, next[componentIndex]!];
+            reorderComponents(pageId, next);
+        };
+
         return (
             <div className="flex flex-col gap-6 p-4">
+                {/* Component Header + Action Bar */}
                 <div className="border-b pb-4">
-                    <h3 className="text-lg font-semibold capitalize">{component.type} Settings</h3>
-                    <div className="text-xs text-gray-500">ID: {component.id}</div>
+                    <div className="mb-2 flex items-start justify-between">
+                        <div>
+                            <h3 className="text-base font-semibold capitalize">{component.type}</h3>
+                            <div className="text-xs text-gray-400">ID: {component.id}</div>
+                        </div>
+                        {/* Actions */}
+                        <div className="flex items-center gap-0.5">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="size-7 p-0 text-gray-500 hover:text-gray-900"
+                                disabled={isFirst}
+                                onClick={moveUp}
+                                title="Move up"
+                            >
+                                <ArrowUp className="size-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="size-7 p-0 text-gray-500 hover:text-gray-900"
+                                disabled={isLast}
+                                onClick={moveDown}
+                                title="Move down"
+                            >
+                                <ArrowDown className="size-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="size-7 p-0 text-gray-500 hover:text-blue-600"
+                                onClick={() => duplicateComponent(pageId, component!.id)}
+                                title="Duplicate"
+                            >
+                                <Copy className="size-3.5" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="size-7 p-0 text-gray-500 hover:text-red-600"
+                                onClick={() => deleteComponent(pageId, component!.id)}
+                                title="Delete"
+                            >
+                                <Trash2 className="size-3.5" />
+                            </Button>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -71,17 +158,67 @@ export const PropertyPanel = () => {
         const page = config.pages.find((p) => p.id === selectedPageId);
         if (page) {
             return (
-                <div className="p-4">
-                    <h3 className="mb-4 text-lg font-semibold">Page Settings</h3>
-                    <div className="space-y-4">
-                        <div className="space-y-2">
+                <div className="flex flex-col gap-5 p-4">
+                    <h3 className="text-base font-semibold">Page Settings</h3>
+
+                    {/* Publish status */}
+                    <div className="flex items-center justify-between rounded-lg border bg-gray-50 p-3">
+                        <div>
+                            <div className="flex items-center gap-1.5 font-medium text-sm">
+                                <span className={`size-2 rounded-full ${page.published ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                {page.published ? 'Published' : 'Draft'}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                                {page.published ? 'Visible to visitors' : 'Hidden from visitors'}
+                            </div>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant={page.published ? 'outline' : 'default'}
+                            onClick={() => togglePagePublished(page.id)}
+                        >
+                            {page.published ? 'Unpublish' : 'Publish'}
+                        </Button>
+                    </div>
+
+                    {/* Basic info (read-only) */}
+                    <div className="space-y-3">
+                        <div className="space-y-1.5">
                             <Label>Page Title</Label>
                             <Input value={page.title || ''} readOnly disabled />
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                             <Label>Route Slug</Label>
                             <Input value={page.route} readOnly disabled />
                         </div>
+                    </div>
+
+                    {/* SEO */}
+                    <div className="space-y-3 rounded-lg border bg-gray-50 p-3">
+                        <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">SEO</h4>
+                        <div className="space-y-1.5">
+                            <Label className="text-xs">Meta Title</Label>
+                            <Input
+                                value={page.seo?.metaTitle || ''}
+                                placeholder={page.title || page.route}
+                                onChange={(e) => updatePageSeo(page.id, { metaTitle: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label className="text-xs">Meta Description</Label>
+                            <Textarea
+                                rows={2}
+                                value={page.seo?.metaDescription || ''}
+                                placeholder="Brief page description for search engines..."
+                                onChange={(e) => updatePageSeo(page.id, { metaDescription: e.target.value })}
+                            />
+                        </div>
+                        <ImageUploadField
+                            label="OG Image"
+                            value={page.seo?.ogImage || ''}
+                            onChange={(url) => updatePageSeo(page.id, { ogImage: url })}
+                            placeholder="Social share image URL"
+                        />
                     </div>
                 </div>
             );
@@ -89,6 +226,59 @@ export const PropertyPanel = () => {
     }
 
     return <div className="p-8 text-center text-gray-400">Select an item to edit</div>;
+};
+
+// Global Layout Editor — edits globalSettings.layout.header or .footer
+const GlobalLayoutEditor = ({
+    config,
+    section,
+    updateGlobalSettings,
+}: {
+    config: any;
+    section: 'header' | 'footer';
+    updateGlobalSettings: (updates: any) => void;
+}) => {
+    const layoutData = config.globalSettings?.layout?.[section];
+    const props = layoutData?.props || {};
+
+    // Wrap in a fake component shape for HeaderEditor / FooterEditor
+    const fakeComponent = { id: '__global__', type: section, enabled: true, props };
+    const fakeUpdateComponent = (_pageId: string, _id: string, patch: any) => {
+        if (patch.props) {
+            updateGlobalSettings({
+                layout: {
+                    ...config.globalSettings.layout,
+                    [section]: { ...layoutData, props: { ...props, ...patch.props } },
+                },
+            });
+        }
+    };
+
+    return (
+        <div className="flex flex-col gap-6 p-4">
+            <div className="border-b pb-3">
+                <h3 className="text-base font-semibold capitalize">
+                    Global {section === 'header' ? 'Header' : 'Footer'}
+                </h3>
+                <p className="mt-0.5 text-xs text-purple-600">
+                    Appears on every page
+                </p>
+            </div>
+            {section === 'header' ? (
+                <HeaderEditor
+                    component={fakeComponent}
+                    pageId="__global__"
+                    updateComponent={fakeUpdateComponent}
+                />
+            ) : (
+                <FooterEditor
+                    component={fakeComponent}
+                    pageId="__global__"
+                    updateComponent={fakeUpdateComponent}
+                />
+            )}
+        </div>
+    );
 };
 
 // Global Settings Editor Component
@@ -389,6 +579,23 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
                 />
             );
 
+        case 'faqSection':
+            return <FaqSectionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'videoEmbed':
+            return <VideoEmbedEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'ctaBanner':
+            return <CtaBannerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'pricingTable':
+            return <PricingTableEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'contactForm':
+            return <ContactFormEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'teamSection':
+            return <TeamSectionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'announcementFeed':
+            return <AnnouncementFeedEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'imageGallery':
+            return <ImageGalleryEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+
         default:
             return (
                 <GenericEditor
@@ -455,6 +662,12 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">Showcase Settings</h4>
+
+            <VariantSwitcher
+                componentType="mediaShowcase"
+                currentProps={props}
+                onApply={(newProps) => updateComponent(pageId, component.id, { props: newProps })}
+            />
 
             <div className="space-y-2">
                 <Label>Layout</Label>
@@ -525,19 +738,13 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
 
                             {expandedSlide === index && (
                                 <div className="mt-3 space-y-3 border-t pt-3">
-                                    <div className="space-y-2">
-                                        <Label className="text-xs">Background Image URL</Label>
-                                        <Input
-                                            value={slide.backgroundImage}
-                                            onChange={(e) =>
-                                                updateSlide(
-                                                    index,
-                                                    'backgroundImage',
-                                                    e.target.value
-                                                )
-                                            }
-                                        />
-                                    </div>
+                                    <ImageUploadField
+                                        label="Background Image"
+                                        value={slide.backgroundImage || ''}
+                                        onChange={(url) =>
+                                            updateSlide(index, 'backgroundImage', url)
+                                        }
+                                    />
 
                                     <div className="space-y-2">
                                         <Label className="text-xs">Heading</Label>
@@ -621,6 +828,12 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">Catalogue Settings</h4>
+
+            <VariantSwitcher
+                componentType={component.type}
+                currentProps={props}
+                onApply={(newProps) => updateComponent(pageId, component.id, { props: newProps })}
+            />
 
             <div className="space-y-2">
                 <Label>Title</Label>
@@ -780,6 +993,7 @@ const GenericEditor = ({ component, pageId, updateComponent }: any) => {
 const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const [expandedNav, setExpandedNav] = useState<number | null>(null);
+    const [expandedAuth, setExpandedAuth] = useState<number | null>(null);
 
     const updateProp = (key: string, value: any) => {
         updateComponent(pageId, component.id, {
@@ -799,24 +1013,39 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
     };
 
     const deleteNavItem = (index: number) => {
-        updateProp(
-            'navigation',
-            props.navigation.filter((_: any, i: number) => i !== index)
-        );
+        updateProp('navigation', (props.navigation || []).filter((_: any, i: number) => i !== index));
+    };
+
+    const addAuthLink = () => {
+        updateProp('authLinks', [...(props.authLinks || []), { label: 'Login', route: 'login' }]);
+    };
+
+    const updateAuthLink = (index: number, field: string, value: any) => {
+        const updated = [...(props.authLinks || [])];
+        updated[index] = { ...updated[index], [field]: value };
+        updateProp('authLinks', updated);
+    };
+
+    const deleteAuthLink = (index: number) => {
+        updateProp('authLinks', (props.authLinks || []).filter((_: any, i: number) => i !== index));
     };
 
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">Header Settings</h4>
 
-            <div className="space-y-2">
-                <Label>Logo URL</Label>
-                <Input
-                    value={props.logo || ''}
-                    onChange={(e) => updateProp('logo', e.target.value)}
-                    placeholder="https://example.com/logo.png"
-                />
-            </div>
+            <VariantSwitcher
+                componentType="header"
+                currentProps={props}
+                onApply={(newProps) => updateComponent(pageId, component.id, { props: newProps })}
+            />
+
+            <ImageUploadField
+                label="Logo"
+                value={props.logo || ''}
+                onChange={(url) => updateProp('logo', url)}
+                placeholder="https://example.com/logo.png"
+            />
 
             <div className="space-y-2">
                 <Label>Title</Label>
@@ -826,14 +1055,27 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                 />
             </div>
 
+            <ColorPickerField
+                label="Background Color"
+                value={props.backgroundColor || '#ffffff'}
+                onChange={(c) => updateProp('backgroundColor', c)}
+            />
+
+            <ColorPickerField
+                label="Text Color"
+                value={props.textColor || '#000000'}
+                onChange={(c) => updateProp('textColor', c)}
+            />
+
+            {/* Navigation Links */}
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <Label>Navigation Items</Label>
+                    <Label>Navigation Links</Label>
                     <Button size="sm" variant="outline" onClick={addNavItem}>
                         <Plus className="mr-1 size-3" /> Add
                     </Button>
                 </div>
-                {props.navigation?.map((item: any, index: number) => (
+                {(props.navigation || []).map((item: any, index: number) => (
                     <div key={index} className="rounded border bg-gray-50 p-2">
                         <div className="flex items-center justify-between">
                             <button
@@ -864,19 +1106,71 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                     onChange={(e) => updateNavItem(index, 'label', e.target.value)}
                                 />
                                 <Input
-                                    placeholder="Route"
+                                    placeholder="Route (e.g. /about or https://...)"
                                     value={item.route}
                                     onChange={(e) => updateNavItem(index, 'route', e.target.value)}
                                 />
                                 <div className="flex items-center justify-between">
                                     <Label className="text-xs">Open in same tab</Label>
                                     <Switch
-                                        checked={item.openInSameTab}
+                                        checked={!!item.openInSameTab}
                                         onCheckedChange={(c) =>
                                             updateNavItem(index, 'openInSameTab', c)
                                         }
                                     />
                                 </div>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {/* Auth / CTA Buttons */}
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <Label>Auth / CTA Buttons</Label>
+                    <Button size="sm" variant="outline" onClick={addAuthLink}>
+                        <Plus className="mr-1 size-3" /> Add
+                    </Button>
+                </div>
+                <p className="text-[11px] text-gray-400">
+                    Buttons shown on the right side of the header (e.g. Login, Sign Up).
+                </p>
+                {(props.authLinks || []).map((link: any, index: number) => (
+                    <div key={index} className="rounded border bg-gray-50 p-2">
+                        <div className="flex items-center justify-between">
+                            <button
+                                onClick={() => setExpandedAuth(expandedAuth === index ? null : index)}
+                                className="flex-1 text-left text-sm font-medium"
+                            >
+                                {expandedAuth === index ? (
+                                    <ChevronUp className="mr-1 inline size-3" />
+                                ) : (
+                                    <ChevronDown className="mr-1 inline size-3" />
+                                )}
+                                {link.label || `Button ${index + 1}`}
+                            </button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => deleteAuthLink(index)}
+                                className="size-6 p-0 text-red-600"
+                            >
+                                <Trash2 className="size-3" />
+                            </Button>
+                        </div>
+                        {expandedAuth === index && (
+                            <div className="mt-2 space-y-2">
+                                <Input
+                                    placeholder="Label (e.g. Login)"
+                                    value={link.label || ''}
+                                    onChange={(e) => updateAuthLink(index, 'label', e.target.value)}
+                                />
+                                <Input
+                                    placeholder="Route (e.g. login, signup, /contact)"
+                                    value={link.route || ''}
+                                    onChange={(e) => updateAuthLink(index, 'route', e.target.value)}
+                                />
                             </div>
                         )}
                     </div>
@@ -900,15 +1194,60 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp('leftSection', { ...props.leftSection, [field]: value });
     };
 
+    // Helper to update a right section's field
+    const updateRightSection = (sectionKey: string, field: string, value: any) => {
+        updateProp(sectionKey, { ...(props[sectionKey] || {}), [field]: value });
+    };
+
+    // Helper to update a specific link within a right section
+    const updateRightSectionLink = (sectionKey: string, linkIndex: number, field: string, value: any) => {
+        const section = props[sectionKey] || { title: '', links: [] };
+        const links = [...(section.links || [])];
+        links[linkIndex] = { ...links[linkIndex], [field]: value };
+        updateProp(sectionKey, { ...section, links });
+    };
+
+    const addRightSectionLink = (sectionKey: string) => {
+        const section = props[sectionKey] || { title: '', links: [] };
+        const links = [...(section.links || []), { label: 'New Link', route: '/' }];
+        updateProp(sectionKey, { ...section, links });
+    };
+
+    const deleteRightSectionLink = (sectionKey: string, linkIndex: number) => {
+        const section = props[sectionKey] || { title: '', links: [] };
+        const links = (section.links || []).filter((_: any, i: number) => i !== linkIndex);
+        updateProp(sectionKey, { ...section, links });
+    };
+
+    const layout = props.layout || 'four-column';
+    // Determine which right sections to show based on layout
+    const rightSectionKeys = layout === 'two-column'
+        ? ['rightSection1']
+        : layout === 'three-column'
+        ? ['rightSection1', 'rightSection2']
+        : ['rightSection1', 'rightSection2', 'rightSection3'];
+
+    const sectionLabels: Record<string, string> = {
+        rightSection1: 'Column 2',
+        rightSection2: 'Column 3',
+        rightSection3: 'Column 4',
+    };
+
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">Footer Settings</h4>
+
+            <VariantSwitcher
+                componentType="footer"
+                currentProps={props}
+                onApply={(newProps) => updateComponent(pageId, component.id, { props: newProps })}
+            />
 
             <div className="space-y-2">
                 <Label>Layout</Label>
                 <select
                     className="w-full rounded border px-3 py-2 text-sm"
-                    value={props.layout || 'four-column'}
+                    value={layout}
                     onChange={(e) => updateProp('layout', e.target.value)}
                 >
                     <option value="two-column">Two Column</option>
@@ -917,8 +1256,9 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                 </select>
             </div>
 
+            {/* Left Section */}
             <div className="space-y-3 rounded border bg-gray-50 p-3">
-                <h5 className="text-xs font-semibold">Left Section</h5>
+                <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Column 1 — Brand</h5>
                 <div className="space-y-2">
                     <Label className="text-xs">Title</Label>
                     <Input
@@ -926,20 +1266,77 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                         onChange={(e) => updateLeftSection('title', e.target.value)}
                     />
                 </div>
-                <div className="space-y-2">
-                    <Label className="text-xs">Description</Label>
-                    <Textarea
-                        rows={3}
-                        value={props.leftSection?.text || ''}
-                        onChange={(e) => updateLeftSection('text', e.target.value)}
-                    />
-                </div>
+                <RichTextField
+                    label="Description"
+                    value={props.leftSection?.text || ''}
+                    onChange={(html) => updateLeftSection('text', html)}
+                    placeholder="Platform description..."
+                />
             </div>
 
+            {/* Right Sections (link columns) */}
+            {rightSectionKeys.map((sectionKey) => {
+                const section = props[sectionKey] || { title: '', links: [] };
+                return (
+                    <div key={sectionKey} className="space-y-3 rounded border bg-gray-50 p-3">
+                        <h5 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            {sectionLabels[sectionKey]}
+                        </h5>
+                        <div className="space-y-2">
+                            <Label className="text-xs">Section Title</Label>
+                            <Input
+                                value={section.title || ''}
+                                placeholder="e.g. Quick Links"
+                                onChange={(e) => updateRightSection(sectionKey, 'title', e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs">Links</Label>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => addRightSectionLink(sectionKey)}
+                                >
+                                    <Plus className="mr-1 size-3" /> Add
+                                </Button>
+                            </div>
+                            {(section.links || []).map((link: any, li: number) => (
+                                <div key={li} className="flex items-center gap-1.5">
+                                    <Input
+                                        className="h-7 text-xs"
+                                        placeholder="Label"
+                                        value={link.label || ''}
+                                        onChange={(e) => updateRightSectionLink(sectionKey, li, 'label', e.target.value)}
+                                    />
+                                    <Input
+                                        className="h-7 text-xs"
+                                        placeholder="Route"
+                                        value={link.route || ''}
+                                        onChange={(e) => updateRightSectionLink(sectionKey, li, 'route', e.target.value)}
+                                    />
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="size-7 shrink-0 p-0 text-red-500"
+                                        onClick={() => deleteRightSectionLink(sectionKey, li)}
+                                    >
+                                        <Trash2 className="size-3" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+
+            {/* Bottom Note */}
             <div className="space-y-2">
                 <Label>Bottom Note</Label>
                 <Input
                     value={props.bottomNote || ''}
+                    placeholder="© 2025 Your Company. All rights reserved."
                     onChange={(e) => updateProp('bottomNote', e.target.value)}
                 />
             </div>
@@ -969,6 +1366,12 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
         <div className="space-y-4">
             <h4 className="text-sm font-medium">Hero Section Settings</h4>
 
+            <VariantSwitcher
+                componentType="heroSection"
+                currentProps={props}
+                onApply={(newProps) => updateComponent(pageId, component.id, { props: newProps })}
+            />
+
             <div className="space-y-2">
                 <Label>Layout</Label>
                 <select
@@ -982,13 +1385,17 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                 </select>
             </div>
 
-            <div className="space-y-2">
-                <Label>Background Image URL</Label>
-                <Input
-                    value={props.backgroundImage || ''}
-                    onChange={(e) => updateProp('backgroundImage', e.target.value)}
-                />
-            </div>
+            <ImageUploadField
+                label="Background Image"
+                value={props.backgroundImage || ''}
+                onChange={(url) => updateProp('backgroundImage', url)}
+            />
+
+            <ColorPickerField
+                label="Background Color"
+                value={props.backgroundColor || '#ffffff'}
+                onChange={(c) => updateProp('backgroundColor', c)}
+            />
 
             <div className="space-y-3 rounded border bg-gray-50 p-3">
                 <h5 className="text-xs font-semibold">Left Content</h5>
@@ -999,25 +1406,21 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         onChange={(e) => updateLeft('title', e.target.value)}
                     />
                 </div>
-                <div className="space-y-2">
-                    <Label className="text-xs">Description</Label>
-                    <Textarea
-                        rows={2}
-                        value={props.left?.description || ''}
-                        onChange={(e) => updateLeft('description', e.target.value)}
-                    />
-                </div>
+                <RichTextField
+                    label="Description"
+                    value={props.left?.description || ''}
+                    onChange={(html) => updateLeft('description', html)}
+                    placeholder="Enter section description..."
+                />
             </div>
 
             <div className="space-y-3 rounded border bg-gray-50 p-3">
                 <h5 className="text-xs font-semibold">Right Image</h5>
-                <div className="space-y-2">
-                    <Label className="text-xs">Image URL</Label>
-                    <Input
-                        value={props.right?.image || ''}
-                        onChange={(e) => updateRight('image', e.target.value)}
-                    />
-                </div>
+                <ImageUploadField
+                    label="Image"
+                    value={props.right?.image || ''}
+                    onChange={(url) => updateRight('image', url)}
+                />
                 <div className="space-y-2">
                     <Label className="text-xs">Alt Text</Label>
                     <Input
@@ -1399,6 +1802,376 @@ const PolicyRendererEditor = ({ component, pageId, updateComponent }: any) => {
                     </div>
                 </div>
             ))}
+        </div>
+    );
+};
+
+// FAQ Section Editor
+const FaqSectionEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addFaq = () => updateProp('faqs', [...(props.faqs || []), { question: 'New Question', answer: 'Answer here.' }]);
+    const deleteFaq = (i: number) => updateProp('faqs', props.faqs.filter((_: any, idx: number) => idx !== i));
+    const updateFaq = (i: number, field: string, value: string) => {
+        const next = [...(props.faqs || [])];
+        next[i] = { ...next[i], [field]: value };
+        updateProp('faqs', next);
+    };
+
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">FAQ Settings</h4>
+            <div className="space-y-2">
+                <Label>Header Text</Label>
+                <Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>Subheading</Label>
+                <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} />
+            </div>
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#F9FAFB'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <div className="border-t pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                    <Label>Questions ({props.faqs?.length || 0})</Label>
+                    <Button size="sm" onClick={addFaq}><Plus className="mr-1 size-3" />Add</Button>
+                </div>
+                {props.faqs?.map((faq: any, i: number) => (
+                    <div key={i} className="mb-2 rounded border bg-gray-50 p-3">
+                        <div className="flex items-center justify-between">
+                            <button onClick={() => setExpandedFaq(expandedFaq === i ? null : i)} className="flex flex-1 items-center gap-2 text-left text-sm font-medium">
+                                {expandedFaq === i ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                                {faq.question}
+                            </button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteFaq(i)} className="size-7 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                        </div>
+                        {expandedFaq === i && (
+                            <div className="mt-3 space-y-2 border-t pt-3">
+                                <Input placeholder="Question" value={faq.question} onChange={(e) => updateFaq(i, 'question', e.target.value)} />
+                                <Textarea placeholder="Answer" rows={2} value={faq.answer} onChange={(e) => updateFaq(i, 'answer', e.target.value)} />
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// Video Embed Editor
+const VideoEmbedEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">Video Embed Settings</h4>
+            <div className="space-y-2">
+                <Label>YouTube / Vimeo URL</Label>
+                <Input value={props.url || ''} placeholder="https://youtu.be/..." onChange={(e) => updateProp('url', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>Title</Label>
+                <Input value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>Caption</Label>
+                <Input value={props.caption || ''} placeholder="Optional caption below video" onChange={(e) => updateProp('caption', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>Aspect Ratio</Label>
+                <select className="w-full rounded border px-3 py-2 text-sm" value={props.aspectRatio || '16:9'} onChange={(e) => updateProp('aspectRatio', e.target.value)}>
+                    <option value="16:9">16:9 (Widescreen)</option>
+                    <option value="4:3">4:3 (Standard)</option>
+                    <option value="1:1">1:1 (Square)</option>
+                    <option value="9:16">9:16 (Vertical)</option>
+                </select>
+            </div>
+            <div className="flex items-center justify-between">
+                <Label>Autoplay</Label>
+                <Switch checked={props.autoplay || false} onCheckedChange={(c) => updateProp('autoplay', c)} />
+            </div>
+        </div>
+    );
+};
+
+// CTA Banner Editor
+const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">CTA Banner Settings</h4>
+            <div className="space-y-2">
+                <Label>Heading</Label>
+                <Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>Subheading</Label>
+                <Textarea rows={2} value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} />
+            </div>
+            <div className="space-y-2">
+                <Label>Layout</Label>
+                <select className="w-full rounded border px-3 py-2 text-sm" value={props.layout || 'centered'} onChange={(e) => updateProp('layout', e.target.value)}>
+                    <option value="centered">Centered</option>
+                    <option value="split">Split (text left, button right)</option>
+                </select>
+            </div>
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#3B82F6'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF'} onChange={(c) => updateProp('textColor', c)} />
+            <div className="space-y-3 rounded border bg-gray-50 p-3">
+                <h5 className="text-xs font-semibold">Button</h5>
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs">Show Button</Label>
+                    <Switch checked={props.button?.enabled || false} onCheckedChange={(c) => updateProp('button', { ...props.button, enabled: c })} />
+                </div>
+                {props.button?.enabled && (
+                    <>
+                        <Input placeholder="Button text" value={props.button?.text || ''} onChange={(e) => updateProp('button', { ...props.button, text: e.target.value })} />
+                        <Input placeholder="Target route" value={props.button?.target || ''} onChange={(e) => updateProp('button', { ...props.button, target: e.target.value })} />
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// Pricing Table Editor
+const PricingTableEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const [expandedPlan, setExpandedPlan] = useState<number | null>(null);
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addPlan = () => updateProp('plans', [...(props.plans || []), { name: 'New Plan', price: '₹0', period: '/month', description: '', features: ['Feature 1'], highlighted: false, buttonText: 'Get Started', buttonTarget: '' }]);
+    const deletePlan = (i: number) => updateProp('plans', props.plans.filter((_: any, idx: number) => idx !== i));
+    const updatePlan = (i: number, field: string, value: any) => {
+        const next = [...(props.plans || [])];
+        next[i] = { ...next[i], [field]: value };
+        updateProp('plans', next);
+    };
+
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">Pricing Table Settings</h4>
+            <div className="space-y-2"><Label>Header Text</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
+            <div className="space-y-2"><Label>Subheading</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
+            <div className="border-t pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                    <Label>Plans ({props.plans?.length || 0})</Label>
+                    <Button size="sm" onClick={addPlan}><Plus className="mr-1 size-3" />Add Plan</Button>
+                </div>
+                {props.plans?.map((plan: any, i: number) => (
+                    <div key={i} className="mb-2 rounded border bg-gray-50 p-3">
+                        <div className="flex items-center justify-between">
+                            <button onClick={() => setExpandedPlan(expandedPlan === i ? null : i)} className="flex flex-1 items-center gap-2 text-left text-sm font-medium">
+                                {expandedPlan === i ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                                {plan.name} — {plan.price}{plan.period}
+                            </button>
+                            <Button size="sm" variant="ghost" onClick={() => deletePlan(i)} className="size-7 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                        </div>
+                        {expandedPlan === i && (
+                            <div className="mt-3 space-y-2 border-t pt-3">
+                                <Input placeholder="Plan name" value={plan.name} onChange={(e) => updatePlan(i, 'name', e.target.value)} />
+                                <div className="flex gap-2">
+                                    <Input placeholder="Price (e.g. ₹999)" value={plan.price} onChange={(e) => updatePlan(i, 'price', e.target.value)} className="flex-1" />
+                                    <Input placeholder="/month" value={plan.period} onChange={(e) => updatePlan(i, 'period', e.target.value)} className="w-24" />
+                                </div>
+                                <Input placeholder="Description" value={plan.description || ''} onChange={(e) => updatePlan(i, 'description', e.target.value)} />
+                                <div className="space-y-1">
+                                    <Label className="text-xs">Features (one per line)</Label>
+                                    <Textarea rows={3} value={(plan.features || []).join('\n')} onChange={(e) => updatePlan(i, 'features', e.target.value.split('\n').filter(Boolean))} />
+                                </div>
+                                <Input placeholder="Button text" value={plan.buttonText || ''} onChange={(e) => updatePlan(i, 'buttonText', e.target.value)} />
+                                <Input placeholder="Button target route" value={plan.buttonTarget || ''} onChange={(e) => updatePlan(i, 'buttonTarget', e.target.value)} />
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs">Highlighted (recommended)</Label>
+                                    <Switch checked={plan.highlighted || false} onCheckedChange={(c) => updatePlan(i, 'highlighted', c)} />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// Contact Form Editor
+const ContactFormEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">Contact Form Settings</h4>
+            <div className="space-y-2"><Label>Heading</Label><Input value={props.heading || ''} onChange={(e) => updateProp('heading', e.target.value)} /></div>
+            <div className="space-y-2"><Label>Subheading</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
+            <div className="space-y-2"><Label>Submit Button Label</Label><Input value={props.submitLabel || 'Send Message'} onChange={(e) => updateProp('submitLabel', e.target.value)} /></div>
+            <div className="space-y-2"><Label>Success Message</Label><Input value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} /></div>
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <div className="rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+                Form submissions are sent as enquiries. Configure the Enquiry setting in Global Settings.
+            </div>
+        </div>
+    );
+};
+
+// Team Section Editor
+const TeamSectionEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const [expandedMember, setExpandedMember] = useState<number | null>(null);
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addMember = () => updateProp('members', [...(props.members || []), { name: 'Team Member', role: 'Role', bio: '', avatar: '' }]);
+    const deleteMember = (i: number) => updateProp('members', props.members.filter((_: any, idx: number) => idx !== i));
+    const updateMember = (i: number, field: string, value: string) => {
+        const next = [...(props.members || [])];
+        next[i] = { ...next[i], [field]: value };
+        updateProp('members', next);
+    };
+
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">Team Section Settings</h4>
+            <div className="space-y-2"><Label>Header Text</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
+            <div className="space-y-2"><Label>Subheading</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
+            <div className="space-y-2">
+                <Label>Columns</Label>
+                <select className="w-full rounded border px-3 py-2 text-sm" value={props.columns || 3} onChange={(e) => updateProp('columns', parseInt(e.target.value))}>
+                    <option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
+                </select>
+            </div>
+            <div className="border-t pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                    <Label>Members ({props.members?.length || 0})</Label>
+                    <Button size="sm" onClick={addMember}><Plus className="mr-1 size-3" />Add</Button>
+                </div>
+                {props.members?.map((m: any, i: number) => (
+                    <div key={i} className="mb-2 rounded border bg-gray-50 p-3">
+                        <div className="flex items-center justify-between">
+                            <button onClick={() => setExpandedMember(expandedMember === i ? null : i)} className="flex flex-1 items-center gap-2 text-left text-sm font-medium">
+                                {expandedMember === i ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                                {m.name} — {m.role}
+                            </button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteMember(i)} className="size-7 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                        </div>
+                        {expandedMember === i && (
+                            <div className="mt-3 space-y-2 border-t pt-3">
+                                <ImageUploadField label="Avatar" value={m.avatar || ''} onChange={(url) => updateMember(i, 'avatar', url)} />
+                                <Input placeholder="Name" value={m.name} onChange={(e) => updateMember(i, 'name', e.target.value)} />
+                                <Input placeholder="Role / Title" value={m.role} onChange={(e) => updateMember(i, 'role', e.target.value)} />
+                                <Textarea placeholder="Short bio" rows={2} value={m.bio || ''} onChange={(e) => updateMember(i, 'bio', e.target.value)} />
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// Announcement Feed Editor
+const AnnouncementFeedEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const [expandedItem, setExpandedItem] = useState<number | null>(null);
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addAnnouncement = () => updateProp('announcements', [...(props.announcements || []), { title: 'New Announcement', date: new Date().toISOString().slice(0, 10), summary: 'Summary here.', tag: 'News' }]);
+    const deleteAnnouncement = (i: number) => updateProp('announcements', props.announcements.filter((_: any, idx: number) => idx !== i));
+    const updateAnnouncement = (i: number, field: string, value: string) => {
+        const next = [...(props.announcements || [])];
+        next[i] = { ...next[i], [field]: value };
+        updateProp('announcements', next);
+    };
+
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">Announcement Feed Settings</h4>
+            <div className="space-y-2"><Label>Header Text</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
+            <div className="space-y-2"><Label>Layout</Label>
+                <select className="w-full rounded border px-3 py-2 text-sm" value={props.layout || 'list'} onChange={(e) => updateProp('layout', e.target.value)}>
+                    <option value="list">List</option><option value="grid">Grid</option>
+                </select>
+            </div>
+            <div className="flex items-center justify-between"><Label>Show Date</Label><Switch checked={props.showDate ?? true} onCheckedChange={(c) => updateProp('showDate', c)} /></div>
+            <div className="flex items-center justify-between"><Label>Show Tag</Label><Switch checked={props.showTag ?? true} onCheckedChange={(c) => updateProp('showTag', c)} /></div>
+            <div className="border-t pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                    <Label>Announcements ({props.announcements?.length || 0})</Label>
+                    <Button size="sm" onClick={addAnnouncement}><Plus className="mr-1 size-3" />Add</Button>
+                </div>
+                {props.announcements?.map((a: any, i: number) => (
+                    <div key={i} className="mb-2 rounded border bg-gray-50 p-3">
+                        <div className="flex items-center justify-between">
+                            <button onClick={() => setExpandedItem(expandedItem === i ? null : i)} className="flex flex-1 items-center gap-2 text-left text-sm font-medium">
+                                {expandedItem === i ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                                {a.title}
+                            </button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteAnnouncement(i)} className="size-7 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                        </div>
+                        {expandedItem === i && (
+                            <div className="mt-3 space-y-2 border-t pt-3">
+                                <Input placeholder="Title" value={a.title} onChange={(e) => updateAnnouncement(i, 'title', e.target.value)} />
+                                <Input type="date" value={a.date || ''} onChange={(e) => updateAnnouncement(i, 'date', e.target.value)} />
+                                <Input placeholder="Tag (e.g. News, Update)" value={a.tag || ''} onChange={(e) => updateAnnouncement(i, 'tag', e.target.value)} />
+                                <Textarea placeholder="Summary" rows={2} value={a.summary || ''} onChange={(e) => updateAnnouncement(i, 'summary', e.target.value)} />
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// Image Gallery Editor
+const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const addImage = () => updateProp('images', [...(props.images || []), { src: '', alt: '', caption: '' }]);
+    const deleteImage = (i: number) => updateProp('images', props.images.filter((_: any, idx: number) => idx !== i));
+    const updateImage = (i: number, field: string, value: string) => {
+        const next = [...(props.images || [])];
+        next[i] = { ...next[i], [field]: value };
+        updateProp('images', next);
+    };
+
+    return (
+        <div className="space-y-4">
+            <h4 className="text-sm font-medium">Image Gallery Settings</h4>
+            <div className="space-y-2"><Label>Header Text</Label><Input value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} /></div>
+            <div className="space-y-2">
+                <Label>Columns</Label>
+                <select className="w-full rounded border px-3 py-2 text-sm" value={props.columns || 3} onChange={(e) => updateProp('columns', parseInt(e.target.value))}>
+                    <option value={2}>2</option><option value={3}>3</option><option value={4}>4</option>
+                </select>
+            </div>
+            <div className="flex items-center justify-between"><Label>Show Captions</Label><Switch checked={props.showCaptions || false} onCheckedChange={(c) => updateProp('showCaptions', c)} /></div>
+            <div className="border-t pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                    <Label>Images ({props.images?.length || 0})</Label>
+                    <Button size="sm" onClick={addImage}><Plus className="mr-1 size-3" />Add Image</Button>
+                </div>
+                {props.images?.map((img: any, i: number) => (
+                    <div key={i} className="mb-2 space-y-2 rounded border bg-gray-50 p-3">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium">Image {i + 1}</span>
+                            <Button size="sm" variant="ghost" onClick={() => deleteImage(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                        </div>
+                        <ImageUploadField label="Image" value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} />
+                        <Input placeholder="Alt text" value={img.alt || ''} onChange={(e) => updateImage(i, 'alt', e.target.value)} />
+                        {props.showCaptions && <Input placeholder="Caption" value={img.caption || ''} onChange={(e) => updateImage(i, 'caption', e.target.value)} />}
+                    </div>
+                ))}
+            </div>
         </div>
     );
 };

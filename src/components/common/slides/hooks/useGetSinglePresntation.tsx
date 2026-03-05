@@ -41,17 +41,32 @@ export const fetchPresentation = async (presentationId: string, setSlides: any, 
                         ? SlideTypeEnum.Quiz
                         : SlideTypeEnum.Feedback;
 
+                    let correctOptionIds: string[] = [];
+                    try {
+                        if (questionData.auto_evaluation_json) {
+                            const parsedEval = JSON.parse(questionData.auto_evaluation_json);
+                            // Backend may serialize as snake_case (correct_option_ids) or camelCase (correctOptionIds)
+                            const ids = parsedEval?.data?.correctOptionIds || parsedEval?.data?.correct_option_ids;
+                            if (ids && Array.isArray(ids)) {
+                                correctOptionIds = ids;
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse auto_evaluation_json", e);
+                    }
+
                     const slideContent = {
                         id: slide.id,
                         slide_order: slide.slide_order,
                         type: slideType,
+                        source_id: slide.content, // preserve so savePresentation can skip re-upload
                         questionId: questionData.id,
                         elements: {
                             questionName: questionData.text?.content || '',
-                            singleChoiceOptions: (questionData.options || []).map((opt: any) => ({
+                            singleChoiceOptions: (questionData.options || []).map((opt: any, index: number) => ({
                                 id: opt.id, // Use the permanent DB ID for the option
                                 name: opt.text?.content || '',
-                                isSelected: false,
+                                isSelected: correctOptionIds.includes(opt.id) || correctOptionIds.includes(String(opt.preview_id)) || correctOptionIds.includes(String(opt.option_order + 1)) || correctOptionIds.includes(String(index + 1)),
                             })),
                             feedbackAnswer: '',
                             timeLimit: questionData.default_question_time_mins * 60 || 60,
@@ -78,6 +93,7 @@ export const fetchPresentation = async (presentationId: string, setSlides: any, 
                         id: slide.id,
                         slide_order: slide.slide_order,
                         type: slideDataFromS3.type || SlideTypeEnum.Excalidraw,
+                        source_id: slide.content, // preserve so savePresentation can skip re-upload
                     };
 
                     if (!Array.isArray(slideContent.elements)) slideContent.elements = [];

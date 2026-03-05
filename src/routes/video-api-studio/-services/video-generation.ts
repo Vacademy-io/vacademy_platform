@@ -21,7 +21,8 @@ export type ContentType =
     | 'WORKSHEET' // Printable/interactive homework
     | 'CODE_PLAYGROUND' // Interactive code exercises
     | 'TIMELINE' // Chronological event visualization
-    | 'CONVERSATION'; // Language learning dialogues
+    | 'CONVERSATION' // Language learning dialogues
+    | 'SLIDES'; // HTML presentation / PPT-style slide deck
 
 /**
  * Navigation modes for content playback
@@ -44,6 +45,7 @@ export const CONTENT_TYPE_NAVIGATION: Record<ContentType, NavigationMode> = {
     CODE_PLAYGROUND: 'self_contained',
     TIMELINE: 'user_driven',
     CONVERSATION: 'user_driven',
+    SLIDES: 'user_driven',
 };
 
 /**
@@ -54,6 +56,11 @@ export const CONTENT_TYPES = [
         value: 'VIDEO' as ContentType,
         label: '📹 Video',
         description: 'Time-synced HTML overlays with audio',
+    },
+    {
+        value: 'SLIDES' as ContentType,
+        label: '🖼️ Slides',
+        description: 'HTML presentation slides with images, tables & diagrams',
     },
     { value: 'QUIZ' as ContentType, label: '❓ Quiz', description: 'Question-based assessments' },
     {
@@ -170,9 +177,11 @@ export type SSEEvent = ProgressEvent | CompletedEvent | InfoEvent | ErrorEvent;
 
 export interface VideoUrls {
     video_id: string;
-    html_url: string;
-    audio_url: string;
-    words_url: string;
+    html_url: string | null;
+    audio_url: string | null;
+    words_url: string | null;
+    avatar_url?: string | null;
+    status: VideoStatusType;
     current_stage: VideoStage;
 }
 

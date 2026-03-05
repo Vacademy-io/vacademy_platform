@@ -108,8 +108,10 @@ export interface Schedule {
         duration: string;
         link: string;
         id: string;
+        meetingDate?: string;
         thumbnailFileId: string;
         countAttendanceDaily: boolean;
+        dailyAttendance?: boolean;
         default_class_link?: string | null;
         default_class_name?: string | null;
         learner_button_config?: {

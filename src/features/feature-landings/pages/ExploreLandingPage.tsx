@@ -31,479 +31,11 @@ import {
     Cpu,
     Crown,
     Star,
+    Shield,
+    Bot,
+    Wand2,
 } from 'lucide-react';
 
-// ── Visual mock components ──────────────────────────────────────────
-
-function HeroDashboardMock() {
-    return (
-        <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900 shadow-2xl">
-            {/* Window chrome */}
-            <div className="flex items-center gap-1.5 border-b border-neutral-800 px-3 py-2">
-                <div className="size-2.5 rounded-full bg-red-400" />
-                <div className="size-2.5 rounded-full bg-amber-400" />
-                <div className="size-2.5 rounded-full bg-emerald-400" />
-                <div className="ml-3 h-5 w-48 rounded bg-neutral-800" />
-            </div>
-            <div className="flex">
-                {/* Sidebar */}
-                <div className="hidden w-44 shrink-0 border-r border-neutral-800 p-3 sm:block">
-                    <div className="mb-4 flex items-center gap-2">
-                        <div className="size-6 rounded bg-emerald-500" />
-                        <div className="h-3 w-16 rounded bg-neutral-700" />
-                    </div>
-                    {['Dashboard', 'My Content', 'Courses', 'Analytics'].map((item, i) => (
-                        <div
-                            key={item}
-                            className={`mb-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-[10px] ${i === 0 ? 'bg-emerald-500/15 text-emerald-400' : 'text-neutral-500'}`}
-                        >
-                            {i === 0 && <LayoutGrid className="size-3" />}
-                            {i === 1 && <FolderOpen className="size-3" />}
-                            {i === 2 && <GraduationCap className="size-3" />}
-                            {i === 3 && <BarChart3 className="size-3" />}
-                            {item}
-                        </div>
-                    ))}
-                </div>
-                {/* Main content */}
-                <div className="flex-1 p-3 sm:p-4">
-                    {/* Top bar */}
-                    <div className="mb-4 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Search className="size-3.5 text-neutral-600" />
-                            <div className="h-3 w-24 rounded bg-neutral-800" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Bell className="size-3.5 text-neutral-600" />
-                            <Settings className="size-3.5 text-neutral-600" />
-                            <div className="size-5 rounded-full bg-emerald-500/30" />
-                        </div>
-                    </div>
-                    {/* Stats row */}
-                    <div className="mb-4 grid grid-cols-3 gap-2">
-                        {[
-                            { label: 'Videos', value: '24', color: 'text-blue-400' },
-                            { label: 'Quizzes', value: '18', color: 'text-amber-400' },
-                            { label: 'Courses', value: '6', color: 'text-emerald-400' },
-                        ].map((stat) => (
-                            <div
-                                key={stat.label}
-                                className="rounded-lg border border-neutral-800 bg-neutral-800/50 p-2"
-                            >
-                                <div className={`text-sm font-bold ${stat.color}`}>
-                                    {stat.value}
-                                </div>
-                                <div className="text-[9px] text-neutral-500">{stat.label}</div>
-                            </div>
-                        ))}
-                    </div>
-                    {/* Create New button */}
-                    <div className="mb-3 flex items-center justify-between">
-                        <div className="text-[10px] font-semibold text-neutral-300">
-                            Recent Projects
-                        </div>
-                        <div className="flex items-center gap-1 rounded-md bg-emerald-500 px-2 py-1 text-[9px] font-semibold text-white">
-                            <Plus className="size-2.5" />
-                            Create New
-                        </div>
-                    </div>
-                    {/* Content cards */}
-                    <div className="space-y-2">
-                        {[
-                            {
-                                name: 'Photosynthesis Explainer',
-                                type: 'Video',
-                                status: 'Published',
-                                icon: FileVideo,
-                                color: 'bg-blue-500',
-                            },
-                            {
-                                name: 'Math Quiz — Algebra',
-                                type: 'Quiz',
-                                status: 'Draft',
-                                icon: FileQuestion,
-                                color: 'bg-amber-500',
-                            },
-                            {
-                                name: 'Solar System Story',
-                                type: 'Storybook',
-                                status: 'Generating...',
-                                icon: BookOpen,
-                                color: 'bg-rose-500',
-                            },
-                        ].map((item) => (
-                            <div
-                                key={item.name}
-                                className="flex items-center gap-2 rounded-lg border border-neutral-800 p-2"
-                            >
-                                <div
-                                    className={`flex size-7 shrink-0 items-center justify-center rounded-md ${item.color === 'bg-blue-500' ? 'bg-blue-500/15' : item.color === 'bg-amber-500' ? 'bg-amber-500/15' : 'bg-rose-500/15'}`}
-                                >
-                                    <item.icon
-                                        className={`size-3.5 ${item.color.replace('bg-', 'text-')}`}
-                                    />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="truncate text-[10px] font-medium text-neutral-200">
-                                        {item.name}
-                                    </div>
-                                    <div className="text-[8px] text-neutral-500">{item.type}</div>
-                                </div>
-                                <div
-                                    className={`rounded-full px-1.5 py-0.5 text-[7px] font-medium ${
-                                        item.status === 'Published'
-                                            ? 'bg-emerald-500/15 text-emerald-400'
-                                            : item.status === 'Draft'
-                                              ? 'bg-neutral-700 text-neutral-400'
-                                              : 'bg-amber-500/15 text-amber-400'
-                                    }`}
-                                >
-                                    {item.status}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function VideoPreviewMock() {
-    return (
-        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900">
-            <div className="relative aspect-video bg-neutral-800">
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="flex size-12 items-center justify-center rounded-full bg-white/15 backdrop-blur-sm">
-                        <Play className="ml-0.5 size-5 text-white" />
-                    </div>
-                </div>
-                <div className="absolute inset-x-0 bottom-0 bg-neutral-900/80 px-3 py-2 backdrop-blur-sm">
-                    <div className="mb-1 h-1 w-full overflow-hidden rounded-full bg-neutral-700">
-                        <div className="h-full w-2/5 rounded-full bg-emerald-500" />
-                    </div>
-                    <div className="flex items-center justify-between text-[9px] text-neutral-400">
-                        <span>2:14 / 5:30</span>
-                        <span>HD</span>
-                    </div>
-                </div>
-                {/* Fake visual content */}
-                <div className="absolute left-4 top-4 max-w-[60%]">
-                    <div className="mb-2 h-3 w-32 rounded bg-white/10" />
-                    <div className="mb-1 h-2 w-full rounded bg-white/5" />
-                    <div className="h-2 w-3/4 rounded bg-white/5" />
-                </div>
-                <div className="absolute bottom-12 right-4 top-4 hidden w-1/3 rounded-lg border border-white/10 bg-white/5 sm:block" />
-            </div>
-            <div className="p-3">
-                <div className="text-xs font-semibold text-white">Photosynthesis — Class 5</div>
-                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-neutral-400">
-                    <span className="flex items-center gap-1">
-                        <Clock className="size-3" /> 5:30
-                    </span>
-                    <span className="flex items-center gap-1">
-                        <Users className="size-3" /> Grade 5
-                    </span>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function QuizPreviewMock() {
-    return (
-        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-            <div className="border-b border-neutral-100 bg-amber-50 px-4 py-2">
-                <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-semibold text-amber-700">
-                        Math Quiz — Algebra
-                    </div>
-                    <div className="rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-medium text-amber-600">
-                        Q 3 of 10
-                    </div>
-                </div>
-                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-amber-100">
-                    <div className="h-full w-[30%] rounded-full bg-amber-500" />
-                </div>
-            </div>
-            <div className="p-4">
-                <div className="mb-3 text-xs font-medium text-neutral-800">
-                    Solve for x: 2x + 5 = 15
-                </div>
-                <div className="space-y-1.5">
-                    {['x = 5', 'x = 10', 'x = 7.5', 'x = 3'].map((opt, i) => (
-                        <div
-                            key={opt}
-                            className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-[10px] ${
-                                i === 0
-                                    ? 'border-emerald-300 bg-emerald-50 font-medium text-emerald-700'
-                                    : 'border-neutral-200 text-neutral-600'
-                            }`}
-                        >
-                            {i === 0 ? (
-                                <CheckCircle2 className="size-3 text-emerald-500" />
-                            ) : (
-                                <Circle className="size-3 text-neutral-300" />
-                            )}
-                            {opt}
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function StoryPreviewMock() {
-    return (
-        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-            <div className="aspect-[4/3] bg-rose-50 p-4">
-                {/* Illustration placeholder */}
-                <div className="flex h-full items-center justify-center rounded-lg border-2 border-dashed border-rose-200">
-                    <div className="text-center">
-                        <div className="mx-auto mb-2 flex size-10 items-center justify-center rounded-full bg-rose-100">
-                            <BookOpen className="size-5 text-rose-500" />
-                        </div>
-                        <div className="mb-1 h-2 w-20 rounded bg-rose-200" />
-                        <div className="mx-auto h-2 w-14 rounded bg-rose-100" />
-                    </div>
-                </div>
-            </div>
-            <div className="p-3">
-                <div className="text-xs font-semibold text-neutral-800">
-                    The Journey of a Water Drop
-                </div>
-                <div className="mt-1 text-[10px] leading-relaxed text-neutral-500">
-                    Once upon a time, a tiny water drop lived high above the clouds...
-                </div>
-                <div className="mt-2 flex items-center gap-1 text-[9px] text-rose-500">
-                    Page 1 of 12 <ChevronRight className="size-3" />
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function WizardMock() {
-    return (
-        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg">
-            {/* Steps indicator */}
-            <div className="border-b border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
-                <div className="flex items-center justify-between">
-                    {['Content Type', 'Configure', 'Generate'].map((label, i) => (
-                        <div key={label} className="flex items-center gap-1.5 sm:gap-2">
-                            <div
-                                className={`flex size-6 items-center justify-center rounded-full text-[10px] font-bold sm:size-7 sm:text-xs ${
-                                    i === 0
-                                        ? 'bg-emerald-500 text-white'
-                                        : i === 1
-                                          ? 'border-2 border-emerald-500 text-emerald-500'
-                                          : 'border-2 border-neutral-200 text-neutral-400'
-                                }`}
-                            >
-                                {i === 0 ? <CheckCircle2 className="size-3.5 sm:size-4" /> : i + 1}
-                            </div>
-                            <span
-                                className={`text-[10px] font-medium sm:text-xs ${
-                                    i <= 1 ? 'text-neutral-800' : 'text-neutral-400'
-                                }`}
-                            >
-                                {label}
-                            </span>
-                            {i < 2 && (
-                                <ChevronRight className="mx-0.5 size-3 text-neutral-300 sm:mx-1 sm:size-4" />
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </div>
-            {/* Form content */}
-            <div className="p-4 sm:p-6">
-                <div className="mb-1 text-xs font-semibold text-neutral-800 sm:text-sm">
-                    Configure your Video
-                </div>
-                <div className="mb-4 text-[10px] text-neutral-500 sm:mb-5 sm:text-xs">
-                    Set the topic, audience, and style for your AI-generated video
-                </div>
-                <div className="space-y-3 sm:space-y-4">
-                    <div>
-                        <div className="mb-1 text-[10px] font-medium text-neutral-600">
-                            Topic / Prompt
-                        </div>
-                        <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700 sm:text-xs">
-                            Photosynthesis for Class 5 students
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                            <div className="mb-1 text-[10px] font-medium text-neutral-600">
-                                Target Audience
-                            </div>
-                            <div className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700 sm:text-xs">
-                                Grade 5 (Age 10-11)
-                                <ChevronRight className="size-3 rotate-90 text-neutral-400" />
-                            </div>
-                        </div>
-                        <div>
-                            <div className="mb-1 text-[10px] font-medium text-neutral-600">
-                                Language
-                            </div>
-                            <div className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-[10px] text-neutral-700 sm:text-xs">
-                                English
-                                <ChevronRight className="size-3 rotate-90 text-neutral-400" />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <div className="mb-1 text-[10px] font-medium text-neutral-600">
-                                Duration
-                            </div>
-                            <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                                {['Short', 'Medium', 'Long'].map((d, i) => (
-                                    <div
-                                        key={d}
-                                        className={`rounded-md px-2 py-1 text-[9px] font-medium sm:px-2.5 sm:text-[10px] ${
-                                            i === 1
-                                                ? 'bg-emerald-500 text-white'
-                                                : 'border border-neutral-200 text-neutral-500'
-                                        }`}
-                                    >
-                                        {d}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="mb-1 text-[10px] font-medium text-neutral-600">
-                                Voice
-                            </div>
-                            <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                                {['Female', 'Male'].map((v, i) => (
-                                    <div
-                                        key={v}
-                                        className={`rounded-md px-2 py-1 text-[9px] font-medium sm:px-2.5 sm:text-[10px] ${
-                                            i === 0
-                                                ? 'bg-emerald-500 text-white'
-                                                : 'border border-neutral-200 text-neutral-500'
-                                        }`}
-                                    >
-                                        {v}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="mt-5 flex justify-end sm:mt-6">
-                    <div className="flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-1.5 text-[10px] font-semibold text-white sm:px-4 sm:py-2 sm:text-xs">
-                        <Sparkles className="size-3 sm:size-3.5" />
-                        Generate Video
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function CourseStructureMock() {
-    const modules = [
-        {
-            name: 'Module 1: Introduction to Biology',
-            items: [
-                { name: 'What is Biology?', type: 'Video', icon: Video, color: 'text-blue-500' },
-                { name: 'Quick Check', type: 'Quiz', icon: FileQuestion, color: 'text-amber-500' },
-            ],
-            expanded: true,
-        },
-        {
-            name: 'Module 2: Cell Structure',
-            items: [
-                { name: 'Parts of a Cell', type: 'Video', icon: Video, color: 'text-blue-500' },
-                {
-                    name: 'Cell Story',
-                    type: 'Storybook',
-                    icon: BookOpen,
-                    color: 'text-rose-500',
-                },
-                {
-                    name: 'Label the Cell',
-                    type: 'Worksheet',
-                    icon: FileText,
-                    color: 'text-emerald-500',
-                },
-                {
-                    name: 'Module Assessment',
-                    type: 'Quiz',
-                    icon: FileQuestion,
-                    color: 'text-amber-500',
-                },
-            ],
-            expanded: true,
-        },
-        {
-            name: 'Module 3: Photosynthesis',
-            items: [],
-            expanded: false,
-        },
-    ];
-
-    return (
-        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-            <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
-                <div>
-                    <div className="text-xs font-semibold text-neutral-800">Biology — Grade 7</div>
-                    <div className="text-[10px] text-neutral-500">
-                        AI-generated course structure
-                    </div>
-                </div>
-                <div className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-medium text-emerald-600">
-                    3 Modules • 7 Items
-                </div>
-            </div>
-            <div className="p-3">
-                {modules.map((mod, mi) => (
-                    <div key={mod.name} className={mi > 0 ? 'mt-2' : ''}>
-                        <div className="flex items-center gap-2 rounded-md bg-neutral-50 px-3 py-2">
-                            <ChevronRight
-                                className={`size-3 text-neutral-400 transition-transform ${mod.expanded ? 'rotate-90' : ''}`}
-                            />
-                            <FolderOpen className="size-3.5 text-emerald-500" />
-                            <span className="text-[10px] font-semibold text-neutral-700">
-                                {mod.name}
-                            </span>
-                        </div>
-                        {mod.expanded && mod.items.length > 0 && (
-                            <div className="ml-5 mt-1 space-y-0.5 border-l border-neutral-100 pl-3">
-                                {mod.items.map((item) => (
-                                    <div
-                                        key={item.name}
-                                        className="flex items-center gap-2 rounded-md px-2 py-1.5"
-                                    >
-                                        <item.icon className={`size-3 ${item.color}`} />
-                                        <span className="text-[10px] text-neutral-600">
-                                            {item.name}
-                                        </span>
-                                        <span className="ml-auto rounded bg-neutral-100 px-1.5 py-0.5 text-[7px] text-neutral-400">
-                                            {item.type}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {!mod.expanded && (
-                            <div className="ml-8 mt-1 text-[9px] italic text-neutral-400">
-                                3 items collapsed
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-// ── Pricing section ─────────────────────────────────────────────────
 
 const pricingTiers = [
     {
@@ -518,16 +50,16 @@ const pricingTiers = [
         name: 'Premium',
         icon: Star,
         multiplier: '2×',
-        color: 'border-blue-200 bg-blue-50/50',
-        badge: 'bg-blue-100 text-blue-700',
+        color: 'border-neutral-200 bg-neutral-50',
+        badge: 'bg-neutral-200 text-neutral-700',
         models: 'Gemini 2.5 Pro, GPT-4 Turbo, Claude 3.5 Sonnet',
     },
     {
         name: 'Ultra',
         icon: Crown,
         multiplier: '4×',
-        color: 'border-amber-200 bg-amber-50/40',
-        badge: 'bg-amber-100 text-amber-700',
+        color: 'border-neutral-200 bg-neutral-100',
+        badge: 'bg-neutral-300 text-neutral-800',
         models: 'GPT-4o, Claude 3 Opus',
     },
 ];
@@ -536,47 +68,40 @@ const creditCosts = [
     { feature: 'Video Generation', cost: '5.0', unit: 'per video', icon: Video },
     { feature: 'Image Generation', cost: '3.0', unit: 'per image', icon: FileText },
     { feature: 'Text / Course Outline', cost: '0.5', unit: 'base + tokens', icon: GraduationCap },
-    { feature: 'Evaluation & Grading', cost: '1.0', unit: 'base + tokens', icon: FileQuestion },
-    { feature: 'Voice (TTS)', cost: '0.2', unit: 'base + chars', icon: Video },
-    { feature: 'Embeddings', cost: '0.1', unit: 'base + tokens', icon: Cpu },
 ];
 
 function PricingSection() {
     return (
-        <section className="bg-neutral-50 px-4 py-12 sm:px-6 sm:py-24 lg:px-8">
-            <div className="mx-auto max-w-7xl">
-                <div className="mb-8 max-w-2xl sm:mb-12">
-                    <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl">
+        <section className="bg-white px-4 py-16 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-5xl rounded-[2.5rem] bg-[#f8f9fa] p-8 sm:p-12 lg:p-16">
+                <div className="mb-10 max-w-2xl">
+                    <h2 className="font-serif text-3xl tracking-tight text-neutral-900 sm:text-5xl">
                         Simple, credit-based pricing
                     </h2>
-                    <p className="mt-2 text-sm text-neutral-500 sm:mt-3 sm:text-lg">
+                    <p className="mt-4 text-base text-neutral-500 sm:text-lg">
                         Pay only for what you generate. Every institute starts with 200 free
                         credits.
                     </p>
                 </div>
-
-                {/* Free credits banner */}
-                <div className="mb-8 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:mb-10 sm:gap-4 sm:p-5">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500 sm:size-12">
-                        <Gift className="size-5 text-white sm:size-6" />
+                <div className="mb-10 flex items-center gap-4 rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm">
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-neutral-100">
+                        <Gift className="size-6 text-neutral-700" />
                     </div>
                     <div>
-                        <div className="text-sm font-semibold text-emerald-800 sm:text-base">
+                        <div className="text-base font-medium text-neutral-900">
                             200 Free Credits on Signup
                         </div>
-                        <div className="mt-0.5 text-xs text-emerald-600 sm:text-sm">
+                        <div className="mt-1 text-sm text-neutral-500">
                             Start creating immediately — no credit card required. Plus, some AI
                             models are completely free to use.
                         </div>
                     </div>
                 </div>
-
-                {/* Credit costs table */}
-                <div className="mb-8 overflow-hidden rounded-xl border border-neutral-200 bg-white sm:mb-10">
-                    <div className="border-b border-neutral-100 px-4 py-3 sm:px-6">
+                <div className="mb-12 overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-sm">
+                    <div className="border-b border-neutral-100 px-6 py-4">
                         <div className="flex items-center gap-2">
-                            <Coins className="size-4 text-amber-500" />
-                            <span className="text-sm font-semibold text-neutral-800">
+                            <Coins className="size-5 text-neutral-900" />
+                            <span className="text-base font-medium text-neutral-900">
                                 Credit Costs by Content Type
                             </span>
                         </div>
@@ -585,19 +110,19 @@ function PricingSection() {
                         {creditCosts.map((item) => (
                             <div
                                 key={item.feature}
-                                className="flex items-center justify-between px-4 py-3 sm:px-6"
+                                className="flex items-center justify-between px-6 py-4"
                             >
                                 <div className="flex items-center gap-3">
-                                    <item.icon className="size-4 text-neutral-400" />
-                                    <span className="text-xs font-medium text-neutral-700 sm:text-sm">
+                                    <item.icon className="size-5 text-neutral-400" />
+                                    <span className="text-sm font-medium text-neutral-700">
                                         {item.feature}
                                     </span>
                                 </div>
                                 <div className="text-right">
-                                    <span className="text-sm font-bold text-neutral-900 sm:text-base">
+                                    <span className="text-base font-semibold text-neutral-900">
                                         {item.cost}
                                     </span>
-                                    <span className="ml-1 text-[10px] text-neutral-400 sm:text-xs">
+                                    <span className="ml-1 text-xs text-neutral-500">
                                         credits {item.unit}
                                     </span>
                                 </div>
@@ -605,160 +130,74 @@ function PricingSection() {
                         ))}
                     </div>
                 </div>
-
-                {/* Model tiers */}
-                <div className="mb-4 text-sm font-semibold text-neutral-800 sm:text-base">
-                    AI Model Tiers
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+                <div className="grid gap-4 sm:grid-cols-3">
                     {pricingTiers.map((tier) => (
-                        <div
-                            key={tier.name}
-                            className={`rounded-xl border p-4 sm:p-5 ${tier.color}`}
-                        >
+                        <div key={tier.name} className={`rounded-3xl border p-6 ${tier.color}`}>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                    <tier.icon className="size-4 text-neutral-600 sm:size-5" />
-                                    <span className="text-sm font-semibold text-neutral-800 sm:text-base">
+                                    <tier.icon className="size-5 text-neutral-700" />
+                                    <span className="text-base font-medium text-neutral-900">
                                         {tier.name}
                                     </span>
                                 </div>
                                 <span
-                                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold sm:text-xs ${tier.badge}`}
+                                    className={`rounded-xl px-2 py-1 text-xs font-bold ${tier.badge}`}
                                 >
                                     {tier.multiplier}
                                 </span>
                             </div>
-                            <div className="mt-2 text-[10px] leading-relaxed text-neutral-500 sm:text-xs">
+                            <div className="mt-3 text-xs leading-relaxed text-neutral-500">
                                 {tier.models}
                             </div>
                         </div>
                     ))}
-                </div>
-
-                {/* Example calculation */}
-                <div className="mt-8 rounded-xl border border-neutral-200 bg-white p-4 sm:mt-10 sm:p-6">
-                    <div className="mb-3 text-xs font-semibold text-neutral-800 sm:text-sm">
-                        Example: Generate a Course Outline with GPT-4o (Ultra)
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                        {[
-                            { label: 'Base Cost', value: '0.50' },
-                            { label: '+', value: '' },
-                            { label: 'Tokens (2k)', value: '0.0008' },
-                            { label: '=', value: '' },
-                            { label: 'Total', value: '≈ 0.50', highlight: true },
-                        ].map((item, i) =>
-                            item.value === '' ? (
-                                <span
-                                    key={i}
-                                    className="text-xs font-medium text-neutral-400 sm:text-sm"
-                                >
-                                    {item.label}
-                                </span>
-                            ) : (
-                                <div
-                                    key={i}
-                                    className={`rounded-lg px-3 py-1.5 text-center sm:px-4 sm:py-2 ${
-                                        item.highlight
-                                            ? 'bg-emerald-50 ring-1 ring-emerald-200'
-                                            : 'bg-neutral-50'
-                                    }`}
-                                >
-                                    <div className="text-[9px] text-neutral-500 sm:text-[10px]">
-                                        {item.label}
-                                    </div>
-                                    <div
-                                        className={`text-sm font-bold sm:text-base ${item.highlight ? 'text-emerald-600' : 'text-neutral-800'}`}
-                                    >
-                                        {item.value}
-                                    </div>
-                                </div>
-                            )
-                        )}
-                        <span className="ml-1 text-[10px] text-neutral-400 sm:text-xs">
-                            credits
-                        </span>
-                    </div>
                 </div>
             </div>
         </section>
     );
 }
 
-// ── FAQ section ─────────────────────────────────────────────────────
-
 const faqs = [
     {
         q: 'What are credits and how do they work?',
-        a: 'Credits are the currency for AI generation on Vacademy. Every institute receives 200 free credits on signup. Each content generation (video, quiz, text, etc.) consumes a certain number of credits based on the type and AI model used. You can track your balance in the dashboard.',
+        a: 'Credits are the currency for AI generation on Vacademy. Every institute receives 200 free credits on signup...',
     },
     {
         q: 'Are there any free AI models I can use?',
-        a: 'Yes! Several models are completely free to use with 0 credit consumption, including Gemini 2.0 Flash Experimental, Mistral Devstral, and Nvidia Nemotron. These are great for experimenting and everyday content generation.',
+        a: 'Yes! Several models are completely free to use with 0 credit consumption...',
     },
     {
         q: 'How much does it cost to generate a video?',
-        a: 'Video generation costs a flat rate of 5 credits per video, regardless of the AI model tier. Image generation is 3 credits per image. Text-based content like quizzes and course outlines start at just 0.5 credits.',
-    },
-    {
-        q: 'What content types can I create?',
-        a: 'You can generate AI Videos (narrated explainers), Quizzes (auto-generated assessments), Storybooks (illustrated narratives), Worksheets (printable materials), Interactive Games (memory match, drag & drop), and complete Courses with structured modules.',
-    },
-    {
-        q: 'How does the AI Course Builder work?',
-        a: 'Simply describe your subject and grade level. AI generates a full course structure with organized modules, each containing multi-format content (videos, quizzes, worksheets). You can review, edit, and rearrange everything before publishing.',
-    },
-    {
-        q: 'What happens when I run out of credits?',
-        a: "You'll receive a low-balance alert when your credits drop below 50. You can continue using free-tier models at no cost, or purchase additional credits. You can also switch to more efficient Standard-tier models to stretch your balance.",
-    },
-    {
-        q: 'Can I use this for my entire institution?',
-        a: 'Absolutely. Vacademy is built for institutes — teachers, directors, and admins can all create content under one account. Credits are shared across your institute, and you can manage access and permissions from the admin dashboard.',
-    },
-    {
-        q: 'What languages are supported?',
-        a: 'Our AI supports multiple languages for content generation including English, Hindi, and more. Voice generation (TTS) also supports multiple languages and voice genders. The available languages depend on the AI model being used.',
+        a: 'Video generation costs a flat rate of 5 credits per video...',
     },
 ];
 
 function FaqItem({ q, a }: { q: string; a: string }) {
     const [open, setOpen] = useState(false);
-
     return (
-        <div className="border-b border-neutral-200 last:border-b-0">
+        <div className="border-b border-neutral-200 py-5 last:border-b-0">
             <button
                 onClick={() => setOpen(!open)}
-                className="flex w-full items-start justify-between gap-4 py-4 text-left sm:py-5"
+                className="flex w-full items-start justify-between gap-4 text-left"
             >
-                <span className="text-sm font-medium text-neutral-800 sm:text-base">{q}</span>
+                <span className="text-base font-medium text-neutral-900">{q}</span>
                 <ChevronDown
-                    className={`mt-0.5 size-4 shrink-0 text-neutral-400 transition-transform duration-200 sm:size-5 ${open ? 'rotate-180' : ''}`}
+                    className={`mt-0.5 size-5 shrink-0 text-neutral-400 transition-transform ${open ? 'rotate-180' : ''}`}
                 />
             </button>
-            {open && (
-                <div className="pb-4 pr-8 text-xs leading-relaxed text-neutral-500 sm:pb-5 sm:text-sm">
-                    {a}
-                </div>
-            )}
+            {open && <div className="mt-3 pr-8 text-sm leading-relaxed text-neutral-500">{a}</div>}
         </div>
     );
 }
 
 function FaqSection() {
     return (
-        <section className="px-4 py-12 sm:px-6 sm:py-24 lg:px-8">
+        <section className="bg-white px-4 py-16 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-3xl">
-                <div className="mb-8 sm:mb-12">
-                    <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl">
-                        Frequently asked questions
-                    </h2>
-                    <p className="mt-2 text-sm text-neutral-500 sm:mt-3 sm:text-lg">
-                        Everything you need to know about credits, pricing, and content creation.
-                    </p>
-                </div>
-                <div className="rounded-xl border border-neutral-200 bg-white px-4 sm:px-6">
+                <h2 className="mb-8 text-center font-serif text-3xl tracking-tight text-neutral-900 sm:text-4xl">
+                    Frequently asked questions
+                </h2>
+                <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
                     {faqs.map((faq) => (
                         <FaqItem key={faq.q} q={faq.q} a={faq.a} />
                     ))}
@@ -768,353 +207,186 @@ function FaqSection() {
     );
 }
 
-// ── Main page ───────────────────────────────────────────────────────
+function PersonasSection() {
+    const [activeTab, setActiveTab] = useState(0);
+    const tabs = ['Teachers', 'Administrators', 'Tutors', 'Creators'];
+    const backgrounds = [
+        'bg-gradient-to-br from-emerald-800 to-emerald-950',
+        'bg-gradient-to-br from-blue-800 to-blue-950',
+        'bg-gradient-to-br from-amber-700 to-amber-900',
+        'bg-gradient-to-br from-violet-800 to-violet-950',
+    ];
+    const content = [
+        'Teachers. For educators who want to spend less time planning and more time teaching. Generate quizzes and worksheets in seconds.',
+        'Administrators. Build entire course curriculums aligned with institutional standards across multiple departments.',
+        'Tutors. Create personalized learning paths and interactive games to keep individual students engaged.',
+        'Creators. Produce high-quality, narrated AI explainer videos without any editing skills or expensive software.',
+    ];
+
+    return (
+        <section className="bg-white px-4 py-16 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-4xl text-center">
+                <h2 className="mb-10 font-serif text-3xl tracking-tight text-neutral-900 sm:text-5xl">
+                    Designed for busy professionals like you
+                </h2>
+                <div className="mb-8 flex flex-wrap justify-center gap-4 border-b border-neutral-200 sm:gap-8">
+                    {tabs.map((tab, i) => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(i)}
+                            className={`relative px-2 py-4 text-base font-medium transition-colors ${activeTab === i ? 'text-neutral-900' : 'text-neutral-500 hover:text-neutral-700'}`}
+                        >
+                            {tab}
+                            {activeTab === i && (
+                                <div className="absolute bottom-0 left-0 h-0.5 w-full bg-neutral-900" />
+                            )}
+                        </button>
+                    ))}
+                </div>
+                <div
+                    className={`relative flex min-h-[400px] flex-col justify-end overflow-hidden rounded-[2.5rem] p-8 text-left shadow-lg transition-colors duration-500 sm:p-12 ${backgrounds[activeTab]}`}
+                >
+                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+                    <div className="relative z-10 max-w-xl">
+                        <h3 className="mb-6 font-serif text-2xl leading-snug text-white sm:text-3xl">
+                            {(content[activeTab] || '').split('.')[0]}.
+                            <br />
+                            <span className="mt-2 block font-sans text-lg font-normal leading-relaxed text-white/80 sm:text-xl">
+                                {(content[activeTab] || '').split('.').slice(1).join('.').trim()}
+                            </span>
+                        </h3>
+                        <Link
+                            to="/signup/onboarding"
+                            className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-neutral-900 transition-transform hover:scale-105"
+                        >
+                            Get Started Free
+                            <ArrowRight className="size-4" />
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+}
+
+function SecuritySection() {
+    return (
+        <section className="bg-white px-4 py-16 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-3xl text-center">
+                <h2 className="mb-6 font-serif text-3xl tracking-tight text-neutral-900 sm:text-5xl">
+                    We care about data security
+                </h2>
+                <p className="mx-auto mb-8 max-w-xl text-base text-neutral-500 sm:text-lg">
+                    That's why we implement enterprise-grade security standards to ensure your
+                    institution's data, student information, and generated content are protected.
+                    Our compliance process is in progress.
+                </p>
+                <div className="inline-flex flex-col items-center">
+                    <div className="mb-2 flex h-24 w-20 flex-col items-center justify-center rounded border border-neutral-100 bg-white p-2 shadow-[0_0_15px_rgba(0,0,0,0.05)]">
+                        <Shield className="mb-1 size-8 text-blue-600" />
+                        <div className="text-[10px] font-bold text-neutral-900">SECURITY</div>
+                    </div>
+                    <div className="text-[10px] font-medium text-neutral-400">
+                        MONITORED BY VACADEMY
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+}
 
 export default function ExploreLandingPage() {
     const [loginOpen, setLoginOpen] = useState(false);
 
     return (
-        <div className="fixed inset-0 overflow-y-auto bg-white">
-            {/* Navigation */}
-            <nav className="sticky top-0 z-50 border-b border-neutral-100 bg-white/95 backdrop-blur-sm">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-                    <span className="text-xl font-bold tracking-tight text-neutral-900">
-                        Vacademy
-                    </span>
-                    <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex min-h-screen w-full flex-col bg-white font-sans text-neutral-900">
+            <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap');
+                .font-serif {
+                    font-family: 'Newsreader', ui-serif, Georgia, Cambria, "Times New Roman", Times, serif !important;
+                    letter-spacing: -0.04em;
+                }
+            `}</style>
+            <header className="sticky top-0 z-50 border-b border-transparent bg-white/80 backdrop-blur-md">
+                <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center gap-2">
+                        <div className="flex size-8 items-center justify-center rounded-xl bg-neutral-900 text-white">
+                            <Bot className="size-5" />
+                        </div>
+                        <span className="text-xl font-bold tracking-tight">Vacademy</span>
+                    </div>
+                    <div className="flex items-center gap-4">
                         <button
                             onClick={() => setLoginOpen(true)}
-                            className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 sm:px-4"
+                            className="hidden text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-900 sm:block"
                         >
-                            Login
+                            Log in
                         </button>
                         <Link
                             to="/signup/onboarding"
-                            className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 sm:px-4"
+                            className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-neutral-50"
                         >
-                            Sign Up Free
+                            Get Started
                         </Link>
                     </div>
                 </div>
-            </nav>
+            </header>
 
-            {/* Hero Section */}
-            <section className="relative bg-neutral-950 px-4 sm:px-6 lg:px-8">
-                <div className="mx-auto grid max-w-7xl items-center gap-8 py-12 sm:gap-10 sm:py-20 lg:grid-cols-2 lg:gap-16 lg:py-24">
-                    {/* Left — copy */}
-                    <div className="text-center lg:text-left">
-                        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400 sm:mb-5 sm:text-sm">
-                            <Sparkles className="size-3 sm:size-3.5" />
-                            AI-Powered
+            <main className="flex-1">
+                <section className="bg-white px-4 pb-12 pt-20 text-center sm:px-6 lg:px-8">
+                    <div className="mx-auto flex max-w-4xl flex-col items-center">
+                        <div className="mb-8 inline-flex cursor-pointer items-center justify-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-1.5 text-sm font-medium text-neutral-800 shadow-sm transition-colors hover:bg-neutral-50">
+                            <span role="img" aria-label="party popper">
+                                🎉
+                            </span>{' '}
+                            Now available for Early Access!
                         </div>
-                        <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
-                            Create educational content{' '}
-                            <span className="text-emerald-400">in minutes</span>
+
+                        <h1 className="mb-6 text-center font-serif text-5xl leading-[1.05] tracking-tight text-neutral-900 sm:text-7xl lg:text-[5.5rem] lg:leading-[1.02]">
+                            Plug in your curriculum.
+                            <br />
+                            Get real content.
                         </h1>
-                        <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-neutral-400 sm:mt-5 sm:text-lg lg:mx-0">
-                            Generate videos, quizzes, storybooks, worksheets, games, and full
-                            courses — all powered by AI.
+
+                        <p className="mx-auto mb-10 max-w-3xl text-center text-lg leading-relaxed text-neutral-500 sm:text-[1.35rem]">
+                            Vacademy connects to your curriculum, analyzes your goals, and gives
+                            AI-powered content generation tailored to your students.
                         </p>
-                        <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:justify-center lg:justify-start">
+
+                        <div className="mb-16 flex justify-center">
                             <Link
                                 to="/signup/onboarding"
-                                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600 sm:px-6 sm:py-3 sm:text-base"
+                                className="inline-flex items-center justify-center gap-2 rounded-full bg-neutral-900 px-8 py-4 text-base font-semibold text-white shadow-xl shadow-neutral-900/10 transition-opacity hover:bg-neutral-800"
                             >
-                                Get Started Free
-                                <ArrowRight className="size-4" />
+                                Get started
+                                <ChevronRight className="ml-1 size-4" />
                             </Link>
-                            <button
-                                onClick={() => setLoginOpen(true)}
-                                className="inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-700 px-5 py-2.5 text-sm font-semibold text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white sm:px-6 sm:py-3 sm:text-base"
-                            >
-                                Login to Dashboard
-                            </button>
                         </div>
                     </div>
-                    {/* Right — Dashboard mock */}
-                    <div className="mx-auto w-full max-w-md lg:mx-0 lg:max-w-none">
-                        <HeroDashboardMock />
+                </section>
+
+                <section className="relative flex justify-center overflow-hidden bg-white px-4 pb-20 sm:px-6 lg:px-8">
+                    <div className="relative z-10 flex w-full max-w-3xl justify-center">
+                        <img
+                            src="/hero-mockup.png"
+                            alt="Dashboard Mockup"
+                            className="relative z-10 max-h-[700px] w-auto rounded-[2.5rem] border border-white/20 object-cover shadow-2xl"
+                        />
+                        <div className="absolute inset-0 -z-10 scale-75 rounded-full bg-emerald-500/10 blur-[100px]" />
                     </div>
-                </div>
-            </section>
+                </section>
 
-            {/* Content Types — visual previews */}
-            <section className="px-4 py-12 sm:px-6 sm:py-24 lg:px-8">
-                <div className="mx-auto max-w-7xl">
-                    <div className="mb-8 max-w-2xl sm:mb-12">
-                        <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl">
-                            What you can create
-                        </h2>
-                        <p className="mt-2 text-sm text-neutral-500 sm:mt-3 sm:text-lg">
-                            Six content types, one platform. Here&apos;s a preview.
-                        </p>
-                    </div>
+                <SecuritySection />
 
-                    {/* Mobile: horizontal scroll of visual mocks */}
-                    <div className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-4 sm:hidden">
-                        <div className="w-[280px] shrink-0">
-                            <VideoPreviewMock />
-                            <div className="mt-2 flex items-center gap-2">
-                                <Video className="size-4 text-blue-500" />
-                                <span className="text-sm font-semibold text-neutral-800">
-                                    AI Videos
-                                </span>
-                            </div>
-                        </div>
-                        <div className="w-[260px] shrink-0">
-                            <QuizPreviewMock />
-                            <div className="mt-2 flex items-center gap-2">
-                                <FileQuestion className="size-4 text-amber-500" />
-                                <span className="text-sm font-semibold text-neutral-800">
-                                    Smart Quizzes
-                                </span>
-                            </div>
-                        </div>
-                        <div className="w-[260px] shrink-0">
-                            <StoryPreviewMock />
-                            <div className="mt-2 flex items-center gap-2">
-                                <BookOpen className="size-4 text-rose-500" />
-                                <span className="text-sm font-semibold text-neutral-800">
-                                    Storybooks
-                                </span>
-                            </div>
-                        </div>
-                    </div>
+                <PersonasSection />
 
-                    {/* Desktop: grid of visual mocks */}
-                    <div className="hidden gap-6 sm:grid sm:grid-cols-2 lg:grid-cols-3">
-                        <div>
-                            <VideoPreviewMock />
-                            <div className="mt-3 flex items-center gap-2">
-                                <Video className="size-4 text-blue-500" />
-                                <span className="text-sm font-semibold text-neutral-800">
-                                    AI Videos
-                                </span>
-                            </div>
-                            <p className="mt-1 text-xs leading-relaxed text-neutral-500">
-                                Narrated explainer videos with AI-generated visuals and voiceover
-                            </p>
-                        </div>
-                        <div>
-                            <QuizPreviewMock />
-                            <div className="mt-3 flex items-center gap-2">
-                                <FileQuestion className="size-4 text-amber-500" />
-                                <span className="text-sm font-semibold text-neutral-800">
-                                    Smart Quizzes
-                                </span>
-                            </div>
-                            <p className="mt-1 text-xs leading-relaxed text-neutral-500">
-                                Auto-generated assessments with multiple question types
-                            </p>
-                        </div>
-                        <div>
-                            <StoryPreviewMock />
-                            <div className="mt-3 flex items-center gap-2">
-                                <BookOpen className="size-4 text-rose-500" />
-                                <span className="text-sm font-semibold text-neutral-800">
-                                    Storybooks
-                                </span>
-                            </div>
-                            <p className="mt-1 text-xs leading-relaxed text-neutral-500">
-                                Illustrated narratives that make learning fun for younger students
-                            </p>
-                        </div>
-                    </div>
+                <PricingSection />
 
-                    {/* Row 2: remaining types as compact cards */}
-                    <div className="mt-6 grid gap-3 sm:mt-8 sm:grid-cols-3 sm:gap-4">
-                        {[
-                            {
-                                icon: FileText,
-                                title: 'Worksheets',
-                                desc: 'Printable homework and practice materials',
-                                color: 'text-emerald-500',
-                                bg: 'bg-emerald-50',
-                            },
-                            {
-                                icon: Gamepad2,
-                                title: 'Interactive Games',
-                                desc: 'Memory match, drag & drop activities',
-                                color: 'text-violet-500',
-                                bg: 'bg-violet-50',
-                            },
-                            {
-                                icon: GraduationCap,
-                                title: 'Full Courses',
-                                desc: 'Complete course structures with AI-organized content',
-                                color: 'text-orange-500',
-                                bg: 'bg-orange-50',
-                            },
-                        ].map((item) => (
-                            <div
-                                key={item.title}
-                                className="flex items-start gap-3 rounded-xl border border-neutral-200 p-3 transition-all hover:border-neutral-300 hover:shadow-sm sm:gap-4 sm:p-4"
-                            >
-                                <div
-                                    className={`flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10 ${item.bg}`}
-                                >
-                                    <item.icon className={`size-4 sm:size-5 ${item.color}`} />
-                                </div>
-                                <div>
-                                    <div className="text-sm font-semibold text-neutral-800">
-                                        {item.title}
-                                    </div>
-                                    <div className="mt-0.5 text-xs text-neutral-500">
-                                        {item.desc}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
+                <FaqSection />
+            </main>
 
-            {/* How It Works — with wizard mock */}
-            <section className="bg-neutral-50 px-4 py-12 sm:px-6 sm:py-24 lg:px-8">
-                <div className="mx-auto max-w-7xl">
-                    <div className="grid items-center gap-8 sm:gap-12 lg:grid-cols-2 lg:gap-16">
-                        <div>
-                            <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl">
-                                How it works
-                            </h2>
-                            <p className="mt-2 text-sm text-neutral-500 sm:mt-3 sm:text-base">
-                                A guided wizard takes you from idea to published content in three
-                                simple steps.
-                            </p>
-                            <div className="mt-6 space-y-4 sm:mt-8 sm:space-y-6">
-                                {[
-                                    {
-                                        step: 1,
-                                        title: 'Choose Content Type',
-                                        desc: 'Pick from videos, quizzes, storybooks, worksheets, games, or courses',
-                                        color: 'bg-emerald-500',
-                                    },
-                                    {
-                                        step: 2,
-                                        title: 'Configure & Customize',
-                                        desc: 'Set topic, audience, language, duration, and type-specific options',
-                                        color: 'bg-blue-500',
-                                    },
-                                    {
-                                        step: 3,
-                                        title: 'Generate & Publish',
-                                        desc: 'AI creates your content — review, edit, and share with students',
-                                        color: 'bg-amber-500',
-                                    },
-                                ].map((item) => (
-                                    <div key={item.step} className="flex gap-3 sm:gap-4">
-                                        <div
-                                            className={`flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white sm:size-9 sm:text-sm ${item.color}`}
-                                        >
-                                            {item.step}
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-semibold text-neutral-800">
-                                                {item.title}
-                                            </div>
-                                            <div className="mt-0.5 text-xs leading-relaxed text-neutral-500">
-                                                {item.desc}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        {/* Wizard mock */}
-                        <WizardMock />
-                    </div>
-                </div>
-            </section>
-
-            {/* AI Course Creation — with structure mock */}
-            <section className="px-4 py-12 sm:px-6 sm:py-24 lg:px-8">
-                <div className="mx-auto max-w-7xl">
-                    <div className="grid items-start gap-8 sm:gap-12 lg:grid-cols-2 lg:gap-16">
-                        <div>
-                            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600 sm:mb-4 sm:text-sm">
-                                <GraduationCap className="size-3 sm:size-3.5" />
-                                AI Course Builder
-                            </div>
-                            <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl">
-                                Build full courses with AI
-                            </h2>
-                            <p className="mt-3 text-sm leading-relaxed text-neutral-500 sm:mt-4 sm:text-base">
-                                Describe your subject and grade level — AI generates a complete
-                                course with structured modules, multi-format content, and curriculum
-                                alignment. Review, customize, and publish.
-                            </p>
-                            <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-8 sm:gap-3">
-                                {[
-                                    'Auto-structured modules',
-                                    'Topic-based generation',
-                                    'Multi-format per module',
-                                    'Curriculum alignment',
-                                ].map((feat) => (
-                                    <div key={feat} className="flex items-center gap-2">
-                                        <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500 sm:size-4" />
-                                        <span className="text-xs text-neutral-700 sm:text-sm">
-                                            {feat}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="mt-6 sm:mt-8">
-                                <Link
-                                    to="/signup/onboarding"
-                                    className="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-neutral-800 sm:px-5 sm:py-2.5"
-                                >
-                                    Try Course Builder
-                                    <ArrowRight className="size-4" />
-                                </Link>
-                            </div>
-                        </div>
-                        {/* Course structure mock */}
-                        <CourseStructureMock />
-                    </div>
-                </div>
-            </section>
-
-            {/* Pricing */}
-            <PricingSection />
-
-            {/* FAQs */}
-            <FaqSection />
-
-            {/* CTA Footer */}
-            <section className="border-t border-neutral-200 bg-neutral-950 px-4 py-12 sm:px-6 sm:py-20 lg:px-8">
-                <div className="mx-auto max-w-3xl text-center">
-                    <Sparkles className="mx-auto size-7 text-emerald-400 sm:size-8" />
-                    <h2 className="mt-4 text-2xl font-bold tracking-tight text-white sm:mt-5 sm:text-4xl">
-                        Ready to create with AI?
-                    </h2>
-                    <p className="mx-auto mt-3 max-w-xl text-sm text-neutral-400 sm:mt-4 sm:text-base">
-                        Join educators saving hours every week with AI-powered content generation.
-                    </p>
-                    <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:mt-8 sm:flex-row sm:gap-4">
-                        <Link
-                            to="/signup/onboarding"
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600 sm:w-auto sm:px-6 sm:py-3 sm:text-base"
-                        >
-                            Get Started Free
-                            <ArrowRight className="size-4" />
-                        </Link>
-                        <button
-                            onClick={() => setLoginOpen(true)}
-                            className="inline-flex w-full items-center justify-center rounded-lg border border-neutral-700 px-5 py-2.5 text-sm font-semibold text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white sm:w-auto sm:px-6 sm:py-3 sm:text-base"
-                        >
-                            Login to Dashboard
-                        </button>
-                    </div>
-                </div>
-            </section>
-
-            {/* Footer */}
-            <footer className="border-t border-neutral-800 bg-neutral-950 px-4 py-6 sm:px-6 lg:px-8">
-                <div className="mx-auto max-w-7xl text-center">
-                    <p className="text-sm text-neutral-500">
-                        &copy; {new Date().getFullYear()} Vacademy. All rights reserved.
-                    </p>
-                </div>
+            <footer className="border-t border-neutral-100 bg-white px-4 py-8 text-center text-sm text-neutral-500 sm:px-6 lg:px-8">
+                <p>&copy; {new Date().getFullYear()} Vacademy. All rights reserved.</p>
             </footer>
 
             <LoginDialog open={loginOpen} onOpenChange={setLoginOpen} />

@@ -138,21 +138,7 @@ export interface FieldVisibility {
     assessmentRegistration: boolean;
     liveSessionRegistration: boolean;
     learnerProfile: boolean;
-}
-
-// Fixed Field (system/fixed but editable visibility)
-export interface FixedField {
-    id: string; // uuid
-    name: string;
-    type: string; // usually 'text'
-    required: boolean;
-    visibility: FieldVisibility;
-    order: number;
-    canBeDeleted: boolean;
-    canBeEdited: boolean;
-    canBeRenamed: boolean; // Usually false for fixed fields
-    groupName: string | null;
-    usage?: CustomFieldUsage;
+    enquiry: boolean;
 }
 
 // Custom Field (fully editable)
@@ -179,6 +165,21 @@ export interface NewCustomField {
     visibility: FieldVisibility;
     required: boolean;
     order?: number;
+}
+
+export interface FixedField {
+    id: string; // customFieldId from API
+    name: string;
+    type: 'text' | 'dropdown' | 'number';
+    options?: string[];
+    visibility: FieldVisibility;
+    required: boolean;
+    canBeDeleted: boolean;
+    canBeEdited: boolean;
+    canBeRenamed: boolean;
+    order: number;
+    groupName: string | null; // Comma-separated group names if field is in multiple groups
+    usage?: CustomFieldUsage;
 }
 
 export interface FieldGroup {
@@ -239,6 +240,7 @@ const LOCATION_TO_VISIBILITY_MAP: Record<string, keyof FieldVisibility> = {
     'Assessment Registration Form': 'assessmentRegistration',
     'Live Session Registration Form': 'liveSessionRegistration',
     'Learner Profile': 'learnerProfile',
+    Enquiry: 'enquiry',
 };
 
 const VISIBILITY_TO_LOCATION_MAP: Record<keyof FieldVisibility, string> = {
@@ -250,6 +252,7 @@ const VISIBILITY_TO_LOCATION_MAP: Record<keyof FieldVisibility, string> = {
     assessmentRegistration: 'Assessment Registration Form',
     liveSessionRegistration: 'Live Session Registration Form',
     learnerProfile: 'Learner Profile',
+    enquiry: 'Enquiry',
 };
 
 // System field identifiers (fieldName from API)
@@ -446,6 +449,7 @@ const mapLocationsToVisibility = (locations: string[]): FieldVisibility => {
         assessmentRegistration: false,
         liveSessionRegistration: false,
         learnerProfile: false,
+        enquiry: false,
     };
 
     locations.forEach((location) => {
@@ -483,7 +487,7 @@ const mapApiFieldToFixedField = (apiField: ApiCustomField): FixedField => {
     return {
         id: apiField.customFieldId,
         name: apiField.fieldName,
-        type: apiField.fieldType,
+        type: apiField.fieldType as 'text' | 'dropdown' | 'number',
         visibility: mapLocationsToVisibility(apiField.locations),
         required: true, // System fields are typically required
         canBeDeleted: apiField.canBeDeleted,
@@ -1644,6 +1648,7 @@ export const createNewCustomField = (
             assessmentRegistration: false,
             liveSessionRegistration: false,
             learnerProfile: false,
+            enquiry: false,
         },
         required: false,
         order: 999, // Will be updated when added to settings
@@ -1684,6 +1689,7 @@ export const createTempCustomField = (
             assessmentRegistration: false,
             liveSessionRegistration: false,
             learnerProfile: false,
+            enquiry: false,
         },
         required: false,
         canBeDeleted: true,

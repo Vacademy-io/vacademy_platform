@@ -97,6 +97,10 @@ export function transformApiResponseToSlides(
                     hasPrompt: !!todo.prompt,
                     promptPreview: todo.prompt ? todo.prompt.substring(0, 150) + '...' : 'No prompt'
                 });
+            } else if (todo.type === 'AI_SLIDES') {
+                slideType = 'ai-slides';
+            } else if (todo.type === 'AI_STORYBOOK') {
+                slideType = 'ai-storybook';
             } else if (todo.type === 'DOCUMENT') {
                 slideType = 'doc';
             } else if (todo.type === 'VIDEO') {

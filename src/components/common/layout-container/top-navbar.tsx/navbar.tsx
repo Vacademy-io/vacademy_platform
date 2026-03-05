@@ -1,3 +1,4 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -115,9 +116,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
 
     // Effective display settings (cached or defaults) for permission gating
     const isAdminRoleForDS = roles.includes('ADMIN');
-    const roleKeyForDS = isAdminRoleForDS
-        ? ADMIN_DISPLAY_SETTINGS_KEY
-        : TEACHER_DISPLAY_SETTINGS_KEY;
+    const roleKeyForDS = getActiveRoleDisplaySettingsKey();
     const cachedDS = getDisplaySettingsFromCache(roleKeyForDS);
     const defaultDS = isAdminRoleForDS
         ? DEFAULT_ADMIN_DISPLAY_SETTINGS
@@ -188,10 +187,10 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
         return () => clearTimeout(timer); // Cleanup the timeout on component unmount
     }, [adminDetails?.profile_pic_file_id, getPublicUrl, setAdminLogo]);
 
-    // Match layout logic: main sidebar is hidden for faculty users or when display settings hide it
+    // Match layout logic: main sidebar visibility is determined by display settings
     const hasFacultyPermission = hasFacultyAssignedPermission(instituteDetails?.id);
     const showSidebarFromDS = cachedDS?.ui?.showSidebar !== false;
-    const showMainSidebar = !hasFacultyPermission && showSidebarFromDS;
+    const showMainSidebar = showSidebarFromDS;
 
     // For faculty users with selected sub-org: fetch sub-org institute details (suborgId = institute ID of sub-org)
     const selectedSubOrgId = getSelectedSubOrgId();
@@ -275,7 +274,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     return (
         <div
             className={cn(
-                'sticky top-0 z-50 flex items-center justify-between border-b bg-neutral-50',
+                'sticky top-0 z-50 flex items-center justify-between border-b border-neutral-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60',
                 isCompact ? 'h-12 px-4 py-2' : 'h-14 px-4 py-2 md:h-[72px] md:px-8 md:py-4'
             )}
         >
@@ -339,19 +338,23 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                     instituteLogo && (isCompact ? 'ml-9' : 'ml-12')
                                 )}
                             >
+                                <span className="text-[10px] font-medium text-neutral-500 md:text-xs whitespace-nowrap">
+                                    Powered by
+                                </span>
                                 {mainInstituteLogoUrl ? (
-                                    <div className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded md:h-5 md:w-5">
+                                    <div className="flex shrink-0 items-center justify-center overflow-hidden rounded">
                                         <img
                                             src={mainInstituteLogoUrl}
-                                            alt=""
-                                            className="h-full w-full object-contain"
+                                            alt={instituteDetails.institute_name}
+                                            className="h-5 w-auto object-contain max-w-[80px]"
                                             aria-hidden
                                         />
                                     </div>
-                                ) : null}
-                                <span className="text-[10px] font-medium text-neutral-500 md:text-xs">
-                                    Powered by {instituteDetails.institute_name}
-                                </span>
+                                ) : (
+                                    <span className="text-[10px] font-bold text-neutral-700 md:text-xs truncate max-w-[150px]">
+                                        {instituteDetails.institute_name}
+                                    </span>
+                                )}
                             </div>
                         )}
                     </div>

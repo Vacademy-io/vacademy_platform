@@ -1,23 +1,41 @@
+/**
+ * MySidebar — Gmail-style two-bar sidebar
+ *
+ * Layout:
+ * ┌──────────┬──────────────────────────────┐
+ * │ Rail     │ Panel                         │
+ * │ (64px)   │ (250px, collapsible)          │
+ * │          │                               │
+ * │ [CRM]    │ [Logo] Institute Name         │
+ * │ [LMS]    │ ──────────────                │
+ * │ [AI]     │ Dashboard          (pill)     │
+ * │ ───      │ Manage Institute     ▾        │
+ * │ [Recent] │   ├── Batches                 │
+ * │          │   └── Sessions                │
+ * │          │ ────── divider ──────         │
+ * │          │ Settings                      │
+ * │          │                               │
+ * │          │ ❓ Support                    │
+ * └──────────┴──────────────────────────────┘
+ *
+ * On collapse: Only the Rail stays. Hovering a rail category shows a flyout
+ * popover with the tabs for that category.
+ */
+
+import React, { useEffect, useState } from 'react';
 import {
     Sidebar,
     SidebarContent,
-    SidebarGroup,
-    SidebarHeader,
-    SidebarMenu,
-    SidebarMenuItem,
     useSidebar,
 } from '@/components/ui/sidebar';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     SidebarStateType,
     SidebarItemsType,
 } from '../../../../types/layout-container/layout-container-types';
-import { SidebarItem } from './sidebar-item';
 import { SidebarItemsData } from './utils';
 import './scrollbarStyle.css';
-import React, { useEffect, useState } from 'react';
-import { useSuspenseQuery } from '@tanstack/react-query';
-import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
+import { useSuspenseQuery, useQuery } from '@tanstack/react-query';
+import { useInstituteQuery, getSubOrgInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { filterMenuItems } from './helper';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
@@ -29,29 +47,19 @@ import {
 } from '@/types/display-settings';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
 import { useFileUpload } from '@/hooks/use-file-upload';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn, goToMailSupport, goToWhatsappSupport } from '@/lib/utils';
-import { Question } from '@phosphor-icons/react';
-import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
-import {
-    WhatsappLogo,
-    EnvelopeSimple,
-    Lightning,
-    Briefcase,
-    GraduationCap,
-    Sparkle,
-    LockKey,
-} from '@phosphor-icons/react';
-import { motion } from 'framer-motion';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-
+import { cn } from '@/lib/utils';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import useInstituteLogoStore from './institutelogo-global-zustand';
 import { useTabSettings } from '@/hooks/use-tab-settings';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { useCompactMode } from '@/hooks/use-compact-mode';
-import { getEffectiveInstituteLogoFileId } from '@/lib/auth/facultyAccessUtils';
+import { getEffectiveInstituteLogoFileId, getSelectedSubOrgId, getSelectedSubOrgLinkageType } from '@/lib/auth/facultyAccessUtils';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+
+import { Lightning } from '@phosphor-icons/react';
+import { CategoryRail, type CategoryId } from './category-rail';
+import { SidebarPanel } from './sidebar-panel';
 
 const voltSidebarData: SidebarItemsType[] = [
     {
@@ -75,12 +83,19 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     const currentRoute = router.state.location.pathname;
     const { isTabVisible, isSubItemVisible } = useTabSettings();
     const isMobile = useIsMobile();
-    const { isCompact } = useCompactMode();
 
     const [isVoltSubdomain, setIsVoltSubdomain] = useState(false);
-    const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
-
+    const [activeCategory, setActiveCategory] = useState<CategoryId>('CRM');
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
+    const [mainInstituteLogoUrl, setMainInstituteLogoUrl] = useState<string>('');
+
+    const selectedSubOrgId = getSelectedSubOrgId();
+    const isPartnershipLinkage = getSelectedSubOrgLinkageType() === 'PARTNERSHIP';
+
+    const { data: subOrgInstituteDetails } = useQuery({
+        ...getSubOrgInstituteQuery(selectedSubOrgId ?? null),
+        enabled: !!selectedSubOrgId,
+    });
 
     useEffect(() => {
         setIsVoltSubdomain(
@@ -90,6 +105,12 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
 
     // Sync active category with current route
     useEffect(() => {
+        // If on /settings, always show as SETTINGS category
+        if (currentRoute.startsWith('/settings')) {
+            setActiveCategory('SETTINGS');
+            return;
+        }
+
         const checkCategoryVisibility = (cat: 'CRM' | 'LMS' | 'AI') => {
             if (!roleDisplay?.sidebarCategories) return true;
             const cfg = roleDisplay.sidebarCategories.find((c) => c.id === cat);
@@ -97,15 +118,12 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         };
 
         const findCategory = (): 'CRM' | 'LMS' | 'AI' | null => {
-            if (isVoltSubdomain) {
-                return 'LMS';
-            }
+            if (isVoltSubdomain) return 'LMS';
 
             for (const item of SidebarItemsData) {
+                if (item.id === 'settings') continue; // Skip settings — handled above
                 const isActive = item.to ? currentRoute.startsWith(item.to) : false;
-                if (isActive) {
-                    return item.category || 'CRM';
-                }
+                if (isActive) return item.category || 'CRM';
                 if (item.subItems) {
                     for (const sub of item.subItems) {
                         const link = sub.subItemLink || '';
@@ -126,18 +144,19 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         }
 
         if (targetCategory) {
-            setActiveCategory(targetCategory);
+            // Don't override if user is browsing "Recent" or "Settings"
+            if (activeCategory !== 'RECENT' && activeCategory !== 'SETTINGS') {
+                setActiveCategory(targetCategory);
+            }
         } else if (roleDisplay?.sidebarCategories) {
             const def = roleDisplay.sidebarCategories.find((c) => c.default);
-            if (def) setActiveCategory(def.id);
+            if (def && activeCategory !== 'RECENT' && activeCategory !== 'SETTINGS') setActiveCategory(def.id);
         }
     }, [currentRoute, isVoltSubdomain, roleDisplay]);
 
+    // Load display settings
     useEffect(() => {
-        const accessToken = getTokenFromCookie(TokenKey.accessToken);
-        const roles = getUserRoles(accessToken);
-        const isAdmin = roles.includes('ADMIN');
-        const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        const roleKey = getActiveRoleDisplaySettingsKey();
         const cached = getDisplaySettingsFromCache(roleKey);
         if (cached) {
             setRoleDisplay(cached);
@@ -148,12 +167,13 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         }
     }, []);
 
+    // Compute final sidebar items (same logic as before)
     const finalSidebarItems = (() => {
         const base = isVoltSubdomain
             ? voltSidebarData
             : filterMenuItems(SidebarItemsData, data?.id || '', isTabVisible, isSubItemVisible);
         if (!roleDisplay) return base;
-        // Apply role-based visibility and ordering
+
         const tabVis = new Map(roleDisplay.sidebar.map((t) => [t.id, t]));
         const mapped = base
             .filter((item) => {
@@ -205,12 +225,11 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                 return ao - bo;
             });
 
-        // Add custom tabs that don't exist in base
+        // Add custom tabs
         const baseIds = new Set(base.map((b) => b.id));
         const customTabs: SidebarItemsType[] = roleDisplay.sidebar
             .filter((t) => t.isCustom && t.visible !== false && !baseIds.has(t.id))
             .map((t) => ({
-                // Using a placeholder icon-less component; SidebarItem handles absence of icon
                 icon: (() => null) as unknown as SidebarItemsType['icon'],
                 title: t.label || t.id,
                 to: t.route,
@@ -224,367 +243,123 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         });
     })();
 
+    // Logo
     const { getPublicUrl } = useFileUpload();
     const { instituteLogo, setInstituteLogo } = useInstituteLogoStore();
 
     useEffect(() => {
         const timer = setTimeout(() => {
             const fetchPublicUrl = async () => {
-                const effectiveLogoId = getEffectiveInstituteLogoFileId(data?.institute_logo_file_id || undefined);
+                const effectiveLogoId = subOrgInstituteDetails?.institute_logo_file_id
+                    ? subOrgInstituteDetails.institute_logo_file_id
+                    : getEffectiveInstituteLogoFileId(data?.institute_logo_file_id || undefined);
+
                 if (effectiveLogoId) {
                     const publicUrl = await getPublicUrl(effectiveLogoId);
                     setInstituteLogo(publicUrl || '');
                 } else {
                     setInstituteLogo('');
                 }
-            };
 
+                if (isPartnershipLinkage && data?.institute_logo_file_id) {
+                    const mainUrl = await getPublicUrl(data.institute_logo_file_id);
+                    setMainInstituteLogoUrl(mainUrl || '');
+                } else {
+                    setMainInstituteLogoUrl('');
+                }
+            };
             fetchPublicUrl();
         }, 300);
-
         return () => clearTimeout(timer);
-    }, [data?.institute_logo_file_id, getPublicUrl, setInstituteLogo, currentRoute]);
+    }, [data?.institute_logo_file_id, subOrgInstituteDetails?.institute_logo_file_id, getPublicUrl, setInstituteLogo, currentRoute, isPartnershipLinkage]);
 
     if (isLoading) return <DashboardLoader />;
     if (roleDisplay?.ui?.showSidebar === false) return null;
 
-    // Sidebar content - shared between mobile drawer and desktop sidebar
-    const sidebarContent = (
-        <TooltipProvider delayDuration={0}>
-            <SidebarHeader
-                className={cn('py-1', state === 'collapsed' && !isMobile ? 'px-1' : 'px-3')}
-            >
-                <div
-                    className={cn(
-                        'flex cursor-pointer flex-col items-center justify-center gap-1 rounded p-1 transition-colors',
-                        state === 'collapsed' && !isMobile ? 'w-full px-0' : ''
-                    )}
-                    onClick={() => {
-                        navigate({ to: '/dashboard' });
-                        if (isMobile) setOpenMobile(false);
-                    }}
-                >
-                    {instituteLogo !== '' && (
-                        <img
-                            src={instituteLogo}
-                            alt="logo"
-                            className={cn(
-                                'w-auto object-contain transition-all duration-200',
-                                state === 'expanded' || isMobile
-                                    ? isCompact
-                                        ? 'h-10 max-w-[80px]'
-                                        : 'h-20 max-w-[180px]'
-                                    : isCompact
-                                        ? 'h-6 max-w-[24px]'
-                                        : 'h-8 max-w-[40px]'
-                            )}
-                        />
-                    )}
-                    <SidebarGroup
-                        className={cn(
-                            'text-center font-semibold leading-tight text-primary-500',
-                            !isMobile ? 'group-data-[collapsible=icon]:hidden' : '',
-                            isCompact ? 'text-sm' : 'text-lg'
-                        )}
-                    >
-                        {data?.institute_name}
-                    </SidebarGroup>
-                </div>
-            </SidebarHeader>
+    const isPanelOpen = state === 'expanded';
+    const showSupportButton = roleDisplay?.ui?.showSupportButton !== false;
 
-            <div className="p-2">
-                <Tabs
-                    value={activeCategory}
-                    onValueChange={(v) => setActiveCategory(v as 'CRM' | 'LMS' | 'AI')}
-                    className="w-full"
-                >
-                    <TabsList
-                        className={cn(
-                            'flex w-full items-center justify-between gap-1 rounded-lg border bg-muted/20 p-1',
-                            state === 'collapsed' &&
-                            !isMobile &&
-                            'h-auto flex-col items-center gap-2 border-none bg-transparent p-0'
-                        )}
-                    >
-                        {(() => {
-                            const categories = ['LMS', 'CRM', 'AI'] as const;
-                            const sorted = [...categories].sort((a, b) => {
-                                const cfgA = roleDisplay?.sidebarCategories?.find(
-                                    (c) => c.id === a
-                                );
-                                const cfgB = roleDisplay?.sidebarCategories?.find(
-                                    (c) => c.id === b
-                                );
-                                return (cfgA?.order ?? 0) - (cfgB?.order ?? 0);
-                            });
+    const effectiveInstituteName = subOrgInstituteDetails?.institute_name
+        ? subOrgInstituteDetails.institute_name
+        : (data?.institute_name || '');
 
-                            return sorted.map((catId) => {
-                                const config = roleDisplay?.sidebarCategories?.find(
-                                    (c) => c.id === catId
-                                );
-                                if (config && !config.visible) return null;
-
-                                let Icon = Briefcase;
-                                if (catId === 'LMS') Icon = GraduationCap;
-                                if (catId === 'AI') Icon = Sparkle;
-
-                                const isLocked = config?.locked;
-                                const isActive = activeCategory === catId;
-                                const label = catId === 'AI' ? 'AI Tools' : catId;
-
-                                const colorMap = {
-                                    CRM: {
-                                        text: 'text-blue-600',
-                                        bg: 'bg-blue-50',
-                                        ring: 'ring-blue-200',
-                                    },
-                                    LMS: {
-                                        text: 'text-purple-600',
-                                        bg: 'bg-purple-50',
-                                        ring: 'ring-purple-200',
-                                    },
-                                    AI: {
-                                        text: 'text-rose-600',
-                                        bg: 'bg-rose-50',
-                                        ring: 'ring-rose-200',
-                                    },
-                                };
-                                const colors = colorMap[catId as keyof typeof colorMap];
-
-                                return (
-                                    <Tooltip key={catId} delayDuration={0}>
-                                        <TooltipTrigger asChild>
-                                            <TabsTrigger
-                                                value={catId}
-                                                onClick={(e) => {
-                                                    if (isLocked) {
-                                                        e.preventDefault();
-                                                        navigate({
-                                                            to: '/locked-feature',
-                                                            search: {
-                                                                feature: `${label} Category`,
-                                                            },
-                                                        });
-                                                    }
-                                                }}
-                                                className={cn(
-                                                    'relative flex min-w-0 flex-1 items-center justify-center gap-1.5 px-1 py-1 transition-all data-[state=active]:bg-transparent data-[state=active]:shadow-none',
-                                                    state === 'collapsed' &&
-                                                    !isMobile &&
-                                                    'h-9 w-9 flex-none justify-center rounded-md p-0 ring-1 ring-border/50',
-                                                    isLocked && 'opacity-70'
-                                                )}
-                                            >
-                                                {isActive && (
-                                                    <motion.div
-                                                        layoutId="active-sidebar-tab"
-                                                        className={cn(
-                                                            'absolute inset-0 rounded-md bg-background shadow-sm',
-                                                            state === 'collapsed' &&
-                                                            !isMobile &&
-                                                            cn(
-                                                                colors.bg,
-                                                                colors.ring,
-                                                                'shadow-none ring-1'
-                                                            )
-                                                        )}
-                                                        transition={{
-                                                            type: 'spring',
-                                                            bounce: 0.2,
-                                                            duration: 0.6,
-                                                        }}
-                                                    />
-                                                )}
-
-                                                <span className="relative z-10 flex items-center justify-center gap-1.5">
-                                                    {isLocked ? (
-                                                        <LockKey
-                                                            size={
-                                                                state === 'collapsed' && !isMobile
-                                                                    ? 16
-                                                                    : 14
-                                                            }
-                                                            weight="fill"
-                                                            className="text-muted-foreground"
-                                                        />
-                                                    ) : (
-                                                        <Icon
-                                                            size={
-                                                                state === 'collapsed' && !isMobile
-                                                                    ? 20
-                                                                    : 16
-                                                            }
-                                                            weight="duotone"
-                                                            className={cn(
-                                                                'shrink-0 transition-colors',
-                                                                isActive
-                                                                    ? colors.text
-                                                                    : 'text-muted-foreground'
-                                                            )}
-                                                        />
-                                                    )}
-                                                    {(state !== 'collapsed' || isMobile) && (
-                                                        <span
-                                                            className={cn(
-                                                                'truncate text-xs font-medium transition-colors',
-                                                                isActive
-                                                                    ? colors.text
-                                                                    : 'text-muted-foreground'
-                                                            )}
-                                                        >
-                                                            {label === 'AI Tools' ? 'AI' : label}
-                                                        </span>
-                                                    )}
-                                                </span>
-                                            </TabsTrigger>
-                                        </TooltipTrigger>
-                                        {state === 'collapsed' && !isMobile && (
-                                            <TooltipContent side="right" className="font-medium">
-                                                {label}
-                                            </TooltipContent>
-                                        )}
-                                    </Tooltip>
-                                );
-                            });
-                        })()}
-                    </TabsList>
-                </Tabs>
-            </div>
-
-            <SidebarMenu
-                className={cn(
-                    'flex shrink-0 flex-col px-1 py-4',
-                    state == 'expanded' || isMobile ? 'items-stretch' : 'items-center',
-                    isCompact ? 'gap-1' : 'gap-2'
-                )}
-            >
-                {sidebarComponent
-                    ? sidebarComponent
-                    : finalSidebarItems
-                        .filter((item) => {
-                            const show = (item as SidebarItemsType).showForInstitute;
-                            const category = item.category || 'CRM';
-                            return (!show || show === data?.id) && category === activeCategory;
-                        })
-                        .map((obj, key) => (
-                            <SidebarMenuItem
-                                key={key}
-                                id={obj.id}
-                                onClick={() => {
-                                    // Close mobile sidebar when an item is clicked
-                                    if (isMobile && !obj.subItems) {
-                                        setOpenMobile(false);
-                                    }
-                                }}
-                            >
-                                <SidebarItem {...obj} />
-                            </SidebarMenuItem>
-                        ))}
-            </SidebarMenu>
-            {roleDisplay?.ui?.showSupportButton !== false && (
-                <div
-                    className={cn(
-                        'mt-auto flex items-center justify-center px-1 py-2',
-                        state === 'collapsed' && !isMobile ? 'mx-auto' : ''
-                    )}
-                >
-                    {!currentRoute.includes('slides') && <SupportOptions />}
-                </div>
-            )}
-        </TooltipProvider>
-    );
-
-    // Mobile: Render as Sheet/Drawer
+    // ─── Mobile: Sheet/Drawer ──────────────────────────────────
     if (isMobile) {
         return (
             <Sheet open={openMobile} onOpenChange={setOpenMobile}>
-                <SheetContent side="left" className="w-[280px] border-r bg-primary-50 p-0">
+                <SheetContent side="left" className="w-[310px] border-r p-0">
                     <SheetHeader className="sr-only">
                         <SheetTitle>Navigation Menu</SheetTitle>
                     </SheetHeader>
-                    <div className="sidebar-content flex h-full flex-col gap-2 overflow-y-auto py-6">
-                        {sidebarContent}
-                    </div>
+                    <TooltipProvider delayDuration={0}>
+                        <div className="flex h-full">
+                            {/* Category Rail */}
+                            <CategoryRail
+                                activeCategory={activeCategory}
+                                onCategoryChange={setActiveCategory}
+                                roleDisplay={roleDisplay}
+                                sidebarItems={finalSidebarItems}
+                                instituteId={data?.id}
+                            />
+
+                            {/* Panel */}
+                            <SidebarPanel
+                                isOpen={true}
+                                activeCategory={activeCategory}
+                                sidebarItems={finalSidebarItems}
+                                instituteLogo={instituteLogo}
+                                instituteName={effectiveInstituteName}
+                                roleDisplay={roleDisplay}
+                                onItemClick={() => setOpenMobile(false)}
+                                sidebarComponent={sidebarComponent}
+                                showSupportButton={showSupportButton}
+                                instituteId={data?.id}
+                                isPartnershipLinkage={isPartnershipLinkage}
+                                mainInstituteLogoUrl={mainInstituteLogoUrl}
+                                mainInstituteName={data?.institute_name || ''}
+                            />
+                        </div>
+                    </TooltipProvider>
                 </SheetContent>
             </Sheet>
         );
     }
 
-    // Desktop/Tablet: Render as regular Sidebar
+    // ─── Desktop: Two-bar sidebar ──────────────────────────────
     return (
         <Sidebar collapsible="icon" className="z-20 !border-0">
             <SidebarContent
                 className={cn(
-                    'sidebar-content flex flex-col gap-2 border-r bg-primary-50 py-6',
-                    state == 'expanded'
-                        ? isCompact
-                            ? 'w-[220px]'
-                            : 'w-[307px]'
-                        : isCompact
-                            ? 'w-14'
-                            : 'w-28'
+                    'sidebar-content !flex !flex-row !gap-0 border-r-0 bg-transparent !overflow-hidden py-0',
                 )}
             >
-                {sidebarContent}
+                <TooltipProvider delayDuration={0}>
+                    {/* Left: Category Rail (always visible) */}
+                    <CategoryRail
+                        activeCategory={activeCategory}
+                        onCategoryChange={setActiveCategory}
+                        roleDisplay={roleDisplay}
+                        sidebarItems={finalSidebarItems}
+                        instituteId={data?.id}
+                    />
+
+                    {/* Right: Panel (always mounted, animates width) */}
+                    <SidebarPanel
+                        isOpen={isPanelOpen}
+                        activeCategory={activeCategory}
+                        sidebarItems={finalSidebarItems}
+                        instituteLogo={instituteLogo}
+                        instituteName={effectiveInstituteName}
+                        roleDisplay={roleDisplay}
+                        sidebarComponent={sidebarComponent}
+                        showSupportButton={showSupportButton}
+                        instituteId={data?.id}
+                        isPartnershipLinkage={isPartnershipLinkage}
+                        mainInstituteLogoUrl={mainInstituteLogoUrl}
+                        mainInstituteName={data?.institute_name || ''}
+                    />
+                </TooltipProvider>
             </SidebarContent>
         </Sidebar>
     );
 };
-
-function SupportOptions() {
-    const [open, setOpen] = useState(false);
-    const [hover, setHover] = useState<boolean>(false);
-    const toggleHover = () => {
-        setHover(!hover);
-    };
-    return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <div
-                    className={`flex w-full cursor-pointer items-center gap-1 rounded-lg px-4 py-2 hover:bg-white`}
-                    onMouseEnter={toggleHover}
-                    onMouseLeave={toggleHover}
-                >
-                    <Question
-                        className={cn('size-7', hover ? 'text-primary-500' : 'text-neutral-400')}
-                        weight="fill"
-                    />
-                    <div
-                        className={`${hover ? 'text-primary-500' : 'text-neutral-600'
-                            } text-body font-regular text-neutral-600 group-data-[collapsible=icon]:hidden`}
-                    >
-                        {'Support'}
-                    </div>
-                </div>
-            </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-0">
-                <Command>
-                    <CommandList>
-                        <CommandGroup>
-                            <CommandItem>
-                                <div
-                                    role="button"
-                                    className="flex w-full cursor-pointer items-center gap-1"
-                                    onClick={goToWhatsappSupport}
-                                >
-                                    <WhatsappLogo />
-                                    WhatsApp
-                                </div>
-                            </CommandItem>
-                            <CommandItem>
-                                <div
-                                    role="button"
-                                    className="flex w-full cursor-pointer items-center gap-1"
-                                    onClick={goToMailSupport}
-                                >
-                                    <EnvelopeSimple />
-                                    Mail us
-                                </div>
-                            </CommandItem>
-                        </CommandGroup>
-                    </CommandList>
-                </Command>
-            </PopoverContent>
-        </Popover>
-    );
-}

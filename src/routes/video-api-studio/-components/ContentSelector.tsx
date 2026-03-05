@@ -12,6 +12,7 @@ import {
     History,
     MessageCircle,
     Sparkles,
+    GalleryHorizontalEnd,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,7 @@ const ICONS: Record<ContentType, React.ElementType> = {
     CODE_PLAYGROUND: Terminal,
     TIMELINE: History,
     CONVERSATION: MessageCircle,
+    SLIDES: GalleryHorizontalEnd,
 };
 
 const SAMPLE_PROMPTS: Record<ContentType, string[]> = {
@@ -113,9 +115,15 @@ const SAMPLE_PROMPTS: Record<ContentType, string[]> = {
         'Roleplay a doctor appointment dialogue discussing symptoms and treatment options.',
         'Practice a negotiation conversation for buying a used car.',
     ],
+    SLIDES: [
+        'Create a presentation on the water cycle — cover evaporation, condensation, precipitation, and collection with clear diagrams.',
+        'Make a slide deck explaining the key events and causes of World War I for high school students.',
+        'Build a pitch deck for a startup idea: an AI-powered personal finance assistant for Gen Z.',
+        'Design a presentation on machine learning basics — supervised vs unsupervised learning, neural networks, and real-world applications.',
+    ],
 };
 
-const LARGE_TYPES: ContentType[] = ['VIDEO', 'STORYBOOK', 'QUIZ'];
+const LARGE_TYPES: ContentType[] = ['VIDEO', 'SLIDES', 'QUIZ'];
 
 export function ContentSelector({
     selectedType,

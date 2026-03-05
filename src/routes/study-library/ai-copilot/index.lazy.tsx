@@ -142,6 +142,7 @@ function RouteComponent() {
     // Form state - keeping all existing state
     const [ageRange, setAgeRange] = useState('');
     const [skillLevel, setSkillLevel] = useState(''); // Now stores levelId
+    const [language, setLanguage] = useState('English');
     const [prerequisiteFiles, setPrerequisiteFiles] = useState<PrerequisiteFile[]>([]);
     const [prerequisiteUrls, setPrerequisiteUrls] = useState<PrerequisiteUrl[]>([]);
     const [newPrerequisiteUrl, setNewPrerequisiteUrl] = useState('');
@@ -152,6 +153,8 @@ function RouteComponent() {
     const [includePracticeProblems, setIncludePracticeProblems] = useState(true);
     const [includeYouTubeVideo, setIncludeYouTubeVideo] = useState(true);
     const [includeAIGeneratedVideo, setIncludeAIGeneratedVideo] = useState(true);
+    const [includeAISlides, setIncludeAISlides] = useState(false);
+    const [includeAIStorybook, setIncludeAIStorybook] = useState(false);
     const [programmingLanguage, setProgrammingLanguage] = useState('');
     const [numberOfChapters, setNumberOfChapters] = useState('5');
     const [chapterLength, setChapterLength] = useState('60');
@@ -596,6 +599,8 @@ function RouteComponent() {
                 includePracticeProblems,
                 includeYouTubeVideo,
                 includeAIGeneratedVideo,
+                includeAISlides,
+                includeAIStorybook,
                 programmingLanguage: includeCodeSnippets ? programmingLanguage : undefined,
             },
             durationFormatStructure: {
@@ -609,6 +614,7 @@ function RouteComponent() {
                 numberOfModules: numberOfModules ? parseInt(numberOfModules) : undefined,
             },
             courseDepth: courseDepth,
+            language: language || 'English',
             model: selectedModel,
             userId: userId,
             instituteId: instituteId,
@@ -637,6 +643,8 @@ function RouteComponent() {
         includePracticeProblems,
         includeYouTubeVideo,
         includeAIGeneratedVideo,
+        includeAISlides,
+        includeAIStorybook,
         includeQuizzes,
         includeHomework,
         includeSolutions,
@@ -742,6 +750,28 @@ function RouteComponent() {
                                             <SelectItem value="advanced">Advanced</SelectItem>
                                         </>
                                     )}
+                                </SelectContent>
+                            </Select>
+
+                            {/* Language Dropdown */}
+                            <Select value={language} onValueChange={setLanguage}>
+                                <SelectTrigger className="h-8 w-auto rounded-full border-neutral-200 bg-white px-3 text-xs">
+                                    <div className="flex items-center gap-1.5">
+                                        <BookOpen className="size-3.5 text-neutral-500" />
+                                        <SelectValue placeholder="Language" />
+                                    </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="English">English</SelectItem>
+                                    <SelectItem value="Hindi">Hindi</SelectItem>
+                                    <SelectItem value="Spanish">Spanish</SelectItem>
+                                    <SelectItem value="French">French</SelectItem>
+                                    <SelectItem value="Arabic">Arabic</SelectItem>
+                                    <SelectItem value="Portuguese">Portuguese</SelectItem>
+                                    <SelectItem value="German">German</SelectItem>
+                                    <SelectItem value="Chinese">Chinese</SelectItem>
+                                    <SelectItem value="Japanese">Japanese</SelectItem>
+                                    <SelectItem value="Korean">Korean</SelectItem>
                                 </SelectContent>
                             </Select>
 
@@ -1016,6 +1046,24 @@ function RouteComponent() {
                                     }
                                 />
                                 <span className="text-sm">AI Videos</span>
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-2">
+                                <Checkbox
+                                    checked={includeAISlides}
+                                    onCheckedChange={(checked) =>
+                                        setIncludeAISlides(checked === true)
+                                    }
+                                />
+                                <span className="text-sm">AI Slides</span>
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-2">
+                                <Checkbox
+                                    checked={includeAIStorybook}
+                                    onCheckedChange={(checked) =>
+                                        setIncludeAIStorybook(checked === true)
+                                    }
+                                />
+                                <span className="text-sm">AI Storybook</span>
                             </label>
                         </div>
 
@@ -1561,6 +1609,16 @@ function RouteComponent() {
                                         {includeAIGeneratedVideo && (
                                             <span className="rounded-md bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700">
                                                 AI Generated Video
+                                            </span>
+                                        )}
+                                        {includeAISlides && (
+                                            <span className="rounded-md bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700">
+                                                AI Slides
+                                            </span>
+                                        )}
+                                        {includeAIStorybook && (
+                                            <span className="rounded-md bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700">
+                                                AI Storybook
                                             </span>
                                         )}
                                     </div>

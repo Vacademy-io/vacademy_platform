@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 /* eslint-disable */
 import { createYooptaEditor } from '@yoopta/editor';
 import React, { useEffect, useMemo, useRef, useCallback, type ChangeEvent, Suspense } from 'react';
@@ -58,7 +61,7 @@ import { createQuizSlidePayload } from './quiz/utils/api-helpers';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { processHtmlImages, containsBase64Images, getBase64ImagesSize } from '@/utils/image-processing';
@@ -84,7 +87,8 @@ export const SlideMaterial = ({
         const accessToken = getTokenFromCookie(TokenKey.accessToken);
         const roles = getUserRoles(accessToken);
         const isAdmin = roles.includes('ADMIN');
-        const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+        const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
         const cached = getDisplaySettingsFromCache(roleKey);
         if (cached) {
             setRoleDisplay(cached);

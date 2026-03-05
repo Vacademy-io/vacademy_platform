@@ -48,16 +48,15 @@ function stripHtml(html: string): string {
 const SlideTypePreview = memo(({ slide }: PreviewProps) => {
     const [svg, setSvg] = useState<string | null>(null);
     const [previewError, setPreviewError] = useState(false);
-    let isMounted = true;
 
     useEffect(() => {
-        isMounted = true;
+        let isMounted = true;
         setPreviewError(false);
         setSvg(null);
 
         const generateThumbnail = async () => {
             if (slide.type === SlideTypeEnum.Quiz || slide.type === SlideTypeEnum.Feedback) {
-                return; 
+                return;
             }
             const excalidrawSlide = slide as ExcalidrawSlideData;
             if (!excalidrawSlide.elements || excalidrawSlide.elements.length === 0) {
@@ -166,10 +165,8 @@ const SlideTypePreview = memo(({ slide }: PreviewProps) => {
                             alt="Slide thumbnail"
                             className="pointer-events-none h-full w-full bg-white object-contain"
                             onError={() => {
-                                if (isMounted) {
-                                    setSvg(null);
-                                    setPreviewError(true);
-                                }
+                                setSvg(null);
+                                setPreviewError(true);
                             }}
                         />
                     </div>

@@ -1,6 +1,6 @@
 import { useEditorStore } from '../-stores/editor-store';
 import { Button } from '@/components/ui/button';
-import { Settings, Plus, Copy, Trash2, MoreVertical } from 'lucide-react';
+import { Settings, Plus, Copy, Trash2, MoreVertical, Globe, EyeOff } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -14,9 +14,29 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/components/ui/dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useState } from 'react';
+
+// Converts arbitrary text into a safe URL slug: lowercase, hyphens, no special chars
+const toSlug = (value: string) =>
+    value
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
 
 export const PageTabs = () => {
     const {
@@ -28,19 +48,24 @@ export const PageTabs = () => {
         addPage,
         deletePage,
         duplicatePage,
+        togglePagePublished,
     } = useEditorStore();
 
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [newPageRoute, setNewPageRoute] = useState('');
     const [newPageTitle, setNewPageTitle] = useState('');
+    const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
     if (!config) return null;
 
+    const slugPreview = toSlug(newPageRoute);
+    const isRouteConflict = !!slugPreview && config.pages.some((p) => p.route === slugPreview);
+
     const handleAddPage = () => {
-        if (!newPageRoute.trim()) return;
+        if (!slugPreview || isRouteConflict) return;
         const newPage = {
             id: `page-${Date.now()}`,
-            route: newPageRoute.trim().toLowerCase().replace(/\s+/g, '-'),
+            route: slugPreview,
             title: newPageTitle.trim() || undefined,
             components: [],
         };
@@ -51,13 +76,13 @@ export const PageTabs = () => {
     };
 
     const handleDeletePage = (pageId: string) => {
-        if (config.pages.length <= 1) {
-            alert('Cannot delete the last page');
-            return;
-        }
-        if (confirm('Are you sure you want to delete this page?')) {
-            deletePage(pageId);
-        }
+        if (config.pages.length <= 1) return; // button is disabled, but guard anyway
+        setDeleteTarget(pageId);
+    };
+
+    const confirmDelete = () => {
+        if (deleteTarget) deletePage(deleteTarget);
+        setDeleteTarget(null);
     };
 
     return (
@@ -79,8 +104,12 @@ export const PageTabs = () => {
                             variant={selectedPageId === page.id ? 'secondary' : 'ghost'}
                             size="sm"
                             onClick={() => selectPage(page.id)}
-                            className="pr-1"
+                            className="gap-1.5 pr-1"
                         >
+                            <span
+                                className={`size-2 rounded-full ${page.published ? 'bg-green-500' : 'bg-gray-300'}`}
+                                title={page.published ? 'Published' : 'Draft'}
+                            />
                             {page.title || page.route}
                         </Button>
                         <DropdownMenu>
@@ -94,6 +123,19 @@ export const PageTabs = () => {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
+                                <DropdownMenuItem onClick={() => togglePagePublished(page.id)}>
+                                    {page.published ? (
+                                        <>
+                                            <EyeOff className="mr-2 size-4" />
+                                            Set as Draft
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Globe className="mr-2 size-4 text-green-600" />
+                                            Publish
+                                        </>
+                                    )}
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => duplicatePage(page.id)}>
                                     <Copy className="mr-2 size-4" />
                                     Duplicate
@@ -101,6 +143,7 @@ export const PageTabs = () => {
                                 <DropdownMenuItem
                                     onClick={() => handleDeletePage(page.id)}
                                     className="text-red-600"
+                                    disabled={config.pages.length <= 1}
                                 >
                                     <Trash2 className="mr-2 size-4" />
                                     Delete
@@ -120,6 +163,28 @@ export const PageTabs = () => {
                 </Button>
             </div>
 
+            {/* Delete confirmation */}
+            <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete page?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently remove the page and all its components. This
+                            action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={confirmDelete}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             {/* Add Page Dialog */}
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
                 <DialogContent className="sm:max-w-md">
@@ -134,7 +199,18 @@ export const PageTabs = () => {
                                 value={newPageRoute}
                                 onChange={(e) => setNewPageRoute(e.target.value)}
                                 placeholder="e.g., about-us"
+                                className={isRouteConflict ? 'border-red-400' : ''}
                             />
+                            {slugPreview && slugPreview !== newPageRoute && (
+                                <p className="text-xs text-gray-400">
+                                    Slug: <span className="font-mono">{slugPreview}</span>
+                                </p>
+                            )}
+                            {isRouteConflict && (
+                                <p className="text-xs text-red-500">
+                                    A page with this route already exists.
+                                </p>
+                            )}
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="title">Page Title (Optional)</Label>
@@ -150,7 +226,7 @@ export const PageTabs = () => {
                         <Button variant="outline" onClick={() => setShowAddDialog(false)}>
                             Cancel
                         </Button>
-                        <Button onClick={handleAddPage} disabled={!newPageRoute.trim()}>
+                        <Button onClick={handleAddPage} disabled={!slugPreview || isRouteConflict}>
                             Add Page
                         </Button>
                     </DialogFooter>

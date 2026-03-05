@@ -1,3 +1,6 @@
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getInstituteId } from '@/constants/helper';
+import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 // class-study-material.tsx
 import { useRouter } from '@tanstack/react-router';
 import { useMutation } from '@tanstack/react-query';
@@ -55,7 +58,7 @@ import { TeachersList } from './teacher-list';
 import AddTeachers from '@/routes/dashboard/-components/AddTeachers';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
 // Interfaces (assuming these are unchanged)
@@ -95,7 +98,8 @@ export const SubjectMaterial = () => {
     const accessToken = document?.cookie || '';
     // Simple check from existing stores would be better; fallback to ADMIN=false
     const isAdminRole = (accessToken.includes('roles=') && accessToken.includes('ADMIN')) || false;
-    const roleKey = isAdminRole ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+    const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
+    const roleKey = getActiveRoleDisplaySettingsKey();
     const roleDisplay = getDisplaySettingsFromCache(roleKey);
     const showNumbering = roleDisplay?.coursePage?.viewContentNumbering !== false;
     const router = useRouter();

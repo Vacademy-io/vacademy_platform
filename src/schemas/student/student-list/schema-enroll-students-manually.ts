@@ -10,7 +10,7 @@ export const stepOneSchema = z.object({
 export const stepTwoSchema = z.object({
     // Core mandatory fields (always required)
     full_name: z.string().min(1, 'Full name is required'),
-    email: z.string().email('Invalid email format'),
+    email: z.string().email('Invalid email format').optional().or(z.literal('')),
     mobile_number: z.string().min(1, 'Mobile number is required'),
 
     // Optional system fields (based on cache visibility)

@@ -16,6 +16,19 @@ export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
 export const UPDATE_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/ai-settings/v1/update?institute_id=${instituteId}`;
 
+// Institute Video Branding APIs (intro/outro/watermark HTML)
+export const GET_VIDEO_BRANDING = (instituteId: string) =>
+    `${AI_SERVICE_BASE_URL}/institute/video-branding/v1/get?institute_id=${instituteId}`;
+export const UPDATE_VIDEO_BRANDING = (instituteId: string) =>
+    `${AI_SERVICE_BASE_URL}/institute/video-branding/v1/update?institute_id=${instituteId}`;
+
+// Institute Video Style APIs (brand colors, fonts, layout theme)
+export const GET_VIDEO_STYLE = (instituteId: string) =>
+    `${AI_SERVICE_BASE_URL}/institute/video-style/v1/get?institute_id=${instituteId}`;
+export const UPDATE_VIDEO_STYLE = (instituteId: string) =>
+    `${AI_SERVICE_BASE_URL}/institute/video-style/v1/update?institute_id=${instituteId}`;
+export const GET_VIDEO_TEMPLATES = () => `${AI_SERVICE_BASE_URL}/institute/video-templates/v1/list`;
+
 // Institute IDs from environment variables for multi-org deployment
 export const SSDC_INSTITUTE_ID =
     import.meta.env.VITE_SSDC_INSTITUTE_ID || '69ca11c6-54e1-4e99-9498-50c9a4272ce6';
@@ -34,6 +47,8 @@ export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/in
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
+export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
+export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const GET_CUSTOM_FIELD_SETUP = `${BASE_URL}/admin-core-service/common/custom-fields/setup`;
 
 // Field Mapping
@@ -93,6 +108,7 @@ export const STUDENT_CSV_UPLOAD_URL = `${BASE_URL}/admin-core-service/institute/
 export const STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/admin/get-student-report`;
 export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/admin/participants/get-report-detail`;
 export const GET_INSTITUTE_USERS = `${BASE_URL}/auth-service/v1/user-roles/users-of-status`;
+export const GET_USER_AUTOSUGGEST = `${BASE_URL}/auth-service/v1/user/autosuggest-users`;
 export const INVITE_USERS_URL = `${BASE_URL}/auth-service/v1/user-invitation/invite`;
 export const INVITE_TEACHERS_URL = `${BASE_URL}/admin-core-service/institute/v1/faculty/assign-subjects-and-batches`;
 export const GET_FACULTY_USER_ACCESS_DETAILS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access-details`;
@@ -523,6 +539,7 @@ export const UPDATE_CATALOGUE = (catalogueId: string) =>
 export const GET_CATALOGUE_BY_TAG = (instituteId: string, tagName: string) =>
     `${CATALOGUE_BASE_URL}/institute/get/by-tag?instituteId=${instituteId}&tagName=${encodeURIComponent(tagName)}`;
 
+export const LINK_COUNSELLOR = `${BASE_URL}/admin-core-service/enquiry/link-counselor`;
 // Booking System URLs
 export const BOOKING_BASE = `${BASE_URL}/admin-core-service/booking/v1`;
 
@@ -558,3 +575,8 @@ export const ROLES_BASE = `${BASE_URL}/auth-service/v1/institute`;
 // Role Display Settings
 export const GET_ALL_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/setting/get-all`;
 export const SAVE_GENERIC_SETTING = `${BASE_URL}/admin-core-service/institute/v1/setting/generic/save`;
+
+// Application Stage
+export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/application/stage`;
+
+export const GET_APPLICATION_STAGES = `${BASE_URL}/admin-core-service/v1/application/stages`;

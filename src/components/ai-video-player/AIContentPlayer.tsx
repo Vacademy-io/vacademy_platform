@@ -22,12 +22,18 @@ import {
     Volume2,
     Subtitles,
     Repeat,
+    BookOpen,
+    List,
+    HelpCircle,
+    CheckCircle2,
+    XCircle,
 } from 'lucide-react';
 import {
     Entry,
     TimelineMeta,
     AIContentPlayerProps,
     CONTENT_TYPE_LABELS,
+    MCQQuestion,
     formatEntryLabel,
     getDefaultMeta,
 } from './types';
@@ -38,6 +44,13 @@ import {
     generateStorybookHtml,
     generateQuizHtml,
     generateConversationHtml,
+    generateWorksheetHtml,
+    generatePuzzleHtml,
+    generateMapRegionHtml,
+    generateGameHtml,
+    generateSimulationHtml,
+    generateCodePlaygroundHtml,
+    generateSlidesHtml,
 } from './html-processor';
 import { initializeLibraries } from './library-loader';
 import { useCaptions } from './hooks/useCaptions';
@@ -97,6 +110,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [scale, setScale] = useState(1);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [containerWidth, setContainerWidth] = useState(0);
 
     // Time-driven state (for VIDEO)
     const [currentTime, setCurrentTime] = useState(0);
@@ -108,6 +122,19 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const [isPausedForEngagement, setIsPausedForEngagement] = useState(false);
     const [lastEngagedEntryId, setLastEngagedEntryId] = useState<string | null>(null);
     const [isFocusMode, setIsFocusMode] = useState(false);
+
+    // Glossary panel state
+    const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
+    const [seenGlossaryTerms, setSeenGlossaryTerms] = useState<Array<{ term: string; time: number }>>([]);
+
+    // Chapters panel state
+    const [isChaptersOpen, setIsChaptersOpen] = useState(false);
+
+    // MCQ quiz state
+    const [questionsEnabled, setQuestionsEnabled] = useState(true);
+    const [activeQuestion, setActiveQuestion] = useState<MCQQuestion | null>(null);
+    const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+    const answeredQuestionsRef = useRef<Set<number>>(new Set());
 
     // User-driven state (for QUIZ, STORYBOOK, etc.)
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -123,12 +150,16 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const playStartTimeRef = useRef(0);
     const introStartTimeRef = useRef(0);
     const isPlayingRef = useRef(false); // Ref to avoid stale closure issues
+    const contentIframeRef = useRef<HTMLIFrameElement>(null); // Ref to the primary content iframe (for print)
 
     const scaleCalculator = useMemo(() => new ScaleCalculator(width, height), [width, height]);
 
     // Computed values
     const contentType = meta.content_type;
     const navigationMode = meta.navigation;
+    // Compact mode: hide text labels in controls when player is too narrow for them (tablet/mobile)
+    // At ~700px wide, text labels on Focus/Chapters/Quiz buttons push fullscreen off-screen
+    const isCompact = containerWidth > 0 && containerWidth < 700;
 
     // Captions hook (only for time-driven content with audio)
     const {
@@ -353,6 +384,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                 if (clientWidth > 0 && clientHeight > 0) {
                     const newScale = scaleCalculator.calculateScale(clientWidth, clientHeight);
                     setScale(newScale);
+                    setContainerWidth(clientWidth);
                 }
             }
         };
@@ -414,6 +446,17 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     useEffect(() => {
         isPlayingRef.current = isPlaying;
     }, [isPlaying]);
+
+    // Accumulate glossary terms as video time passes their introduction point
+    useEffect(() => {
+        if (!meta.glossary || navigationMode !== 'time_driven') return;
+        const newTerms = meta.glossary.filter(
+            (g) => g.time <= currentTime && !seenGlossaryTerms.some((s) => s.term === g.term)
+        );
+        if (newTerms.length > 0) {
+            setSeenGlossaryTerms((prev) => [...prev, ...newTerms]);
+        }
+    }, [currentTime, meta.glossary, navigationMode]);
 
     const animateIntro = useCallback(() => {
         // Use ref instead of state to avoid stale closure issues
@@ -686,6 +729,9 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
             audioStartedRef.current = false;
             setCurrentTime(0);
             setIsPlaying(false);
+            setActiveQuestion(null);
+            setSelectedAnswer(null);
+            answeredQuestionsRef.current.clear();
         } else {
             setCurrentIndex(0);
             if (entries[0]) {
@@ -704,17 +750,46 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         }
     }, []);
 
-    // Print handler for WORKSHEET
+    // Print handler for WORKSHEET — prints only the content iframe, not the whole page
     const handlePrint = useCallback(() => {
-        window.print();
+        const iframe = contentIframeRef.current;
+        if (iframe?.contentWindow) {
+            iframe.contentWindow.print();
+        } else {
+            window.print();
+        }
     }, []);
 
-    // Text-to-speech for CONVERSATION
-    const handleSpeak = useCallback((text: string) => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
-        speechSynthesis.speak(utterance);
-    }, []);
+    // Text-to-speech for CONVERSATION — language resolved from timeline meta
+    const handleSpeak = useCallback(
+        (text: string) => {
+            const LANGUAGE_TO_BCP47: Record<string, string> = {
+                english: 'en-US',
+                'english (us)': 'en-US',
+                'english (uk)': 'en-GB',
+                'english (india)': 'en-IN',
+                hindi: 'hi-IN',
+                bengali: 'bn-IN',
+                tamil: 'ta-IN',
+                telugu: 'te-IN',
+                marathi: 'mr-IN',
+                kannada: 'kn-IN',
+                gujarati: 'gu-IN',
+                malayalam: 'ml-IN',
+                french: 'fr-FR',
+                spanish: 'es-ES',
+                german: 'de-DE',
+                japanese: 'ja-JP',
+                chinese: 'zh-CN',
+            };
+            const langKey = (meta.language || 'English').toLowerCase().trim();
+            const bcp47 = LANGUAGE_TO_BCP47[langKey] || 'en-US';
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = bcp47;
+            speechSynthesis.speak(utterance);
+        },
+        [meta.language]
+    );
 
     // Fullscreen change listener
     useEffect(() => {
@@ -775,22 +850,42 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     htmlContent = generateTimelineHtml(entry, currentIndex, entries);
                 }
             } else if (contentType === 'FLASHCARDS') {
-                // Always generate premium flashcard HTML from metadata to ensure consistent UI
-                // unless it's already using our specific class structure
-                if (!htmlContent || !htmlContent.includes('flashcard-stage')) {
+                // Fall back to client-side generator only when the HTML is clearly a placeholder
+                // (empty, very short, or the stock backend fallback). Preserve real LLM HTML.
+                const isPlaceholder =
+                    !htmlContent ||
+                    htmlContent.length < 80 ||
+                    htmlContent.includes('<div>Card');
+                if (isPlaceholder) {
                     htmlContent = generateFlashcardHtml(entry, currentIndex, entries);
                 }
             } else if (contentType === 'STORYBOOK') {
-                if (!htmlContent || !htmlContent.includes('storybook-page')) {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Page')) {
                     htmlContent = generateStorybookHtml(entry, currentIndex, entries);
                 }
             } else if (contentType === 'QUIZ') {
-                if (!htmlContent || !htmlContent.includes('quiz-container')) {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Question')) {
                     htmlContent = generateQuizHtml(entry, currentIndex, entries);
                 }
             } else if (contentType === 'CONVERSATION') {
-                if (!htmlContent || !htmlContent.includes('conversation-container')) {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Exchange')) {
                     htmlContent = generateConversationHtml(entry, currentIndex, entries);
+                }
+            } else if (contentType === 'WORKSHEET') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Exercise')) {
+                    htmlContent = generateWorksheetHtml(entry, currentIndex, entries);
+                }
+            } else if (contentType === 'PUZZLE_BOOK') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Puzzle')) {
+                    htmlContent = generatePuzzleHtml(entry, currentIndex, entries);
+                }
+            } else if (contentType === 'MAP_EXPLORATION') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Region')) {
+                    htmlContent = generateMapRegionHtml(entry, currentIndex, entries);
+                }
+            } else if (contentType === 'SLIDES') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Slide')) {
+                    htmlContent = generateSlidesHtml(entry, currentIndex, entries);
                 }
             }
 
@@ -801,18 +896,91 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                 },
             ];
         } else {
-            // For GAME, SIMULATION, CODE_PLAYGROUND: show first entry only
+            // SELF_CONTAINED: INTERACTIVE_GAME, SIMULATION, CODE_PLAYGROUND
             const entry = entries[0];
             if (!entry) return [];
+
+            let htmlContent = entry.html;
+            if (contentType === 'INTERACTIVE_GAME') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Game Container')) {
+                    htmlContent = generateGameHtml(entry);
+                }
+            } else if (contentType === 'SIMULATION') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Simulation')) {
+                    htmlContent = generateSimulationHtml(entry);
+                }
+            } else if (contentType === 'CODE_PLAYGROUND') {
+                if (!htmlContent || htmlContent.length < 80 || htmlContent.includes('<div>Code Playground')) {
+                    htmlContent = generateCodePlaygroundHtml(entry);
+                }
+            }
 
             return [
                 {
                     ...entry,
-                    processedHtml: processHtmlContent(entry.html, contentType),
+                    processedHtml: processHtmlContent(htmlContent, contentType),
                 },
             ];
         }
     }, [entries, currentTime, currentIndex, navigationMode, contentType]);
+
+    // Current chapter index (highest chapter whose start time <= currentTime)
+    // MUST be before early returns to satisfy Rules of Hooks
+    const currentChapterIndex = useMemo(() => {
+        if (!meta.chapters || meta.chapters.length === 0 || navigationMode !== 'time_driven') return -1;
+        let idx = 0;
+        for (let i = 0; i < meta.chapters.length; i++) {
+            if (currentTime >= meta.chapters[i]!.time) idx = i;
+        }
+        return idx;
+    }, [currentTime, meta.chapters, navigationMode]);
+
+    // =====================================================
+    // MCQ QUESTION TRIGGERING
+    // =====================================================
+
+    // Pause video and show MCQ overlay when currentTime crosses a question's timestamp
+    useEffect(() => {
+        if (
+            navigationMode !== 'time_driven' ||
+            !questionsEnabled ||
+            !meta.questions?.length ||
+            activeQuestion ||
+            !isPlaying
+        ) return;
+
+        for (const q of meta.questions) {
+            if (currentTime >= q.time && !answeredQuestionsRef.current.has(q.time)) {
+                // Mark immediately (synchronous ref write) so subsequent effect runs
+                // from stale renders before state commits cannot re-trigger this question.
+                answeredQuestionsRef.current.add(q.time);
+                // Pause all playback
+                if (audioRef.current) audioRef.current.pause();
+                if (avatarRef.current) avatarRef.current.pause();
+                if (animationFrameRef.current) {
+                    cancelAnimationFrame(animationFrameRef.current);
+                    animationFrameRef.current = null;
+                }
+                isPlayingRef.current = false;
+                setIsPlaying(false);
+                setActiveQuestion(q);
+                break;
+            }
+        }
+    }, [currentTime, navigationMode, questionsEnabled, meta.questions, activeQuestion, isPlaying]);
+
+    // Dismiss active question (after answering or skipping) and resume playback
+    const handleDismissQuestion = useCallback(() => {
+        setActiveQuestion(null);
+        setSelectedAnswer(null);
+        // Resume audio from current position
+        if (audioRef.current && audioStartedRef.current) {
+            audioRef.current.play().catch(console.error);
+            if (avatarRef.current) avatarRef.current.play().catch(() => {});
+        }
+        isPlayingRef.current = true;
+        setIsPlaying(true);
+    }, [activeQuestion]);
 
     // =====================================================
     // MESSAGE HANDLING (Inter-iframe communication)
@@ -838,6 +1006,10 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     break;
                 case 'NAVIGATE_PREV':
                     handlePrev();
+                    break;
+                case 'SPEAK':
+                    // TTS request from within an iframe (e.g. per-bubble audio buttons in CONVERSATION)
+                    if (payload?.text) handleSpeak(payload.text);
                     break;
             }
         };
@@ -932,12 +1104,15 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     position: 'relative',
                 }}
                 onMouseEnter={(e) => {
+                    // Only manage opacity for time_driven — user_driven/self_contained controls are always visible
+                    if (navigationMode !== 'time_driven') return;
                     const controls = e.currentTarget.querySelector(
                         '.video-controls-overlay'
                     ) as HTMLElement;
                     if (controls) controls.style.opacity = '1';
                 }}
                 onMouseLeave={(e) => {
+                    if (navigationMode !== 'time_driven') return;
                     const controls = e.currentTarget.querySelector(
                         '.video-controls-overlay'
                     ) as HTMLElement;
@@ -977,6 +1152,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             {activeEntries.map((entry, index) => (
                                 <iframe
                                     key={`entry-${entry.id}-${index}`}
+                                    ref={index === 0 ? contentIframeRef : undefined}
                                     srcDoc={entry.processedHtml}
                                     style={{
                                         width: '100%',
@@ -994,7 +1170,14 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                                 : 'auto',
                                     }}
                                     title={`Content Layer ${entry.id}`}
-                                    sandbox="allow-scripts allow-same-origin"
+                                    sandbox={
+                                        // CODE_PLAYGROUND must NOT have allow-same-origin together with allow-scripts
+                                        // (that combination defeats the sandbox). Scripts-only is sufficient for code execution.
+                                        // All other types keep allow-same-origin so their CDN libraries and inline scripts work.
+                                        contentType === 'CODE_PLAYGROUND'
+                                            ? 'allow-scripts'
+                                            : 'allow-scripts allow-same-origin'
+                                    }
                                 />
                             ))}
                         </div>
@@ -1103,8 +1286,172 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     </div>
                 )}
 
+                {/* MCQ Question Overlay */}
+                {activeQuestion && (
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'rgba(0, 0, 0, 0.72)',
+                            backdropFilter: 'blur(6px)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 55,
+                            padding: '24px',
+                        }}
+                    >
+                        <div style={{
+                            background: '#0f172a',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: '16px',
+                            padding: '28px 32px',
+                            maxWidth: '640px',
+                            width: '100%',
+                            boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+                            animation: 'slideUpBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+                        }}>
+                            {/* Header */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                                <HelpCircle style={{ color: '#60a5fa', flexShrink: 0 }} size={18} />
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                                    Quick Check
+                                </span>
+                                <div style={{ flex: 1 }} />
+                                <button
+                                    onClick={handleDismissQuestion}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)', fontSize: '12px', padding: '2px 6px' }}
+                                >
+                                    Skip
+                                </button>
+                            </div>
+
+                            {/* Question */}
+                            <p style={{ color: '#f1f5f9', fontSize: '16px', fontWeight: 600, lineHeight: 1.5, marginBottom: '20px' }}>
+                                {activeQuestion.question}
+                            </p>
+
+                            {/* Options */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                                {activeQuestion.options.map((option, i) => {
+                                    const isSelected = selectedAnswer === i;
+                                    const isCorrect = i === activeQuestion.correct;
+                                    const hasAnswered = selectedAnswer !== null;
+
+                                    let bg = 'rgba(255,255,255,0.05)';
+                                    let border = 'rgba(255,255,255,0.1)';
+                                    let color = '#e2e8f0';
+
+                                    if (hasAnswered) {
+                                        if (isCorrect) {
+                                            bg = 'rgba(34, 197, 94, 0.15)';
+                                            border = '#22c55e';
+                                            color = '#bbf7d0';
+                                        } else if (isSelected && !isCorrect) {
+                                            bg = 'rgba(239, 68, 68, 0.15)';
+                                            border = '#ef4444';
+                                            color = '#fca5a5';
+                                        }
+                                    } else if (isSelected) {
+                                        bg = 'rgba(96, 165, 250, 0.15)';
+                                        border = '#60a5fa';
+                                        color = '#bfdbfe';
+                                    }
+
+                                    return (
+                                        <button
+                                            key={i}
+                                            onClick={() => !hasAnswered && setSelectedAnswer(i)}
+                                            disabled={hasAnswered}
+                                            style={{
+                                                background: bg,
+                                                border: `1px solid ${border}`,
+                                                borderRadius: '10px',
+                                                padding: '12px 16px',
+                                                cursor: hasAnswered ? 'default' : 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '12px',
+                                                transition: 'all 0.15s ease',
+                                                textAlign: 'left',
+                                                width: '100%',
+                                            }}
+                                        >
+                                            <span style={{
+                                                width: '26px',
+                                                height: '26px',
+                                                borderRadius: '50%',
+                                                background: 'rgba(255,255,255,0.08)',
+                                                border: `1px solid ${border}`,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: '12px',
+                                                fontWeight: 700,
+                                                color: color,
+                                                flexShrink: 0,
+                                            }}>
+                                                {String.fromCharCode(65 + i)}
+                                            </span>
+                                            <span style={{ color, fontSize: '14px', fontWeight: 500 }}>{option}</span>
+                                            {hasAnswered && isCorrect && (
+                                                <CheckCircle2 size={16} style={{ color: '#22c55e', marginLeft: 'auto', flexShrink: 0 }} />
+                                            )}
+                                            {hasAnswered && isSelected && !isCorrect && (
+                                                <XCircle size={16} style={{ color: '#ef4444', marginLeft: 'auto', flexShrink: 0 }} />
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Explanation (shown after answering) */}
+                            {selectedAnswer !== null && activeQuestion.explanation && (
+                                <div style={{
+                                    background: 'rgba(96, 165, 250, 0.08)',
+                                    border: '1px solid rgba(96, 165, 250, 0.2)',
+                                    borderRadius: '8px',
+                                    padding: '12px 14px',
+                                    marginBottom: '16px',
+                                    fontSize: '13px',
+                                    color: '#94a3b8',
+                                    lineHeight: 1.6,
+                                }}>
+                                    <span style={{ fontWeight: 700, color: '#60a5fa' }}>Explanation: </span>
+                                    {activeQuestion.explanation}
+                                </div>
+                            )}
+
+                            {/* Continue button (shown after answering) */}
+                            {selectedAnswer !== null && (
+                                <button
+                                    onClick={handleDismissQuestion}
+                                    style={{
+                                        width: '100%',
+                                        background: '#2563eb',
+                                        border: 'none',
+                                        borderRadius: '10px',
+                                        padding: '12px',
+                                        color: 'white',
+                                        fontSize: '14px',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '8px',
+                                    }}
+                                >
+                                    Continue <Play size={14} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Captions / Subtitles Display */}
-                {navigationMode === 'time_driven' && wordsUrl && (
+                {(navigationMode === 'time_driven' || contentType === 'STORYBOOK' || contentType === 'FLASHCARDS') && wordsUrl && (
                     <CaptionDisplay
                         words={currentWords}
                         currentTime={currentTime}
@@ -1113,6 +1460,141 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                         currentPhrase={currentPhrase}
                         currentWordIndex={currentWordIndex}
                     />
+                )}
+
+                {/* Chapters Panel — slides in from left when open */}
+                {isChaptersOpen && meta.chapters && meta.chapters.length > 0 && (
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'absolute',
+                            top: '12px',
+                            left: '12px',
+                            width: '280px',
+                            maxHeight: '65%',
+                            background: 'rgba(10, 15, 25, 0.92)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            zIndex: 35,
+                            overflowY: 'auto',
+                            backdropFilter: 'blur(10px)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            boxSizing: 'border-box',
+                        }}
+                    >
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
+                            Chapters ({meta.chapters.length})
+                        </div>
+                        {meta.chapters.map((chapter, i) => {
+                            const isActive = i === currentChapterIndex;
+                            return (
+                                <div
+                                    key={i}
+                                    onClick={() => {
+                                        setCurrentTime(chapter.time);
+                                        if (chapter.time >= meta.audio_start_at && audioRef.current) {
+                                            audioRef.current.currentTime = chapter.time - meta.audio_start_at;
+                                            audioStartedRef.current = true;
+                                            if (isPlaying) audioRef.current.play().catch(console.error);
+                                        }
+                                        setIsChaptersOpen(false);
+                                    }}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '8px 10px',
+                                        marginBottom: '5px',
+                                        borderRadius: '7px',
+                                        background: isActive ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255,255,255,0.05)',
+                                        border: `1px solid ${isActive ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255,255,255,0.08)'}`,
+                                        cursor: 'pointer',
+                                        transition: 'background 0.15s ease',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                        {isActive && (
+                                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                                        )}
+                                        {!isActive && (
+                                            <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', fontFamily: 'monospace', flexShrink: 0, width: '14px', textAlign: 'right' }}>
+                                                {i + 1}
+                                            </span>
+                                        )}
+                                        <span style={{
+                                            color: isActive ? '#fca5a5' : '#e2e8f0',
+                                            fontSize: '13px',
+                                            fontWeight: isActive ? 700 : 400,
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                        }}>
+                                            {chapter.label}
+                                        </span>
+                                    </div>
+                                    <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', fontFamily: 'monospace', marginLeft: '8px', flexShrink: 0 }}>
+                                        {formatTime(chapter.time)}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Glossary Panel — slides in from right when open */}
+                {isGlossaryOpen && seenGlossaryTerms.length > 0 && (
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            position: 'absolute',
+                            top: '12px',
+                            right: '12px',
+                            width: '260px',
+                            maxHeight: '65%',
+                            background: 'rgba(10, 15, 25, 0.92)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            zIndex: 35,
+                            overflowY: 'auto',
+                            backdropFilter: 'blur(10px)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            boxSizing: 'border-box',
+                        }}
+                    >
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '10px' }}>
+                            Key Terms
+                        </div>
+                        {seenGlossaryTerms.map((item, i) => (
+                            <div
+                                key={i}
+                                title={`Jump to ${formatTime(item.time)}`}
+                                onClick={() => {
+                                    setCurrentTime(item.time);
+                                    if (item.time >= meta.audio_start_at && audioRef.current) {
+                                        audioRef.current.currentTime = item.time - meta.audio_start_at;
+                                        audioStartedRef.current = true;
+                                        if (isPlaying) audioRef.current.play().catch(console.error);
+                                    }
+                                }}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '7px 10px',
+                                    marginBottom: '5px',
+                                    borderRadius: '7px',
+                                    background: 'rgba(59, 130, 246, 0.12)',
+                                    border: '1px solid rgba(59, 130, 246, 0.25)',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <span style={{ color: '#e2e8f0', fontSize: '13px', fontWeight: 600 }}>{item.term}</span>
+                                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '11px', fontFamily: 'monospace', marginLeft: '8px', flexShrink: 0 }}>
+                                    {formatTime(item.time)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
                 )}
 
                 {/* Controls Overlay */}
@@ -1128,13 +1610,65 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             ? 'linear-gradient(transparent, rgba(0,0,0,0.8))'
                             : 'linear-gradient(rgba(0,0,0,0.8), transparent)',
                         padding: isFullscreen ? '40px 16px 16px 16px' : '16px 16px 40px 16px',
-                        opacity: isFullscreen ? 1 : 0,
+                        // For user_driven/self_contained, controls are always visible (no hover needed — navigation IS the UI)
+                        // For time_driven, controls fade in on hover (standard video player behaviour)
+                        opacity: isFullscreen || navigationMode !== 'time_driven' ? 1 : 0,
                         transition: 'opacity 0.3s ease',
                         zIndex: 10,
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    {/* Progress Bar (only for time_driven) */}
+                    {/* Progress Bar — time scrubber for time_driven, step dots for user_driven */}
+                    {navigationMode === 'user_driven' && entries.length > 1 && (
+                        <div
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                marginBottom: '12px',
+                                padding: '4px 0',
+                            }}
+                        >
+                            {entries.map((_, i) => (
+                                <div
+                                    key={i}
+                                    onClick={() => {
+                                        setCurrentIndex(i);
+                                        onEntryChange?.(i, entries[i]!);
+                                    }}
+                                    title={`${meta.entry_label} ${i + 1}`}
+                                    style={{
+                                        flex: 1,
+                                        height: '4px',
+                                        borderRadius: '2px',
+                                        background: i <= currentIndex ? '#ef4444' : 'rgba(255,255,255,0.25)',
+                                        cursor: 'pointer',
+                                        transition: 'background 0.2s ease',
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    )}
+                    {/* Current chapter name — shown above progress bar for time_driven */}
+                    {navigationMode === 'time_driven' && meta.chapters && meta.chapters.length > 0 && currentChapterIndex >= 0 && (
+                        <div style={{
+                            fontSize: '11px',
+                            color: 'rgba(255,255,255,0.65)',
+                            marginBottom: '4px',
+                            fontWeight: 600,
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                        }}>
+                            <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                            {meta.chapters[currentChapterIndex]?.label}
+                            <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>
+                                {currentChapterIndex + 1} / {meta.chapters.length}
+                            </span>
+                        </div>
+                    )}
                     {navigationMode === 'time_driven' && (
                         <div
                             className="video-progress"
@@ -1153,7 +1687,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     width: '100%',
                                     background: 'rgba(255, 255, 255, 0.2)',
                                     borderRadius: '3px',
-                                    overflow: 'hidden',
+                                    overflow: 'visible',
                                     position: 'relative',
                                 }}
                             >
@@ -1165,9 +1699,37 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                         bottom: 0,
                                         width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
                                         background: '#ef4444',
-                                        transition: 'width 0.1s linear'
+                                        transition: 'width 0.1s linear',
+                                        borderRadius: '3px',
                                     }}
                                 />
+                                {/* Chapter tick marks */}
+                                {meta.chapters && duration > 0 && meta.chapters.map((chapter, i) => (
+                                    <div
+                                        key={i}
+                                        title={chapter.label}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCurrentTime(chapter.time);
+                                            if (chapter.time >= meta.audio_start_at && audioRef.current) {
+                                                audioRef.current.currentTime = chapter.time - meta.audio_start_at;
+                                                audioStartedRef.current = true;
+                                                if (isPlaying) audioRef.current.play().catch(console.error);
+                                            }
+                                        }}
+                                        style={{
+                                            position: 'absolute',
+                                            left: `${(chapter.time / duration) * 100}%`,
+                                            top: '-4px',
+                                            bottom: '-4px',
+                                            width: '2px',
+                                            background: 'rgba(255, 255, 255, 0.7)',
+                                            cursor: 'pointer',
+                                            zIndex: 2,
+                                            transform: 'translateX(-1px)',
+                                        }}
+                                    />
+                                ))}
                             </div>
                         </div>
                     )}
@@ -1178,7 +1740,9 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                         style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '16px',
+                            gap: isCompact ? '6px' : '16px',
+                            flexWrap: 'nowrap',
+                            minWidth: 0,
                         }}
                     >
                         {/* Time-driven controls */}
@@ -1198,15 +1762,17 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 <button onClick={handleReset} style={btnStyle} title="Restart">
                                     <RotateCcw className="size-5 text-white" />
                                 </button>
-                                <span style={timeStyle}>
-                                    {formatTime(currentTime)} / {formatTime(duration)}
+                                <span style={{ ...timeStyle, fontSize: isCompact ? '11px' : undefined }}>
+                                    {isCompact
+                                        ? formatTime(currentTime)
+                                        : `${formatTime(currentTime)} / ${formatTime(duration)}`}
                                 </span>
                                 <button
                                     onClick={handleSpeedChange}
                                     style={{
                                         ...btnStyle,
-                                        marginLeft: '4px',
-                                        padding: '2px 8px',
+                                        marginLeft: isCompact ? '0' : '4px',
+                                        padding: '2px 6px',
                                         borderRadius: '4px',
                                         background: 'rgba(255, 255, 255, 0.15)',
                                         color: 'white',
@@ -1243,41 +1809,51 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     )}
                                 </span>
 
-                                {/* STORYBOOK: Read Page Button */}
-                                {contentType === 'STORYBOOK' &&
-                                    pageAudioRanges.has(currentIndex) && (
-                                        <button
-                                            onClick={handleReadPage}
+                                {/* STORYBOOK: Read Page Button — always visible, disabled when audio not available */}
+                                {contentType === 'STORYBOOK' && (
+                                    <button
+                                        onClick={pageAudioRanges.has(currentIndex) ? handleReadPage : undefined}
+                                        disabled={!pageAudioRanges.has(currentIndex)}
+                                        style={{
+                                            ...btnStyle,
+                                            background: isPlaying
+                                                ? 'rgba(255, 255, 255, 0.2)'
+                                                : 'transparent',
+                                            borderRadius: '4px',
+                                            border: '1px solid rgba(255, 255, 255, 0.4)',
+                                            padding: '4px 12px',
+                                            margin: '0 8px',
+                                            display: 'flex',
+                                            gap: '6px',
+                                            opacity: pageAudioRanges.has(currentIndex) ? 1 : 0.35,
+                                            cursor: pageAudioRanges.has(currentIndex) ? 'pointer' : 'not-allowed',
+                                        }}
+                                        title={
+                                            !wordsUrl
+                                                ? 'Narration unavailable (no audio words provided)'
+                                                : !pageAudioRanges.has(currentIndex)
+                                                ? 'No narration for this page'
+                                                : isPlaying
+                                                ? 'Pause Narration'
+                                                : 'Read Page Aloud'
+                                        }
+                                    >
+                                        {isPlaying ? (
+                                            <Pause className="size-4 text-white" />
+                                        ) : (
+                                            <Volume2 className="size-4 text-white" />
+                                        )}
+                                        <span
                                             style={{
-                                                ...btnStyle,
-                                                background: isPlaying
-                                                    ? 'rgba(255, 255, 255, 0.2)'
-                                                    : 'transparent',
-                                                borderRadius: '4px',
-                                                border: '1px solid rgba(255, 255, 255, 0.4)',
-                                                padding: '4px 12px',
-                                                margin: '0 8px',
-                                                display: 'flex',
-                                                gap: '6px',
+                                                fontSize: '12px',
+                                                fontWeight: 600,
+                                                color: 'white',
                                             }}
-                                            title={isPlaying ? 'Pause Narration' : 'Read Page'}
                                         >
-                                            {isPlaying ? (
-                                                <Pause className="size-4 text-white" />
-                                            ) : (
-                                                <Volume2 className="size-4 text-white" />
-                                            )}
-                                            <span
-                                                style={{
-                                                    fontSize: '12px',
-                                                    fontWeight: 600,
-                                                    color: 'white',
-                                                }}
-                                            >
-                                                {isPlaying ? 'PAUSE' : 'READ ME'}
-                                            </span>
-                                        </button>
-                                    )}
+                                            {isPlaying ? 'PAUSE' : 'READ ME'}
+                                        </span>
+                                    </button>
+                                )}
 
                                 <button
                                     onClick={handleNext}
@@ -1293,8 +1869,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             </>
                         )}
 
-                        {/* Content type badge */}
-                        <span style={badgeStyle}>{CONTENT_TYPE_LABELS[contentType]}</span>
+                        {/* Content type badge — hidden in compact mode to save space */}
+                        {!isCompact && <span style={badgeStyle}>{CONTENT_TYPE_LABELS[contentType]}</span>}
 
                         {/* Focus Mode Toggle (Dynamic Playback Speed) */}
                         {navigationMode === 'time_driven' && (
@@ -1302,8 +1878,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 onClick={() => setIsFocusMode(!isFocusMode)}
                                 style={{
                                     ...btnStyle,
-                                    marginLeft: '12px',
-                                    padding: '4px 10px',
+                                    marginLeft: isCompact ? '0' : '12px',
+                                    padding: isCompact ? '4px 6px' : '4px 10px',
                                     borderRadius: '16px',
                                     border: `1px solid ${isFocusMode ? '#3b82f6' : 'rgba(255,255,255,0.3)'}`,
                                     background: isFocusMode ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
@@ -1311,11 +1887,95 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                     fontSize: '12px',
                                     fontWeight: 600,
                                     transition: 'all 0.2s ease',
+                                    display: 'flex',
+                                    alignItems: 'center',
                                 }}
                                 title="Focus Mode: Automatically slows down during complex diagrams"
                             >
-                                <span style={{ marginRight: '6px', fontSize: '14px' }}>🧠</span>
-                                FOCUS {isFocusMode ? 'ON' : 'OFF'}
+                                <span style={{ marginRight: isCompact ? '0' : '6px', fontSize: '14px' }}>🧠</span>
+                                {!isCompact && `FOCUS ${isFocusMode ? 'ON' : 'OFF'}`}
+                            </button>
+                        )}
+
+                        {/* Chapters Toggle (only when video has chapters) */}
+                        {navigationMode === 'time_driven' && meta.chapters && meta.chapters.length > 0 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsChaptersOpen(!isChaptersOpen); setIsGlossaryOpen(false); }}
+                                style={{
+                                    ...btnStyle,
+                                    marginLeft: isCompact ? '0' : '8px',
+                                    padding: isCompact ? '4px 6px' : '4px 10px',
+                                    borderRadius: '16px',
+                                    border: `1px solid ${isChaptersOpen ? '#f87171' : 'rgba(255,255,255,0.3)'}`,
+                                    background: isChaptersOpen ? 'rgba(248, 113, 113, 0.2)' : 'transparent',
+                                    color: isChaptersOpen ? '#f87171' : 'white',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.2s ease',
+                                }}
+                                title={`Chapters (${meta.chapters.length})`}
+                            >
+                                <List className="size-4" />
+                                {!isCompact && <span>Chapters</span>}
+                            </button>
+                        )}
+
+                        {/* Quiz Toggle (only for time-driven VIDEO with questions) */}
+                        {navigationMode === 'time_driven' && meta.questions && meta.questions.length > 0 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setQuestionsEnabled(!questionsEnabled); }}
+                                style={{
+                                    ...btnStyle,
+                                    marginLeft: isCompact ? '0' : '8px',
+                                    padding: isCompact ? '4px 6px' : '4px 10px',
+                                    borderRadius: '16px',
+                                    border: `1px solid ${questionsEnabled ? '#a78bfa' : 'rgba(255,255,255,0.3)'}`,
+                                    background: questionsEnabled ? 'rgba(167, 139, 250, 0.2)' : 'transparent',
+                                    color: questionsEnabled ? '#a78bfa' : 'rgba(255,255,255,0.6)',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.2s ease',
+                                }}
+                                title={questionsEnabled ? `Disable quiz questions (${meta.questions.length})` : `Enable quiz questions (${meta.questions.length})`}
+                            >
+                                <HelpCircle size={14} />
+                                {!isCompact && <span>Quiz {questionsEnabled ? 'ON' : 'OFF'}</span>}
+                            </button>
+                        )}
+
+                        {/* Glossary Toggle (only when video has glossary terms) */}
+                        {navigationMode === 'time_driven' && meta.glossary && meta.glossary.length > 0 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsGlossaryOpen(!isGlossaryOpen); setIsChaptersOpen(false); }}
+                                style={{
+                                    ...btnStyle,
+                                    marginLeft: isCompact ? '0' : '8px',
+                                    padding: isCompact ? '4px 6px' : '4px 10px',
+                                    borderRadius: '16px',
+                                    border: `1px solid ${isGlossaryOpen ? '#60a5fa' : 'rgba(255,255,255,0.3)'}`,
+                                    background: isGlossaryOpen ? 'rgba(96, 165, 250, 0.2)' : 'transparent',
+                                    color: isGlossaryOpen ? '#60a5fa' : 'white',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.2s ease',
+                                }}
+                                title={`Key Terms Glossary (${seenGlossaryTerms.length}/${meta.glossary?.length ?? 0})`}
+                            >
+                                <BookOpen className="size-4" />
+                                {seenGlossaryTerms.length > 0 && (
+                                    <span style={{ background: '#3b82f6', borderRadius: '50%', width: '16px', height: '16px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        {seenGlossaryTerms.length}
+                                    </span>
+                                )}
                             </button>
                         )}
 
@@ -1343,7 +2003,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                 title={isAutoplay ? 'Disable Autoplay' : 'Enable Autoplay'}
                             >
                                 <Repeat className="size-4" />
-                                <span style={{ fontSize: '12px', fontWeight: 600 }}>Autoplay</span>
+                                {!isCompact && <span style={{ fontSize: '12px', fontWeight: 600 }}>Autoplay</span>}
                             </button>
                         )}
 

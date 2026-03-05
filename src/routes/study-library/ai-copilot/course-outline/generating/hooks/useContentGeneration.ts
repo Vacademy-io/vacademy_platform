@@ -34,6 +34,9 @@ export const useContentGeneration = (
             return;
         }
 
+        // Read language that was stored during outline generation
+        const language = sessionStorage.getItem('courseLanguage') || 'English';
+
         setIsGeneratingContent(true);
         setContentGenerationProgress('Starting content generation...');
 
@@ -42,13 +45,15 @@ export const useContentGeneration = (
         setAbortController(controller);
 
         try {
-            // Filter todos to only include DOCUMENT, ASSESSMENT, VIDEO, AI_VIDEO, VIDEO_CODE, and AI_VIDEO_CODE types
+            // Filter todos to only include supported content types
             const contentTodos = outlineTodos.filter(
                 (todo: any) =>
                     todo.type === 'DOCUMENT' ||
                     todo.type === 'ASSESSMENT' ||
                     todo.type === 'VIDEO' ||
                     todo.type === 'AI_VIDEO' ||
+                    todo.type === 'AI_SLIDES' ||
+                    todo.type === 'AI_STORYBOOK' ||
                     todo.type === 'VIDEO_CODE' ||
                     todo.type === 'AI_VIDEO_CODE'
             );
@@ -113,6 +118,8 @@ export const useContentGeneration = (
                         (todo.type === 'ASSESSMENT' && slide.slideType === 'quiz') ||
                         (todo.type === 'VIDEO' && slide.slideType === 'video') ||
                         (todo.type === 'AI_VIDEO' && slide.slideType === 'ai-video') ||
+                        (todo.type === 'AI_SLIDES' && slide.slideType === 'ai-slides') ||
+                        (todo.type === 'AI_STORYBOOK' && slide.slideType === 'ai-storybook') ||
                         (todo.type === 'VIDEO_CODE' && slide.slideType === 'video-code') ||
                         (todo.type === 'AI_VIDEO_CODE' && slide.slideType === 'ai-video-code');
 
@@ -148,6 +155,8 @@ export const useContentGeneration = (
                         (todo.type === 'ASSESSMENT' && slide.slideType === 'quiz') ||
                         (todo.type === 'VIDEO' && slide.slideType === 'video') ||
                         (todo.type === 'AI_VIDEO' && slide.slideType === 'ai-video') ||
+                        (todo.type === 'AI_SLIDES' && slide.slideType === 'ai-slides') ||
+                        (todo.type === 'AI_STORYBOOK' && slide.slideType === 'ai-storybook') ||
                         (todo.type === 'VIDEO_CODE' && slide.slideType === 'video-code') ||
                         (todo.type === 'AI_VIDEO_CODE' && slide.slideType === 'ai-video-code');
 
@@ -207,6 +216,8 @@ export const useContentGeneration = (
                         (todo.type === 'ASSESSMENT' && slide.slideType === 'quiz') ||
                         (todo.type === 'VIDEO' && slide.slideType === 'video') ||
                         (todo.type === 'AI_VIDEO' && slide.slideType === 'ai-video') ||
+                        (todo.type === 'AI_SLIDES' && slide.slideType === 'ai-slides') ||
+                        (todo.type === 'AI_STORYBOOK' && slide.slideType === 'ai-storybook') ||
                         (todo.type === 'VIDEO_CODE' && slide.slideType === 'video-code') ||
                         (todo.type === 'AI_VIDEO_CODE' && slide.slideType === 'ai-video-code');
 
@@ -234,10 +245,20 @@ export const useContentGeneration = (
                 }))
             );
 
+            // Only send todos that have a matching live slide (user may have removed some)
+            const activeTodos = contentTodos.filter(
+                (todo: any) => todo.path && pathToSlideMap.has(todo.path)
+            );
+            if (activeTodos.length < contentTodos.length) {
+                console.log(
+                    `[Content Gen] Skipping ${contentTodos.length - activeTodos.length} todos for removed slides/chapters`
+                );
+            }
+
             // Mark all content slides as "generating" initially
             setSlides((prevSlides) => {
                 const updatedSlides = prevSlides.map((slide) => {
-                    const matchingTodo = contentTodos.find((todo: any) => {
+                    const matchingTodo = activeTodos.find((todo: any) => {
                         const sessionTitle = todo.chapter_name || '';
                         const slideTitle = todo.title || todo.name || '';
                         return (
@@ -247,6 +268,9 @@ export const useContentGeneration = (
                                 (todo.type === 'ASSESSMENT' && slide.slideType === 'quiz') ||
                                 (todo.type === 'VIDEO' && slide.slideType === 'video') ||
                                 (todo.type === 'AI_VIDEO' && slide.slideType === 'ai-video') ||
+                                (todo.type === 'AI_SLIDES' && slide.slideType === 'ai-slides') ||
+                                (todo.type === 'AI_STORYBOOK' &&
+                                    slide.slideType === 'ai-storybook') ||
                                 (todo.type === 'VIDEO_CODE' && slide.slideType === 'video-code') ||
                                 (todo.type === 'AI_VIDEO_CODE' &&
                                     slide.slideType === 'ai-video-code'))
@@ -277,7 +301,7 @@ export const useContentGeneration = (
 
             // Call content generation API with detailed onUpdate callback
             await generateContent(
-                contentTodos,
+                activeTodos,
                 instituteId,
                 (update) => {
                     console.log('🔵 Content update received:', {
@@ -508,6 +532,25 @@ export const useContentGeneration = (
                                     `⚠️ [${update.path}] AI_VIDEO_CODE event received but no contentData yet`
                                 );
                             }
+                        } else if (update.slideType === 'AI_SLIDES' || update.slideType === 'AI_STORYBOOK') {
+                            console.log(
+                                `🔵 [${update.path}] Processing ${update.slideType} data, status: ${update.status}`
+                            );
+                            // AI_SLIDES and AI_STORYBOOK use the same pipeline as AI_VIDEO
+                            if (update.contentData) {
+                                content = JSON.stringify(update.contentData);
+                                console.log(`✅ [${update.path}] ${update.slideType} data stored:`, {
+                                    videoId: update.contentData.videoId,
+                                    timelineUrl: update.contentData.timelineUrl,
+                                    status: update.contentData.status || update.status,
+                                    progress: update.contentData.progress,
+                                });
+                            } else {
+                                content = JSON.stringify({
+                                    status: update.status || 'GENERATING',
+                                    progress: 0,
+                                });
+                            }
                         }
 
                         // Update localStorage first
@@ -525,8 +568,13 @@ export const useContentGeneration = (
                                     let newProgress = 0;
                                     let aiVideoData = parsed[slideIndex].aiVideoData;
 
-                                    if (update.slideType === 'AI_VIDEO' && update.contentData) {
-                                        // For AI_VIDEO, use status from contentData or update.status
+                                    if (
+                                        (update.slideType === 'AI_VIDEO' ||
+                                            update.slideType === 'AI_SLIDES' ||
+                                            update.slideType === 'AI_STORYBOOK') &&
+                                        update.contentData
+                                    ) {
+                                        // AI_VIDEO, AI_SLIDES, AI_STORYBOOK all use the same video pipeline
                                         const videoStatus =
                                             update.contentData.status || update.status;
                                         if (videoStatus === 'COMPLETED') {
@@ -539,7 +587,6 @@ export const useContentGeneration = (
                                         ) {
                                             newStatus = 'generating';
                                             newProgress = update.contentData.progress || 0;
-                                            // Store partial data if available
                                             if (update.contentData) {
                                                 aiVideoData = update.contentData;
                                             }
@@ -638,6 +685,8 @@ export const useContentGeneration = (
                                                 s.slideType !== 'assessment' &&
                                                 s.slideType !== 'video' &&
                                                 s.slideType !== 'ai-video' &&
+                                                s.slideType !== 'ai-slides' &&
+                                                s.slideType !== 'ai-storybook' &&
                                                 s.slideType !== 'video-code' &&
                                                 s.slideType !== 'ai-video-code')
                                     );
@@ -661,6 +710,8 @@ export const useContentGeneration = (
                                                 s.slideType === 'assessment' ||
                                                 s.slideType === 'video' ||
                                                 s.slideType === 'ai-video' ||
+                                                s.slideType === 'ai-slides' ||
+                                                s.slideType === 'ai-storybook' ||
                                                 s.slideType === 'video-code' ||
                                                 s.slideType === 'ai-video-code'
                                         ).length;
@@ -694,10 +745,10 @@ export const useContentGeneration = (
                                         slide.status;
                                     let newProgress = slide.progress;
 
-                                    // For AI_VIDEO, process all events and update status/progress
-                                    if (update.slideType === 'AI_VIDEO') {
+                                    // For AI_VIDEO, AI_SLIDES, AI_STORYBOOK: process all events and update status/progress
+                                    if (update.slideType === 'AI_VIDEO' || update.slideType === 'AI_SLIDES' || update.slideType === 'AI_STORYBOOK') {
                                         if (update.contentData) {
-                                            // Store the contentData
+                                            // Store the contentData (includes videoId, timelineUrl, etc.)
                                             aiVideoData = update.contentData;
 
                                             // Determine status from contentData or update.status
@@ -724,10 +775,11 @@ export const useContentGeneration = (
                                             }
 
                                             console.log(
-                                                `🔄 [${update.path}] Updated AI video slide:`,
+                                                `🔄 [${update.path}] Updated ${update.slideType} slide:`,
                                                 {
                                                     status: newStatus,
                                                     progress: newProgress,
+                                                    videoId: aiVideoData?.videoId,
                                                     hasTimelineUrl: !!aiVideoData?.timelineUrl,
                                                     hasAudioUrl: !!aiVideoData?.audioUrl,
                                                 }
@@ -738,7 +790,7 @@ export const useContentGeneration = (
                                                 newStatus = 'generating';
                                             }
                                             console.log(
-                                                `🔄 [${update.path}] AI video event without contentData, status: ${update.status}`
+                                                `🔄 [${update.path}] ${update.slideType} event without contentData, status: ${update.status}`
                                             );
                                         }
                                     } else if ((update.slideType as string) === 'VIDEO_CODE') {
@@ -791,14 +843,20 @@ export const useContentGeneration = (
                                         newProgress = 100;
                                     }
 
-                                    return {
-                                        ...slide,
-                                        content,
-                                        slideType: (update.slideType === 'ASSESSMENT'
+                                    const resolvedSlideType =
+                                        update.slideType === 'ASSESSMENT'
                                             ? 'assessment'
                                             : update.slideType === 'AI_VIDEO'
                                               ? 'ai-video'
-                                              : slide.slideType) as SlideType,
+                                              : update.slideType === 'AI_SLIDES'
+                                                ? 'ai-slides'
+                                                : update.slideType === 'AI_STORYBOOK'
+                                                  ? 'ai-storybook'
+                                                  : slide.slideType;
+                                    return {
+                                        ...slide,
+                                        content,
+                                        slideType: resolvedSlideType as SlideType,
                                         status: newStatus,
                                         progress: newProgress,
                                         aiVideoData,
@@ -858,7 +916,15 @@ export const useContentGeneration = (
                                             (todo.type === 'VIDEO' &&
                                                 slide.slideType === 'video') ||
                                             (todo.type === 'AI_VIDEO' &&
-                                                slide.slideType === 'ai-video');
+                                                slide.slideType === 'ai-video') ||
+                                            (todo.type === 'AI_SLIDES' &&
+                                                slide.slideType === 'ai-slides') ||
+                                            (todo.type === 'AI_STORYBOOK' &&
+                                                slide.slideType === 'ai-storybook') ||
+                                            (todo.type === 'VIDEO_CODE' &&
+                                                slide.slideType === 'video-code') ||
+                                            (todo.type === 'AI_VIDEO_CODE' &&
+                                                slide.slideType === 'ai-video-code');
 
                                         return sessionMatch && titleMatch && typeMatch;
                                     });
@@ -925,7 +991,9 @@ export const useContentGeneration = (
                 },
                 (progress) => {
                     setContentGenerationProgress(progress);
-                }
+                },
+                0, // retryCount
+                language
             );
 
             // Mark content generation as complete (fallback)

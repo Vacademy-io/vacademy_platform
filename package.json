@@ -120,6 +120,7 @@
         "@tiptap/extension-underline": "^2.26.1",
         "@tiptap/react": "^2.26.1",
         "@tiptap/starter-kit": "^2.26.1",
+        "@types/dompurify": "^3.2.0",
         "@types/uuid": "^10.0.0",
         "@types/youtube": "^0.1.0",
         "@yoopta/accordion": "^4.9.4",
@@ -158,6 +159,7 @@
         "date-fns-tz": "^3.2.0",
         "dayjs": "^1.11.13",
         "dom-to-image": "^2.6.0",
+        "dompurify": "^3.3.1",
         "easy-email-core": "^4.16.4",
         "easy-email-editor": "^4.16.3",
         "easy-email-extensions": "^4.16.4",
@@ -275,6 +277,7 @@
     "devDependencies": {
         "@babel/preset-env": "7.26.9",
         "@excalidraw/prettier-config": "1.0.2",
+        "@oxc-parser/binding-darwin-arm64": "0.112.0",
         "@storybook/addon-essentials": "^8.6.12",
         "@storybook/addon-interactions": "^8.6.12",
         "@storybook/addon-onboarding": "^8.6.12",

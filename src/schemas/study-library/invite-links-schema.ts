@@ -45,6 +45,7 @@ export interface InviteLinkDataInterface {
     institute_custom_fields: InstituteCustomField[];
     package_session_to_payment_options: PackageSessionToPaymentOption[];
     package_session_ids: string[];
+    short_url?: string | null;
 }
 
 export interface InstituteCustomField {

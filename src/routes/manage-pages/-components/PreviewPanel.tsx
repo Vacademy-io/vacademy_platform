@@ -16,9 +16,11 @@ import { fetchBothInstituteAPIs } from '@/services/student-list-section/getInsti
 
 interface PreviewPanelProps {
     tagName: string;
+    onComponentSelected?: (componentId: string, pageId: string) => void;
+    selectedComponentId?: string | null;
 }
 
-export const PreviewPanel = ({ tagName }: PreviewPanelProps) => {
+export const PreviewPanel = ({ tagName, onComponentSelected, selectedComponentId }: PreviewPanelProps) => {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [isReady, setIsReady] = useState(false);
     const [selectedPageRoute, setSelectedPageRoute] = useState<string>('');
@@ -26,16 +28,23 @@ export const PreviewPanel = ({ tagName }: PreviewPanelProps) => {
     const config = useEditorStore((state) => state.config);
     const viewport = useEditorStore((state) => state.previewViewport);
     const setViewport = useEditorStore((state) => state.setViewport);
+    const selectedPageId = useEditorStore((state) => state.selectedPageId);
     const { instituteDetails, setInstituteDetails } = useInstituteDetailsStore();
 
-    // Set default page route when config loads
+    // Set default page route when config loads (first load only)
     useEffect(() => {
         if (config?.pages && config.pages.length > 0 && !selectedPageRoute) {
-            // Default to first page or '/' for home
             const firstPage = config.pages[0];
             setSelectedPageRoute(firstPage?.route || '');
         }
     }, [config, selectedPageRoute]);
+
+    // Sync iframe page when selectedPageId changes (PageTabs click)
+    useEffect(() => {
+        if (!config || !selectedPageId) return;
+        const page = config.pages.find((p) => p.id === selectedPageId);
+        if (page) setSelectedPageRoute(page.route);
+    }, [selectedPageId, config]);
 
     useEffect(() => {
         if (!instituteDetails) {
@@ -85,11 +94,14 @@ export const PreviewPanel = ({ tagName }: PreviewPanelProps) => {
                 setIsReady(true);
                 sendConfigToPreview();
             }
+            if (event.data?.type === 'COMPONENT_SELECTED') {
+                onComponentSelected?.(event.data.componentId, event.data.pageId);
+            }
         };
 
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [sendConfigToPreview]);
+    }, [sendConfigToPreview, onComponentSelected]);
 
     useEffect(() => {
         if (!isReady || !config) return;
@@ -100,6 +112,15 @@ export const PreviewPanel = ({ tagName }: PreviewPanelProps) => {
 
         return () => clearTimeout(timeout);
     }, [config, isReady, sendConfigToPreview]);
+
+    // Send highlight signal to iframe when selected component changes
+    useEffect(() => {
+        if (!isReady) return;
+        iframeRef.current?.contentWindow?.postMessage(
+            { type: 'HIGHLIGHT_COMPONENT', componentId: selectedComponentId || null },
+            '*'
+        );
+    }, [selectedComponentId, isReady]);
 
     const viewportSizes = CATALOGUE_EDITOR_CONFIG.VIEWPORTS;
     const currentSize = viewportSizes[viewport];

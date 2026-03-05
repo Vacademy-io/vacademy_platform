@@ -229,6 +229,76 @@ function getKenBurnsStyles(): string {
               to   { transform: translateX(0); opacity: 1; }
             }
 
+            /* ANNOTATION_MAP: Full-screen image with SVG annotation overlay */
+            .annotation-map-container {
+              position: relative;
+              width: 100%; height: 100%;
+              overflow: hidden;
+            }
+            .annotation-map-container .annotation-map-bg {
+              position: absolute;
+              top: 0; left: 0;
+              width: 100%; height: 100%;
+              object-fit: cover;
+              will-change: transform;
+              animation-duration: var(--kb-duration, 12s);
+              animation-timing-function: linear;
+              animation-fill-mode: both;
+            }
+            .annotation-overlay {
+              position: absolute;
+              top: 0; left: 0;
+              width: 100%; height: 100%;
+              pointer-events: none;
+              z-index: 5;
+            }
+
+            /* PROCESS_STEPS: Sequential numbered step flow */
+            .process-flow {
+              display: flex; flex-direction: column;
+              align-items: center; width: 80%; max-width: 960px;
+            }
+            .process-node {
+              display: flex; align-items: center; gap: 24px;
+              background: var(--card-bg, rgba(30,41,59,0.6));
+              border: 2px solid var(--primary-color, #3b82f6);
+              border-radius: 12px; padding: 20px 32px; width: 100%;
+            }
+            .node-num {
+              width: 52px; height: 52px; border-radius: 50%;
+              background: var(--primary-color, #3b82f6); color: #fff;
+              font-size: 24px; font-weight: 800; flex-shrink: 0;
+              display: flex; align-items: center; justify-content: center;
+              font-family: 'Montserrat', sans-serif;
+            }
+            .node-body { display: flex; flex-direction: column; gap: 4px; }
+            .node-title {
+              font-size: 22px; font-weight: 700;
+              font-family: 'Montserrat', sans-serif;
+              color: var(--text-color, #fff);
+            }
+            .node-desc {
+              font-size: 16px; font-family: 'Inter', sans-serif;
+              color: var(--text-secondary, #94a3b8);
+            }
+            .process-connector {
+              width: 20px; height: 40px; flex-shrink: 0;
+              color: var(--primary-color, #3b82f6);
+            }
+
+            /* EQUATION_BUILD: Term-by-term KaTeX reveal */
+            .equation-build-row {
+              display: flex; align-items: center;
+              justify-content: center; flex-wrap: wrap;
+              gap: 8px; margin: 48px 0 32px;
+            }
+            .equation-build-row .eq-term,
+            .equation-build-row .eq-sep {
+              display: inline-flex; align-items: center;
+              font-size: 3.5rem;
+            }
+            .equation-build-row .eq-sep { font-size: 3rem; margin: 0 4px; }
+
             /* Ken Burns motion keyframes */
             .kb-zoom-in     { animation-name: kbZoomIn; }
             .kb-zoom-out    { animation-name: kbZoomOut; }
@@ -1520,7 +1590,8 @@ function getHelperScripts(): string {
                                     {left: '\\\\(', right: '\\\\)', display: false},
                                     {left: '\\\\[', right: '\\\\]', display: true}
                                 ],
-                                throwOnError: false
+                                throwOnError: false,
+                                strict: false
                             });
                         } catch (e) {
                             console.warn('KaTeX render error:', e);
@@ -1538,25 +1609,26 @@ function getHelperScripts(): string {
 
             // SVG drawing animation
             window.animateSVG = function(svgId, duration, callback) {
-                if (window.Vivus) {
-                    var cb = typeof callback === 'function' ? callback : undefined;
-                    try {
-                        let target = svgId;
-                        if (typeof svgId === 'string' && !svgId.startsWith('#') && !document.getElementById(svgId)) {
-                            new Vivus(svgId, {
-                                duration: duration || 100,
-                                type: 'oneByOne',
-                                animTimingFunction: Vivus.EASE_OUT
-                            }, cb);
-                        } else {
-                            new Vivus(svgId, {
-                                duration: duration || 100,
-                                type: 'oneByOne',
-                                animTimingFunction: Vivus.EASE_OUT
-                            }, cb);
+                if (!window.Vivus) return;
+                var cb = typeof callback === 'function' ? callback : undefined;
+                var dur = duration || 100;
+                function tryInit(attemptsLeft) {
+                    var el = document.getElementById(svgId);
+                    if (!el) {
+                        if (attemptsLeft > 0) {
+                            setTimeout(function() { tryInit(attemptsLeft - 1); }, 100);
                         }
+                        return;
+                    }
+                    try {
+                        new Vivus(svgId, {
+                            duration: dur,
+                            type: 'oneByOne',
+                            animTimingFunction: Vivus.EASE_OUT
+                        }, cb);
                     } catch(e) { console.warn('Vivus init error', e); }
                 }
+                tryInit(10);
             };
 
             // Hand-drawn annotation
@@ -1775,7 +1847,10 @@ function getQuizScripts(): string {
                     feedback.classList.add('show');
                     feedback.classList.add(isCorrect ? 'correct' : 'incorrect');
 
-                    // You can populate text dynamicallly here if needed
+                    const titleEl = feedback.querySelector('.quiz-feedback-title');
+                    if (titleEl) {
+                        titleEl.textContent = isCorrect ? '🎉 Correct!' : '❌ Not quite...';
+                    }
                 }
 
                 // 5. Notify Parent Player
@@ -2109,11 +2184,11 @@ export function generateFlashcardHtml(entry: Entry, index: number, entries: Entr
                     });
                 }
             }
-        </script>
 
             // Add keyboard support (Space to flip)
             document.addEventListener('keydown', (e) => {
                 if(e.code === 'Space') {
+                    e.preventDefault();
                     const card = document.querySelector('.flashcard-container');
                     if(card) card.classList.toggle('flipped');
                 }
@@ -2210,11 +2285,11 @@ export function generateQuizHtml(entry: Entry, index: number, entries: Entry[] =
     const optionsHtml = options
         .map(
             (opt: any, i: number) => `
-        <div class="quiz-option" onclick="window.handleOptionClick(this, '${opt.text.replace(/'/g, "\\'")}', ${opt.isCorrect}, '${opt.explanation.replace(/'/g, "\\'")}')" data-correct="${opt.isCorrect}">
-            <div class="option-marker">${String.fromCharCode(65 + i)}</div>
-            <div class="option-text">${opt.text}</div>
-            <div class="feedback-icon correct">✓</div>
-            <div class="feedback-icon incorrect">✕</div>
+        <div class="quiz-option" onclick="window.handleOptionClick(this, '${opt.text.replace(/'/g, "\\'")}', ${opt.isCorrect}, '${(opt.explanation || '').replace(/'/g, "\\'")}')" data-correct="${opt.isCorrect}">
+            <div class="quiz-option-letter">${String.fromCharCode(65 + i)}</div>
+            <div class="quiz-option-text">${opt.text}</div>
+            <div class="quiz-option-icon correct-icon">✓</div>
+            <div class="quiz-option-icon incorrect-icon">✕</div>
         </div>
     `
         )
@@ -2232,9 +2307,9 @@ export function generateQuizHtml(entry: Entry, index: number, entries: Entry[] =
             </div>
 
             <div class="quiz-feedback">
-                <div class="feedback-title"></div>
-                <div class="feedback-text">${explanation}</div>
-                <button class="next-btn" onclick="window.parent.postMessage({ type: 'NAVIGATE_NEXT' }, '*')">Continue</button>
+                <div class="quiz-feedback-title"></div>
+                <div class="quiz-feedback-text">${explanation}</div>
+                <button class="quiz-submit-btn" style="margin-top:24px" onclick="window.parent.postMessage({ type: 'NAVIGATE_NEXT' }, '*')">Continue →</button>
             </div>
         </div>
     `;
@@ -2304,6 +2379,356 @@ export function generateConversationHtml(
 }
 
 /**
+ * Fallback generator for WORKSHEET entries
+ * Renders a section with its title, instructions, and questions list
+ */
+export function generateWorksheetHtml(
+    entry: Entry,
+    index: number,
+    entries: Entry[] = []
+): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+
+    const title = meta.section_title || entryAny.section_title || meta.title || entryAny.title || `Section ${index + 1}`;
+    const instructions = meta.section_instructions || entryAny.section_instructions || meta.instructions || entryAny.instructions || '';
+    const questions = meta.questions || entryAny.questions || [];
+    const total = entries.length;
+
+    const questionsHtml = questions
+        .map((q: any, i: number) => {
+            const qText = q.question || q.text || q.prompt || '';
+            const lines = q.answer_lines || 3;
+            return `
+            <div class="ws-question">
+                <div class="ws-question-text">${i + 1}. ${qText}</div>
+                ${Array.from({ length: lines })
+                    .map(() => `<div class="ws-answer-line"></div>`)
+                    .join('')}
+            </div>`;
+        })
+        .join('');
+
+    return `
+        <div class="worksheet-container">
+            <div class="ws-header">
+                <div class="ws-section-number">Section ${index + 1} of ${total}</div>
+                <div class="ws-title">${title}</div>
+                ${instructions ? `<div class="ws-instructions">${instructions}</div>` : ''}
+            </div>
+            <div class="ws-body">
+                ${questionsHtml || '<div class="ws-no-content">Complete the exercises in this section.</div>'}
+            </div>
+            <style>
+                .worksheet-container { font-family: 'Georgia', serif; background: #fff; padding: 40px; min-height: 100%; color: #1a1a1a; box-sizing: border-box; }
+                .ws-header { border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 24px; }
+                .ws-section-number { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #666; margin-bottom: 6px; }
+                .ws-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+                .ws-instructions { font-size: 14px; color: #444; font-style: italic; }
+                .ws-body { display: flex; flex-direction: column; gap: 20px; }
+                .ws-question { }
+                .ws-question-text { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+                .ws-answer-line { border-bottom: 1px solid #aaa; height: 24px; margin-bottom: 4px; }
+                .ws-no-content { color: #888; font-style: italic; }
+                @media print { .worksheet-container { padding: 20px; } }
+            </style>
+        </div>
+    `;
+}
+
+/**
+ * Fallback generator for PUZZLE_BOOK entries
+ * Renders a puzzle card with title, instructions, and puzzle area
+ */
+export function generatePuzzleHtml(
+    entry: Entry,
+    index: number,
+    entries: Entry[] = []
+): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+
+    const title = meta.title || entryAny.title || `Puzzle ${index + 1}`;
+    const puzzleType = meta.puzzle_type || entryAny.puzzle_type || 'puzzle';
+    const instructions = meta.instructions || entryAny.instructions || 'Solve the puzzle below.';
+    const total = entries.length;
+
+    return `
+        <div class="puzzle-container">
+            <div class="puzzle-header">
+                <div class="puzzle-badge">${puzzleType.replace(/_/g, ' ').toUpperCase()}</div>
+                <div class="puzzle-number">Puzzle ${index + 1} of ${total}</div>
+            </div>
+            <div class="puzzle-title">${title}</div>
+            <div class="puzzle-instructions">${instructions}</div>
+            <div class="puzzle-area">
+                <p style="color:#94a3b8; font-style:italic; text-align:center;">
+                    Read the instructions above and use your notebook to solve this puzzle.<br>
+                    <span style="font-size:12px; opacity:0.6;">Interactive puzzle content could not be loaded.</span>
+                </p>
+            </div>
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { background: #0f172a; }
+                .puzzle-container { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); min-height: 100vh; padding: 40px; color: #f1f5f9; }
+                .puzzle-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+                .puzzle-badge { background: #7c3aed; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; }
+                .puzzle-number { font-size: 13px; color: #94a3b8; }
+                .puzzle-title { font-size: 26px; font-weight: 800; margin-bottom: 12px; color: #f8fafc; }
+                .puzzle-instructions { font-size: 14px; color: #94a3b8; margin-bottom: 28px; line-height: 1.6; }
+                .puzzle-area { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 32px; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+            </style>
+        </div>
+    `;
+}
+
+/**
+ * Fallback generator for MAP_EXPLORATION entries
+ * Renders a region detail card with name, description, and facts
+ */
+export function generateMapRegionHtml(
+    entry: Entry,
+    index: number,
+    entries: Entry[] = []
+): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+
+    const name = meta.name || entryAny.name || meta.region_name || entryAny.region_name || `Region ${index + 1}`;
+    const description = meta.description || entryAny.description || '';
+    const facts = meta.facts || entryAny.facts || [];
+    const category = meta.category || entryAny.category || '';
+    const total = entries.length;
+
+    const factsHtml = facts
+        .map((f: any) => {
+            const label = f.label || f.key || '';
+            const value = f.value || f.text || f;
+            return `<div class="region-fact"><span class="fact-label">${label}</span><span class="fact-value">${value}</span></div>`;
+        })
+        .join('');
+
+    return `
+        <div class="map-region-container">
+            <div class="region-nav">Region ${index + 1} of ${total}${category ? ` · ${category}` : ''}</div>
+            <div class="region-name">${name}</div>
+            ${description ? `<div class="region-description">${description}</div>` : ''}
+            ${factsHtml ? `<div class="region-facts">${factsHtml}</div>` : ''}
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { background: #0c1a2e; }
+                .map-region-container { font-family: 'Inter', sans-serif; background: linear-gradient(160deg, #0c1a2e 0%, #162032 100%); min-height: 100vh; padding: 48px 40px; color: #e2e8f0; }
+                .region-nav { font-size: 12px; font-weight: 600; color: #60a5fa; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+                .region-name { font-size: 36px; font-weight: 900; color: #f8fafc; margin-bottom: 16px; line-height: 1.1; }
+                .region-description { font-size: 16px; color: #94a3b8; line-height: 1.7; margin-bottom: 28px; }
+                .region-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .region-fact { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 14px 16px; }
+                .fact-label { display: block; font-size: 11px; font-weight: 700; color: #60a5fa; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+                .fact-value { display: block; font-size: 15px; color: #f1f5f9; }
+            </style>
+        </div>
+    `;
+}
+
+export function generateGameHtml(entry: Entry): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+    const title = meta.title || entryAny.title || 'Interactive Game';
+    const description = meta.description || entryAny.description || meta.instructions || entryAny.instructions || '';
+    const gameType = meta.game_type || entryAny.game_type || '';
+
+    return `
+        <div style="font-family:'Inter',sans-serif;background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;color:#e0e7ff;text-align:center;">
+            <div style="font-size:56px;margin-bottom:20px;">🎮</div>
+            ${gameType ? `<div style="font-size:11px;font-weight:700;color:#a5b4fc;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:12px;">${gameType.replace(/_/g,' ')}</div>` : ''}
+            <h1 style="font-size:32px;font-weight:900;margin:0 0 16px;line-height:1.2;">${title}</h1>
+            ${description ? `<p style="font-size:16px;color:#c7d2fe;max-width:560px;line-height:1.7;margin:0;">${description}</p>` : ''}
+            <div style="margin-top:32px;padding:16px 28px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;font-size:14px;color:#a5b4fc;">
+                Game content could not be loaded. Please regenerate this content.
+            </div>
+        </div>
+    `;
+}
+
+export function generateSimulationHtml(entry: Entry): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+    const title = meta.title || entryAny.title || 'Simulation';
+    const description = meta.description || entryAny.description || meta.instructions || entryAny.instructions || '';
+    const simType = meta.simulation_type || entryAny.simulation_type || '';
+
+    return `
+        <div style="font-family:'Inter',sans-serif;background:linear-gradient(135deg,#052e16 0%,#064e3b 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;color:#d1fae5;text-align:center;">
+            <div style="font-size:56px;margin-bottom:20px;">⚗️</div>
+            ${simType ? `<div style="font-size:11px;font-weight:700;color:#6ee7b7;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:12px;">${simType.replace(/_/g,' ')} Simulation</div>` : ''}
+            <h1 style="font-size:32px;font-weight:900;margin:0 0 16px;line-height:1.2;">${title}</h1>
+            ${description ? `<p style="font-size:16px;color:#a7f3d0;max-width:560px;line-height:1.7;margin:0;">${description}</p>` : ''}
+            <div style="margin-top:32px;padding:16px 28px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;font-size:14px;color:#6ee7b7;">
+                Simulation content could not be loaded. Please regenerate this content.
+            </div>
+        </div>
+    `;
+}
+
+export function generateCodePlaygroundHtml(entry: Entry): string {
+    const meta = entry.entry_meta || {};
+    const entryAny = entry as any;
+    const title = meta.title || entryAny.title || 'Code Playground';
+    const lang = meta.programming_language || entryAny.programming_language || 'javascript';
+    const exercises: any[] = meta.exercises || entryAny.exercises || [];
+    const firstEx = exercises[0] || {};
+    const exTitle = firstEx.title || '';
+    const exInstructions = firstEx.instructions || meta.description || entryAny.description || '';
+    const starterCode = firstEx.starter_code || firstEx.code || '';
+
+    return `
+        <div style="font-family:'Inter',sans-serif;background:#0d1117;min-height:100vh;display:flex;flex-direction:column;padding:32px;color:#c9d1d9;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+                <span style="font-size:24px;">💻</span>
+                <div>
+                    <div style="font-size:11px;font-weight:700;color:#58a6ff;text-transform:uppercase;letter-spacing:0.1em;">${lang}</div>
+                    <h1 style="font-size:22px;font-weight:800;margin:0;color:#f0f6fc;">${title}</h1>
+                </div>
+            </div>
+            ${exTitle ? `<div style="font-size:14px;font-weight:600;color:#e6edf3;margin-bottom:8px;">${exTitle}</div>` : ''}
+            ${exInstructions ? `<p style="font-size:14px;color:#8b949e;line-height:1.6;margin:0 0 20px;">${exInstructions}</p>` : ''}
+            ${starterCode ? `<pre style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;font-family:'Fira Code',monospace;font-size:13px;color:#e6edf3;overflow-x:auto;white-space:pre-wrap;">${starterCode.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>` : ''}
+            <div style="margin-top:auto;padding:14px 20px;background:rgba(88,166,255,0.08);border:1px solid rgba(88,166,255,0.2);border-radius:8px;font-size:13px;color:#58a6ff;text-align:center;">
+                Interactive editor could not be loaded. Please regenerate this content.
+            </div>
+        </div>
+    `;
+}
+
+// ============================================================================
+// SLIDES CONTENT TYPE — FALLBACK GENERATOR
+// ============================================================================
+
+/**
+ * Minimal slide styles injected by processHtmlContent for SLIDES content type.
+ * The LLM generates slides with inline styles, so this is kept lean —
+ * mostly ensuring Mermaid diagrams and tables look clean.
+ */
+function getSlidesStyles(): string {
+    return `
+<style>
+/* Slide base reset */
+.slide-root { box-sizing: border-box; }
+
+/* Mermaid diagrams inside slides */
+.slide-root .mermaid { text-align: center; margin: 16px auto; }
+.slide-root .mermaid svg { max-width: 100%; height: auto; }
+
+/* Tables inside slides */
+.slide-root table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 18px;
+}
+.slide-root th {
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+}
+.slide-root td {
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+.slide-root tr:last-child td { border-bottom: none; }
+.slide-root tr:nth-child(even) td { background: rgba(0,0,0,0.03); }
+
+/* Slide number badge */
+.slide-number-badge {
+    position: absolute;
+    bottom: 20px;
+    right: 28px;
+    font-size: 13px;
+    opacity: 0.45;
+    font-family: inherit;
+    pointer-events: none;
+}
+</style>`;
+}
+
+/**
+ * Fallback HTML generator for SLIDES content type.
+ * Used when the backend LLM-generated html is missing or is a short placeholder.
+ */
+export function generateSlidesHtml(entry: Entry, index: number, entries: Entry[] = []): string {
+    const meta = (entry.entry_meta || {}) as Record<string, any>;
+    const title = meta.title || entry.id || `Slide ${index + 1}`;
+    const slideType = meta.slide_type || 'content';
+    const bullets: string[] = Array.isArray(meta.bullets) ? meta.bullets : [];
+    const imageUrl: string = meta.image_url || '';
+    const total = entries.length;
+
+    const primaryColor = '#6366f1';
+    const textColor = '#1e293b';
+    const secondaryText = '#64748b';
+    const borderColor = '#e2e8f0';
+    const cardBg = '#f8fafc';
+
+    const bulletItems = bullets.length
+        ? bullets
+              .map(
+                  (b) =>
+                      `<li style="margin-bottom:14px;padding-left:28px;position:relative;font-size:22px;line-height:1.5;color:${textColor};">
+            <span style="position:absolute;left:0;top:2px;color:${primaryColor};font-weight:700;">→</span>
+            ${b}
+        </li>`
+              )
+              .join('')
+        : `<li style="color:${secondaryText};font-size:22px;">Content coming soon.</li>`;
+
+    let bodyHtml = '';
+
+    if (slideType === 'title') {
+        bodyHtml = `
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:60px 80px;">
+                <h1 style="font-size:64px;font-weight:800;color:${primaryColor};margin:0 0 20px;line-height:1.15;">${title}</h1>
+                <div style="width:80px;height:5px;background:${primaryColor};border-radius:3px;margin-bottom:28px;"></div>
+                ${meta.subtitle ? `<h2 style="font-size:28px;font-weight:400;color:${secondaryText};margin:0;">${meta.subtitle}</h2>` : ''}
+                <div style="margin-top:40px;font-size:15px;color:${secondaryText};">Slide 1 of ${total}</div>
+            </div>`;
+    } else if (slideType === 'summary') {
+        bodyHtml = `
+            <div style="display:flex;flex-direction:column;height:100%;padding:56px 72px;">
+                <h2 style="font-size:42px;font-weight:700;color:${primaryColor};margin:0 0 8px;">Key Takeaways</h2>
+                <div style="width:60px;height:4px;background:${primaryColor};border-radius:2px;margin-bottom:32px;"></div>
+                <ul style="list-style:none;padding:0;margin:0 0 28px;flex:1;">${bulletItems}</ul>
+                <div style="background:${primaryColor}15;border-left:4px solid ${primaryColor};border-radius:4px;padding:16px 20px;font-size:18px;color:${textColor};font-weight:500;">
+                    ${meta.key_point || 'Review these key concepts to solidify your understanding.'}
+                </div>
+            </div>`;
+    } else if (imageUrl && slideType === 'image_text') {
+        bodyHtml = `
+            <div style="display:flex;height:100%;">
+                <div style="width:40%;background:#e2e8f0 url('${imageUrl}') center/cover no-repeat;"></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:48px 56px;">
+                    <h2 style="font-size:38px;font-weight:700;color:${primaryColor};margin:0 0 24px;">${title}</h2>
+                    <ul style="list-style:none;padding:0;margin:0;">${bulletItems}</ul>
+                </div>
+            </div>`;
+    } else {
+        // Default: content slide
+        bodyHtml = `
+            <div style="display:flex;flex-direction:column;height:100%;padding:56px 72px;">
+                <h2 style="font-size:42px;font-weight:700;color:${primaryColor};margin:0 0 8px;">${title}</h2>
+                <div style="width:60px;height:4px;background:${primaryColor};border-radius:2px;margin-bottom:32px;"></div>
+                <ul style="list-style:none;padding:0;margin:0;flex:1;">${bulletItems}</ul>
+            </div>`;
+    }
+
+    return `
+        <div class="slide-root" style="width:100%;height:100vh;background:#ffffff;font-family:Inter,system-ui,sans-serif;position:relative;overflow:hidden;">
+            ${bodyHtml}
+            <div class="slide-number-badge">${index + 1} / ${total}</div>
+        </div>`;
+}
+
+
+/**
  * Process HTML content based on content type
  */
 export function processHtmlContent(
@@ -2313,8 +2738,19 @@ export function processHtmlContent(
 ): string {
     let processedHtml = html;
 
-    // Fix any absolute file paths
-    processedHtml = processedHtml.replace(/file:\/\/\/.*\/generated_images\//g, '');
+    // Replace any unresolved placeholder.png (image generation failed on backend)
+    // with a 1×1 transparent GIF so: no broken-image icon, Ken Burns CSS still works,
+    // and the image-hero gradient overlay renders cleanly over the dark background.
+    // Also inject a CSS rule so the parent container shows a subtle dark gradient
+    // in place of the missing photo.
+    if (processedHtml.includes('placeholder.png')) {
+        const TRANSPARENT_1PX = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        processedHtml = processedHtml.replace(/src=['"]placeholder\.png['"]/g, `src="${TRANSPARENT_1PX}"`);
+        // Ensure the generated-image element is invisible so the dark hero bg shows through
+        processedHtml =
+            `<style>.generated-image{opacity:0!important}.image-hero{background:linear-gradient(160deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%)!important}</style>` +
+            processedHtml;
+    }
 
     // Only strip opacity:0 if there's no <script> tag to animate it back
     const hasScript = /<script[\s>]/i.test(processedHtml);
@@ -2361,6 +2797,14 @@ export function processHtmlContent(
             break;
         case 'STORYBOOK':
             contentStyles = getStorybookStyles();
+            break;
+        case 'SLIDES':
+            contentStyles = getSlidesStyles();
+            // Ensure slide root div gets the class for scoped table/mermaid styles
+            processedHtml = processedHtml.replace(/(<div[^>]*class=["'][^"']*slide-root[^"']*["'][^>]*>)/i, '$1');
+            if (!processedHtml.includes('slide-root')) {
+                processedHtml = `<div class="slide-root" style="width:100%;height:100vh;overflow:hidden;">${processedHtml}</div>`;
+            }
             break;
     }
 

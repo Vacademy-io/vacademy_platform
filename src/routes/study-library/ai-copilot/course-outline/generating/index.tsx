@@ -5,6 +5,8 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSidebar } from '@/components/ui/sidebar';
 import { MyButton } from '@/components/design-system/button';
 import { BASE_URL, AI_SERVICE_BASE_URL } from '@/constants/urls';
+import DOMPurify from 'dompurify';
+import { toast } from 'sonner';
 
 import { getInstituteId } from '@/constants/helper';
 import {
@@ -58,6 +60,7 @@ import {
     ChevronsUp,
     ChevronsDown,
     Layers,
+    BookOpen,
     File,
     Image as ImageIcon,
     Notebook,
@@ -139,6 +142,74 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 
 // YouTube and utility functions are now imported from shared/utils
 
+/** Safely extract plain text from HTML without creating orphaned DOM nodes */
+const extractTextFromHtml = (html: string): string => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return doc.body.textContent || '';
+};
+
+/** Extract first N sentences from HTML content */
+const extractSentences = (html: string, count: number): string => {
+    const text = extractTextFromHtml(html);
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
+    return sentences.slice(0, count).join(' ');
+};
+
+/** Static slide icon map — avoids re-creating JSX on every render */
+const SLIDE_ICON_MAP: Record<string, React.ReactNode> = {
+    objectives: <FileText className="size-4 text-blue-600" />,
+    topic: (
+        <div className="flex items-center gap-1">
+            <Video className="size-4 text-red-600" />
+            <Code className="size-4 text-green-600" />
+        </div>
+    ),
+    quiz: <FileQuestion className="size-4 text-purple-600" />,
+    assessment: <FileQuestion className="size-4 text-purple-600" />,
+    homework: <ClipboardList className="size-4 text-orange-600" />,
+    assignment: <ClipboardList className="size-4 text-orange-600" />,
+    solution: <FileCode className="size-4 text-indigo-600" />,
+    doc: <FileText className="size-4 text-blue-600" />,
+    pdf: <File className="size-4 text-red-600" />,
+    video: <Video className="size-4 text-red-600" />,
+    'ai-video': <Video className="size-4 text-purple-600" />,
+    'ai-slides': <Layers className="size-4 text-teal-600" />,
+    'ai-storybook': <BookOpen className="size-4 text-rose-600" />,
+    'video-code': (
+        <div className="flex items-center gap-1">
+            <Video className="size-4 text-red-600" />
+            <Code className="size-4 text-green-600" />
+        </div>
+    ),
+    'ai-video-code': (
+        <div className="flex items-center gap-1">
+            <Video className="size-4 text-purple-600" />
+            <Code className="size-4 text-green-600" />
+        </div>
+    ),
+    jupyter: <Notebook className="size-4 text-orange-600" />,
+    'code-editor': <Code className="size-4 text-green-600" />,
+    scratch: <Puzzle className="size-4 text-purple-600" />,
+    'video-jupyter': (
+        <div className="flex items-center gap-1">
+            <Video className="size-4 text-red-600" />
+            <Notebook className="size-4 text-orange-600" />
+        </div>
+    ),
+    'video-code-editor': (
+        <div className="flex items-center gap-1">
+            <Video className="size-4 text-red-600" />
+            <Code className="size-4 text-green-600" />
+        </div>
+    ),
+    'video-scratch': (
+        <div className="flex items-center gap-1">
+            <Video className="size-4 text-red-600" />
+            <Puzzle className="size-4 text-purple-600" />
+        </div>
+    ),
+};
+
 // Route definition only - component is lazy loaded from index.lazy.tsx
 export const Route = createFileRoute('/study-library/ai-copilot/course-outline/generating/')({
     component: RouteComponent,
@@ -152,6 +223,8 @@ export function RouteComponent() {
     const navigate = useNavigate();
     const { setOpen } = useSidebar();
     const [slides, setSlides] = useState<SlideGeneration[]>([]);
+    // Guard against double-execution in React Strict Mode / HMR
+    const hasStartedGeneration = useRef(false);
 
     // Get institute levels
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
@@ -469,23 +542,25 @@ export function RouteComponent() {
 
     // Initialize slides from course outline (in real app, this would come from route params or state)
     useEffect(() => {
+        // Prevent double-execution (React Strict Mode, HMR)
+        if (hasStartedGeneration.current) return;
+        hasStartedGeneration.current = true;
+
         const generateCourseOutline = async () => {
             try {
-                // Get courseConfig from sessionStorage
+                // Get courseConfig from sessionStorage (do NOT remove yet — only after success)
                 const courseConfigStr = sessionStorage.getItem('courseConfig');
                 if (!courseConfigStr) {
-                    alert('Course configuration not found. Please start over.');
+                    toast.error('Course configuration not found. Please start over.');
                     navigate({ to: '/study-library/ai-copilot' });
                     return;
                 }
 
                 const courseConfig = JSON.parse(courseConfigStr);
-                // Clear from sessionStorage after reading
-                sessionStorage.removeItem('courseConfig');
 
                 const instituteId = getInstituteId();
                 if (!instituteId) {
-                    alert('Institute ID not found. Please login again.');
+                    toast.error('Institute ID not found. Please login again.');
                     return;
                 }
 
@@ -539,6 +614,17 @@ export function RouteComponent() {
                 if (depthOptions.includeAIGeneratedVideo) {
                     requirements.push('include AI generated videos');
                 }
+                if (depthOptions.includeAISlides) {
+                    requirements.push('include AI slides');
+                }
+                if (depthOptions.includeAIStorybook) {
+                    requirements.push('include AI storybook');
+                }
+
+                // Add language requirement
+                if (courseConfig.language && courseConfig.language !== 'English') {
+                    requirements.push(`generate all content in ${courseConfig.language} language`);
+                }
 
                 // Add duration and format info
                 if (courseConfig.durationFormatStructure?.includeQuizzes) {
@@ -579,6 +665,8 @@ export function RouteComponent() {
                     setEstimatedTimeRemaining(estimatedSeconds);
                 }
 
+                const courseLanguage = courseConfig.language || 'English';
+
                 const payload: any = {
                     user_prompt: userPrompt,
                     course_tree: null,
@@ -586,8 +674,12 @@ export function RouteComponent() {
                     generation_options: {
                         generate_images: true,
                         image_style: 'professional',
+                        language: courseLanguage,
                     },
                 };
+
+                // Store language for content generation step
+                sessionStorage.setItem('courseLanguage', courseLanguage);
 
                 if (numChapters) {
                     payload.generation_options.num_chapters = parseInt(numChapters);
@@ -734,13 +826,16 @@ export function RouteComponent() {
                                     setIsGenerating(false);
                                     setEstimatedTimeRemaining(0);
                                     setGenerationProgress('Complete!');
+
+                                    // Only clear sessionStorage after successful load
+                                    sessionStorage.removeItem('courseConfig');
                                 } catch (e) {
                                     console.error('=== Error Processing Response ===');
                                     console.error('Error:', e);
                                     console.error('Raw data:', data);
                                     setIsGenerating(false);
-                                    alert(
-                                        `Failed to process course data: ${e instanceof Error ? e.message : `Unknown error`}`
+                                    toast.error(
+                                        `Failed to process course data: ${e instanceof Error ? e.message : 'Unknown error'}`
                                     );
                                 }
                             }
@@ -754,10 +849,11 @@ export function RouteComponent() {
                     console.error('Error Message:', error.message);
                     console.error('Error Stack:', error.stack);
                 }
-                setSlides([]);
+                // Preserve any partial data that may have already been set
                 setIsGenerating(false);
-                alert(
-                    `Failed to generate course outline: ${error instanceof Error ? error.message : `Unknown error`}. Check console for details.`
+                toast.error(
+                    `Failed to generate course outline: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                    { duration: 8000 }
                 );
             }
         };
@@ -855,6 +951,10 @@ export function RouteComponent() {
                     slideType = 'video';
                 } else if (todo.type === 'AI_VIDEO') {
                     slideType = 'ai-video';
+                } else if (todo.type === 'AI_SLIDES') {
+                    slideType = 'ai-slides';
+                } else if (todo.type === 'AI_STORYBOOK') {
+                    slideType = 'ai-storybook';
                 } else if (todo.type === 'VIDEO_CODE') {
                     slideType = 'video-code';
                 } else if (todo.type === 'AI_VIDEO_CODE') {
@@ -1399,78 +1499,7 @@ export function RouteComponent() {
         URL.revokeObjectURL(url);
     };
 
-    const getSlideIcon = (type: SlideType) => {
-        switch (type) {
-            case 'objectives':
-                return <FileText className="size-4 text-blue-600" />;
-            case 'topic':
-                return (
-                    <div className="flex items-center gap-1">
-                        <Video className="size-4 text-red-600" />
-                        <Code className="size-4 text-green-600" />
-                    </div>
-                );
-            case 'quiz':
-            case 'assessment':
-                return <FileQuestion className="size-4 text-purple-600" />;
-            case 'homework':
-            case 'assignment':
-                return <ClipboardList className="size-4 text-orange-600" />;
-            case 'solution':
-                return <FileCode className="size-4 text-indigo-600" />;
-            case 'doc':
-                return <FileText className="size-4 text-blue-600" />;
-            case 'pdf':
-                return <File className="size-4 text-red-600" />;
-            case 'video':
-                return <Video className="size-4 text-red-600" />;
-            case 'ai-video':
-                return <Video className="size-4 text-purple-600" />;
-            case 'video-code':
-                return (
-                    <div className="flex items-center gap-1">
-                        <Video className="size-4 text-red-600" />
-                        <Code className="size-4 text-green-600" />
-                    </div>
-                );
-            case 'ai-video-code':
-                return (
-                    <div className="flex items-center gap-1">
-                        <Video className="size-4 text-purple-600" />
-                        <Code className="size-4 text-green-600" />
-                    </div>
-                );
-            case 'jupyter':
-                return <Notebook className="size-4 text-orange-600" />;
-            case 'code-editor':
-                return <Code className="size-4 text-green-600" />;
-            case 'scratch':
-                return <Puzzle className="size-4 text-purple-600" />;
-            case 'video-jupyter':
-                return (
-                    <div className="flex items-center gap-1">
-                        <Video className="size-4 text-red-600" />
-                        <Notebook className="size-4 text-orange-600" />
-                    </div>
-                );
-            case 'video-code-editor':
-                return (
-                    <div className="flex items-center gap-1">
-                        <Video className="size-4 text-red-600" />
-                        <Code className="size-4 text-green-600" />
-                    </div>
-                );
-            case 'video-scratch':
-                return (
-                    <div className="flex items-center gap-1">
-                        <Video className="size-4 text-red-600" />
-                        <Puzzle className="size-4 text-purple-600" />
-                    </div>
-                );
-            default:
-                return null;
-        }
-    };
+    const getSlideIcon = (type: SlideType) => SLIDE_ICON_MAP[type] ?? null;
 
     const handleBack = () => {
         setBackToLibraryDialogOpen(true);
@@ -1503,7 +1532,13 @@ export function RouteComponent() {
         }
 
         const timer = setInterval(() => {
-            setEstimatedTimeRemaining((prev) => Math.max(0, prev - 1));
+            setEstimatedTimeRemaining((prev) => {
+                if (prev <= 1) {
+                    // Don't go to 0 — keep at -1 to signal "still working"
+                    return -1;
+                }
+                return prev - 1;
+            });
         }, 1000);
 
         return () => clearInterval(timer);
@@ -1918,21 +1953,10 @@ export function RouteComponent() {
                                             {editingMetadataField !== 'description' && (
                                                 <button
                                                     onClick={() => {
-                                                        // Extract first paragraph or 2-3 sentences from about_the_course_html
-                                                        const tempDiv =
-                                                            document.createElement('div');
-                                                        tempDiv.innerHTML =
-                                                            courseMetadata.about_the_course_html;
-                                                        const textContent =
-                                                            tempDiv.textContent ||
-                                                            tempDiv.innerText ||
-                                                            '';
-                                                        const sentences =
-                                                            textContent.match(/[^.!?]+[.!?]+/g) ||
-                                                            [];
-                                                        const shortDescription = sentences
-                                                            .slice(0, 3)
-                                                            .join(' ');
+                                                        const shortDescription = extractSentences(
+                                                            courseMetadata.about_the_course_html,
+                                                            3
+                                                        );
                                                         handleEditMetadataField(
                                                             'description',
                                                             courseMetadata.description ||
@@ -1979,21 +2003,11 @@ export function RouteComponent() {
                                         </div>
                                     ) : (
                                         <p className="text-sm text-neutral-700">
-                                            {(() => {
-                                                // If description exists, use it
-                                                if (courseMetadata.description) {
-                                                    return courseMetadata.description;
-                                                }
-                                                // Otherwise extract first paragraph or 2-3 sentences from about_the_course_html
-                                                const tempDiv = document.createElement('div');
-                                                tempDiv.innerHTML =
-                                                    courseMetadata.about_the_course_html;
-                                                const textContent =
-                                                    tempDiv.textContent || tempDiv.innerText || '';
-                                                const sentences =
-                                                    textContent.match(/[^.!?]+[.!?]+/g) || [];
-                                                return sentences.slice(0, 3).join(' ');
-                                            })()}
+                                            {courseMetadata.description ||
+                                                extractSentences(
+                                                    courseMetadata.about_the_course_html,
+                                                    3
+                                                )}
                                         </p>
                                     )}
                                 </div>
@@ -2576,7 +2590,7 @@ export function RouteComponent() {
                                         <div
                                             className="prose prose-sm max-w-none text-sm text-neutral-700"
                                             dangerouslySetInnerHTML={{
-                                                __html: courseMetadata.why_learn_html,
+                                                __html: DOMPurify.sanitize(courseMetadata.why_learn_html),
                                             }}
                                         />
                                     )}
@@ -2645,7 +2659,7 @@ export function RouteComponent() {
                                         <div
                                             className="prose prose-sm max-w-none text-sm text-neutral-700"
                                             dangerouslySetInnerHTML={{
-                                                __html: courseMetadata.who_should_learn_html,
+                                                __html: DOMPurify.sanitize(courseMetadata.who_should_learn_html),
                                             }}
                                         />
                                     )}
@@ -2714,7 +2728,7 @@ export function RouteComponent() {
                                         <div
                                             className="prose prose-sm max-w-none text-sm text-neutral-700"
                                             dangerouslySetInnerHTML={{
-                                                __html: courseMetadata.about_the_course_html,
+                                                __html: DOMPurify.sanitize(courseMetadata.about_the_course_html),
                                             }}
                                         />
                                     )}

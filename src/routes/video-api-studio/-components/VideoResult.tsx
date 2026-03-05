@@ -67,14 +67,14 @@ export function VideoResult({
     const contentLabel = getContentTypeLabel(contentType);
 
     return (
-        <div className="flex flex-col lg:flex-row gap-6 w-full items-start">
+        <div className="flex flex-col xl:flex-row gap-4 w-full items-start">
             {/* Left Column: Content Player */}
-            <div className="flex-grow w-full lg:w-[70%]">
+            <div className="flex-grow w-full xl:w-[70%] min-w-0">
                 <div
                     className="flex overflow-hidden rounded-xl border-2 bg-black shadow-lg w-full"
                     style={{
                         aspectRatio: '16/9',
-                        maxHeight: 'calc(100vh - 200px)' // Optional safety constraint
+                        maxHeight: 'calc(100vh - 200px)',
                     }}
                 >
                     <AIContentPlayer
@@ -88,7 +88,7 @@ export function VideoResult({
             </div>
 
             {/* Right Column: Prompt, Status & Actions */}
-            <div className="w-full lg:w-[30%] shrink-0 space-y-4">
+            <div className="w-full xl:w-[30%] shrink-0 space-y-4">
                 <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm">
                     {/* Status & Content Label */}
                     <div className="flex flex-wrap items-center gap-2">

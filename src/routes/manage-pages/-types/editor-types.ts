@@ -52,6 +52,12 @@ export interface Page {
     id: string;
     route: string;
     title?: string;
+    published?: boolean;
+    seo?: {
+        metaTitle?: string;
+        metaDescription?: string;
+        ogImage?: string;
+    };
     components: Component[];
 }
 

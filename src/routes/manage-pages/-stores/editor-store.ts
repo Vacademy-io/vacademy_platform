@@ -40,12 +40,77 @@ interface EditorState {
     togglePagePublished: (pageId: string) => void;
     updatePageSeo: (pageId: string, seo: Page['seo']) => void;
 
+    // Layout slot actions
+    addToSlot: (pageId: string, layoutId: string, slotIndex: number, component: Component) => void;
+    reorderSlot: (pageId: string, layoutId: string, slotIndex: number, newComponents: Component[]) => void;
+    deleteFromSlot: (pageId: string, layoutId: string, slotIndex: number, componentId: string) => void;
+
     // Undo/Redo
     undo: () => void;
     redo: () => void;
     canUndo: () => boolean;
     canRedo: () => boolean;
 }
+
+// ── Recursive tree helpers ───────────────────────────────────────────────────
+// These walk the full component tree including nested slots inside layout
+// components, so that updateComponent / deleteComponent work at any depth.
+
+/** Regenerate all component IDs inside a deep-cloned layout's slots so that
+ *  a duplicate layout doesn't share IDs with the original. */
+function regenerateSlotIds(component: Component): Component {
+    if (!Array.isArray(component.props?.slots)) return component;
+    return {
+        ...component,
+        props: {
+            ...component.props,
+            slots: (component.props.slots as Component[][]).map((slot) =>
+                slot.map((child) => ({
+                    ...regenerateSlotIds(child),
+                    id: `${child.type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                }))
+            ),
+        },
+    };
+}
+
+function mapComponents(components: Component[], fn: (c: Component) => Component): Component[] {
+    return components.map((comp) => {
+        const updated = fn(comp);
+        if (Array.isArray(updated.props?.slots)) {
+            return {
+                ...updated,
+                props: {
+                    ...updated.props,
+                    slots: (updated.props.slots as Component[][]).map((slot) =>
+                        mapComponents(slot, fn)
+                    ),
+                },
+            };
+        }
+        return updated;
+    });
+}
+
+function filterComponents(components: Component[], predicate: (c: Component) => boolean): Component[] {
+    return components
+        .filter(predicate)
+        .map((comp) => {
+            if (Array.isArray(comp.props?.slots)) {
+                return {
+                    ...comp,
+                    props: {
+                        ...comp.props,
+                        slots: (comp.props.slots as Component[][]).map((slot) =>
+                            filterComponents(slot, predicate)
+                        ),
+                    },
+                };
+            }
+            return comp;
+        });
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Helper to push config to history
 const pushToHistory = (state: EditorState, newConfig: CatalogueConfig): Partial<EditorState> => {
@@ -108,7 +173,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 if (page.id !== pageId) return page;
                 return {
                     ...page,
-                    components: page.components.map((comp) =>
+                    components: mapComponents(page.components, (comp) =>
                         comp.id === componentId ? { ...comp, ...updates } : comp
                     ),
                 };
@@ -159,7 +224,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 if (page.id !== pageId) return page;
                 return {
                     ...page,
-                    components: page.components.filter((c) => c.id !== componentId),
+                    components: filterComponents(page.components, (c) => c.id !== componentId),
                 };
             });
             const newConfig = { ...state.config, pages: newPages };
@@ -175,16 +240,85 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                 if (componentIndex === -1) return page;
                 const original = page.components[componentIndex];
                 if (!original) return page;
-                const duplicate = {
-                    ...JSON.parse(JSON.stringify(original)),
-                    id: `${original.id}-copy-${Date.now()}`,
-                };
+                // Deep-clone, give the top-level a new ID, and regenerate
+                // IDs for any nested slot components so the duplicate is
+                // fully independent of the original.
+                const cloned = JSON.parse(JSON.stringify(original)) as Component;
+                const duplicate = regenerateSlotIds({
+                    ...cloned,
+                    id: `${original.type}-${Date.now()}`,
+                });
                 const newComponents = [...page.components];
                 newComponents.splice(componentIndex + 1, 0, duplicate);
                 return { ...page, components: newComponents };
             });
             const newConfig = { ...state.config, pages: newPages };
             return pushToHistory(state, newConfig);
+        }),
+
+    addToSlot: (pageId, layoutId, slotIndex, component) =>
+        set((state) => {
+            if (!state.config) return {};
+            const newPages = state.config.pages.map((page) => {
+                if (page.id !== pageId) return page;
+                return {
+                    ...page,
+                    components: mapComponents(page.components, (comp) => {
+                        if (comp.id !== layoutId) return comp;
+                        // Build the slots array defensively: if props.slots is missing
+                        // (e.g. corrupted data), reconstruct empty slots from columns count
+                        const existingSlots: Component[][] = Array.isArray(comp.props?.slots)
+                            ? (comp.props.slots as Component[][])
+                            : Array.from({ length: comp.props?.columns ?? 2 }, () => []);
+                        const slots = existingSlots.map((s, i) =>
+                            i === slotIndex ? [...s, component] : s
+                        );
+                        return { ...comp, props: { ...comp.props, slots } };
+                    }),
+                };
+            });
+            const newConfig = { ...state.config, pages: newPages };
+            return { ...pushToHistory(state, newConfig), selectedComponentId: component.id };
+        }),
+
+    reorderSlot: (pageId, layoutId, slotIndex, newComponents) =>
+        set((state) => {
+            if (!state.config) return {};
+            const newPages = state.config.pages.map((page) => {
+                if (page.id !== pageId) return page;
+                return {
+                    ...page,
+                    components: mapComponents(page.components, (comp) => {
+                        if (comp.id !== layoutId) return comp;
+                        const slots = (comp.props?.slots as Component[][] | undefined) ?? [];
+                        const newSlots = slots.map((s, i) => (i === slotIndex ? newComponents : s));
+                        return { ...comp, props: { ...comp.props, slots: newSlots } };
+                    }),
+                };
+            });
+            const newConfig = { ...state.config, pages: newPages };
+            return pushToHistory(state, newConfig);
+        }),
+
+    deleteFromSlot: (pageId, layoutId, slotIndex, componentId) =>
+        set((state) => {
+            if (!state.config) return {};
+            const newPages = state.config.pages.map((page) => {
+                if (page.id !== pageId) return page;
+                return {
+                    ...page,
+                    components: mapComponents(page.components, (comp) => {
+                        if (comp.id !== layoutId) return comp;
+                        const slots = (comp.props?.slots as Component[][] | undefined) ?? [];
+                        const newSlots = slots.map((s, i) =>
+                            i === slotIndex ? s.filter((c) => c.id !== componentId) : s
+                        );
+                        return { ...comp, props: { ...comp.props, slots: newSlots } };
+                    }),
+                };
+            });
+            const newConfig = { ...state.config, pages: newPages };
+            return { ...pushToHistory(state, newConfig), selectedComponentId: null };
         }),
 
     addPage: (page) =>

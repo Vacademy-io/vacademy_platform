@@ -2,21 +2,58 @@ import { Button } from '@/components/ui/button';
 import { getComponentTemplate, componentTemplates } from '../-utils/component-templates';
 import { useEditorStore } from '../-stores/editor-store';
 import { useDraggable } from '@dnd-kit/core';
-import { GripVertical, Plus } from 'lucide-react';
+import { Columns2, Columns3, Columns4, GripVertical, LayoutGrid, Plus } from 'lucide-react';
+
+// Layout presets — each maps a human label to the template key
+const LAYOUT_PRESETS = [
+    {
+        key: 'columnLayout2',
+        label: '2 Columns',
+        description: '50 / 50',
+        icon: <Columns2 className="size-4 shrink-0 text-teal-500" />,
+    },
+    {
+        key: 'columnLayout2asymLeft',
+        label: '2 Columns',
+        description: '1/3 + 2/3',
+        icon: <Columns2 className="size-4 shrink-0 text-teal-500" />,
+    },
+    {
+        key: 'columnLayout3',
+        label: '3 Columns',
+        description: '33 / 33 / 33',
+        icon: <Columns3 className="size-4 shrink-0 text-teal-500" />,
+    },
+    {
+        key: 'columnLayout4',
+        label: '4 Columns',
+        description: '25 / 25 / 25 / 25',
+        icon: <Columns4 className="size-4 shrink-0 text-teal-500" />,
+    },
+] as const;
+
+// Template keys that are layout containers — excluded from the content list
+const LAYOUT_KEYS = new Set(LAYOUT_PRESETS.map((p) => p.key));
 
 /** Each component in the library is individually draggable */
 const DraggableComponentItem = ({
-    type,
+    templateKey,
+    label,
+    description,
     onAdd,
     disabled,
+    icon,
 }: {
-    type: string;
-    onAdd: (type: string) => void;
+    templateKey: string;
+    label: string;
+    description: string;
+    onAdd: (key: string) => void;
     disabled: boolean;
+    icon?: React.ReactNode;
 }) => {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-        id: `library-${type}`,
-        data: { type },
+        id: `library-${templateKey}`,
+        data: { type: templateKey },
         disabled,
     });
 
@@ -38,26 +75,25 @@ const DraggableComponentItem = ({
             {/* Click to add button */}
             <Button
                 variant="ghost"
-                className="flex-1 h-auto justify-start px-2 py-3 text-left"
-                onClick={() => onAdd(type)}
+                className="flex-1 h-auto justify-start px-2 py-3 text-left gap-2"
+                onClick={() => onAdd(templateKey)}
                 disabled={disabled}
             >
+                {icon}
                 <div className="flex flex-col items-start">
-                    <span className="font-medium capitalize text-sm">
-                        {type.replace(/([A-Z])/g, ' $1').trim()}
-                    </span>
+                    <span className="font-medium capitalize text-sm">{label}</span>
                     <span className="text-xs font-normal text-gray-400">
-                        {disabled ? 'Select a page first' : 'Click or drag'}
+                        {disabled ? 'Select a page first' : description}
                     </span>
                 </div>
             </Button>
 
             {/* Quick-add button */}
             <button
-                onClick={() => onAdd(type)}
+                onClick={() => onAdd(templateKey)}
                 disabled={disabled}
                 className="px-2 py-3 text-gray-400 hover:text-gray-600 disabled:opacity-40"
-                aria-label={`Add ${type}`}
+                aria-label={`Add ${label}`}
             >
                 <Plus className="size-4" />
             </button>
@@ -68,21 +104,42 @@ const DraggableComponentItem = ({
 export const ComponentLibrary = () => {
     const { addComponent, selectedPageId } = useEditorStore();
 
-    const handleAdd = (type: string) => {
+    const handleAdd = (templateKey: string) => {
         if (!selectedPageId) return;
-        const component = getComponentTemplate(type);
+        const component = getComponentTemplate(templateKey);
         addComponent(selectedPageId, component);
     };
 
+    const contentTypes = Object.keys(componentTemplates).filter((k) => !LAYOUT_KEYS.has(k));
+
     return (
         <div className="flex flex-col gap-1.5 overflow-y-auto p-3">
-            <p className="mb-1 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Drag or click to add
+            {/* ── Layout containers ── */}
+            <p className="mb-1 mt-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-teal-600">
+                <LayoutGrid className="size-3.5" /> Layout
             </p>
-            {Object.keys(componentTemplates).map((type) => (
+            {LAYOUT_PRESETS.map((preset) => (
+                <DraggableComponentItem
+                    key={preset.key}
+                    templateKey={preset.key}
+                    label={preset.label}
+                    description={preset.description}
+                    icon={preset.icon}
+                    onAdd={handleAdd}
+                    disabled={!selectedPageId}
+                />
+            ))}
+
+            {/* ── Content components ── */}
+            <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Components
+            </p>
+            {contentTypes.map((type) => (
                 <DraggableComponentItem
                     key={type}
-                    type={type}
+                    templateKey={type}
+                    label={type.replace(/([A-Z])/g, ' $1').trim()}
+                    description="Click or drag"
                     onAdd={handleAdd}
                     disabled={!selectedPageId}
                 />

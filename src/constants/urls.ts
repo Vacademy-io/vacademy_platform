@@ -576,6 +576,11 @@ export const ROLES_BASE = `${BASE_URL}/auth-service/v1/institute`;
 export const GET_ALL_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/setting/get-all`;
 export const SAVE_GENERIC_SETTING = `${BASE_URL}/admin-core-service/institute/v1/setting/generic/save`;
 
+// White-Label Setup URLs
+export const WHITE_LABEL_SETUP = `${BASE_URL}/admin-core-service/institute/white-label/v1/setup`;
+export const WHITE_LABEL_STATUS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/institute/white-label/v1/status?instituteId=${instituteId}`;
+
 // Application Stage
 export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/application/stage`;
 

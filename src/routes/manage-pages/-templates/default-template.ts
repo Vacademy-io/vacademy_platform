@@ -3,6 +3,7 @@ export const defaultTemplate = {
     globalSettings: {
         courseCatalogeType: { enabled: false, value: 'Course' },
         mode: 'light',
+        theme: { preset: 'default', borderRadius: 'rounded' },
         fonts: { enabled: true, family: 'Inter, sans-serif' },
         compactness: 'medium',
         audience: 'all',

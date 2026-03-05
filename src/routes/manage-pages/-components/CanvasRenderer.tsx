@@ -16,6 +16,123 @@ import { CATALOGUE_EDITOR_CONFIG } from '@/constants/catalogue-editor';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchBothInstituteAPIs } from '@/services/student-list-section/getInstituteDetails';
 
+/** Renders a single slot column as a droppable zone */
+const SlotDropZone = ({
+    layoutId,
+    slotIndex,
+    slotComponents,
+    selectedComponentId,
+    onSelectComponent,
+}: {
+    layoutId: string;
+    slotIndex: number;
+    slotComponents: any[];
+    selectedComponentId: string | null;
+    onSelectComponent: (id: string) => void;
+}) => {
+    // Use '::' as separator — component IDs only contain [a-z0-9-], so '::' is unambiguous
+    const { setNodeRef, isOver } = useDroppable({ id: `slot::${layoutId}::${slotIndex}` });
+    return (
+        <div
+            ref={setNodeRef}
+            className={`relative flex-1 min-h-[80px] border border-dashed rounded transition-colors ${
+                isOver ? 'border-teal-400 bg-teal-50' : 'border-teal-200 bg-white'
+            }`}
+        >
+            <div className="absolute left-1 top-0.5 z-10 text-[9px] font-semibold uppercase text-teal-400 select-none">
+                Slot {slotIndex + 1}
+            </div>
+            {slotComponents.length === 0 && !isOver && (
+                <div className="flex h-full min-h-[80px] items-center justify-center text-[11px] text-teal-300">
+                    Drop here
+                </div>
+            )}
+            {slotComponents.map((child: any) => {
+                const isSelected = child.id === selectedComponentId;
+                const isDisabled = child.enabled === false;
+                return (
+                    <div
+                        key={child.id}
+                        onClick={(e) => { e.stopPropagation(); onSelectComponent(child.id); }}
+                        className={`relative cursor-pointer transition-all ${isDisabled ? 'opacity-40' : ''} ${
+                            isSelected
+                                ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]'
+                                : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'
+                        }`}
+                        title={isDisabled ? `${child.type} (hidden)` : child.type}
+                    >
+                        {isSelected && (
+                            <div className="absolute left-0 top-0 z-50 select-none rounded-br-md bg-blue-500 px-2 py-0.5 text-xs font-medium text-white">
+                                {child.type}
+                            </div>
+                        )}
+                        {isDisabled && (
+                            <div className="absolute right-2 top-2 z-40 rounded bg-gray-400 px-1.5 py-0.5 text-[10px] text-white">
+                                hidden
+                            </div>
+                        )}
+                        <div style={{ pointerEvents: 'none' }}>
+                            {renderComponentPreview(child)}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+/** Renders a columnLayout container with its slot drop zones */
+const ColumnLayoutCanvas = ({
+    component,
+    selectedComponentId,
+    onSelectComponent,
+}: {
+    component: any;
+    selectedComponentId: string | null;
+    onSelectComponent: (id: string) => void;
+}) => {
+    const isSelected = component.id === selectedComponentId;
+    const { slots = [], columnWidths = [], gap = 'md' } = component.props;
+    const gapPx: Record<string, number> = { none: 0, sm: 8, md: 16, lg: 32 };
+    const widthToFr = (w?: string): string => {
+        const map: Record<string, string> = { '1/2': '1fr', '1/3': '1fr', '2/3': '2fr', '1/4': '1fr', '3/4': '3fr' };
+        return map[w ?? ''] || '1fr';
+    };
+    return (
+        <div
+            onClick={(e) => { e.stopPropagation(); onSelectComponent(component.id); }}
+            className={`relative cursor-pointer transition-all p-3 ${
+                isSelected
+                    ? 'outline outline-2 outline-teal-500 outline-offset-[-2px] bg-teal-50/40'
+                    : 'hover:outline hover:outline-1 hover:outline-teal-300 hover:outline-offset-[-1px]'
+            }`}
+        >
+            <div className="absolute left-0 top-0 z-50 select-none rounded-br bg-teal-500 px-2 py-0.5 text-[10px] font-medium text-white">
+                {slots.length} Columns
+            </div>
+            <div
+                style={{
+                    display: 'grid',
+                    gridTemplateColumns: slots.map((_: any, i: number) => widthToFr(columnWidths[i])).join(' '),
+                    gap: gapPx[gap] ?? 16,
+                    marginTop: 16,
+                }}
+            >
+                {slots.map((slotComps: any[], i: number) => (
+                    <SlotDropZone
+                        key={i}
+                        layoutId={component.id}
+                        slotIndex={i}
+                        slotComponents={slotComps}
+                        selectedComponentId={selectedComponentId}
+                        onSelectComponent={onSelectComponent}
+                    />
+                ))}
+            </div>
+        </div>
+    );
+};
+
 export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
     const {
         config,
@@ -125,9 +242,11 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
             >
                 {/* Width-constrained canvas */}
                 <div
-                    className={`relative bg-white shadow-lg transition-all duration-300 ${
+                    className={`relative bg-white shadow-lg transition-all duration-300${config?.globalSettings?.mode === 'dark' ? ' dark' : ''} ${
                         isOver ? 'ring-2 ring-blue-400' : ''
                     }`}
+                    data-catalogue-theme={config?.globalSettings?.theme?.preset || 'default'}
+                    data-catalogue-radius={config?.globalSettings?.theme?.borderRadius || 'rounded'}
                     style={{
                         width: canvasWidth,
                         maxWidth: '100%',
@@ -175,6 +294,18 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                         </div>
                     ) : (
                         page.components.map((component) => {
+                            // Layout containers get a special multi-slot canvas renderer
+                            if (component.type === 'columnLayout') {
+                                return (
+                                    <ColumnLayoutCanvas
+                                        key={component.id}
+                                        component={component}
+                                        selectedComponentId={selectedComponentId}
+                                        onSelectComponent={selectComponent}
+                                    />
+                                );
+                            }
+
                             const isSelected = component.id === selectedComponentId;
                             const isDisabled = component.enabled === false;
                             return (

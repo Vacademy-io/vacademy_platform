@@ -1,9 +1,30 @@
+export type CatalogueThemePreset =
+    | 'default'
+    | 'ocean'
+    | 'forest'
+    | 'sunset'
+    | 'midnight'
+    | 'rose'
+    | 'violet'
+    | 'amber'
+    | 'slate';
+
+export type CatalogueBorderRadius = 'sharp' | 'rounded' | 'pill';
+
 export interface GlobalSettings {
     courseCatalogeType: {
         enabled: boolean;
         value?: 'Course' | 'Product';
     };
     mode: 'light' | 'dark';
+    theme?: {
+        /** Named color preset */
+        preset?: CatalogueThemePreset;
+        /** Custom primary hex color — overrides preset when set */
+        primaryColor?: string;
+        /** Corner roundness variant */
+        borderRadius?: CatalogueBorderRadius;
+    };
     fonts?: {
         enabled: boolean;
         family?: string;

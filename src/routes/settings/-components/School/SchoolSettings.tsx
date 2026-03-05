@@ -7,6 +7,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import Counsellor from './Counsellor';
+import ApplicationStageSettings from './ApplicationStageSettings';
 
 interface SchoolSettingsProps {
     isTab?: boolean;
@@ -134,6 +135,7 @@ export default function SchoolSettings({ isTab }: SchoolSettingsProps) {
                     </div>
                 </CardContent>
             </Card>
+            <ApplicationStageSettings />
         </div>
     );
 }

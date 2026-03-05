@@ -108,6 +108,7 @@ export interface Schedule {
         duration: string;
         link: string;
         id: string;
+        meetingDate?: string;
         thumbnailFileId: string;
         countAttendanceDaily: boolean;
         dailyAttendance?: boolean;

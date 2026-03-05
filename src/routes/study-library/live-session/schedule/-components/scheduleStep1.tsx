@@ -440,7 +440,9 @@ export default function ScheduleStep1() {
                                       link: matchingSchedule.link || '',
                                       thumbnailFileId: matchingSchedule.thumbnailFileId || '',
                                       countAttendanceDaily:
-                                          matchingSchedule.countAttendanceDaily ?? (matchingSchedule as any).dailyAttendance ?? false,
+                                          matchingSchedule.countAttendanceDaily ??
+                                          (matchingSchedule as any).dailyAttendance ??
+                                          false,
                                   };
                               })
                             : [
@@ -782,6 +784,101 @@ export default function ScheduleStep1() {
         return false;
     };
 
+    /** Uploads the core session files (background music + cover thumbnail).
+     *  Returns the resulting file IDs, or null if an upload fails. */
+    const uploadCoreFiles = async (): Promise<{
+        musicFileId: string | undefined;
+        thumbnailFileId: string | undefined;
+    } | null> => {
+        let musicFileId = existingMusicId || undefined;
+        let thumbnailFileId = existingThumbnailId || undefined;
+
+        if (selectedMusicFile) {
+            try {
+                musicFileId = await UploadFileInS3(selectedMusicFile, () => {}, 'your-user-id');
+            } catch (error) {
+                console.error('Error uploading music file:', error);
+                toast.error('Failed to upload background music. Please try again.');
+                return null;
+            }
+        }
+        if (selectedFile) {
+            try {
+                thumbnailFileId = await UploadFileInS3(selectedFile, () => {}, 'your-user-id');
+            } catch (error) {
+                console.error('Error uploading thumbnail:', error);
+                toast.error('Failed to upload thumbnail image. Please try again.');
+                return null;
+            }
+        }
+        return { musicFileId, thumbnailFileId };
+    };
+
+    /** Merges the latest live form state into the submitted data so that
+     *  dynamically added sessions (via form.setValue) are never lost. */
+    const buildMergedFormData = (
+        data: z.infer<typeof sessionFormSchema>
+    ): z.infer<typeof sessionFormSchema> => {
+        const updatedData = { ...data };
+        // CRITICAL FIX: React Hook Form's handleSubmit resolver may not always
+        // include newly-added sessions in its output. Reading from form.getValues()
+        // guarantees all dynamic sessions are captured.
+        const latestRecurringSchedule = form.getValues('recurringSchedule');
+        if (latestRecurringSchedule) {
+            updatedData.recurringSchedule = latestRecurringSchedule.map((latestDay, dayIdx) => {
+                const resolvedDay = data.recurringSchedule?.[dayIdx];
+                if (resolvedDay) {
+                    return { ...resolvedDay, sessions: latestDay.sessions };
+                }
+                return latestDay;
+            });
+        }
+        return updatedData;
+    };
+
+    /** Uploads per-session thumbnails for all recurring schedule sessions in-place.
+     *  Returns false (and shows a toast) if any upload fails. */
+    const uploadRecurringSessionThumbnails = async (
+        updatedData: z.infer<typeof sessionFormSchema>
+    ): Promise<boolean> => {
+        if (!updatedData.recurringSchedule) return true;
+
+        for (let dayIndex = 0; dayIndex < updatedData.recurringSchedule.length; dayIndex++) {
+            const day = updatedData.recurringSchedule[dayIndex];
+            if (!day?.sessions) continue;
+
+            for (let sessionIndex = 0; sessionIndex < day.sessions.length; sessionIndex++) {
+                const sessionThumbnail = getSessionThumbnail(dayIndex, sessionIndex);
+                if (!sessionThumbnail) continue;
+
+                try {
+                    const sessionThumbnailId = await UploadFileInS3(
+                        sessionThumbnail,
+                        () => {},
+                        'your-user-id'
+                    );
+                    const target =
+                        updatedData.recurringSchedule?.[dayIndex]?.sessions?.[sessionIndex];
+                    if (target) {
+                        updatedData.recurringSchedule[dayIndex]!.sessions![
+                            sessionIndex
+                        ]!.thumbnailFileId = sessionThumbnailId;
+                    }
+                } catch (error) {
+                    console.error(
+                        `Error uploading thumbnail for ${day.day} session ${sessionIndex + 1}:`,
+                        error
+                    );
+                    toast.error(
+                        `Failed to upload thumbnail for ${day.day} session ${sessionIndex + 1}`
+                    );
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
     const executeSubmission = async (
         data: z.infer<typeof sessionFormSchema>,
         updateRecurrenceScope: 'ONLY_THIS' | 'ALL_FUTURE' | 'CURRENT_DAY_ALL_SESSIONS' | 'ALL_FUTURE_ALL_SESSIONS' | null = null
@@ -789,98 +886,33 @@ export default function ScheduleStep1() {
         if (isSubmitting) return; // Prevent multiple submissions
 
         setIsSubmitting(true);
-        let musicFileId = existingMusicId || undefined;
-        let thumbnailFileId = existingThumbnailId || undefined;
-
         try {
-            // Override with new uploads if files are selected
-            if (selectedMusicFile) {
-                try {
-                    musicFileId = await UploadFileInS3(selectedMusicFile, () => {}, 'your-user-id');
-                } catch (error) {
-                    console.error('Error uploading music file:', error);
-                    toast.error('Failed to upload background music. Please try again.');
-                    setIsSubmitting(false);
-                    return;
-                }
+            const uploadedFiles = await uploadCoreFiles();
+            if (!uploadedFiles) {
+                setIsSubmitting(false);
+                return;
             }
-            if (selectedFile) {
-                try {
-                    thumbnailFileId = await UploadFileInS3(selectedFile, () => {}, 'your-user-id');
-                } catch (error) {
-                    console.error('Error uploading thumbnail:', error);
-                    toast.error('Failed to upload thumbnail image. Please try again.');
-                    setIsSubmitting(false);
-                    return;
-                }
+
+            const updatedData = buildMergedFormData(data);
+
+            const thumbnailsUploaded = await uploadRecurringSessionThumbnails(updatedData);
+            if (!thumbnailsUploaded) {
+                setIsSubmitting(false);
+                return;
             }
-        } catch (error) {
-            console.error('Error uploading files:', error);
-            toast.error('Failed to upload files. Please try again.');
-            setIsSubmitting(false);
-            return;
-        }
 
-        // Upload session thumbnails and update form data
-        const updatedData = { ...data };
-        if (updatedData.recurringSchedule) {
-            for (let dayIndex = 0; dayIndex < updatedData.recurringSchedule.length; dayIndex++) {
-                const day = updatedData.recurringSchedule[dayIndex];
-                if (day?.sessions) {
-                    for (let sessionIndex = 0; sessionIndex < day.sessions.length; sessionIndex++) {
-                        const sessionThumbnail = getSessionThumbnail(dayIndex, sessionIndex);
-                        if (sessionThumbnail) {
-                            try {
-                                const sessionThumbnailId = await UploadFileInS3(
-                                    sessionThumbnail,
-                                    () => {},
-                                    'your-user-id'
-                                );
-                                if (
-                                    updatedData.recurringSchedule?.[dayIndex]?.sessions?.[
-                                        sessionIndex
-                                    ]
-                                ) {
-                                    updatedData.recurringSchedule[dayIndex]!.sessions![
-                                        sessionIndex
-                                    ]!.thumbnailFileId = sessionThumbnailId;
-                                }
-                            } catch (error) {
-                                console.error(
-                                    `Error uploading thumbnail for ${day.day} session ${
-                                        sessionIndex + 1
-                                    }:`,
-                                    error
-                                );
-                                toast.error(
-                                    `Failed to upload thumbnail for ${day.day} session ${
-                                        sessionIndex + 1
-                                    }`
-                                );
-                                setIsSubmitting(false);
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+            // Session IDs already in the form data are sufficient for the backend
+            // to determine updates vs new additions — pass an empty originalSchedules array.
+            const body = transformFormToDTOStep1(
+                updatedData,
+                INSTITUTE_ID,
+                [],
+                uploadedFiles.musicFileId,
+                uploadedFiles.thumbnailFileId,
+                instituteDetails?.institute_logo_file_id,
+                updateRecurrenceScope
+            );
 
-        // Transform function will handle added/updated/deleted schedules
-        // by comparing form data (updatedData) with original schedules
-        // We pass empty array for originalSchedules - the session IDs in the form data
-        // will be used by the backend to determine updates vs additions
-        const body = transformFormToDTOStep1(
-            updatedData,
-            INSTITUTE_ID,
-            [], // Empty array - session IDs in form data are sufficient for backend
-            musicFileId,
-            thumbnailFileId,
-            instituteDetails?.institute_logo_file_id,
-            updateRecurrenceScope
-        );
-
-        try {
             const response = await createLiveSessionStep1(body);
             setSessionId(response.id);
             setStep1Data(data);
@@ -929,6 +961,43 @@ export default function ScheduleStep1() {
             form.setValue(`recurringSchedule.${targetDayIndex}.sessions`, currentSessions, {
                 shouldDirty: true,
             });
+
+            // Explicitly set individual field paths for any newly added session
+            // to ensure React Hook Form properly registers them for handleSubmit
+            const lastIdx = currentSessions.length - 1;
+            const lastSession = currentSessions[lastIdx];
+            if (lastSession && !lastSession.id) {
+                form.setValue(
+                    `recurringSchedule.${targetDayIndex}.sessions.${lastIdx}.startTime`,
+                    lastSession.startTime || '',
+                    { shouldDirty: true }
+                );
+                form.setValue(
+                    `recurringSchedule.${targetDayIndex}.sessions.${lastIdx}.durationHours`,
+                    lastSession.durationHours || '0',
+                    { shouldDirty: true }
+                );
+                form.setValue(
+                    `recurringSchedule.${targetDayIndex}.sessions.${lastIdx}.durationMinutes`,
+                    lastSession.durationMinutes || '30',
+                    { shouldDirty: true }
+                );
+                form.setValue(
+                    `recurringSchedule.${targetDayIndex}.sessions.${lastIdx}.link`,
+                    lastSession.link || '',
+                    { shouldDirty: true }
+                );
+                form.setValue(
+                    `recurringSchedule.${targetDayIndex}.sessions.${lastIdx}.countAttendanceDaily`,
+                    lastSession.countAttendanceDaily || false,
+                    { shouldDirty: true }
+                );
+                form.setValue(
+                    `recurringSchedule.${targetDayIndex}.sessions.${lastIdx}.thumbnailFileId`,
+                    lastSession.thumbnailFileId || '',
+                    { shouldDirty: true }
+                );
+            }
 
             if (!targetDay.isSelect) {
                 form.setValue(`recurringSchedule.${targetDayIndex}.isSelect`, true);
@@ -1010,32 +1079,34 @@ export default function ScheduleStep1() {
             }
 
             case 'ALL_FUTURE': {
-                // Update the same session index across all selected days
-                recurringSchedule.forEach((day, dIdx) => {
-                    if (day.isSelect && day.sessions?.[sessionIndex]) {
-                        form.setValue(
-                            `recurringSchedule.${dIdx}.sessions.${sessionIndex}.link`,
-                            currentLink,
-                            { shouldDirty: true }
-                        );
-                    }
-                });
+                // Update the same session index on the SAME day only (e.g., only Mondays).
+                // The scope means "this session on all upcoming occurrences of this day",
+                // NOT across all days of the week.
+                const currentDay = recurringSchedule[dayIndex];
+                if (currentDay?.sessions?.[sessionIndex]) {
+                    form.setValue(
+                        `recurringSchedule.${dayIndex}.sessions.${sessionIndex}.link`,
+                        currentLink,
+                        { shouldDirty: true }
+                    );
+                }
                 break;
             }
 
             case 'ALL_FUTURE_ALL_SESSIONS': {
-                // Update all sessions on all selected days
-                recurringSchedule.forEach((day, dIdx) => {
-                    if (day.isSelect && day.sessions) {
-                        day.sessions.forEach((_, sIdx) => {
-                            form.setValue(
-                                `recurringSchedule.${dIdx}.sessions.${sIdx}.link`,
-                                currentLink,
-                                { shouldDirty: true }
-                            );
-                        });
-                    }
-                });
+                // Update all sessions on the SAME day only (e.g., all sessions on Monday).
+                // The scope means "all sessions on all upcoming occurrences of this day",
+                // NOT all sessions across all days of the week.
+                const sameDaySessions = recurringSchedule[dayIndex];
+                if (sameDaySessions?.isSelect && sameDaySessions?.sessions) {
+                    sameDaySessions.sessions.forEach((_, sIdx) => {
+                        form.setValue(
+                            `recurringSchedule.${dayIndex}.sessions.${sIdx}.link`,
+                            currentLink,
+                            { shouldDirty: true }
+                        );
+                    });
+                }
                 break;
             }
         }
@@ -1046,7 +1117,23 @@ export default function ScheduleStep1() {
     };
 
     const onSubmit = (data: z.infer<typeof sessionFormSchema>) => {
-        // If scope was already chosen via Apply button, use it directly
+        // Check if there are genuinely new sessions (without IDs) in the form data.
+        // Also check the live form state to catch dynamically added sessions that
+        // the resolver might not have included.
+        const latestSchedule = form.getValues('recurringSchedule');
+        const hasNewSessions =
+            (data.recurringSchedule?.some(
+                (day) => day.isSelect && day.sessions.some((session) => !session.id)
+            ) ??
+                false) ||
+            (latestSchedule?.some(
+                (day) => day.isSelect && day.sessions.some((session) => !session.id)
+            ) ??
+                false);
+
+        // If scope was already chosen via Apply button, use it directly.
+        // Keep the scope even when new sessions are being added so the backend
+        // can create recurring instances for the new sessions.
         if (isEdit && pendingRecurrenceScope) {
             executeSubmission(data, pendingRecurrenceScope);
             setPendingRecurrenceScope(null);
@@ -1058,6 +1145,11 @@ export default function ScheduleStep1() {
             setPendingSubmitData(data);
             setChangedDayLabel(changedDay.charAt(0).toUpperCase() + changedDay.slice(1));
             setIsLinkUpdateDialogOpen(true);
+        } else if (isEdit && hasNewSessions) {
+            // When new sessions are added during editing without any link changes,
+            // send ALL_FUTURE_ALL_SESSIONS scope so the backend generates recurring
+            // instances for the new sessions across all future occurrences.
+            executeSubmission(data, 'ALL_FUTURE_ALL_SESSIONS');
         } else {
             executeSubmission(data);
         }
@@ -1123,12 +1215,17 @@ export default function ScheduleStep1() {
         // Get the countAttendanceDaily value from the first session of this day
         const firstSessionAttendance = daySchedule.sessions[0]?.countAttendanceDaily || false;
 
+        // Get global defaults to use as fallback for new sessions
+        const globalDurationHours = form.getValues('durationHours') || '0';
+        const globalDurationMinutes = form.getValues('durationMinutes') || '30';
+        const globalLink = form.getValues('defaultLink') || '';
+
         // Determine session to copy:
         const defaultSession = {
             startTime: '',
-            durationHours: '',
-            durationMinutes: '',
-            link: '',
+            durationHours: globalDurationHours,
+            durationMinutes: globalDurationMinutes,
+            link: globalLink,
             countAttendanceDaily: firstSessionAttendance, // Use the first session's attendance setting
             thumbnailFileId: '',
         };
@@ -1139,12 +1236,12 @@ export default function ScheduleStep1() {
                 : (schedule[0]?.sessions || [])[daySchedule.sessions.length]) ||
             (dayIndex === 0 ? defaultSession : schedule[0]?.sessions[0]) ||
             defaultSession;
-        // Normalize fields to strings
+        // Normalize fields to strings, using global defaults as fallback
         const sessionToCopy = {
             startTime: rawSession.startTime || '',
-            durationHours: rawSession.durationHours || '',
-            durationMinutes: rawSession.durationMinutes || '',
-            link: rawSession.link || '',
+            durationHours: rawSession.durationHours || globalDurationHours,
+            durationMinutes: rawSession.durationMinutes || globalDurationMinutes,
+            link: rawSession.link || globalLink,
             countAttendanceDaily: firstSessionAttendance, // Ensure new session uses same attendance setting
             thumbnailFileId: rawSession.thumbnailFileId || '',
         };
@@ -1153,6 +1250,43 @@ export default function ScheduleStep1() {
             shouldDirty: true,
             shouldValidate: true,
         });
+
+        // CRITICAL FIX: Explicitly set individual field paths for the new session.
+        // React Hook Form tracks field registrations separately from _formValues.
+        // When we set the entire sessions array via setValue above, the new session's
+        // individual fields may not be properly registered for handleSubmit.
+        // By setting each field individually, we ensure RHF correctly tracks them.
+        const newSessionIndex = updatedSessions.length - 1;
+        form.setValue(
+            `recurringSchedule.${dayIndex}.sessions.${newSessionIndex}.startTime`,
+            sessionToCopy.startTime,
+            { shouldDirty: true }
+        );
+        form.setValue(
+            `recurringSchedule.${dayIndex}.sessions.${newSessionIndex}.durationHours`,
+            sessionToCopy.durationHours,
+            { shouldDirty: true }
+        );
+        form.setValue(
+            `recurringSchedule.${dayIndex}.sessions.${newSessionIndex}.durationMinutes`,
+            sessionToCopy.durationMinutes,
+            { shouldDirty: true }
+        );
+        form.setValue(
+            `recurringSchedule.${dayIndex}.sessions.${newSessionIndex}.link`,
+            sessionToCopy.link,
+            { shouldDirty: true }
+        );
+        form.setValue(
+            `recurringSchedule.${dayIndex}.sessions.${newSessionIndex}.countAttendanceDaily`,
+            sessionToCopy.countAttendanceDaily,
+            { shouldDirty: true }
+        );
+        form.setValue(
+            `recurringSchedule.${dayIndex}.sessions.${newSessionIndex}.thumbnailFileId`,
+            sessionToCopy.thumbnailFileId,
+            { shouldDirty: true }
+        );
     };
 
     const removeSessionFromDay = (dayIndex: number, sessionIndex: number) => {
@@ -2370,7 +2504,16 @@ export default function ScheduleStep1() {
                                                                                         isEdit ||
                                                                                         false
                                                                                     }
-                                                                                    dayName={dayField.day.charAt(0).toUpperCase() + dayField.day.slice(1)}
+                                                                                    dayName={
+                                                                                        dayField.day
+                                                                                            .charAt(
+                                                                                                0
+                                                                                            )
+                                                                                            .toUpperCase() +
+                                                                                        dayField.day.slice(
+                                                                                            1
+                                                                                        )
+                                                                                    }
                                                                                 />
                                                                             </FormControl>
                                                                             <FormMessage className="text-sm text-red-500" />

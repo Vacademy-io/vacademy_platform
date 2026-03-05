@@ -250,13 +250,17 @@ const convertRewardToBenefit = (reward: ReferrerReward | RefereeReward) => {
 export const convertToApiFormat = (settings: UnifiedReferralSettings): ReferralOptionRequest => {
     const instituteId = getInstituteId();
 
-    // Validate required fields
-    if (!settings.label || !settings.refereeReward || !settings.referrerRewards) {
-        throw new Error('Missing required fields: label, refereeReward, or referrerRewards');
+    // 1. Evaluate presence of rewards
+    const hasRefereeReward = !!settings.refereeReward;
+    const hasReferrerRewards = settings.referrerRewards && settings.referrerRewards.length > 0;
+
+    // 2. Validate required fields (At Least One Rule)
+    if (!settings.label || (!hasRefereeReward && !hasReferrerRewards)) {
+        throw new Error('Missing required fields: label, and at least one of refereeReward or referrerRewards');
     }
 
-    // Convert referrer rewards to new tier-based JSON format
-    const referrerTiers = settings.referrerRewards.map((tier: ReferrerTier) => {
+    // 3. Safely convert referrer rewards (fallback to empty array if undefined)
+    const referrerTiers = (settings.referrerRewards || []).map((tier: ReferrerTier) => {
         const benefit = convertRewardToBenefit(tier.reward);
         return {
             tierName: tier.tierName,
@@ -273,15 +277,18 @@ export const convertToApiFormat = (settings: UnifiedReferralSettings): ReferralO
         tiers: referrerTiers,
     });
 
-    // Convert referee reward to new tier-based JSON format (wrapped in a simple tier named "benefit")
-    const refereeDiscountJson = JSON.stringify(
-        convertRewardToNewTierFormat(
-            settings.refereeReward,
-            'benefit',
-            { min: 1, max: 1 },
-            settings.payoutVestingDays || 7
+    // 4. Safely convert referee reward using a ternary operator
+    const refereeDiscountJson = settings.refereeReward 
+        ? JSON.stringify(
+            convertRewardToNewTierFormat(
+                settings.refereeReward,
+                'benefit',
+                { min: 1, max: 1 },
+                settings.payoutVestingDays || 7
+            )
         )
-    );
+        // Pass a null or empty tiers object string if no referee reward exists
+        : JSON.stringify({ tiers: [] });
 
     return {
         name: settings.label,

@@ -10,6 +10,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vacademy.io.common.health.service.SlowQueryRegistry;
 
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
@@ -35,6 +36,9 @@ public class SlowQueryLogger {
 
     @Autowired
     private TracingProperties tracingProperties;
+
+    @Autowired
+    private SlowQueryRegistry slowQueryRegistry;
 
     /**
      * Intercept all Repository methods (Spring Data JPA) in vacademy.io packages
@@ -114,7 +118,6 @@ public class SlowQueryLogger {
      */
     private void logIfSlow(String methodName, String type, long durationMs, Object[] args, Throwable error) {
         if (durationMs < tracingProperties.getSlowQueryThresholdMs() && error == null) {
-            // Fast and successful - no need to log
             return;
         }
 
@@ -124,18 +127,21 @@ public class SlowQueryLogger {
             log.error("❌ {} [{}] FAILED after {}ms | Args: {} | Error: {}",
                     type.toUpperCase(), methodName, durationMs, argsString, error.getMessage());
             addSentryBreadcrumb(methodName, type, durationMs, true, error.getMessage());
+            slowQueryRegistry.record(methodName, type, durationMs, "error", error.getMessage());
 
         } else if (durationMs >= tracingProperties.getCriticalQueryThresholdMs()) {
             log.error("🔴 CRITICAL SLOW {} [{}] took {}ms | Args: {}",
                     type.toUpperCase(), methodName, durationMs, argsString);
             addSentryBreadcrumb(methodName, type, durationMs, false, null);
             captureSlowMethodEvent(methodName, type, durationMs, argsString, "critical");
+            slowQueryRegistry.record(methodName, type, durationMs, "critical", null);
 
         } else if (durationMs >= tracingProperties.getSlowQueryThresholdMs()) {
             log.warn("🟡 SLOW {} [{}] took {}ms | Args: {}",
                     type.toUpperCase(), methodName, durationMs, argsString);
             addSentryBreadcrumb(methodName, type, durationMs, false, null);
             captureSlowMethodEvent(methodName, type, durationMs, argsString, "warning");
+            slowQueryRegistry.record(methodName, type, durationMs, "warning", null);
         }
     }
 

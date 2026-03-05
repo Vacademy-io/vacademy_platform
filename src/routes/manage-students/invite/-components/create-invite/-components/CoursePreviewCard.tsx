@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface CoursePreviewCardProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -124,7 +126,9 @@ const CoursePreviewCard = ({
 
                         {/* Tags Section */}
                         <div className="space-y-2 pt-10">
-                            <Label className="font-medium text-gray-900">Course Tags</Label>
+                            <Label className="font-medium text-gray-900">
+                                {getTerminology(ContentTerms.PopularTag, SystemTerms.PopularTag)} Tags
+                            </Label>
                             <p className="text-sm text-gray-600">
                                 Add tags to help categorize and find your course easily
                             </p>

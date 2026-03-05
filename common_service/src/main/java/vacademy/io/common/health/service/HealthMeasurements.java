@@ -44,19 +44,39 @@ public class HealthMeasurements {
         int pct = maxMb > 0 ? (int) (usedMb * 100 / maxMb) : 0;
 
         // ── GC ──────────────────────────────────────────────────────────────────
-        // Sum collection time across all GC collectors; report the largest
-        // single-collection pause we can observe (granularity: one GC cycle).
+        // Collect algorithm name + average pause per cycle + total event count.
         long lastPauseMs = 0;
+        long totalGcCount = 0;
+        String gcAlgorithm = "Unknown";
+
         List<GarbageCollectorMXBean> gcBeans = ManagementFactory.getGarbageCollectorMXBeans();
         for (GarbageCollectorMXBean gc : gcBeans) {
             long count = gc.getCollectionCount();
-            long time = gc.getCollectionTime(); // cumulative ms
+            long time = gc.getCollectionTime(); // cumulative ms since start
             if (count > 0) {
-                long avgPause = time / count; // average pause per cycle
+                long avgPause = time / count;
                 if (avgPause > lastPauseMs) {
                     lastPauseMs = avgPause;
                 }
+                totalGcCount += count;
             }
+            // Normalise GC name for frontend consumption
+            // ManagementFactory names vary by JVM vendor and version
+            String rawName = gc.getName();
+            if (rawName.contains("ZGC"))
+                gcAlgorithm = "ZGC";
+            else if (rawName.contains("Shenandoah"))
+                gcAlgorithm = "Shenandoah";
+            else if (rawName.contains("G1"))
+                gcAlgorithm = "G1GC";
+            else if (rawName.contains("PS") ||
+                    rawName.contains("Parallel"))
+                gcAlgorithm = "ParallelGC";
+            else if (rawName.contains("ConcurrentMark"))
+                gcAlgorithm = "CMS";
+            else if (rawName.contains("Serial") ||
+                    rawName.contains("Copy"))
+                gcAlgorithm = "SerialGC";
         }
 
         // ── Threads ─────────────────────────────────────────────────────────────
@@ -65,12 +85,8 @@ public class HealthMeasurements {
         int blocked = 0;
         int waiting = 0;
 
-        // Sample up to 500 thread IDs to avoid performance overhead on
-        // high-thread-count services
         long[] allIds = threadMx.getAllThreadIds();
         long[] ids = allIds.length > 500 ? java.util.Arrays.copyOf(allIds, 500) : allIds;
-        // getThreadInfo(long[], int) — second arg is maxDepth; 0 means no stack trace
-        // (fast)
         ThreadInfo[] infos = threadMx.getThreadInfo(ids, 0);
         for (ThreadInfo ti : infos) {
             if (ti == null)
@@ -88,6 +104,8 @@ public class HealthMeasurements {
                 .heapMaxMb(maxMb)
                 .heapPercent(pct)
                 .gcPauseMsLast(lastPauseMs)
+                .gcCountTotal(totalGcCount)
+                .gcAlgorithm(gcAlgorithm)
                 .threadsLive(live)
                 .threadsBlocked(blocked)
                 .threadsWaiting(waiting)

@@ -41,11 +41,25 @@ public class HealthPingResponse {
         private int heapPercent;
 
         /**
-         * Duration of the last GC pause in ms.
-         * High values (e.g. >100ms) directly cause request latency spikes.
+         * Average duration per GC pause in ms (cumulative time / count).
+         * High values (> 100ms) directly cause request latency spikes.
          */
         @JsonProperty("gc_pause_ms_last")
         private long gcPauseMsLast;
+
+        /**
+         * Total GC events since JVM start.
+         * If this grows rapidly between polls, allocation rate is too high.
+         */
+        @JsonProperty("gc_count_total")
+        private long gcCountTotal;
+
+        /**
+         * Name of the active GC algorithm — e.g. "G1GC", "ZGC", "Shenandoah".
+         * Used by the dashboard to give algorithm-specific tuning advice.
+         */
+        @JsonProperty("gc_algorithm")
+        private String gcAlgorithm;
 
         /** Number of live threads */
         @JsonProperty("threads_live")

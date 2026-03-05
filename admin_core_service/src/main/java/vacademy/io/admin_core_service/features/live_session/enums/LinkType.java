@@ -5,5 +5,6 @@ public enum LinkType {
     ZOOM,
     YOUTUBE,
     CUSTOM,
-    RECORDED
+    RECORDED,
+    ZOHO_MEETING
 }

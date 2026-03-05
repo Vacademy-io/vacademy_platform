@@ -27,4 +27,12 @@ public class LearnerPackageFilterDTO {
     private List<String> packageIds;
     /** Comma-separated package session IDs to filter by. Optional. */
     private List<String> packageSessionIds;
+    /**
+     * Optional filter on package sessions for this course search.
+     * Allowed values:
+     * - PARENTS_ONLY   -> only sessions with is_parent = true
+     * - CHILDREN_ONLY  -> only sessions with parent_id IS NOT NULL
+     * If null/empty, no parent/child filter is applied.
+     */
+    private String packageSessionFilter;
 }

@@ -117,6 +117,16 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
         return;
       }
 
+      // Relative paths (e.g. /assets/... or assets/...) — use directly, not via S3 resolver
+      if (item.url.startsWith('/') || item.url.startsWith('assets/') || item.url.startsWith('./')) {
+        if (isMounted) {
+          setResolvedUrl(item.url);
+          setHasTriedLoading(true);
+          setIsLoading(false);
+        }
+        return;
+      }
+
       // Resolve file ID to URL
       try {
         const url = await getPublicUrlWithoutLogin(item.url);

@@ -176,6 +176,45 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "imageGallery":
         return <ImageGalleryRenderer key={id} {...props} />;
 
+      case "columnLayout": {
+        const {
+          slots = [] as any[][],
+          columnWidths = [] as string[],
+          gap = 'md',
+          align = 'top',
+          stackOnMobile = true,
+        } = props;
+        const gapMap: Record<string, string> = { none: '0', sm: '0.5rem', md: '1rem', lg: '2rem' };
+        const alignMap: Record<string, string> = { top: 'start', center: 'center', bottom: 'end', stretch: 'stretch' };
+        const widthToFr = (w?: string) => {
+          const map: Record<string, string> = { '1/2': '1fr', '1/3': '1fr', '2/3': '2fr', '1/4': '1fr', '3/4': '3fr' };
+          return map[w ?? ''] || '1fr';
+        };
+        const gridCols = slots.map((_: any, i: number) => widthToFr(columnWidths[i])).join(' ');
+        // Use a CSS custom property so the @media rule in index.css can override it
+        // on mobile (inline styles can't be overridden by regular rules, but CSS
+        // custom properties cascade normally and can be overridden with !important).
+        return (
+          <div
+            key={id}
+            className={stackOnMobile ? 'grid-layout-responsive' : ''}
+            style={{
+              '--catalogue-grid-cols': gridCols,
+              display: 'grid',
+              gridTemplateColumns: 'var(--catalogue-grid-cols)',
+              gap: gapMap[gap] || '1rem',
+              alignItems: alignMap[align] || 'start',
+            } as React.CSSProperties}
+          >
+            {slots.map((slotComponents: any[], slotIndex: number) => (
+              <div key={slotIndex} className="min-w-0">
+                {slotComponents.map((child: any) => renderComponent(child))}
+              </div>
+            ))}
+          </div>
+        );
+      }
+
       default:
         console.warn(`Unknown component type: ${type}`);
         return null;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
@@ -278,6 +278,44 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     );
   }
 
+  // Theme wiring
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const themeSettings = (catalogueData?.globalSettings as any)?.theme;
+  const themePreset = themeSettings?.preset || 'default';
+  const themeRadius = themeSettings?.borderRadius || 'rounded';
+  const isDarkMode = (catalogueData?.globalSettings as any)?.mode === 'dark';
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const primaryColor = themeSettings?.primaryColor as string | undefined;
+    if (primaryColor && /^#[0-9a-fA-F]{6}$/.test(primaryColor)) {
+      const r = parseInt(primaryColor.slice(1, 3), 16) / 255;
+      const g = parseInt(primaryColor.slice(3, 5), 16) / 255;
+      const b = parseInt(primaryColor.slice(5, 7), 16) / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      const l = (max + min) / 2;
+      let h = 0, s = 0;
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+      }
+      const H = Math.round(h * 360), S = Math.round(s * 100), L = Math.round(l * 100);
+      el.style.setProperty('--primary-500', `${H} ${S}% ${L}%`);
+      el.style.setProperty('--primary-400', `${H} ${S}% ${Math.min(L + 10, 90)}%`);
+      el.style.setProperty('--primary-200', `${H} ${Math.max(S - 15, 10)}% ${Math.min(L + 28, 95)}%`);
+      el.style.setProperty('--primary-50', `${H} ${Math.max(S - 30, 5)}% ${Math.min(L + 43, 98)}%`);
+    } else {
+      el.style.removeProperty('--primary-500');
+      el.style.removeProperty('--primary-400');
+      el.style.removeProperty('--primary-200');
+      el.style.removeProperty('--primary-50');
+    }
+  }, [themeSettings?.primaryColor]);
+
   // Debug logging
   console.log("CourseCataloguePage render state:", {
     isLoading,
@@ -289,7 +327,12 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   });
 
   return (
-    <div className="min-h-screen bg-white w-full pb-20 md:pb-0  md:pt-0">
+    <div
+      ref={wrapperRef}
+      className={`min-h-screen bg-white w-full pb-20 md:pb-0 md:pt-0${isDarkMode ? ' dark' : ''}`}
+      data-catalogue-theme={themePreset}
+      data-catalogue-radius={themeRadius}
+    >
       {/* Intro Page - Show first if enabled and not completed (hidden in preview mode) */}
       {showIntroPage && !isPreviewMode && catalogueData?.introPage && (
         <IntroPageComponent

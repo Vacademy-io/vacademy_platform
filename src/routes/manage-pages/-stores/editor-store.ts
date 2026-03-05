@@ -14,6 +14,7 @@ interface EditorState {
     selectedPageId: string | null;
     selectedComponentId: string | null;
     selectedGlobalSettings: boolean;
+    selectedGlobalLayout: 'header' | 'footer' | null;
     activeTab: 'visual' | 'json';
     previewViewport: 'desktop' | 'tablet' | 'mobile';
 
@@ -22,6 +23,7 @@ interface EditorState {
     selectPage: (pageId: string) => void;
     selectComponent: (componentId: string | null) => void;
     selectGlobalSettings: () => void;
+    selectGlobalLayout: (section: 'header' | 'footer') => void;
     setViewport: (viewport: 'desktop' | 'tablet' | 'mobile') => void;
     setActiveTab: (tab: 'visual' | 'json') => void;
 
@@ -72,6 +74,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     selectedPageId: null,
     selectedComponentId: null,
     selectedGlobalSettings: false,
+    selectedGlobalLayout: null,
     activeTab: 'visual',
     previewViewport: 'desktop',
 
@@ -83,13 +86,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             historyIndex: 0,
             selectedPageId: config.pages[0]?.id || null,
             selectedGlobalSettings: false,
+            selectedGlobalLayout: null,
         }),
 
     selectPage: (id) =>
-        set({ selectedPageId: id, selectedComponentId: null, selectedGlobalSettings: false }),
-    selectComponent: (id) => set({ selectedComponentId: id }),
+        set({ selectedPageId: id, selectedComponentId: null, selectedGlobalSettings: false, selectedGlobalLayout: null }),
+    selectComponent: (id) => set({ selectedComponentId: id, selectedGlobalSettings: false, selectedGlobalLayout: null }),
     selectGlobalSettings: () =>
-        set({ selectedGlobalSettings: true, selectedPageId: null, selectedComponentId: null }),
+        set({ selectedGlobalSettings: true, selectedPageId: null, selectedComponentId: null, selectedGlobalLayout: null }),
+    selectGlobalLayout: (section) =>
+        set((state) => ({ selectedGlobalSettings: false, selectedGlobalLayout: section, selectedPageId: state.selectedPageId, selectedComponentId: null })),
     setViewport: (v) => set({ previewViewport: v }),
     setActiveTab: (t) => set({ activeTab: t }),
 

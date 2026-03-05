@@ -5,39 +5,26 @@ import { useEditorStore } from '../-stores/editor-store';
 import React, { useEffect, useState } from 'react';
 import { ComponentLibrary } from './ComponentLibrary';
 import { TemplateLibrary } from './TemplateLibrary';
+import { LayersPanel } from './LayersPanel';
 import { PropertyPanel } from './PropertyPanel';
 import { PageTabs } from './PageTabs';
+import { CanvasRenderer } from './CanvasRenderer';
 import { Button } from '@/components/ui/button';
-import { Loader2, Save, Code, LayoutTemplate, Undo2, Redo2, Layers, PuzzleIcon } from 'lucide-react';
+import {
+    Loader2, Save, Code, LayoutTemplate, Undo2, Redo2,
+    Layers, PuzzleIcon, List,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Route } from '../editor/$tagName';
 import { CatalogueConfig } from '../-types/editor-types';
 import { useCataloguePermissions } from '../-hooks/use-catalogue-permissions';
 import { useCallback } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, useSensor, useSensors, PointerSensor, useDroppable } from '@dnd-kit/core';
+import {
+    DndContext, DragEndEvent, DragOverlay,
+    useSensor, useSensors, PointerSensor,
+} from '@dnd-kit/core';
 import { getComponentTemplate } from '../-utils/component-templates';
-
-import { PreviewPanel } from './PreviewPanel';
 import { Textarea } from '@/components/ui/textarea';
-
-/** Drop zone wrapping the center iframe canvas */
-const CanvasDropZone = ({
-    children,
-    className,
-}: {
-    children: React.ReactNode;
-    className?: string;
-}) => {
-    const { setNodeRef, isOver } = useDroppable({ id: 'canvas-drop-zone' });
-    return (
-        <div
-            ref={setNodeRef}
-            className={`${className || ''} ${isOver ? 'ring-2 ring-inset ring-blue-400' : ''}`}
-        >
-            {children}
-        </div>
-    );
-};
 
 export const CatalogueEditorPage = () => {
     const { tagName } = Route.useParams();
@@ -52,37 +39,32 @@ export const CatalogueEditorPage = () => {
         redo,
         canUndo,
         canRedo,
-        selectComponent,
-        selectPage,
-        selectedComponentId,
         selectedPageId,
         addComponent,
     } = useEditorStore();
     const { toast } = useToast();
     const { canWrite } = useCataloguePermissions();
 
-    const handleComponentSelected = useCallback((componentId: string, pageId: string) => {
-        selectPage(pageId);
-        selectComponent(componentId);
-    }, [selectPage, selectComponent]);
-
     // Drag-from-library: pointer sensor with a small activation distance to allow clicks
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
     );
 
-    const handleDragEnd = useCallback((event: DragEndEvent) => {
-        const { active, over } = event;
-        // If dropped over the canvas area or anywhere (we add to selected page)
-        if (active.data.current?.type && selectedPageId && over?.id === 'canvas-drop-zone') {
-            const componentType = active.data.current.type as string;
-            const component = getComponentTemplate(componentType);
-            addComponent(selectedPageId, component);
-        }
-    }, [selectedPageId, addComponent]);
+    const handleDragEnd = useCallback(
+        (event: DragEndEvent) => {
+            const { active, over } = event;
+            if (active.data.current?.type && selectedPageId && over?.id === 'canvas-drop-zone') {
+                const componentType = active.data.current.type as string;
+                const component = getComponentTemplate(componentType);
+                addComponent(selectedPageId, component);
+            }
+        },
+        [selectedPageId, addComponent]
+    );
+
     const [jsonText, setJsonText] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
-    const [sidebarTab, setSidebarTab] = useState<'components' | 'templates'>('components');
+    const [sidebarTab, setSidebarTab] = useState<'components' | 'layers' | 'templates'>('components');
     const [savedConfigJSON, setSavedConfigJSON] = useState('');
     const isDirty = config ? JSON.stringify(config) !== savedConfigJSON : false;
 
@@ -145,14 +127,19 @@ export const CatalogueEditorPage = () => {
         setJsonText(value);
         try {
             const parsed = JSON.parse(value);
+            // Validate required top-level structure
+            if (!parsed.globalSettings || !Array.isArray(parsed.pages)) {
+                setJsonError('JSON must have "globalSettings" and "pages" array');
+                return;
+            }
             setJsonError(null);
             updateConfig(parsed);
-        } catch (e) {
+        } catch {
             setJsonError('Invalid JSON');
         }
     };
 
-    // Keyboard shortcuts for Undo/Redo
+    // Keyboard shortcuts: Undo/Redo + Ctrl+S to save
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -163,10 +150,19 @@ export const CatalogueEditorPage = () => {
                 e.preventDefault();
                 if (canRedo()) redo();
             }
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                if (config && canWrite && !saveMutation.isPending && !jsonError) {
+                    saveMutation.mutate(config);
+                }
+            }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo, canUndo, canRedo]);
+    }, [undo, redo, canUndo, canRedo, config, canWrite, saveMutation, jsonError]);
+
+    // When a component is added, switch layers tab so user can see it
+    // (handled by selectComponent in store — no extra work needed)
 
     if (isLoading)
         return (
@@ -204,6 +200,7 @@ export const CatalogueEditorPage = () => {
                         </Button>
                     </div>
                 </div>
+
                 <div className="flex items-center gap-2">
                     {/* Unsaved indicator */}
                     {isDirty && (
@@ -212,7 +209,7 @@ export const CatalogueEditorPage = () => {
                             Unsaved changes
                         </span>
                     )}
-                    {/* Undo/Redo Buttons */}
+                    {/* Undo/Redo */}
                     <div className="flex rounded-lg border bg-gray-100 p-0.5">
                         <Button
                             variant="ghost"
@@ -264,62 +261,71 @@ export const CatalogueEditorPage = () => {
                     />
                 </div>
             ) : (
-                /* Visual Editor Mode — Live iframe canvas */
+                /* Visual Editor Mode — direct-DOM canvas */
                 <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
                     <div className="flex flex-1 overflow-hidden">
-                        {/* Left Sidebar - Components / Templates */}
+                        {/* Left Sidebar */}
                         <div className="flex w-64 flex-col border-r bg-white">
-                            {/* Sidebar Tab Strip */}
+                            {/* Three-tab strip */}
                             <div className="flex shrink-0 border-b">
                                 <button
                                     onClick={() => setSidebarTab('components')}
-                                    className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${
+                                    className={`flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
                                         sidebarTab === 'components'
                                             ? 'border-b-2 border-blue-500 text-blue-600'
                                             : 'text-gray-500 hover:text-gray-700'
                                     }`}
+                                    title="Components"
                                 >
                                     <PuzzleIcon className="size-3.5" />
-                                    Components
+                                    Add
+                                </button>
+                                <button
+                                    onClick={() => setSidebarTab('layers')}
+                                    className={`flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
+                                        sidebarTab === 'layers'
+                                            ? 'border-b-2 border-blue-500 text-blue-600'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                    title="Layers — current page structure"
+                                >
+                                    <List className="size-3.5" />
+                                    Layers
                                 </button>
                                 <button
                                     onClick={() => setSidebarTab('templates')}
-                                    className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${
+                                    className={`flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
                                         sidebarTab === 'templates'
                                             ? 'border-b-2 border-blue-500 text-blue-600'
                                             : 'text-gray-500 hover:text-gray-700'
                                     }`}
+                                    title="Page templates"
                                 >
                                     <Layers className="size-3.5" />
                                     Templates
                                 </button>
                             </div>
-                            {/* Sidebar Content */}
+
+                            {/* Sidebar content */}
                             <div className="flex flex-1 flex-col overflow-hidden">
-                                {sidebarTab === 'components' ? (
-                                    <ComponentLibrary />
-                                ) : (
-                                    <TemplateLibrary />
-                                )}
+                                {sidebarTab === 'components' && <ComponentLibrary />}
+                                {sidebarTab === 'layers' && <LayersPanel />}
+                                {sidebarTab === 'templates' && <TemplateLibrary />}
                             </div>
                         </div>
 
-                        {/* Center - Live iframe preview (always visible, is a drop zone) */}
-                        <CanvasDropZone className="relative flex flex-1 flex-col overflow-hidden">
-                            <div className="flex w-full flex-1 overflow-hidden">
-                                <PreviewPanel
-                                    tagName={tagName}
-                                    onComponentSelected={handleComponentSelected}
-                                    selectedComponentId={selectedComponentId}
-                                />
+                        {/* Center — Direct-DOM canvas + page tabs */}
+                        <div className="flex flex-1 flex-col overflow-hidden">
+                            <div className="flex-1 overflow-hidden">
+                                <CanvasRenderer tagName={tagName} />
                             </div>
-                            {/* Bottom - Page Tabs for page management */}
+                            {/* Bottom — Page Tabs */}
                             <div className="h-12 shrink-0 border-t bg-white">
                                 <PageTabs />
                             </div>
-                        </CanvasDropZone>
+                        </div>
 
-                        {/* Right Sidebar - Properties */}
+                        {/* Right Sidebar — Properties */}
                         <div className="flex w-80 flex-col overflow-auto border-l bg-white">
                             <div className="border-b p-4 font-medium">Properties</div>
                             <PropertyPanel />
@@ -328,7 +334,6 @@ export const CatalogueEditorPage = () => {
 
                     {/* Floating drag ghost */}
                     <DragOverlay>
-                        {/* Content rendered by @dnd-kit automatically when dragging */}
                         <div className="rounded border border-blue-400 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 shadow-lg">
                             Drop to add component
                         </div>

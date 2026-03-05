@@ -18,6 +18,8 @@ interface CatalogueResponse {
     source_id?: string;
     institute_id: string;
     is_default: boolean;
+    updated_at?: string;
+    created_at?: string;
 }
 
 export const getCatalogueTags = async (instituteId: string): Promise<CatalogueTag[]> => {
@@ -28,7 +30,7 @@ export const getCatalogueTags = async (instituteId: string): Promise<CatalogueTa
     return (response.data || []).map((item) => ({
         tagName: item.tag_name,
         status: item.status as 'ACTIVE' | 'DRAFT' | 'ARCHIVED',
-        lastModified: new Date().toISOString(), // Backend doesn't return this, using current time
+        lastModified: item.updated_at || item.created_at || undefined,
         catalogueJson: item.catalogue_json,
         id: item.id,
     }));

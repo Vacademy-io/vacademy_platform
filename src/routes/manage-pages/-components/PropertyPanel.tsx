@@ -4,7 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Trash2, ChevronDown, ChevronUp, Settings, Copy, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, Settings, Copy, ArrowUp, ArrowDown, LayoutGrid } from 'lucide-react';
 import { useState } from 'react';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
@@ -46,11 +46,24 @@ export const PropertyPanel = () => {
     }
 
     if (selectedComponentId) {
-        // Find component
+        // Recursive find — searches top-level and inside columnLayout slots
+        const findComponent = (components: any[]): any | null => {
+            for (const c of components) {
+                if (c.id === selectedComponentId) return c;
+                if (Array.isArray(c.props?.slots)) {
+                    for (const slot of c.props.slots as any[][]) {
+                        const found = findComponent(slot);
+                        if (found) return found;
+                    }
+                }
+            }
+            return null;
+        };
+
         let component: (typeof config.pages)[number]['components'][number] | null = null;
         let pageId = '';
         for (const p of config.pages) {
-            const c = p.components.find((c) => c.id === selectedComponentId);
+            const c = findComponent(p.components);
             if (c) {
                 component = c;
                 pageId = p.id;
@@ -63,6 +76,8 @@ export const PropertyPanel = () => {
         // Compute position within page for reorder
         const pageComponents = config.pages.find((p) => p.id === pageId)?.components ?? [];
         const componentIndex = pageComponents.findIndex((c) => c.id === component!.id);
+        // componentIndex === -1 means the selected component lives inside a slot (nested)
+        const isNested = componentIndex === -1;
         const isFirst = componentIndex === 0;
         const isLast = componentIndex === pageComponents.length - 1;
 
@@ -85,9 +100,18 @@ export const PropertyPanel = () => {
                 {/* Component Header + Action Bar */}
                 <div className="border-b pb-4">
                     <div className="mb-2 flex items-start justify-between">
-                        <div>
-                            <h3 className="text-base font-semibold capitalize">{component.type}</h3>
-                            <div className="text-xs text-gray-400">ID: {component.id}</div>
+                        <div className="flex items-center gap-2">
+                            {component.type === 'columnLayout' && (
+                                <LayoutGrid className="size-4 text-teal-500" />
+                            )}
+                            <div>
+                                <h3 className={`text-base font-semibold capitalize ${component.type === 'columnLayout' ? 'text-teal-700' : ''}`}>
+                                    {component.type === 'columnLayout'
+                                        ? `${component.props?.slots?.length ?? 2} Column Layout`
+                                        : component.type.replace(/([A-Z])/g, ' $1').trim()}
+                                </h3>
+                                <div className="text-xs text-gray-400">ID: {component.id}</div>
+                            </div>
                         </div>
                         {/* Actions */}
                         <div className="flex items-center gap-0.5">
@@ -95,9 +119,9 @@ export const PropertyPanel = () => {
                                 variant="ghost"
                                 size="sm"
                                 className="size-7 p-0 text-gray-500 hover:text-gray-900"
-                                disabled={isFirst}
+                                disabled={isFirst || isNested}
                                 onClick={moveUp}
-                                title="Move up"
+                                title={isNested ? 'Cannot reorder nested components' : 'Move up'}
                             >
                                 <ArrowUp className="size-3.5" />
                             </Button>
@@ -105,9 +129,9 @@ export const PropertyPanel = () => {
                                 variant="ghost"
                                 size="sm"
                                 className="size-7 p-0 text-gray-500 hover:text-gray-900"
-                                disabled={isLast}
+                                disabled={isLast || isNested}
                                 onClick={moveDown}
-                                title="Move down"
+                                title={isNested ? 'Cannot reorder nested components' : 'Move down'}
                             >
                                 <ArrowDown className="size-3.5" />
                             </Button>
@@ -115,8 +139,9 @@ export const PropertyPanel = () => {
                                 variant="ghost"
                                 size="sm"
                                 className="size-7 p-0 text-gray-500 hover:text-blue-600"
+                                disabled={isNested}
                                 onClick={() => duplicateComponent(pageId, component!.id)}
-                                title="Duplicate"
+                                title={isNested ? 'Cannot duplicate nested components' : 'Duplicate'}
                             >
                                 <Copy className="size-3.5" />
                             </Button>
@@ -343,21 +368,137 @@ const GlobalSettingsEditor = ({
             </div>
 
             {/* Theme Settings */}
-            <div className="space-y-3 rounded-lg border bg-gray-50 p-4">
+            <div className="space-y-4 rounded-lg border bg-gray-50 p-4">
                 <h4 className="font-medium text-gray-700">Theme</h4>
-                <div className="flex items-center justify-between">
-                    <Label>Mode</Label>
-                    <select
-                        className="rounded border px-3 py-1.5 text-sm"
-                        value={gs.mode || 'light'}
-                        onChange={(e) => updateField('mode', e.target.value)}
-                    >
-                        <option value="light">Light</option>
-                        <option value="dark">Dark</option>
-                    </select>
+
+                {/* Color Presets */}
+                <div className="space-y-2">
+                    <Label className="text-xs text-gray-500">Color Preset</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {(
+                            [
+                                { key: 'default', label: 'Default',  color: '#3B82F6' },
+                                { key: 'ocean',   label: 'Ocean',    color: '#0EA5E9' },
+                                { key: 'forest',  label: 'Forest',   color: '#16A34A' },
+                                { key: 'sunset',  label: 'Sunset',   color: '#F97316' },
+                                { key: 'midnight',label: 'Midnight', color: '#7C3AED' },
+                                { key: 'rose',    label: 'Rose',     color: '#E11D48' },
+                                { key: 'violet',  label: 'Violet',   color: '#8B5CF6' },
+                                { key: 'amber',   label: 'Amber',    color: '#D97706' },
+                                { key: 'slate',   label: 'Slate',    color: '#334155' },
+                            ] as const
+                        ).map(({ key, label, color }) => {
+                            const isActive = (gs.theme?.preset || 'default') === key;
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    title={label}
+                                    onClick={() => updateField('theme.preset', key)}
+                                    className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-2 text-[10px] font-medium transition-all ${
+                                        isActive
+                                            ? 'border-gray-800 bg-white shadow-sm'
+                                            : 'border-transparent hover:border-gray-300'
+                                    }`}
+                                >
+                                    <span
+                                        className="size-6 rounded-full shadow-sm"
+                                        style={{ backgroundColor: color }}
+                                    />
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
+
+                {/* Custom primary color override */}
+                <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs text-gray-500">Custom Color Override</Label>
+                        {gs.theme?.primaryColor && (
+                            <button
+                                type="button"
+                                onClick={() => updateField('theme.primaryColor', undefined)}
+                                className="text-[10px] text-gray-400 hover:text-red-500"
+                            >
+                                Clear
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="color"
+                            value={gs.theme?.primaryColor || '#3B82F6'}
+                            onChange={(e) => updateField('theme.primaryColor', e.target.value)}
+                            className="h-8 w-10 cursor-pointer rounded border bg-white p-0.5"
+                        />
+                        <span className="font-mono text-xs text-gray-500">
+                            {gs.theme?.primaryColor || 'Using preset'}
+                        </span>
+                    </div>
+                    <p className="text-[10px] text-gray-400">
+                        Overrides the preset color with a custom brand color.
+                    </p>
+                </div>
+
+                {/* Border Radius */}
+                <div className="space-y-2">
+                    <Label className="text-xs text-gray-500">Corner Style</Label>
+                    <div className="flex gap-2">
+                        {(
+                            [
+                                { key: 'sharp',   label: 'Sharp',   preview: '2px'    },
+                                { key: 'rounded', label: 'Rounded', preview: '8px'    },
+                                { key: 'pill',    label: 'Pill',    preview: '9999px' },
+                            ] as const
+                        ).map(({ key, label, preview }) => {
+                            const isActive = (gs.theme?.borderRadius || 'rounded') === key;
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => updateField('theme.borderRadius', key)}
+                                    className={`flex flex-1 flex-col items-center gap-1.5 rounded-lg border-2 py-2 text-[10px] font-medium transition-all ${
+                                        isActive
+                                            ? 'border-gray-800 bg-white shadow-sm'
+                                            : 'border-transparent bg-white hover:border-gray-300'
+                                    }`}
+                                >
+                                    <span
+                                        className="h-4 w-8 border-2 border-gray-600 bg-transparent"
+                                        style={{ borderRadius: preview }}
+                                    />
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Mode */}
                 <div className="flex items-center justify-between">
-                    <Label>Compactness</Label>
+                    <Label className="text-xs text-gray-500">Mode</Label>
+                    <div className="flex overflow-hidden rounded-lg border">
+                        {(['light', 'dark'] as const).map((m) => (
+                            <button
+                                key={m}
+                                type="button"
+                                onClick={() => updateField('mode', m)}
+                                className={`px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                                    (gs.mode || 'light') === m
+                                        ? 'bg-gray-800 text-white'
+                                        : 'bg-white text-gray-500 hover:bg-gray-50'
+                                }`}
+                            >
+                                {m}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs text-gray-500">Compactness</Label>
                     <select
                         className="rounded border px-3 py-1.5 text-sm"
                         value={gs.compactness || 'medium'}
@@ -472,6 +613,169 @@ const GlobalSettingsEditor = ({
         </div>
     );
 };
+
+// ── Column Layout Editor ──────────────────────────────────────────────────────
+const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
+    const { selectComponent, deleteFromSlot } = useEditorStore();
+    const { slots = [] as any[][], columnWidths = [] as string[], gap = 'md', align = 'top', stackOnMobile = true } = component.props;
+
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...component.props, [key]: value } });
+
+    // Default width fraction for a given column count
+    const defaultWidthForCount: Record<number, string> = { 2: '1/2', 3: '1/3', 4: '1/4' };
+    const defaultWidth = defaultWidthForCount[slots.length] || '1/2';
+
+    const changeColumnCount = (newCount: number) => {
+        if (newCount === slots.length) return;
+        const def = defaultWidthForCount[newCount] || '1/2';
+        const newSlots = Array.from({ length: newCount }, (_, i) => slots[i] ?? []);
+        const newWidths = Array.from({ length: newCount }, (_, i) => columnWidths[i] ?? def);
+        updateComponent(pageId, component.id, {
+            props: { ...component.props, columns: newCount, slots: newSlots, columnWidths: newWidths },
+        });
+    };
+
+    const TYPE_LABEL: Record<string, string> = {
+        heroSection: 'Hero Section', courseCatalog: 'Course Catalog', bookCatalogue: 'Book Catalogue',
+        statsHighlights: 'Stats', testimonialSection: 'Testimonials', mediaShowcase: 'Media Showcase',
+        faqSection: 'FAQ', ctaBanner: 'CTA Banner', pricingTable: 'Pricing', contactForm: 'Contact Form',
+        teamSection: 'Team', announcementFeed: 'Announcements', imageGallery: 'Image Gallery',
+        videoEmbed: 'Video', buyRentSection: 'Buy/Rent', policyRenderer: 'Policy',
+        cartComponent: 'Cart', courseDetails: 'Course Details', bookDetails: 'Book Details',
+    };
+
+    return (
+        <div className="flex flex-col gap-5">
+            {/* Layout Settings */}
+            <div className="rounded-lg border p-3 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Layout Settings</p>
+
+                {/* Column count */}
+                <div>
+                    <Label className="text-xs">Columns</Label>
+                    <div className="mt-1 flex gap-1.5">
+                        {[2, 3, 4].map((n) => (
+                            <button
+                                key={n}
+                                onClick={() => changeColumnCount(n)}
+                                className={`flex-1 rounded border px-2 py-1 text-xs font-medium transition-colors ${slots.length === n ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                            >
+                                {n}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Gap */}
+                <div>
+                    <Label className="text-xs">Column Gap</Label>
+                    <div className="mt-1 flex gap-1.5">
+                        {(['none', 'sm', 'md', 'lg'] as const).map((g) => (
+                            <button
+                                key={g}
+                                onClick={() => updateProp('gap', g)}
+                                className={`flex-1 rounded border px-2 py-1 text-xs font-medium transition-colors ${gap === g ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                            >
+                                {g}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Align */}
+                <div>
+                    <Label className="text-xs">Vertical Align</Label>
+                    <div className="mt-1 flex gap-1.5">
+                        {(['top', 'center', 'bottom', 'stretch'] as const).map((a) => (
+                            <button
+                                key={a}
+                                onClick={() => updateProp('align', a)}
+                                className={`flex-1 rounded border px-2 py-1 text-xs font-medium transition-colors ${align === a ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                            >
+                                {a}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Column widths */}
+                <div>
+                    <Label className="text-xs">Column Widths</Label>
+                    <div className="mt-1 flex gap-1.5">
+                        {slots.map((_: any, i: number) => (
+                            <div key={i} className="flex-1">
+                                <Label className="text-[10px] text-gray-400">Col {i + 1}</Label>
+                                <select
+                                    value={columnWidths[i] || defaultWidth}
+                                    onChange={(e) => {
+                                        const updated = [...columnWidths];
+                                        updated[i] = e.target.value;
+                                        updateProp('columnWidths', updated);
+                                    }}
+                                    className="mt-0.5 w-full rounded border px-1.5 py-1 text-xs"
+                                >
+                                    <option value="1/4">1/4</option>
+                                    <option value="1/3">1/3</option>
+                                    <option value="1/2">1/2</option>
+                                    <option value="2/3">2/3</option>
+                                    <option value="3/4">3/4</option>
+                                </select>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Stack on mobile */}
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs">Stack on mobile</Label>
+                    <Switch
+                        checked={stackOnMobile}
+                        onCheckedChange={(v) => updateProp('stackOnMobile', v)}
+                    />
+                </div>
+            </div>
+
+            {/* Slot Contents */}
+            {slots.map((slotComps: any[], slotIdx: number) => (
+                <div key={slotIdx} className="rounded-lg border p-3 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">
+                        Slot {slotIdx + 1}
+                        <span className="ml-2 normal-case font-normal text-gray-400">
+                            {slotComps.length} component{slotComps.length !== 1 ? 's' : ''}
+                        </span>
+                    </p>
+                    {slotComps.length === 0 ? (
+                        <p className="text-xs text-gray-300">Empty — drag a component here from the library</p>
+                    ) : (
+                        slotComps.map((child: any) => (
+                            <div
+                                key={child.id}
+                                className="flex items-center gap-2 rounded border bg-gray-50 px-2 py-1.5"
+                            >
+                                <button
+                                    className="flex-1 text-left text-xs font-medium text-gray-700 hover:text-blue-600 truncate"
+                                    onClick={() => selectComponent(child.id)}
+                                    title="Click to edit"
+                                >
+                                    {TYPE_LABEL[child.type] || child.type.replace(/([A-Z])/g, ' $1').trim()}
+                                </button>
+                                <button
+                                    onClick={() => deleteFromSlot(pageId, component.id, slotIdx, child.id)}
+                                    className="shrink-0 text-gray-300 hover:text-red-400 transition-colors"
+                                    title="Remove from slot"
+                                >
+                                    <Trash2 className="size-3.5" />
+                                </button>
+                            </div>
+                        ))
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+};
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Component-specific editor
 const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
@@ -596,6 +900,9 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
         case 'imageGallery':
             return <ImageGalleryEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
 
+        case 'columnLayout':
+            return <ColumnLayoutEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+
         default:
             return (
                 <GenericEditor
@@ -611,6 +918,10 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
 const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const [expandedSlide, setExpandedSlide] = useState<number | null>(null);
+    const [expandedMedia, setExpandedMedia] = useState<number | null>(null);
+
+    const layout = props.layout || 'slider';
+    const isSliderMode = layout === 'slider';
 
     const updateProp = (key: string, value: any) => {
         updateComponent(pageId, component.id, {
@@ -618,45 +929,50 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
         });
     };
 
+    // ── Slider slide helpers ────────────────────────────────────────────
     const addSlide = () => {
         const newSlide = {
             backgroundImage: 'https://images.unsplash.com/photo-1512820790803-83ca734da794',
             heading: 'New Slide',
             description: 'Add your description here',
-            button: {
-                enabled: false,
-                text: 'Learn More',
-                action: 'navigate',
-                target: 'homepage',
-            },
+            button: { enabled: false, text: 'Learn More', action: 'navigate', target: 'homepage' },
         };
         updateProp('slides', [...(props.slides || []), newSlide]);
     };
 
     const deleteSlide = (index: number) => {
-        const newSlides = props.slides.filter((_: any, i: number) => i !== index);
+        const newSlides = (props.slides || []).filter((_: any, i: number) => i !== index);
         updateProp('slides', newSlides);
         if (expandedSlide === index) setExpandedSlide(null);
     };
 
     const updateSlide = (index: number, field: string, value: any) => {
-        const newSlides = [...props.slides];
+        const newSlides = [...(props.slides || [])];
         if (field.startsWith('button.')) {
             const buttonField = field.split('.')[1] as string;
-            newSlides[index] = {
-                ...newSlides[index],
-                button: {
-                    ...newSlides[index].button,
-                    [buttonField]: value,
-                },
-            };
+            newSlides[index] = { ...newSlides[index], button: { ...newSlides[index].button, [buttonField]: value } };
         } else {
-            newSlides[index] = {
-                ...newSlides[index],
-                [field]: value,
-            };
+            newSlides[index] = { ...newSlides[index], [field]: value };
         }
         updateProp('slides', newSlides);
+    };
+
+    // ── Media item helpers (carousel / grid) ───────────────────────────
+    const addMediaItem = () => {
+        const newItem = { type: 'video', url: '', caption: 'New item' };
+        updateProp('media', [...(props.media || []), newItem]);
+    };
+
+    const deleteMediaItem = (index: number) => {
+        const newMedia = (props.media || []).filter((_: any, i: number) => i !== index);
+        updateProp('media', newMedia);
+        if (expandedMedia === index) setExpandedMedia(null);
+    };
+
+    const updateMediaItem = (index: number, field: string, value: any) => {
+        const newMedia = [...(props.media || [])];
+        newMedia[index] = { ...newMedia[index], [field]: value };
+        updateProp('media', newMedia);
     };
 
     return (
@@ -673,23 +989,26 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label>Layout</Label>
                 <select
                     className="w-full rounded border px-3 py-2 text-sm"
-                    value={props.layout || 'slider'}
+                    value={layout}
                     onChange={(e) => updateProp('layout', e.target.value)}
                 >
-                    <option value="slider">Slider</option>
-                    <option value="grid">Grid</option>
+                    <option value="slider">Slider (hero with headings)</option>
+                    <option value="carousel">Carousel (video / images)</option>
+                    <option value="grid">Grid (video / images)</option>
                 </select>
             </div>
 
-            <div className="flex items-center justify-between">
-                <Label>Autoplay</Label>
-                <Switch
-                    checked={props.autoplay || false}
-                    onCheckedChange={(c) => updateProp('autoplay', c)}
-                />
-            </div>
+            {isSliderMode && (
+                <div className="flex items-center justify-between">
+                    <Label>Autoplay</Label>
+                    <Switch
+                        checked={props.autoplay || false}
+                        onCheckedChange={(c) => updateProp('autoplay', c)}
+                    />
+                </div>
+            )}
 
-            {props.autoplay && (
+            {isSliderMode && props.autoplay && (
                 <div className="space-y-2">
                     <Label>Autoplay Interval (ms)</Label>
                     <Input
@@ -700,117 +1019,137 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
             )}
 
-            <div className="border-t pt-4">
-                <div className="mb-3 flex items-center justify-between">
-                    <h4 className="text-sm font-medium">Slides ({props.slides?.length || 0})</h4>
-                    <Button size="sm" onClick={addSlide}>
-                        <Plus className="mr-1 size-4" />
-                        Add Slide
-                    </Button>
-                </div>
+            {/* ── Slider mode: manage slides ── */}
+            {isSliderMode && (
+                <div className="border-t pt-4">
+                    <div className="mb-3 flex items-center justify-between">
+                        <h4 className="text-sm font-medium">Slides ({props.slides?.length || 0})</h4>
+                        <Button size="sm" onClick={addSlide}>
+                            <Plus className="mr-1 size-4" />
+                            Add Slide
+                        </Button>
+                    </div>
 
-                <div className="space-y-2">
-                    {props.slides?.map((slide: any, index: number) => (
-                        <div key={index} className="rounded border bg-gray-50 p-3">
-                            <div className="flex items-center justify-between">
-                                <button
-                                    onClick={() =>
-                                        setExpandedSlide(expandedSlide === index ? null : index)
-                                    }
-                                    className="flex flex-1 items-center gap-2 text-left text-sm font-medium"
-                                >
-                                    {expandedSlide === index ? (
-                                        <ChevronUp className="size-4" />
-                                    ) : (
-                                        <ChevronDown className="size-4" />
-                                    )}
-                                    Slide {index + 1}: {slide.heading}
-                                </button>
-                                <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => deleteSlide(index)}
-                                    className="size-8 p-0 text-red-600 hover:text-red-700"
-                                >
-                                    <Trash2 className="size-4" />
-                                </Button>
+                    <div className="space-y-2">
+                        {(props.slides || []).map((slide: any, index: number) => (
+                            <div key={index} className="rounded border bg-gray-50 p-3">
+                                <div className="flex items-center justify-between">
+                                    <button
+                                        onClick={() => setExpandedSlide(expandedSlide === index ? null : index)}
+                                        className="flex flex-1 items-center gap-2 text-left text-sm font-medium"
+                                    >
+                                        {expandedSlide === index ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                                        Slide {index + 1}: {slide.heading}
+                                    </button>
+                                    <Button size="sm" variant="ghost" onClick={() => deleteSlide(index)}
+                                        className="size-8 p-0 text-red-600 hover:text-red-700">
+                                        <Trash2 className="size-4" />
+                                    </Button>
+                                </div>
+
+                                {expandedSlide === index && (
+                                    <div className="mt-3 space-y-3 border-t pt-3">
+                                        <ImageUploadField
+                                            label="Background Image"
+                                            value={slide.backgroundImage || ''}
+                                            onChange={(url) => updateSlide(index, 'backgroundImage', url)}
+                                        />
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Heading</Label>
+                                            <Input value={slide.heading} onChange={(e) => updateSlide(index, 'heading', e.target.value)} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Description</Label>
+                                            <Textarea value={slide.description} onChange={(e) => updateSlide(index, 'description', e.target.value)} rows={2} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="text-xs">Button</Label>
+                                                <Switch checked={slide.button?.enabled || false} onCheckedChange={(c) => updateSlide(index, 'button.enabled', c)} />
+                                            </div>
+                                            {slide.button?.enabled && (
+                                                <div className="ml-4 space-y-2">
+                                                    <Input placeholder="Button text" value={slide.button.text} onChange={(e) => updateSlide(index, 'button.text', e.target.value)} />
+                                                    <Input placeholder="Target route" value={slide.button.target} onChange={(e) => updateSlide(index, 'button.target', e.target.value)} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
-                            {expandedSlide === index && (
-                                <div className="mt-3 space-y-3 border-t pt-3">
-                                    <ImageUploadField
-                                        label="Background Image"
-                                        value={slide.backgroundImage || ''}
-                                        onChange={(url) =>
-                                            updateSlide(index, 'backgroundImage', url)
-                                        }
-                                    />
+            {/* ── Carousel / Grid mode: manage media items ── */}
+            {!isSliderMode && (
+                <div className="border-t pt-4">
+                    <div className="mb-3 flex items-center justify-between">
+                        <h4 className="text-sm font-medium">Media Items ({(props.media || []).length})</h4>
+                        <Button size="sm" onClick={addMediaItem}>
+                            <Plus className="mr-1 size-4" />
+                            Add Item
+                        </Button>
+                    </div>
 
-                                    <div className="space-y-2">
-                                        <Label className="text-xs">Heading</Label>
-                                        <Input
-                                            value={slide.heading}
-                                            onChange={(e) =>
-                                                updateSlide(index, 'heading', e.target.value)
-                                            }
-                                        />
-                                    </div>
+                    <div className="space-y-2">
+                        {(props.media || []).map((item: any, index: number) => (
+                            <div key={index} className="rounded border bg-gray-50 p-3">
+                                <div className="flex items-center justify-between">
+                                    <button
+                                        onClick={() => setExpandedMedia(expandedMedia === index ? null : index)}
+                                        className="flex flex-1 items-center gap-2 text-left text-sm font-medium"
+                                    >
+                                        {expandedMedia === index ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                                        <span className="capitalize text-gray-500">{item.type || 'media'}</span>
+                                        <span className="truncate">{item.caption || `Item ${index + 1}`}</span>
+                                    </button>
+                                    <Button size="sm" variant="ghost" onClick={() => deleteMediaItem(index)}
+                                        className="size-8 p-0 text-red-600 hover:text-red-700">
+                                        <Trash2 className="size-4" />
+                                    </Button>
+                                </div>
 
-                                    <div className="space-y-2">
-                                        <Label className="text-xs">Description</Label>
-                                        <Textarea
-                                            value={slide.description}
-                                            onChange={(e) =>
-                                                updateSlide(index, 'description', e.target.value)
-                                            }
-                                            rows={2}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <Label className="text-xs">Button</Label>
-                                            <Switch
-                                                checked={slide.button?.enabled || false}
-                                                onCheckedChange={(c) =>
-                                                    updateSlide(index, 'button.enabled', c)
-                                                }
+                                {expandedMedia === index && (
+                                    <div className="mt-3 space-y-3 border-t pt-3">
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Type</Label>
+                                            <select
+                                                className="w-full rounded border px-3 py-2 text-sm"
+                                                value={item.type || 'video'}
+                                                onChange={(e) => updateMediaItem(index, 'type', e.target.value)}
+                                            >
+                                                <option value="video">Video</option>
+                                                <option value="image">Image</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">URL</Label>
+                                            <Input
+                                                placeholder={item.type === 'image' ? 'https://... or /assets/...' : 'https://youtube.com/... or /assets/video.mp4'}
+                                                value={item.url || ''}
+                                                onChange={(e) => updateMediaItem(index, 'url', e.target.value)}
                                             />
                                         </div>
-
-                                        {slide.button?.enabled && (
-                                            <div className="ml-4 space-y-2">
-                                                <Input
-                                                    placeholder="Button text"
-                                                    value={slide.button.text}
-                                                    onChange={(e) =>
-                                                        updateSlide(
-                                                            index,
-                                                            'button.text',
-                                                            e.target.value
-                                                        )
-                                                    }
-                                                />
-                                                <Input
-                                                    placeholder="Target route"
-                                                    value={slide.button.target}
-                                                    onChange={(e) =>
-                                                        updateSlide(
-                                                            index,
-                                                            'button.target',
-                                                            e.target.value
-                                                        )
-                                                    }
-                                                />
-                                            </div>
-                                        )}
+                                        <div className="space-y-2">
+                                            <Label className="text-xs">Caption</Label>
+                                            <Input
+                                                value={item.caption || ''}
+                                                onChange={(e) => updateMediaItem(index, 'caption', e.target.value)}
+                                            />
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                                )}
+                            </div>
+                        ))}
+
+                        {(props.media || []).length === 0 && (
+                            <p className="text-xs text-gray-400 text-center py-3">No media items yet. Click "Add Item" to get started.</p>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };

@@ -68,6 +68,57 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         },
     },
 
+    // ── Layout containers ────────────────────────────────────────────────────
+    columnLayout2: {
+        type: 'columnLayout',
+        enabled: true,
+        props: {
+            columns: 2,
+            columnWidths: ['1/2', '1/2'],
+            gap: 'md',
+            align: 'top',
+            stackOnMobile: true,
+            slots: [[], []],
+        },
+    },
+    columnLayout2asymLeft: {
+        type: 'columnLayout',
+        enabled: true,
+        props: {
+            columns: 2,
+            columnWidths: ['1/3', '2/3'],
+            gap: 'md',
+            align: 'top',
+            stackOnMobile: true,
+            slots: [[], []],
+        },
+    },
+    columnLayout3: {
+        type: 'columnLayout',
+        enabled: true,
+        props: {
+            columns: 3,
+            columnWidths: ['1/3', '1/3', '1/3'],
+            gap: 'md',
+            align: 'top',
+            stackOnMobile: true,
+            slots: [[], [], []],
+        },
+    },
+    columnLayout4: {
+        type: 'columnLayout',
+        enabled: true,
+        props: {
+            columns: 4,
+            columnWidths: ['1/4', '1/4', '1/4', '1/4'],
+            gap: 'md',
+            align: 'top',
+            stackOnMobile: true,
+            slots: [[], [], [], []],
+        },
+    },
+    // ────────────────────────────────────────────────────────────────────────
+
     mediaShowcase: {
         type: 'mediaShowcase',
         enabled: true,

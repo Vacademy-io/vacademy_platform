@@ -7,6 +7,18 @@ import React from 'react';
 
 interface P { props: any }
 
+/** Maps a columnLayout width fraction string to a CSS fr value */
+const widthToFr = (w?: string): string => {
+    const map: Record<string, string> = {
+        '1/2': '1fr',
+        '1/3': '1fr',
+        '2/3': '2fr',
+        '1/4': '1fr',
+        '3/4': '3fr',
+    };
+    return map[w ?? ''] || '1fr';
+};
+
 // ─── Structural components ────────────────────────────────────────────────────
 
 const HeaderPreview: React.FC<P> = ({ props }) => (
@@ -256,12 +268,20 @@ const MediaShowcasePreview: React.FC<P> = ({ props }) => {
                 // Media carousel format
                 <div className="mx-auto flex max-w-4xl gap-4">
                     {media.slice(0, 3).map((m: any, i: number) => (
-                        <div key={i} className="flex-1 rounded-xl bg-white p-4 shadow-sm text-center">
-                            {m.thumbnail && (
-                                <img src={m.thumbnail} alt="" className="mb-2 h-24 w-full rounded object-cover" />
+                        <div key={i} className="flex-1 overflow-hidden rounded-xl bg-white shadow-sm">
+                            {m.thumbnail ? (
+                                <img src={m.thumbnail} alt="" className="h-24 w-full object-cover" />
+                            ) : m.type === 'video' ? (
+                                <div className="flex h-24 w-full items-center justify-center bg-gray-800 text-white/60">
+                                    <span className="text-2xl">▶</span>
+                                </div>
+                            ) : (
+                                <div className="flex h-24 w-full items-center justify-center bg-gray-100 text-gray-300 text-2xl">🖼</div>
                             )}
-                            <p className="text-xs font-medium text-gray-700">{m.title || 'Media item'}</p>
-                            <p className="text-[10px] capitalize text-gray-400">{m.type || 'image'}</p>
+                            <div className="p-2 text-center">
+                                <p className="text-xs font-medium text-gray-700 truncate">{m.caption || m.title || 'Media item'}</p>
+                                <p className="text-[10px] capitalize text-gray-400">{m.type || 'image'}</p>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -483,7 +503,10 @@ const DataPlaceholder: React.FC<{ label: string; description?: string }> = ({ la
 
 // ─── Main dispatcher ──────────────────────────────────────────────────────────
 
-export const renderComponentPreview = (component: { type: string; props: any }): React.ReactNode => {
+export const renderComponentPreview = (
+    component: { type: string; props: any },
+    _depth = 0
+): React.ReactNode => {
     const { type, props } = component;
     switch (type) {
         case 'header':
@@ -543,6 +566,52 @@ export const renderComponentPreview = (component: { type: string; props: any }):
             return <DataPlaceholder label="Book Details" description="Renders the current book's detail data" />;
         case 'policyRenderer':
             return <DataPlaceholder label="Policy Page" description="Renders policy / terms content" />;
+        case 'columnLayout': {
+            const slots: any[][] = props.slots || [[], []];
+            const colWidths: string[] = props.columnWidths || [];
+            const cols = slots.length;
+            const gapLabel = props.gap || 'md';
+            // Guard against deeply nested columnLayouts causing infinite recursion
+            const maxDepth = 2;
+            return (
+                <div className="w-full p-3 bg-teal-50 border border-dashed border-teal-300 rounded">
+                    <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-teal-600">
+                        {cols}-Column Layout · gap: {gapLabel}
+                    </div>
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: slots.map((_: any, i: number) => widthToFr(colWidths[i])).join(' '),
+                            gap: 8,
+                        }}
+                    >
+                        {slots.map((slotComps: any[], i: number) => (
+                            <div
+                                key={i}
+                                style={{ minHeight: 48, borderRadius: 4 }}
+                                className="border border-dashed border-teal-300 bg-white overflow-hidden"
+                            >
+                                {slotComps.length === 0 ? (
+                                    <div className="flex h-12 items-center justify-center text-[10px] text-gray-300">
+                                        Slot {i + 1} — empty
+                                    </div>
+                                ) : _depth >= maxDepth ? (
+                                    <div className="flex h-12 items-center justify-center text-[10px] text-teal-400">
+                                        {slotComps.length} component{slotComps.length !== 1 ? 's' : ''}
+                                    </div>
+                                ) : (
+                                    slotComps.map((child: any) => (
+                                        <div key={child.id} className="scale-[0.85] origin-top">
+                                            {renderComponentPreview(child, _depth + 1)}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
         default:
             return (
                 <div className="flex items-center justify-center bg-gray-50 py-8 text-sm text-gray-400">

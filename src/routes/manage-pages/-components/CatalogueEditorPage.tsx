@@ -41,6 +41,7 @@ export const CatalogueEditorPage = () => {
         canRedo,
         selectedPageId,
         addComponent,
+        addToSlot,
     } = useEditorStore();
     const { toast } = useToast();
     const { canWrite } = useCataloguePermissions();
@@ -53,13 +54,26 @@ export const CatalogueEditorPage = () => {
     const handleDragEnd = useCallback(
         (event: DragEndEvent) => {
             const { active, over } = event;
-            if (active.data.current?.type && selectedPageId && over?.id === 'canvas-drop-zone') {
-                const componentType = active.data.current.type as string;
-                const component = getComponentTemplate(componentType);
+            if (!active.data.current?.type || !selectedPageId || !over) return;
+
+            const templateKey = active.data.current.type as string;
+            const component = getComponentTemplate(templateKey);
+            const overId = over.id.toString();
+
+            if (overId.startsWith('slot::')) {
+                // Format: slot::{layoutId}::{slotIndex}
+                // '::' is used as separator since component IDs only contain [a-z0-9-]
+                const parts = overId.split('::');
+                const layoutId = parts[1];
+                const slotIndex = parseInt(parts[2] ?? '', 10);
+                if (layoutId && !isNaN(slotIndex)) {
+                    addToSlot(selectedPageId, layoutId, slotIndex, component);
+                }
+            } else if (overId === 'canvas-drop-zone') {
                 addComponent(selectedPageId, component);
             }
         },
-        [selectedPageId, addComponent]
+        [selectedPageId, addComponent, addToSlot]
     );
 
     const [jsonText, setJsonText] = useState('');

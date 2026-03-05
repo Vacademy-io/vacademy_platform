@@ -98,6 +98,7 @@ export const enum SettingsTabs {
     AiSettings = 'aiSettings',
     FeeManagement = 'feeManagement',
     SchoolSettings = 'schoolSettings',
+    WhiteLabel = 'whiteLabel',
 }
 
 export const DAYS_IN_MONTH = 30;

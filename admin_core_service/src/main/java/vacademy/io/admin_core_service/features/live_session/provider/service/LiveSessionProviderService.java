@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderFactory;
 import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderStrategy;
@@ -33,7 +34,7 @@ import java.util.Optional;
 @Slf4j
 public class LiveSessionProviderService {
 
-    private final ZohoOAuthService zohoOAuthService;
+    private final ObjectMapper objectMapper;
     private final LiveSessionProviderFactory providerFactory;
     private final LiveSessionProviderConfigRepository configRepository;
     private final SessionScheduleRepository scheduleRepository;
@@ -50,8 +51,9 @@ public class LiveSessionProviderService {
         return providerFactory.getStrategy(normalizedProvider).connectProvider(request);
     }
 
-    public boolean isZohoConnected(String instituteId) {
-        return zohoOAuthService.isConnected(instituteId);
+    public boolean isProviderConnected(String instituteId, String providerName) {
+        String normalizedProvider = MeetingProvider.fromString(providerName).name();
+        return configRepository.existsByInstituteIdAndProviderAndStatusIn(instituteId, normalizedProvider, ACTIVE);
     }
 
     /** Returns config with secrets masked — safe for dashboard display */
@@ -59,11 +61,17 @@ public class LiveSessionProviderService {
         return configRepository
                 .findByInstituteIdAndProviderAndStatusIn(instituteId, provider, ACTIVE)
                 .map(cfg -> {
-                    Map<String, Object> map = zohoOAuthService.fromJson(cfg.getConfigJson());
-                    map.remove("clientSecret");
-                    map.remove("accessToken");
-                    map.remove("refreshToken");
-                    return map;
+                    try {
+                        Map<String, Object> map = objectMapper.readValue(cfg.getConfigJson(),
+                                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                                });
+                        map.remove("clientSecret");
+                        map.remove("accessToken");
+                        map.remove("refreshToken");
+                        return map;
+                    } catch (Exception e) {
+                        throw new VacademyException("Failed to read provider config");
+                    }
                 });
     }
 
@@ -97,7 +105,7 @@ public class LiveSessionProviderService {
         if (request.getScheduleId() != null) {
             scheduleRepository.findById(request.getScheduleId()).ifPresent(schedule -> {
                 schedule.setCustomMeetingLink(response.getJoinUrl()); // learner join URL
-                schedule.setLinkType(MeetingProvider.ZOHO_MEETING.name());
+                schedule.setLinkType(providerName);
                 schedule.setProviderMeetingId(response.getProviderMeetingId());
                 schedule.setProviderHostUrl(response.getHostUrl());
                 scheduleRepository.save(schedule);
@@ -105,13 +113,13 @@ public class LiveSessionProviderService {
                 if (schedule.getSessionId() != null) {
                     sessionRepository.findById(schedule.getSessionId()).ifPresent(session -> {
                         session.setDefaultMeetLink(response.getJoinUrl());
-                        session.setLinkType(MeetingProvider.ZOHO_MEETING.name());
+                        session.setLinkType(providerName);
                         sessionRepository.save(session);
                     });
                 }
 
-                log.info("Schedule {} updated with Zoho meetingKey={}", request.getScheduleId(),
-                        response.getProviderMeetingId());
+                log.info("Schedule {} updated with meetingKey={} for provider={}", request.getScheduleId(),
+                        response.getProviderMeetingId(), providerName);
             });
         }
 

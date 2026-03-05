@@ -52,11 +52,14 @@ public class LiveSessionProviderController {
      */
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> getProviderStatus(
-            @RequestParam String instituteId) {
-        boolean connected = providerService.isZohoConnected(instituteId);
+            @RequestParam String instituteId,
+            @RequestParam(required = false, defaultValue = "ZOHO_MEETING") String provider) {
+        boolean isConnected = providerService.isProviderConnected(instituteId, provider);
         return ResponseEntity.ok(Map.of(
                 "instituteId", instituteId,
-                "zohoMeetingConnected", connected));
+                "provider", provider,
+                "isConnected", isConnected,
+                "zohoMeetingConnected", isConnected)); // legacy frontend backward compatibility
     }
 
     /**

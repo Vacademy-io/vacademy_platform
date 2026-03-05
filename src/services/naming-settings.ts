@@ -19,6 +19,7 @@ export interface NamingSettingsRequest {
     Student: string;
     LiveSession: string;
     Batch: string;
+    PopularTag?: string;
 }
 
 export const createNamingSettings = async (nameRequest: NamingSettingsRequest): Promise<void> => {

@@ -37,6 +37,7 @@ export enum ContentTerms {
     Slides = 'Slides',
     LiveSession = 'LiveSession',
     Batch = 'Batch',
+    PopularTag = 'PopularTag',
 }
 
 export enum RoleTerms {
@@ -63,6 +64,7 @@ export enum SystemTerms {
     AssessmentCreator = 'Assessment Creator',
     Evaluator = 'Evaluator',
     Learner = 'Learner',
+    PopularTag = 'Popular',
 }
 
 const createNameRequest = (settings: NamingSettingsType[]): NamingSettingsRequest => {

@@ -12,12 +12,15 @@ interface CourseCataloguePageProps {
   tagName: string;
   instituteId: string;
   instituteThemeCode?: string | null;
+  /** When set, renders the page matching this route slug instead of the home page */
+  pageSlug?: string;
 }
 
 export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   tagName,
   instituteId,
   instituteThemeCode,
+  pageSlug,
 }) => {
   console.log("[CourseCataloguePage] Component mounted with props:", {
     tagName,
@@ -33,6 +36,11 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [showLeadCollection, setShowLeadCollection] = useState(false);
   const [showIntroPage, setShowIntroPage] = useState(false);
   const [introCompleted, setIntroCompleted] = useState(false);
+
+  // Preview mode: bidirectional communication with admin editor iframe
+  const isPreviewMode = typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('preview') === 'true';
+  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
 
 
   // Fetch course catalogue data
@@ -103,6 +111,33 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       }
     }
   }, [instituteId, tagName]);
+
+  // Preview mode: receive live config updates and highlight signals from admin editor
+  useEffect(() => {
+    if (!isPreviewMode) return;
+
+    // Signal readiness to the admin editor
+    window.parent.postMessage({ type: 'PREVIEW_READY' }, '*');
+
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'CATALOGUE_CONFIG_UPDATE' && event.data.payload) {
+        setCatalogueData(event.data.payload);
+        setIsLoading(false);
+        setError(null);
+      }
+      if (event.data?.type === 'HIGHLIGHT_COMPONENT') {
+        setSelectedComponentId(event.data.componentId || null);
+      }
+    };
+
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePreviewComponentClick = (componentId: string, pageId: string) => {
+    window.parent.postMessage({ type: 'COMPONENT_SELECTED', componentId, pageId }, '*');
+    setSelectedComponentId(componentId);
+  };
 
   useEffect(() => {
     const fonts = catalogueData?.globalSettings?.fonts;
@@ -255,8 +290,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
   return (
     <div className="min-h-screen bg-white w-full pb-20 md:pb-0  md:pt-0">
-      {/* Intro Page - Show first if enabled and not completed */}
-      {showIntroPage && catalogueData?.introPage && (
+      {/* Intro Page - Show first if enabled and not completed (hidden in preview mode) */}
+      {showIntroPage && !isPreviewMode && catalogueData?.introPage && (
         <IntroPageComponent
           introPage={catalogueData.introPage}
           onGetStarted={handleIntroGetStarted}
@@ -284,6 +319,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               instituteId={instituteId}
               tagName={tagName}
               catalogueData={catalogueData}
+              isPreviewMode={isPreviewMode}
+              selectedComponentId={selectedComponentId}
+              onComponentClick={handlePreviewComponentClick}
             />
           )}
 
@@ -304,10 +342,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               </div>
             </div>
           )}
-          {/*           
-          Render only homepage components from JSON */}
+          {/* Render the matching page (home page by default, or specific slug) */}
           {catalogueData.pages
-            .filter(page => page.id === "home" || page.route === "homepage")
+            .filter(page => {
+              if (pageSlug) {
+                // Match custom page by route slug
+                return page.route === pageSlug || page.route === `/${pageSlug}`;
+              }
+              // Default: home / root page
+              return page.id === "home" || page.route === "homepage" || page.route === "/" || page.route === "";
+            })
             .map((page) => (
               <JsonRenderer
                 key={page.id}
@@ -315,6 +359,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                 globalSettings={catalogueData.globalSettings}
                 instituteId={instituteId}
                 tagName={tagName}
+                isPreviewMode={isPreviewMode}
+                selectedComponentId={selectedComponentId}
+                onComponentClick={handlePreviewComponentClick}
               />
             ))}
 
@@ -331,13 +378,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               instituteId={instituteId}
               tagName={tagName}
               catalogueData={catalogueData}
+              isPreviewMode={isPreviewMode}
+              selectedComponentId={selectedComponentId}
+              onComponentClick={handlePreviewComponentClick}
             />
           )}
         </>
       )}
 
-      {/* Lead Collection Modal - Show when requested and intro is completed or not active */}
-      {showLeadCollection && catalogueData && catalogueData.globalSettings.leadCollection && (!showIntroPage || introCompleted) && (
+      {/* Lead Collection Modal - Show when requested, intro completed, and not in preview mode */}
+      {showLeadCollection && !isPreviewMode && catalogueData && catalogueData.globalSettings.leadCollection && (!showIntroPage || introCompleted) && (
         <LeadCollectionModal
           isOpen={showLeadCollection}
           onClose={handleLeadCollectionClose}
@@ -355,8 +405,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       )}
 
 
-      {/* Mobile Action Buttons - Fixed at bottom for catalogue page */}
-      {(!showIntroPage || introCompleted) && catalogueData && (
+      {/* Mobile Action Buttons - Fixed at bottom for catalogue page (hidden in preview mode) */}
+      {(!showIntroPage || introCompleted) && !isPreviewMode && catalogueData && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className="flex flex-col gap-3">
             {/* Get Started Button */}

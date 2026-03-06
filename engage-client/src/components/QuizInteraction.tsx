@@ -120,6 +120,14 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
   const isMultipleChoice = questionData.question_type?.toUpperCase() === 'MCQM';
   const canAttempt = submissionCount < studentAttemptsAllowed && !isTimerExpired;
 
+  // Sort options deterministically by option_order so admin and participants always see the same order
+  const sortedOptions = [...questionData.options].sort((a, b) => {
+    if (a.option_order == null && b.option_order == null) return 0;
+    if (a.option_order == null) return 1;
+    if (b.option_order == null) return -1;
+    return a.option_order - b.option_order;
+  });
+
   // Timer logic
   useEffect(() => {
     // Clear previous timer
@@ -352,11 +360,11 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
       </CardHeader>
       <CardContent className="space-y-3 p-4 pt-0 max-h-[45vh] overflow-y-auto relative z-10">
         {currentQuestionCategory === 'multiple_choice' ? (
-          questionData.options.length > 0 ? (
+          sortedOptions.length > 0 ? (
             isMultipleChoice ? (
               // MCQM: plain div wrapper — Checkbox handles its own state; RadioGroup is semantically wrong here
               <div className="space-y-3">
-                {questionData.options.map((option: Option) => (
+                {sortedOptions.map((option: Option) => (
                   <div
                     key={option.id}
                     className={`flex items-center space-x-3 p-3 rounded-xl border transition-all duration-300 ease-out backdrop-blur-sm
@@ -384,7 +392,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                 disabled={!canAttempt || isSubmitting}
                 className="space-y-3"
               >
-                {questionData.options.map((option: Option) => (
+                {sortedOptions.map((option: Option) => (
                   <label
                     key={option.id}
                     htmlFor={`option-${option.id}`}

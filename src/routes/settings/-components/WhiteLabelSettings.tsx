@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,8 @@ import {
     KeyRound,
     Route,
     Link2,
+    Upload,
+    Pencil
 } from 'lucide-react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { WHITE_LABEL_SETUP, WHITE_LABEL_STATUS } from '@/constants/urls';
@@ -31,6 +33,8 @@ import { getInstituteId } from '@/constants/helper';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
+import { UploadFileInS3Public } from '@/routes/signup/-services/signup-services';
+import { useFileUpload } from '@/hooks/use-file-upload';
 import {
     Select,
     SelectContent,
@@ -145,6 +149,117 @@ const emptyConfig = (): RoutingConfig => ({});
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+const ImageUploadButton = ({
+    fileId,
+    onChange,
+}: {
+    fileId?: string;
+    onChange: (fileId: string | undefined) => void;
+}) => {
+    const instituteId = getInstituteId() || 'admin';
+    const [isUploading, setIsUploading] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const { getPublicUrl } = useFileUpload();
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (fileId) {
+            getPublicUrl(fileId)
+                .then((url) => setPreviewUrl(url))
+                .catch(() => setPreviewUrl(null));
+        } else {
+            setPreviewUrl(null);
+        }
+    }, [fileId, getPublicUrl]);
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        try {
+            setIsUploading(true);
+            const uploadedFileId = await UploadFileInS3Public(
+                file,
+                setIsUploading,
+                instituteId,
+                'INSTITUTE_BRANDING'
+            );
+
+            if (uploadedFileId) {
+                onChange(uploadedFileId);
+            }
+        } catch (error) {
+            console.error('Upload failed:', error);
+            toast.error('Failed to upload image');
+        } finally {
+            setIsUploading(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
+    return (
+        <div className="flex items-center gap-3">
+            <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+            />
+
+            {previewUrl ? (
+                <div className="group relative size-12 shrink-0 rounded-md border border-slate-200 overflow-hidden bg-slate-50">
+                    <img src={previewUrl} alt="Icon preview" className="size-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-1 rounded text-white hover:bg-white/20"
+                            title="Change image"
+                        >
+                            <Pencil className="size-3" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onChange(undefined)}
+                            className="p-1 rounded text-white hover:bg-red-500/80"
+                            title="Remove image"
+                        >
+                            <Trash2 className="size-3" />
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="flex size-12 shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-slate-300 bg-slate-50 text-slate-500 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                >
+                    {isUploading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                        <>
+                            <Upload className="size-4" />
+                        </>
+                    )}
+                </button>
+            )}
+
+            <div className="flex-1 space-y-1">
+                <Input
+                    placeholder="or enter file UUID"
+                    value={fileId || ''}
+                    onChange={(e) => onChange(e.target.value || undefined)}
+                    className="h-8 text-sm"
+                />
+            </div>
+        </div>
+    );
+};
+
 const StatusBadge = ({ configured }: { configured: boolean }) =>
     configured ? (
         <Badge className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100">
@@ -224,8 +339,10 @@ const ConfigFormSection = ({
                 </div>
                 <div className="space-y-1">
                     <Label className="text-xs text-slate-500">Tab Icon File ID</Label>
-                    <Input placeholder="file-id-uuid" value={config.tab_icon_file_id || ''}
-                           onChange={e => onUpdate('tab_icon_file_id', e.target.value)} className="h-8 text-sm" />
+                    <ImageUploadButton
+                        fileId={config.tab_icon_file_id}
+                        onChange={(id) => onUpdate('tab_icon_file_id', id)}
+                    />
                 </div>
                 <div className="space-y-1">
                     <Label className="text-xs text-slate-500">Theme / Color</Label>
@@ -367,7 +484,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
 
     // ── Pre-fill from existing routing entries ────────────────────────────────
     const prefillFromStatus = (data: WhiteLabelStatusResponse) => {
-        if (!data.is_configured || !data.routing_entries || data.routing_entries.length === 0) return;
+        if (!data.routing_entries || data.routing_entries.length === 0) return;
 
         const newEntries: DomainFormEntry[] = data.routing_entries.map((r) => {
             const fullDomain = fqdn(r);
@@ -422,6 +539,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
             const res = await authenticatedAxiosInstance.get<WhiteLabelStatusResponse>(
                 WHITE_LABEL_STATUS(instituteId)
             );
+            console.log('[WhiteLabel] Status response:', res.data);
             setStatus(res.data);
             prefillFromStatus(res.data);
         } catch (err) {

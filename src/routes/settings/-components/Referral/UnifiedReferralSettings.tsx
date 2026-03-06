@@ -220,7 +220,6 @@ export const UnifiedReferralSettings: React.FC<UnifiedReferralSettingsProps> = (
             allowCombineOffers: formData.allowCombineOffers || false,
             payoutVestingDays: formData.payoutVestingDays || 7,
         };
-        console.log("sending req.....");
         onSave(settings);
     };
 
@@ -406,14 +405,6 @@ export const UnifiedReferralSettings: React.FC<UnifiedReferralSettingsProps> = (
                                         referrals
                                     </p>
                                 </div>
-                                <MyButton
-                                    buttonType="secondary"
-                                    onClick={handleAddTier}
-                                    className="flex items-center gap-2"
-                                >
-                                    <Plus className="size-4" />
-                                    Add Tier
-                                </MyButton>
                             </div>
                         </CardHeader>
                         <CardContent>

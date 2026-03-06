@@ -40,6 +40,7 @@ export interface ReferralOptionRequest {
     referrer_discount_json: string;
     referee_discount_json: string;
     referrer_vesting_days: number;
+    allowCombineOffers:boolean;
     tag: string | null;
     description: string;
     setting_json?: string;
@@ -54,6 +55,7 @@ export interface ReferralOptionResponse {
     referrer_discount_json: string;
     referee_discount_json: string;
     referrer_vesting_days: number;
+    allowCombineOffers:boolean;
     tag: string | null;
     description: string;
     created_at?: string;
@@ -297,6 +299,7 @@ export const convertToApiFormat = (settings: UnifiedReferralSettings): ReferralO
         source_id: instituteId || '',
         referrer_discount_json: referrerDiscountJson,
         referee_discount_json: refereeDiscountJson,
+        allowCombineOffers: settings.allowCombineOffers,
         referrer_vesting_days: settings.payoutVestingDays || 7,
         tag: settings.isDefault ? 'DEFAULT' : null,
         description: settings.description || `Referral program: ${settings.label}`,
@@ -651,7 +654,7 @@ export const convertFromApiFormat = (
             label: apiResponse.name,
             isDefault: apiResponse.tag === 'DEFAULT',
             payoutVestingDays: apiResponse.referrer_vesting_days,
-            allowCombineOffers: true, // Default value, adjust as needed
+            allowCombineOffers: apiResponse.allowCombineOffers,
             refereeReward,
             referrerRewards,
         };
@@ -666,7 +669,9 @@ export const addReferralOption = async (
     settings: UnifiedReferralSettings
 ): Promise<ReferralOptionResponse> => {
     try {
+        console.log("this is settings:", settings);
         const apiData = convertToApiFormat(settings);
+        console.log("this is apiData:", apiData);
 
         const response = await authenticatedAxiosInstance.post<ReferralOptionResponse>(
             REFERRAL_API_BASE,

@@ -20,12 +20,14 @@ import java.sql.Timestamp;
 public class EnquiryListFilterDTO {
 
     private String audienceId;
-    private String status;  // enquiry_status
-    private String source;  // source_type from audience_response
+    private String status; // enquiry_status
+    private String source; // source_type from audience_response
     private String destinationPackageSessionId;
     private Timestamp createdFrom;
     private Timestamp createdTo;
-    
+
+    private String search;
+
     // Pagination
     private Integer page;
     private Integer size;

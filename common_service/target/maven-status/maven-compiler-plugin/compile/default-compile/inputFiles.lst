@@ -36,6 +36,8 @@
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/notification/dto/EmailOTPRequest.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/entity/UserActivityLog.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/repository/SubModuleRepository.java
+/Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/health/dto/HealthPingResponse.java
+/Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/health/service/SlowQueryRegistry.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/VacademyException.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/notification/constant/NotificationConstant.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/PagedUserWithRolesResponse.java
@@ -54,12 +56,14 @@
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/tracing/TracingProperties.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/dto/SubjectDTO.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/service/UserActivityTrackingService.java
+/Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/health/controller/BaseHealthController.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/dto/PackageGroupDTO.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/PhonePeAuthRequestDTO.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/EventNotFoundException.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/PhonePeAuthResponseDTO.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/repository/UserActivityRepository.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/UserPermissionRequestDTO.java
+/Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/health/dto/SlowQueryRecord.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/tracing/PerformanceTracer.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/service/WebhookEventLogService.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/UserJwtUpdateDetail.java
@@ -119,6 +123,7 @@
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/config/SharedConfigurationReference.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/notification/dto/Media.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/exceptions/ExpiredTokenException.java
+/Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/health/service/HealthDiagnosticsService.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/core/utils/CaseHandlerUserClient.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/entity/student/Subject.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/repository/UserActivityLogRepository.java
@@ -129,6 +134,7 @@
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/entity/session/SessionProjection.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/entity/session/PackageSession.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/payment/dto/CashfreeRequestDTO.java
+/Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/health/service/HealthMeasurements.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/notification/dto/AttachmentUsersDTO.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/learner/LearnerEnrollResponseDTO.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/enums/PortalsEnum.java
@@ -181,6 +187,7 @@
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/entity/LevelProjection.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/scheduler/entity/SchedulerActivityLog.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/enums/Gender.java
+/Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/health/dto/HealthDbResponse.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/learner/LearnerPackageSessionsEnrollDTO.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/auth/dto/UserWithRolesDTO.java
 /Volumes/shreyash_ex/Vacademy/vacademy_platform/common_service/src/main/java/vacademy/io/common/institute/entity/PackageInstitute.java

@@ -6,6 +6,7 @@ import { ErrorMessage } from './errorMessage';
 import { WaitingScreen } from './WaitingScreen';
 import { SlideRenderer } from './SlideRenderer';
 import { SessionEndedScreen } from './SessionEndedScreen';
+import { ParticipantLeaderboard } from './ParticipantLeaderboard';
 import { SessionHeader } from './SessionHeader';
 
 interface SessionControllerProps {
@@ -54,6 +55,16 @@ export const SessionController: React.FC<SessionControllerProps> = ({ sessionSta
         
       case 'ENDED':
       case 'CANCELLED':
+        // Show leaderboard if show_results_at_last_slide is enabled
+        if (sessionState.sessionData!.show_results_at_last_slide && sessionState.sessionData!.session_status === 'ENDED') {
+          return (
+            <ParticipantLeaderboard
+              sessionId={sessionState.sessionId}
+              username={sessionState.username}
+              sessionTitle={sessionState.sessionData!.slides.title}
+            />
+          );
+        }
         return <SessionEndedScreen sessionTitle={sessionState.sessionData!.slides.title} />;
 
       default:

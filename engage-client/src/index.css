@@ -62,10 +62,12 @@
   /* Global glassmorphism utility classes */
   .glassmorphism-container {
     @apply bg-black/40 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl;
+    background-color: rgba(0, 0, 0, 0.4) !important;
   }
   
   .glassmorphism-card {
     @apply bg-black/30 backdrop-blur-sm border border-white/20 rounded-xl shadow-lg;
+    background-color: rgba(0, 0, 0, 0.3) !important;
   }
   
   .gradient-text {

@@ -1,0 +1,250 @@
+package vacademy.io.admin_core_service.features.live_session.provider.manager;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderStrategy;
+import vacademy.io.admin_core_service.features.live_session.provider.service.ZohoOAuthService;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.meeting.dto.*;
+import vacademy.io.common.meeting.enums.MeetingProvider;
+
+import java.util.*;
+
+/**
+ * Zoho Meeting implementation of LiveSessionProviderStrategy.
+ *
+ * All credentials come from configJson via
+ * ZohoOAuthService.getValidConfigMap().
+ * API reference: https://www.zoho.com/meeting/api-integration.html
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class ZohoMeetingManager implements LiveSessionProviderStrategy {
+
+    private final ZohoOAuthService oAuthService;
+    private final WebClient.Builder webClientBuilder;
+
+    @Override
+    public String getProviderName() {
+        return MeetingProvider.ZOHO_MEETING.name();
+    }
+
+    // -----------------------------------------------------------------------
+    // Connect mapping
+    // -----------------------------------------------------------------------
+
+    @Override
+    public vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig connectProvider(
+            vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO request) {
+        String domain = (request.getDomain() != null && !request.getDomain().isBlank())
+                ? request.getDomain()
+                : "zoho.com";
+        return oAuthService.connectZoho(
+                request.getInstituteId(),
+                request.getClientId(),
+                request.getClientSecret(),
+                request.getAuthorizationCode(),
+                domain,
+                request.getVendorUserId());
+    }
+
+    // -----------------------------------------------------------------------
+    // Create meeting
+    // POST /api/v2/{zohoUserId}/sessions.json
+    // -----------------------------------------------------------------------
+
+    @Override
+    public CreateMeetingResponseDTO createMeeting(CreateMeetingRequestDTO request, String instituteId) {
+        Map<String, Object> cfg = oAuthService.getValidConfigMap(instituteId);
+        String token = (String) cfg.get("accessToken");
+        String domain = (String) cfg.getOrDefault("domain", "zoho.com");
+        String userId = (String) cfg.get("zohoUserId");
+        String apiBase = ZohoOAuthService.buildApiBase(domain);
+
+        if (userId == null || userId.isBlank()) {
+            throw new VacademyException("Zoho User ID not found in config for institute: " + instituteId);
+        }
+
+        Map<String, Object> sessionBody = new HashMap<>();
+        sessionBody.put("topic", request.getTopic());
+        sessionBody.put("agenda", request.getAgenda() != null ? request.getAgenda() : "");
+
+        String formattedTime = request.getStartTime();
+        try {
+            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
+                    .ofPattern("MMM dd, yyyy hh:mm a", java.util.Locale.ENGLISH);
+            java.time.LocalDateTime localDateTime = java.time.OffsetDateTime.parse(request.getStartTime())
+                    .toLocalDateTime();
+            formattedTime = localDateTime.format(formatter);
+        } catch (Exception e) {
+            log.warn("Could not format time: {}", request.getStartTime());
+        }
+        sessionBody.put("startTime", formattedTime);
+        sessionBody.put("duration",
+                request.getDurationMinutes() > 0 ? request.getDurationMinutes() * 60000L : 3600000L);
+        sessionBody.put("timezone", "Asia/Calcutta");
+
+        Object presenterObj = cfg.get("presenterZuid");
+        if (presenterObj == null) {
+            presenterObj = cfg.get("presenterId"); // fallback alias
+        }
+        Long presenter = presenterObj != null ? Long.parseLong(presenterObj.toString()) : Long.parseLong(userId);
+        sessionBody.put("presenter", presenter);
+
+        String url = apiBase + "/api/v2/" + userId + "/sessions.json";
+        JsonNode response = webClientBuilder.build()
+                .post().uri(url)
+                .header("Authorization", "Zoho-oauthtoken " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("session", sessionBody))
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        clientResponse -> clientResponse.bodyToMono(String.class)
+                                .map(body -> {
+                                    log.error("[Zoho] Error response: HTTP {} - {}", clientResponse.statusCode(), body);
+                                    return new VacademyException("Zoho error: " + body);
+                                }))
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        return parseCreateMeetingResponse(response);
+    }
+
+    // -----------------------------------------------------------------------
+    // Get recordings
+    // GET /api/v2/{zohoUserId}/sessions/{meetingKey}/recordings.json
+    // -----------------------------------------------------------------------
+
+    @Override
+    public List<MeetingRecordingDTO> getRecordings(String providerMeetingId, String instituteId) {
+        Map<String, Object> cfg = oAuthService.getValidConfigMap(instituteId);
+        String token = (String) cfg.get("accessToken");
+        String domain = (String) cfg.getOrDefault("domain", "zoho.com");
+        String userId = (String) cfg.get("zohoUserId");
+        String apiBase = ZohoOAuthService.buildApiBase(domain);
+
+        String url = apiBase + "/meeting/api/v2/" + userId + "/recordings/" + providerMeetingId + ".json";
+        JsonNode response = webClientBuilder.build()
+                .get().uri(url)
+                .header("Authorization", "Zoho-oauthtoken " + token)
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class).map(body -> {
+                            log.error("Zoho recordings API failed: {}", body);
+                            return new VacademyException("Zoho recordings error: " + body);
+                        }))
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        return parseRecordingsResponse(response, providerMeetingId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Get attendance
+    // GET /api/v2/{zohoUserId}/sessions/{meetingKey}/attendees.json
+    // -----------------------------------------------------------------------
+
+    @Override
+    public List<MeetingAttendeeDTO> getAttendance(String providerMeetingId, String instituteId) {
+        Map<String, Object> cfg = oAuthService.getValidConfigMap(instituteId);
+        String token = (String) cfg.get("accessToken");
+        String domain = (String) cfg.getOrDefault("domain", "zoho.com");
+        String userId = (String) cfg.get("zohoUserId");
+        String apiBase = ZohoOAuthService.buildApiBase(domain);
+
+        String url = apiBase + "/api/v2/" + userId + "/participant/" + providerMeetingId + ".json?index=1&count=100";
+        JsonNode response = webClientBuilder.build()
+                .get().uri(url)
+                .header("Authorization", "Zoho-oauthtoken " + token)
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class).map(body -> {
+                            log.error("Zoho attendance API failed: {}", body);
+                            return new VacademyException("Zoho attendance error: " + body);
+                        }))
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        return parseAttendeesResponse(response);
+    }
+
+    // -----------------------------------------------------------------------
+    // Parsers
+    // -----------------------------------------------------------------------
+
+    private CreateMeetingResponseDTO parseCreateMeetingResponse(JsonNode response) {
+        if (response == null) {
+            throw new VacademyException("Empty response from Zoho when creating meeting");
+        }
+
+        JsonNode firstElement = response.isArray() ? response.get(0) : response;
+        JsonNode session = firstElement.path("session");
+
+        if (session.isMissingNode()) {
+            throw new VacademyException("Zoho create meeting failed: " +
+                    response.path("message").asText("Unknown error"));
+        }
+        Map<String, Object> raw = new HashMap<>();
+        session.fields().forEachRemaining(e -> raw.put(e.getKey(), e.getValue().asText()));
+
+        return CreateMeetingResponseDTO.builder()
+                .providerMeetingId(session.path("meetingKey").asText())
+                .joinUrl(session.path("joinLink").asText(""))
+                .hostUrl(session.path("startLink").asText(""))
+                .provider(MeetingProvider.ZOHO_MEETING)
+                .rawResponse(raw)
+                .build();
+    }
+
+    private List<MeetingRecordingDTO> parseRecordingsResponse(JsonNode response, String meetingId) {
+        List<MeetingRecordingDTO> list = new ArrayList<>();
+        if (response == null || response.isNull() || response.isMissingNode())
+            return list;
+
+        JsonNode firstElement = response.isArray() && response.size() > 0 ? response.get(0) : response;
+        JsonNode node = firstElement.has("recordings") ? firstElement.get("recordings") : response;
+
+        if (!node.isArray())
+            return list;
+
+        for (JsonNode rec : node) {
+            list.add(MeetingRecordingDTO.builder()
+                    .recordingId(rec.path("recordingId").asText(null))
+                    .downloadUrl(rec.path("downloadUrl").asText(null))
+                    .playbackUrl(rec.path("viewUrl").asText(null))
+                    .durationSeconds(rec.path("duration").asLong(0))
+                    .startTime(rec.path("startTime").asText(null))
+                    .providerMeetingId(meetingId)
+                    .build());
+        }
+        return list;
+    }
+
+    private List<MeetingAttendeeDTO> parseAttendeesResponse(JsonNode response) {
+        List<MeetingAttendeeDTO> list = new ArrayList<>();
+        if (response == null || response.isNull() || response.isMissingNode())
+            return list;
+
+        JsonNode firstElement = response.isArray() && response.size() > 0 ? response.get(0) : response;
+        JsonNode node = firstElement.has("attendees") ? firstElement.get("attendees") : response;
+
+        if (!node.isArray())
+            return list;
+
+        for (JsonNode att : node) {
+            list.add(MeetingAttendeeDTO.builder()
+                    .name(att.path("name").asText(null))
+                    .email(att.path("email").asText(null))
+                    .joinTime(att.path("joinTime").asText(null))
+                    .leaveTime(att.path("leaveTime").asText(null))
+                    .durationMinutes(att.path("duration").asInt(0))
+                    .build());
+        }
+        return list;
+    }
+}

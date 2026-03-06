@@ -1,5 +1,6 @@
 package vacademy.io.community_service.feature.presentation.dto.question;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -24,7 +25,10 @@ public class MCQEvaluationDTO {
     @Setter
     @AllArgsConstructor
     @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class MCQData {
+        @JsonAlias({ "correctOptionIds", "correct_option_ids" })
         private List<String> correctOptionIds;
     }
 }

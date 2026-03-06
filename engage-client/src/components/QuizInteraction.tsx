@@ -1,5 +1,5 @@
 // src/components/QuizInteraction.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { type AddedQuestion, type Option } from '@/types';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox'; // For multiple choice if needed
 import { toast } from 'sonner';
-import { Loader2, Send, Hourglass } from 'lucide-react';
+import { Loader2, Send, Hourglass, Clock, AlertTriangle } from 'lucide-react';
 import { GlassmorphismInput } from '@/components/ui/input'; // Added Input
 import { Textarea } from '@/components/ui/textarea'; // Added Textarea
 
@@ -19,27 +19,94 @@ interface QuizInteractionProps {
   sessionId: string;
   slideId: string;
   username: string;
-  studentAttemptsAllowed: number; // From sessionData.student_attempts
+  studentAttemptsAllowed: number;
+  defaultSecondsForQuestion: number;
+  slideStartTimestamp: number | null;
 }
+
+// Countdown Timer Component
+const CountdownTimer: React.FC<{ secondsRemaining: number; totalSeconds: number; isExpired: boolean }> = ({
+  secondsRemaining,
+  totalSeconds,
+  isExpired,
+}) => {
+  const percentage = totalSeconds > 0 ? (secondsRemaining / totalSeconds) * 100 : 0;
+  const circumference = 2 * Math.PI * 22; // radius = 22
+  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+  const getColor = () => {
+    if (isExpired) return 'text-red-500';
+    if (secondsRemaining <= 5) return 'text-red-400';
+    if (secondsRemaining <= 15) return 'text-amber-400';
+    return 'text-emerald-400';
+  };
+
+  const getStrokeColor = () => {
+    if (isExpired) return '#ef4444';
+    if (secondsRemaining <= 5) return '#f87171';
+    if (secondsRemaining <= 15) return '#fbbf24';
+    return '#34d399';
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative w-12 h-12">
+        <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r="22" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
+          <circle
+            cx="24"
+            cy="24"
+            r="22"
+            fill="none"
+            stroke={getStrokeColor()}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            className="transition-all duration-1000 ease-linear"
+          />
+        </svg>
+        <div className={`absolute inset-0 flex items-center justify-center text-xs font-bold ${getColor()}`}>
+          {isExpired ? (
+            <AlertTriangle className="w-4 h-4" />
+          ) : (
+            secondsRemaining
+          )}
+        </div>
+      </div>
+      {isExpired ? (
+        <span className="text-red-400 text-sm font-semibold animate-pulse">Time's up!</span>
+      ) : (
+        <span className={`text-sm font-medium ${getColor()}`}>
+          {secondsRemaining}s
+        </span>
+      )}
+    </div>
+  );
+};
 
 export const QuizInteraction: React.FC<QuizInteractionProps> = ({
   questionData,
   sessionId,
   slideId,
   username,
-  studentAttemptsAllowed
+  studentAttemptsAllowed,
+  defaultSecondsForQuestion,
+  slideStartTimestamp,
 }) => {
-  // Log the crucial parts of questionData as QuizInteraction sees them
   console.log('[QuizInteraction] Received questionData.id:', questionData.id);
-  console.log('[QuizInteraction] Received questionData.text.content:', questionData.text?.content);
-  console.log('[QuizInteraction] Received questionData.options:', JSON.parse(JSON.stringify(questionData.options)));
 
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
-  const [textAnswer, setTextAnswer] = useState(''); // Added state for text answers
-  const [responseStartTime, setResponseStartTime] = useState<number>(Date.now()); // Added state for response time tracking
+  const [textAnswer, setTextAnswer] = useState('');
+  const [responseStartTime, setResponseStartTime] = useState<number>(Date.now());
   const [submissionCount, setSubmissionCount] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Timer state
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(defaultSecondsForQuestion);
+  const [isTimerExpired, setIsTimerExpired] = useState(false);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const questionCategory = (type: string | undefined) => {
     if (!type) return 'unknown';
@@ -51,14 +118,65 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
 
   const currentQuestionCategory = questionCategory(questionData.question_type);
   const isMultipleChoice = questionData.question_type?.toUpperCase() === 'MCQM';
-  const canAttempt = submissionCount < studentAttemptsAllowed;
+  const canAttempt = submissionCount < studentAttemptsAllowed && !isTimerExpired;
+
+  // Timer logic
+  useEffect(() => {
+    // Clear previous timer
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+
+    // Only run timer for question slides with a time limit
+    const isQuestionSlide = currentQuestionCategory === 'multiple_choice' || currentQuestionCategory === 'text_input';
+    if (!isQuestionSlide || defaultSecondsForQuestion <= 0) {
+      setIsTimerExpired(false);
+      setSecondsRemaining(0);
+      return;
+    }
+
+    // Calculate remaining seconds based on server timestamp
+    const startTs = slideStartTimestamp || Date.now();
+    const elapsedMs = Date.now() - startTs;
+    const elapsedSecs = Math.floor(elapsedMs / 1000);
+    const remaining = Math.max(0, defaultSecondsForQuestion - elapsedSecs);
+
+    setSecondsRemaining(remaining);
+    setIsTimerExpired(remaining <= 0);
+
+    if (remaining <= 0) return;
+
+    timerIntervalRef.current = setInterval(() => {
+      setSecondsRemaining(prev => {
+        const next = prev - 1;
+        if (next <= 0) {
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+          setIsTimerExpired(true);
+          toast.warning("Time's up!", { description: "You can no longer submit an answer for this question." });
+          return 0;
+        }
+        // Flash warning at 10 and 5 seconds
+        if (next === 10) toast.info("⏰ 10 seconds remaining!");
+        if (next === 5) toast.warning("⚠️ Only 5 seconds left!");
+        return next;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [questionData.id, slideStartTimestamp, defaultSecondsForQuestion, currentQuestionCategory]);
 
   useEffect(() => {
     // Reset selection and answer when question changes
     setSelectedOptionIds([]);
-    setTextAnswer(''); // Reset text answer
-    setResponseStartTime(Date.now()); // Reset start time
-    setSubmissionCount(0); // Or fetch from backend if attempts are persisted per user per question
+    setTextAnswer('');
+    setResponseStartTime(Date.now());
+    setSubmissionCount(0);
     setError(null);
   }, [questionData.id]);
 
@@ -75,6 +193,11 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
 
   const handleSubmit = async () => {
     const timeToResponseMillis = Date.now() - responseStartTime;
+
+    if (isTimerExpired) {
+      setError("Time limit exceeded. Cannot submit.");
+      return;
+    }
 
     if (currentQuestionCategory === 'multiple_choice' && selectedOptionIds.length === 0) {
       setError("Please select an option.");
@@ -123,7 +246,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
         toast.success("Answer Submitted Successfully!", {
           description: `Attempt ${submissionCount + 1} of ${studentAttemptsAllowed}.`,
         });
-        setResponseStartTime(Date.now()); // Reset for next potential interaction/resubmission if allowed
+        setResponseStartTime(Date.now());
         if (submissionCount + 1 >= studentAttemptsAllowed) {
           toast.info("No more attempts", {
               description: "You have used all your attempts for this question.",
@@ -151,7 +274,32 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
     return { __html: htmlContent };
   };
 
-  if (!canAttempt) {
+  // Timer expired state
+  if (isTimerExpired && submissionCount === 0) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto glassmorphism-container my-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-red-900/30 to-orange-900/20 rounded-2xl pointer-events-none" />
+        <CardHeader className="p-4 relative z-10">
+          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto">
+             <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question")} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-center py-6 relative z-10">
+          <div className="flex items-center justify-center w-16 h-16 bg-red-400/20 border border-red-300/30 rounded-full backdrop-blur-sm mx-auto mb-4">
+            <Clock className="size-8 text-red-400" />
+          </div>
+          <p className="text-lg font-medium text-red-300">
+            Time's up!
+          </p>
+          <p className="text-sm text-white/60 mt-1">
+            You did not submit an answer in time.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!canAttempt && !isTimerExpired) {
     return (
       <Card className="w-full max-w-2xl mx-auto glassmorphism-container my-4 animate-pulse relative overflow-hidden">
         {/* Yellow accent gradient overlay for completed state */}
@@ -186,9 +334,19 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
       <div className="absolute inset-0 bg-gradient-to-r from-blue-900/20 to-cyan-900/15 rounded-2xl pointer-events-none" />
       
       <CardHeader className="p-4 relative z-10">
-        <CardTitle className="text-lg font-semibold text-white max-h-[30vh] overflow-y-auto">
-          <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question")} />
-        </CardTitle>
+        <div className="flex items-start justify-between gap-4">
+          <CardTitle className="text-lg font-semibold text-white max-h-[30vh] overflow-y-auto flex-1">
+            <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question")} />
+          </CardTitle>
+          {/* Countdown Timer */}
+          {defaultSecondsForQuestion > 0 && !isTimerExpired && (
+            <CountdownTimer
+              secondsRemaining={secondsRemaining}
+              totalSeconds={defaultSecondsForQuestion}
+              isExpired={isTimerExpired}
+            />
+          )}
+        </div>
         {questionData.question_type && <p className="text-sm text-white/70 pt-1">Type: {questionData.question_type}</p>}
       </CardHeader>
       <CardContent className="space-y-3 p-4 pt-0 max-h-[45vh] overflow-y-auto relative z-10">
@@ -267,7 +425,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
               className="mt-2 min-h-[100px] bg-black/40 border border-white/30 text-white placeholder:text-white/70 focus:border-orange-400/50 focus:ring-orange-400/25 backdrop-blur-sm transition-all duration-300 ease-out hover:bg-black/50"
               rows={4}
             />
-          ) : null // Should not reach here if currentQuestionCategory is 'text_input' and type is unknown
+          ) : null
         ) : (
           <p className="text-white/60 text-center py-4">Unsupported question type: {questionData.question_type}</p>
         )}
@@ -284,7 +442,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
       <CardFooter className="p-4 relative z-10">
         <Button
           onClick={handleSubmit}
-          disabled={!canAttempt || isSubmitting || 
+          disabled={!canAttempt || isSubmitting || isTimerExpired ||
             (currentQuestionCategory === 'multiple_choice' ? selectedOptionIds.length === 0 : false) ||
             (currentQuestionCategory === 'text_input' ? !textAnswer.trim() : false) ||
             (currentQuestionCategory === 'unknown')

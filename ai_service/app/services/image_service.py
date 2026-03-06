@@ -51,6 +51,11 @@ class ImageGenerationService:
         self._gemini_api_key = gemini_api_key
         self._openrouter_api_key = openrouter_api_key
         self._llm_model = llm_model or "google/gemini-2.5-pro"
+        # Shared HTTP client for connection pooling (reuses DNS/TLS across image calls)
+        self._http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(60.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        )
 
     async def generate_images(
         self,
@@ -92,91 +97,71 @@ class ImageGenerationService:
                 logger.warning(f"Keyword generation failed: {str(e)}, using course name")
                 base_search_query = course_name
 
-            # Generate banner image using Gemini with individual timeout
+            # Build all three prompts upfront
             banner_prompt = generate_banner_prompt(
                 course_name=course_name,
                 base_search_query=base_search_query,
                 about_course=about_course,
                 image_style=image_style
             )
-            try:
-                banner_result = await asyncio.wait_for(
-                    self._generate_and_upload_banner(
-                        course_name=course_name,
-                        prompt=banner_prompt,
-                        gemini_key=gemini_key
-                    ),
-                    timeout=60.0  # 60 seconds for banner
-                )
-                banner_url, banner_usage = banner_result
-                # Aggregate usage
-                total_usage["prompt_tokens"] += banner_usage.get("prompt_tokens", 0)
-                total_usage["completion_tokens"] += banner_usage.get("completion_tokens", 0)
-                total_usage["total_tokens"] += banner_usage.get("total_tokens", 0)
-            except asyncio.TimeoutError:
-                logger.warning("Banner generation timed out")
-                banner_url = None
-            except Exception as e:
-                logger.error(f"Banner generation failed: {str(e)}")
-                banner_url = None
-
-            # Generate preview image using Gemini with individual timeout (different prompt for variety)
             preview_prompt = generate_preview_prompt(
                 course_name=course_name,
                 base_search_query=base_search_query,
                 about_course=about_course,
                 image_style=image_style
             )
-            try:
-                preview_result = await asyncio.wait_for(
-                    self._generate_and_upload_preview(
-                        course_name=course_name,
-                        prompt=preview_prompt,
-                        gemini_key=gemini_key
-                    ),
-                    timeout=60.0  # 60 seconds for preview
-                )
-                preview_url, preview_usage = preview_result
-                # Aggregate usage
-                total_usage["prompt_tokens"] += preview_usage.get("prompt_tokens", 0)
-                total_usage["completion_tokens"] += preview_usage.get("completion_tokens", 0)
-                total_usage["total_tokens"] += preview_usage.get("total_tokens", 0)
-            except asyncio.TimeoutError:
-                logger.warning("Preview generation timed out")
-                preview_url = None
-            except Exception as e:
-                logger.error(f"Preview generation failed: {str(e)}")
-                preview_url = None
-
-            # Generate media image using Gemini with individual timeout (different prompt for variety)
             media_prompt = generate_media_prompt(
                 course_name=course_name,
                 base_search_query=base_search_query,
                 about_course=about_course,
                 image_style=image_style
             )
-            try:
-                media_result = await asyncio.wait_for(
-                    self._generate_and_upload_media(
-                        course_name=course_name,
-                        prompt=media_prompt,
-                        gemini_key=gemini_key
+
+            # Generate ALL three images in parallel (they are independent I/O calls)
+            logger.info(f"Starting parallel image generation for course: {course_name}")
+            results = await asyncio.gather(
+                asyncio.wait_for(
+                    self._generate_and_upload_banner(
+                        course_name=course_name, prompt=banner_prompt, gemini_key=gemini_key
                     ),
-                    timeout=60.0  # 60 seconds for media
-                )
-                media_url, media_usage = media_result
-                # Aggregate usage
-                total_usage["prompt_tokens"] += media_usage.get("prompt_tokens", 0)
-                total_usage["completion_tokens"] += media_usage.get("completion_tokens", 0)
-                total_usage["total_tokens"] += media_usage.get("total_tokens", 0)
-            except asyncio.TimeoutError:
-                logger.warning("Media image generation timed out")
-                media_url = None
-            except Exception as e:
-                logger.error(f"Media image generation failed: {str(e)}")
-                media_url = None
-            
-            logger.info(f"Successfully generated images. Banner: {banner_url}, Preview: {preview_url}, Media: {media_url}")
+                    timeout=60.0
+                ),
+                asyncio.wait_for(
+                    self._generate_and_upload_preview(
+                        course_name=course_name, prompt=preview_prompt, gemini_key=gemini_key
+                    ),
+                    timeout=60.0
+                ),
+                asyncio.wait_for(
+                    self._generate_and_upload_media(
+                        course_name=course_name, prompt=media_prompt, gemini_key=gemini_key
+                    ),
+                    timeout=60.0
+                ),
+                return_exceptions=True  # Don't fail all if one image fails
+            )
+
+            # Unpack results, handling individual failures gracefully
+            empty_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            image_labels = ["Banner", "Preview", "Media"]
+            urls = []
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    if isinstance(result, asyncio.TimeoutError):
+                        logger.warning(f"{image_labels[i]} generation timed out")
+                    else:
+                        logger.error(f"{image_labels[i]} generation failed: {str(result)}")
+                    urls.append(None)
+                else:
+                    url, usage = result
+                    urls.append(url)
+                    total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                    total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                    total_usage["total_tokens"] += usage.get("total_tokens", 0)
+
+            banner_url, preview_url, media_url = urls[0], urls[1], urls[2]
+
+            logger.info(f"Successfully generated images (parallel). Banner: {banner_url}, Preview: {preview_url}, Media: {media_url}")
             logger.info(f"Total token usage for images: {total_usage}")
             return banner_url, preview_url, media_url, total_usage
             
@@ -357,31 +342,31 @@ class ImageGenerationService:
             if not effective_key:
                 return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={effective_key}",
-                    headers={
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "contents": [
-                            {
-                                "parts": [
-                                    {
-                                        "text": prompt
-                                    }
-                                ]
-                            }
-                        ],
-                        "generationConfig": {
-                            "imageConfig": {
-                                "aspectRatio": "16:9"
-                            },
-                            "responseModalities": ["IMAGE"]
+            # Use the shared HTTP client for connection pooling
+            response = await self._http_client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={effective_key}",
+                headers={
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "contents": [
+                        {
+                            "parts": [
+                                {
+                                    "text": prompt
+                                }
+                            ]
                         }
-                    },
-                    timeout=60.0  # Increased timeout for image generation
-                )
+                    ],
+                    "generationConfig": {
+                        "imageConfig": {
+                            "aspectRatio": "16:9"
+                        },
+                        "responseModalities": ["IMAGE"]
+                    }
+                },
+                timeout=60.0  # Increased timeout for image generation
+            )
 
             if response.status_code != 200:
                 logger.error(f"Gemini API error: {response.text}")
@@ -471,27 +456,27 @@ Examples:
 Return ONLY the keyword, nothing else:
 """
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self._openrouter_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self._llm_model,  # Use same model as course outline
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.3,  # Match course outline temperature
-                        "max_tokens": 10
-                    },
-                    timeout=30.0
-                )
+            # Use the shared HTTP client for connection pooling
+            response = await self._http_client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self._openrouter_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": self._llm_model,  # Use same model as course outline
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,  # Match course outline temperature
+                    "max_tokens": 10
+                },
+                timeout=30.0
+            )
 
-                if response.status_code == 200:
-                    data = response.json()
-                    keyword = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                    if keyword:
-                        return keyword
+            if response.status_code == 200:
+                data = response.json()
+                keyword = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if keyword:
+                    return keyword
 
         except Exception as e:
             logger.warning(f"Keyword generation failed: {str(e)}")

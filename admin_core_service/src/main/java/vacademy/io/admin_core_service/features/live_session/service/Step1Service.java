@@ -61,7 +61,9 @@ public class Step1Service {
         handleDeletedSchedules(request);
 
         // Step 2: Get all existing schedules (excluding already deleted ones)
-        List<SessionSchedule> existingSchedules = scheduleRepository.findBySessionId(session.getId());
+        List<SessionSchedule> existingSchedules = scheduleRepository.findBySessionId(session.getId()).stream()
+                .filter(s -> !LiveSessionStatus.DELETED.name().equalsIgnoreCase(s.getStatus()))
+                .toList();
         LocalDate today = LocalDate.now();
 
         // Separate past and future schedules
@@ -109,6 +111,43 @@ public class Step1Service {
                         .toList();
                 existingSchedules = existingSchedules.stream()
                         .filter(s -> !schedulesToDeleteForRemovedDays.contains(s.getId()))
+                        .toList();
+            }
+
+            // Step 4a2: Handle TIME SLOT REMOVAL - Delete future schedules for time slots
+            // that are no longer in the request (for days that ARE still in the request)
+            java.util.Map<String, java.util.Set<java.sql.Time>> requestedStartTimesByDay = new java.util.HashMap<>();
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
+                String day = dto.getDay().toUpperCase();
+                requestedStartTimesByDay
+                        .computeIfAbsent(day, k -> new java.util.HashSet<>())
+                        .add(java.sql.Time.valueOf(dto.getStartTime()));
+            }
+
+            List<String> schedulesToDeleteForRemovedTimeSlots = futureSchedules.stream()
+                    .filter(s -> s.getRecurrenceKey() != null
+                            && requestedDays.contains(s.getRecurrenceKey().toUpperCase())
+                            && s.getStartTime() != null)
+                    .filter(s -> {
+                        java.util.Set<java.sql.Time> requestedTimes =
+                                requestedStartTimesByDay.get(s.getRecurrenceKey().toUpperCase());
+                        return requestedTimes == null || !requestedTimes.contains(s.getStartTime());
+                    })
+                    .map(SessionSchedule::getId)
+                    .toList();
+
+            if (!schedulesToDeleteForRemovedTimeSlots.isEmpty()) {
+                System.out.println("Deleting " + schedulesToDeleteForRemovedTimeSlots.size()
+                        + " future schedules for removed time slots");
+                scheduleNotificationRepository.disableNotificationsByScheduleIds(
+                        schedulesToDeleteForRemovedTimeSlots, "DISABLED");
+                scheduleRepository.deleteAllById(schedulesToDeleteForRemovedTimeSlots);
+                // Remove from our working lists to prevent stale data
+                futureSchedules = futureSchedules.stream()
+                        .filter(s -> !schedulesToDeleteForRemovedTimeSlots.contains(s.getId()))
+                        .toList();
+                existingSchedules = existingSchedules.stream()
+                        .filter(s -> !schedulesToDeleteForRemovedTimeSlots.contains(s.getId()))
                         .toList();
             }
 
@@ -165,10 +204,13 @@ public class Step1Service {
                 }
 
                 String dayOfWeek = dto.getDay().toUpperCase();
+                Time dtoStartTime = Time.valueOf(dto.getStartTime());
 
-                // Get existing schedules for this day (including past ones for reference)
+                // Get existing schedules for this day AND start_time
+                // (to correctly handle multiple time slots on the same day)
                 List<SessionSchedule> existingSchedulesForDay = existingSchedules.stream()
-                        .filter(s -> s.getRecurrenceKey() != null && s.getRecurrenceKey().equalsIgnoreCase(dayOfWeek))
+                        .filter(s -> s.getRecurrenceKey() != null && s.getRecurrenceKey().equalsIgnoreCase(dayOfWeek)
+                                && s.getStartTime() != null && s.getStartTime().equals(dtoStartTime))
                         .sorted((a, b) -> toLocalDate(a.getMeetingDate()).compareTo(toLocalDate(b.getMeetingDate())))
                         .toList();
 
@@ -231,6 +273,12 @@ public class Step1Service {
                                 : getLinkTypeFromUrl(request.getDefaultMeetLink()));
                         schedule.setCustomWaitingRoomMediaId(null);
 
+                        if (dto.getDefaultClassLink() != null) {
+                            schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                            schedule.setDefaultClassName(dto.getDefaultClassName());
+                            schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                        }
+
                         scheduleRepository.save(schedule);
                         System.out.println("Created new schedule for " + dayOfWeek + " on " + current);
                         current = current.plusWeeks(1);
@@ -268,6 +316,12 @@ public class Step1Service {
                                     ? getLinkTypeFromUrl(dto.getLink())
                                     : getLinkTypeFromUrl(request.getDefaultMeetLink()));
                             schedule.setCustomWaitingRoomMediaId(null);
+
+                            if (dto.getDefaultClassLink() != null) {
+                                schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                                schedule.setDefaultClassName(dto.getDefaultClassName());
+                                schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                            }
 
                             scheduleRepository.save(schedule);
                             System.out.println(
@@ -578,6 +632,9 @@ public class Step1Service {
             return LinkType.ZOOM.name();
         } else if (lowerLink.contains("meet.google.com")) {
             return LinkType.GMEET.name();
+        } else if (List.of("meeting.zoho.com", "meeting.zoho.in", "meeting.zoho.eu").stream()
+                .anyMatch(lowerLink::contains)) {
+            return LinkType.ZOHO_MEETING.name();
         } else {
             return LinkType.RECORDED.name();
         }

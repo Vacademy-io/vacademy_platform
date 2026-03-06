@@ -32,9 +32,7 @@ const ReferralSettings = () => {
         try {
             setLoading(true);
             const apiResponse = await getReferralOptions();
-            console.log("this is apirespnse",apiResponse);
             const programs = apiResponse.map(convertFromApiFormat);
-            console.log("this is after mapping",programs);
             setReferralPrograms(programs);
         } catch (error) {
             handleError(error, 'load referral programs');

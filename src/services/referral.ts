@@ -669,9 +669,7 @@ export const addReferralOption = async (
     settings: UnifiedReferralSettings
 ): Promise<ReferralOptionResponse> => {
     try {
-        console.log("this is settings:", settings);
         const apiData = convertToApiFormat(settings);
-        console.log("this is apiData:", apiData);
 
         const response = await authenticatedAxiosInstance.post<ReferralOptionResponse>(
             REFERRAL_API_BASE,

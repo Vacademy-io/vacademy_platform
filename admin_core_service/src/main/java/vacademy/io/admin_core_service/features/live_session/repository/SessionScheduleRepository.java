@@ -365,4 +365,49 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             @Param("newStartTime") java.sql.Time newStartTime,
             @Param("newEndTime") java.sql.Time newEndTime);
 
+    /**
+     * Used by the hourly provider sync scheduler.
+     * Returns schedules that have a provider meeting ID set for the given provider
+     * and whose attendance hasn't been synced recently.
+     */
+    @Query(value = """
+                SELECT ss.* FROM session_schedules ss
+                WHERE ss.provider_meeting_id IS NOT NULL
+                  AND ss.link_type = :provider
+                  AND ss.status != 'DELETED'
+                  AND (ss.last_attendance_sync_at IS NULL OR ss.last_attendance_sync_at < :before)
+            """, nativeQuery = true)
+    List<SessionSchedule> findNeedingAttendanceSync(
+            @Param("provider") String provider,
+            @Param("before") java.util.Date before);
+
+    /**
+     * Used by the hourly provider sync scheduler.
+     * Returns schedules that have a provider meeting ID set for the given provider
+     * and whose recordings haven't been synced recently.
+     */
+    @Query(value = """
+                SELECT ss.* FROM session_schedules ss
+                WHERE ss.provider_meeting_id IS NOT NULL
+                  AND ss.link_type = :provider
+                  AND ss.status != 'DELETED'
+                  AND (ss.last_recording_sync_at IS NULL OR ss.last_recording_sync_at < :before)
+            """, nativeQuery = true)
+    List<SessionSchedule> findNeedingRecordingSync(
+            @Param("provider") String provider,
+            @Param("before") java.util.Date before);
+
+    /**
+     * Fetches the institute_id for a given schedule by joining through
+     * live_session.
+     * Used by the sync scheduler to resolve instituteId from a SessionSchedule.
+     */
+    @Query(value = """
+                SELECT ls.institute_id
+                FROM session_schedules ss
+                JOIN live_session ls ON ls.id = ss.session_id
+                WHERE ss.id = :scheduleId
+            """, nativeQuery = true)
+    Optional<String> findInstituteIdByScheduleId(@Param("scheduleId") String scheduleId);
+
 }

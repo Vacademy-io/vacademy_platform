@@ -632,6 +632,9 @@ public class Step1Service {
             return LinkType.ZOOM.name();
         } else if (lowerLink.contains("meet.google.com")) {
             return LinkType.GMEET.name();
+        } else if (List.of("meeting.zoho.com", "meeting.zoho.in", "meeting.zoho.eu").stream()
+                .anyMatch(lowerLink::contains)) {
+            return LinkType.ZOHO_MEETING.name();
         } else {
             return LinkType.RECORDED.name();
         }

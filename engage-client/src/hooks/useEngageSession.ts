@@ -4,9 +4,11 @@ import { toast } from 'sonner';
 import { type SessionDetailsResponse, type SseEventData, type UserSession, type Slide } from '@/types';
 
 const SSE_BASE_URL = 'https://backend-stage.vacademy.io/community-service/engage/learner';
-const MAX_RECONNECT_ATTEMPTS = 10;
+const MAX_RECONNECT_ATTEMPTS = 15;
 const INITIAL_RECONNECT_DELAY_MS = 1000; // 1 second
 const CLIENT_HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
+// Minimum time the tab must have been hidden before we force-reconnect on visibility change
+const MIN_HIDDEN_DURATION_FOR_RECONNECT_MS = 3000; // 3 seconds
 
 interface UseEngageSessionProps {
   inviteCode: string;
@@ -27,9 +29,14 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clientHeartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Use a ref for sessionId so connectSse never needs it as a reactive dep
   const sessionIdRef = useRef(initialSessionData.session_id);
+  // Track when the tab was last hidden to determine if reconnect is needed
+  const tabHiddenAtRef = useRef<number | null>(null);
+  // Track whether a visibility-triggered reconnect is already in progress
+  const isReconnectingFromVisibilityRef = useRef(false);
 
   const updateSessionState = useCallback((updates: Partial<UserSession>) => {
     setSessionState(prev => ({ ...prev, ...updates }));
@@ -88,12 +95,23 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
       console.error("[SSE] Error occurred with EventSource:", errorEvent);
       if (eventSourceRef.current) eventSourceRef.current.close();
 
+      // If the tab is currently hidden (backgrounded), don't burn through
+      // reconnection attempts — just mark as reconnecting and wait for the
+      // visibility-change handler to reconnect when the user returns.
+      if (document.hidden) {
+        console.log('[SSE] Tab is hidden; deferring reconnection until tab is visible.');
+        updateSessionState({ sseStatus: 'reconnecting', error: 'Connection paused while tab is in background.' });
+        return;
+      }
+
       if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttemptsRef.current++;
         const delay = Math.min(INITIAL_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttemptsRef.current), 30000);
         console.log(`[SSE] Attempting to reconnect in ${delay / 1000} seconds (attempt ${reconnectAttemptsRef.current})...`);
         updateSessionState({ sseStatus: 'reconnecting', error: `Connection lost. Attempting to reconnect (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})...` });
-        setTimeout(connectSse, delay);
+        // Clear any pending reconnect timer first
+        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = setTimeout(connectSse, delay);
       } else {
         console.error("[SSE] Max reconnection attempts reached. Giving up.");
         updateSessionState({ sseStatus: 'error', error: "Max reconnection attempts reached. Please check your connection or try rejoining." });
@@ -144,6 +162,8 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
             Array.isArray(newSessionData.slides.added_slides);
 
           if (conditionForSlideUpdate) {
+            // Clear all toasts from the previous slide (e.g., "No more attempts", "Time's up")
+            toast.dismiss();
             newSessionData = { ...newSessionData!, current_slide_index: eventData.currentSlideIndex as number };
             // Capture slide start timestamp and timer duration from SSE
             if (eventData.slideStartTimestamp !== undefined && eventData.slideStartTimestamp !== null && eventData.slideStartTimestamp > 0) {
@@ -266,12 +286,113 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
   // sessionIdRef is used instead of sessionState.sessionId to avoid that dep as well.
   }, [username, updateSessionState, sendClientHeartbeat]);
 
+  /**
+   * Fetch the latest session state from the backend and update local state.
+   * Called after reconnecting from a background/suspended state to catch up
+   * on any slides or status changes that were missed.
+   */
+  const syncSessionState = useCallback(async () => {
+    if (!sessionIdRef.current) return;
+    try {
+      const response = await fetch(`${SSE_BASE_URL}/get-updated-details/${sessionIdRef.current}`);
+      if (!response.ok) {
+        console.error('[SSE] Failed to sync session state:', response.status);
+        return;
+      }
+      const updatedDetails: SessionDetailsResponse = await response.json();
+      console.log('[SSE] Session state synced after visibility change:', updatedDetails.session_status);
+
+      const newCurrentSlide = updatedDetails.slides.added_slides.find(
+        (s: Slide) => s.slide_order === updatedDetails.current_slide_index
+      ) || null;
+
+      updateSessionState({
+        sessionData: updatedDetails,
+        currentSlide: newCurrentSlide,
+      });
+    } catch (error) {
+      console.error('[SSE] Error syncing session state:', error);
+    }
+  }, [updateSessionState]);
+
 
   useEffect(() => {
     const cleanup = connectSse();
 
+    // ----- Visibility Change Handler -----
+    // When the user returns to the tab after a phone call, app switch, or
+    // screen lock, force-reconnect the SSE stream and sync state.
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Tab just went to background — record the timestamp
+        tabHiddenAtRef.current = Date.now();
+        console.log('[SSE] Tab hidden at', new Date().toISOString());
+        return;
+      }
+
+      // Tab just became visible again
+      const hiddenDuration = tabHiddenAtRef.current ? Date.now() - tabHiddenAtRef.current : 0;
+      tabHiddenAtRef.current = null;
+      console.log(`[SSE] Tab visible again after ${(hiddenDuration / 1000).toFixed(1)}s`);
+
+      // Only reconnect if hidden long enough for the connection to have died
+      if (hiddenDuration < MIN_HIDDEN_DURATION_FOR_RECONNECT_MS) {
+        return;
+      }
+
+      // Check if the EventSource is still alive
+      const es = eventSourceRef.current;
+      const isConnectionDead = !es || es.readyState === EventSource.CLOSED;
+
+      if (isConnectionDead && !isReconnectingFromVisibilityRef.current) {
+        console.log('[SSE] Connection is dead after tab resume; force-reconnecting...');
+        isReconnectingFromVisibilityRef.current = true;
+
+        // Reset the reconnect counter — this is a fresh user-initiated return
+        reconnectAttemptsRef.current = 0;
+        // Clear any pending reconnect timer from the onerror handler
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+
+        toast.info('Reconnecting...', { description: 'Restoring your live session.', duration: 2000 });
+        connectSse();
+        // Sync the latest session state in parallel
+        syncSessionState().finally(() => {
+          isReconnectingFromVisibilityRef.current = false;
+        });
+      } else if (!isConnectionDead) {
+        // Connection is still open — just send a heartbeat to keep it alive
+        // and sync state in case we missed events
+        sendClientHeartbeat();
+        syncSessionState();
+      }
+    };
+
+    // Also handle network reconnection (e.g., WiFi/cellular switches)
+    const handleOnline = () => {
+      console.log('[SSE] Network back online, checking connection...');
+      const es = eventSourceRef.current;
+      if (!es || es.readyState === EventSource.CLOSED) {
+        reconnectAttemptsRef.current = 0;
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+        toast.info('Network restored', { description: 'Reconnecting to session...', duration: 2000 });
+        connectSse();
+        syncSessionState();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+
     return () => {
       console.log("[SSE] Component unmounting. Closing connection.");
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
       if (cleanup) cleanup();
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -279,6 +400,9 @@ export const useEngageSession = ({ inviteCode, username, initialSessionData }: U
       }
       if (clientHeartbeatTimerRef.current) {
         clearInterval(clientHeartbeatTimerRef.current);
+      }
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
       }
       reconnectAttemptsRef.current = 0;
       updateSessionState({ sseStatus: 'disconnected' });

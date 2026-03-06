@@ -17,16 +17,11 @@ public class WhiteLabelStatusResponse {
     @JsonProperty("is_configured")
     private boolean isConfigured;
 
-    /**
-     * True only when CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID are present in
-     * this deployment's
-     * environment. If false the frontend must hide the DNS automation UI entirely.
-     */
     @JsonProperty("cloudflare_enabled")
     private boolean cloudflareEnabled;
 
     @JsonProperty("domain_type")
-    private String domainType; // "VACADEMY_SUBDOMAIN" or "CUSTOM" — null if not configured
+    private String domainType;
 
     @JsonProperty("learner_portal_url")
     private String learnerPortalUrl;
@@ -54,5 +49,72 @@ public class WhiteLabelStatusResponse {
 
         @JsonProperty("subdomain")
         private String subdomain;
+
+        // ── Branding ──────────────────────────────────────────────────────
+        @JsonProperty("tab_text")
+        private String tabText;
+
+        @JsonProperty("tab_icon_file_id")
+        private String tabIconFileId;
+
+        @JsonProperty("theme")
+        private String theme;
+
+        @JsonProperty("font_family")
+        private String fontFamily;
+
+        // ── Routes ────────────────────────────────────────────────────────
+        @JsonProperty("redirect")
+        private String redirect;
+
+        @JsonProperty("after_login_route")
+        private String afterLoginRoute;
+
+        @JsonProperty("admin_portal_after_logout_route")
+        private String adminPortalAfterLogoutRoute;
+
+        @JsonProperty("home_icon_click_route")
+        private String homeIconClickRoute;
+
+        // ── Auth ──────────────────────────────────────────────────────────
+        @JsonProperty("allow_signup")
+        private Boolean allowSignup;
+
+        @JsonProperty("allow_google_auth")
+        private Boolean allowGoogleAuth;
+
+        @JsonProperty("allow_github_auth")
+        private Boolean allowGithubAuth;
+
+        @JsonProperty("allow_email_otp_auth")
+        private Boolean allowEmailOtpAuth;
+
+        @JsonProperty("allow_phone_auth")
+        private Boolean allowPhoneAuth;
+
+        @JsonProperty("allow_username_password_auth")
+        private Boolean allowUsernamePasswordAuth;
+
+        @JsonProperty("convert_username_password_to_lowercase")
+        private Boolean convertUsernamePasswordToLowercase;
+
+        // ── Legal / Links ─────────────────────────────────────────────────
+        @JsonProperty("privacy_policy_url")
+        private String privacyPolicyUrl;
+
+        @JsonProperty("terms_and_condition_url")
+        private String termsAndConditionUrl;
+
+        @JsonProperty("play_store_app_link")
+        private String playStoreAppLink;
+
+        @JsonProperty("app_store_app_link")
+        private String appStoreAppLink;
+
+        @JsonProperty("windows_app_link")
+        private String windowsAppLink;
+
+        @JsonProperty("mac_app_link")
+        private String macAppLink;
     }
 }

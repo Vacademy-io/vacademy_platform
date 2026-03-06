@@ -3,55 +3,48 @@ package vacademy.io.admin_core_service.features.white_label.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * Request payload for the white-label setup wizard.
- * Supports two domain modes:
- * - VACADEMY_SUBDOMAIN → auto-derives *.vacademy.io URLs from the given slug
- * - CUSTOM → caller supplies explicit domain names per portal
+ *
+ * Contains a list of domain entries. Each entry maps a domain to a role
+ * (LEARNER, ADMIN, TEACHER).
+ * Multiple entries can share the same role (e.g., 2 learner domains).
+ * Exactly one entry per role should be marked {@code is_primary = true} — that
+ * domain becomes
+ * the institute table's portal URL for that role.
  */
 @Data
 public class WhiteLabelSetupRequest {
 
-    /**
-     * "VACADEMY_SUBDOMAIN" or "CUSTOM"
-     */
-    @JsonProperty("domain_type")
-    private String domainType;
+    @JsonProperty("entries")
+    private List<DomainEntry> entries;
 
-    // ── VACADEMY_SUBDOMAIN mode ───────────────────────────────────────────────
+    @Data
+    public static class DomainEntry {
 
-    /**
-     * Slug used to derive free vacademy sub-domains.
-     * e.g. "myschool" → learner: myschool.vacademy.io, admin:
-     * myschool-admin.vacademy.io
-     */
-    @JsonProperty("subdomain_slug")
-    private String subdomainSlug;
+        /** LEARNER, ADMIN, or TEACHER */
+        @JsonProperty("role")
+        private String role;
 
-    // ── CUSTOM domain mode ────────────────────────────────────────────────────
+        /**
+         * Full domain name, e.g. "learn.myschool.com" or "myschool.vacademy.io".
+         * Must NOT include protocol (https://).
+         */
+        @JsonProperty("domain")
+        private String domain;
 
-    /** Full custom domain for learner portal, e.g. "learn.myschool.com" */
-    @JsonProperty("custom_learner_domain")
-    private String customLearnerDomain;
+        /**
+         * If true, this domain is used as the institute table's portal URL for this
+         * role.
+         * At most one primary per role is allowed.
+         */
+        @JsonProperty("is_primary")
+        private boolean isPrimary;
 
-    /** Full custom domain for admin portal, e.g. "admin.myschool.com" */
-    @JsonProperty("custom_admin_domain")
-    private String customAdminDomain;
-
-    /**
-     * Full custom domain for teacher portal (optional), e.g. "teach.myschool.com"
-     */
-    @JsonProperty("custom_teacher_domain")
-    private String customTeacherDomain;
-
-    // ── Per-role routing config (optional — uses sensible defaults) ──────────
-
-    @JsonProperty("learner_routing")
-    private PortalRoutingConfig learnerRouting;
-
-    @JsonProperty("admin_routing")
-    private PortalRoutingConfig adminRouting;
-
-    @JsonProperty("teacher_routing")
-    private PortalRoutingConfig teacherRouting;
+        /** Optional per-domain routing config (theme, auth, tabs, etc.) */
+        @JsonProperty("routing_config")
+        private PortalRoutingConfig routingConfig;
+    }
 }

@@ -173,6 +173,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
 
   useEffect(() => {
     // Reset selection and answer when question changes
+    toast.dismiss(); // Clear all toasts from previous question
     setSelectedOptionIds([]);
     setTextAnswer('');
     setResponseStartTime(Date.now());
@@ -361,12 +362,11 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                     className={`flex items-center space-x-3 p-3 rounded-xl border transition-all duration-300 ease-out backdrop-blur-sm
                                 ${selectedOptionIds.includes(option.id) ? 'border-orange-400/50 bg-orange-900/40 ring-2 ring-orange-400/30' : 'border-white/30 bg-black/40 hover:border-white/40 hover:bg-black/50'}
                                 ${(!canAttempt || isSubmitting) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
-                    onClick={() => canAttempt && !isSubmitting && handleOptionChange(option.id)}
                   >
                     <Checkbox
                       id={`option-${option.id}`}
                       checked={selectedOptionIds.includes(option.id)}
-                      onCheckedChange={() => handleOptionChange(option.id)}
+                      onCheckedChange={() => canAttempt && !isSubmitting && handleOptionChange(option.id)}
                       disabled={!canAttempt || isSubmitting}
                       className="size-4"
                     />
@@ -380,13 +380,14 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
               // MCQS: RadioGroup ensures only one option is selected at a time
               <RadioGroup
                 onValueChange={(value: string) => handleOptionChange(value)}
-                value={selectedOptionIds[0]}
+                value={selectedOptionIds[0] || ''}
                 disabled={!canAttempt || isSubmitting}
                 className="space-y-3"
               >
                 {questionData.options.map((option: Option) => (
-                  <div
+                  <label
                     key={option.id}
+                    htmlFor={`option-${option.id}`}
                     className={`flex items-center space-x-3 p-3 rounded-xl border transition-all duration-300 ease-out backdrop-blur-sm
                                 ${selectedOptionIds.includes(option.id) ? 'border-orange-400/50 bg-orange-900/40 ring-2 ring-orange-400/30' : 'border-white/30 bg-black/40 hover:border-white/40 hover:bg-black/50'}
                                 ${(!canAttempt || isSubmitting) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
@@ -396,10 +397,10 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                       id={`option-${option.id}`}
                       className="size-4 border-slate-400 data-[state=checked]:border-primary data-[state=checked]:text-primary focus:ring-primary"
                     />
-                    <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
+                    <span className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
                       dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
                     />
-                  </div>
+                  </label>
                 ))}
               </RadioGroup>
             )

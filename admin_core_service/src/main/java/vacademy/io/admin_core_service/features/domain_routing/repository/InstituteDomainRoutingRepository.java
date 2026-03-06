@@ -12,28 +12,41 @@ import java.util.Optional;
 @Repository
 public interface InstituteDomainRoutingRepository extends CrudRepository<InstituteDomainRouting, String> {
 
-    List<InstituteDomainRouting> findByInstituteId(String instituteId);
+  List<InstituteDomainRouting> findByInstituteId(String instituteId);
 
-    @Query(value = """
-            SELECT *
-            FROM institute_domain_routing
-            WHERE LOWER(domain) = LOWER(:domain)
-              AND (LOWER(subdomain) = LOWER(:subdomain) OR subdomain = '*')
-            ORDER BY CASE WHEN subdomain = '*' THEN 1 ELSE 0 END DESC
-            LIMIT 1
-            """, nativeQuery = true)
-    Optional<InstituteDomainRouting> resolveMapping(@Param("domain") String domain,
-                                                    @Param("subdomain") String subdomain);
+  @Query(value = """
+      SELECT *
+      FROM institute_domain_routing
+      WHERE LOWER(domain) = LOWER(:domain)
+        AND (LOWER(subdomain) = LOWER(:subdomain) OR subdomain = '*')
+      ORDER BY CASE WHEN subdomain = '*' THEN 1 ELSE 0 END DESC
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<InstituteDomainRouting> resolveMapping(@Param("domain") String domain,
+      @Param("subdomain") String subdomain);
 
-    @Query(value = """
-            SELECT *
-            FROM institute_domain_routing
-            WHERE institute_id = :instituteId
-              AND role = :role
-            LIMIT 1
-            """, nativeQuery = true)
-    Optional<InstituteDomainRouting> findByInstituteIdAndRole(@Param("instituteId") String instituteId,
-                                                              @Param("role") String role);
+  @Query(value = """
+      SELECT *
+      FROM institute_domain_routing
+      WHERE institute_id = :instituteId
+        AND role = :role
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<InstituteDomainRouting> findByInstituteIdAndRole(@Param("instituteId") String instituteId,
+      @Param("role") String role);
+
+  @Query(value = """
+      SELECT *
+      FROM institute_domain_routing
+      WHERE institute_id = :instituteId
+        AND LOWER(domain) = LOWER(:domain)
+        AND LOWER(subdomain) = LOWER(:subdomain)
+        AND role = :role
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<InstituteDomainRouting> findByInstituteIdAndDomainAndSubdomainAndRole(
+      @Param("instituteId") String instituteId,
+      @Param("domain") String domain,
+      @Param("subdomain") String subdomain,
+      @Param("role") String role);
 }
-
-

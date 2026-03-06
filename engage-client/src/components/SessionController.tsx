@@ -19,7 +19,7 @@ export const SessionController: React.FC<SessionControllerProps> = ({ sessionSta
   }
 
   if (sessionState.error && sessionState.sseStatus === 'error') {
-     // If critical error, show full screen, otherwise header might still be useful
+     // If critical error, show full screen with a retry button
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
         {/* Floating background orbs */}
@@ -28,8 +28,14 @@ export const SessionController: React.FC<SessionControllerProps> = ({ sessionSta
         <div className="floating-orb bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5" style={{ animationDelay: '2s' }} />
         
         {sessionState.sessionData && <SessionHeader sessionState={sessionState} />}
-        <div className="pt-16 flex items-center justify-center min-h-screen relative z-10 p-4">
+        <div className="pt-16 flex flex-col items-center justify-center min-h-screen relative z-10 p-4 gap-4">
           <ErrorMessage title="Session Error" message={sessionState.error} className="max-w-lg" />
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-semibold shadow-lg shadow-orange-500/25 transition-all duration-300 ease-out hover:scale-105 backdrop-blur-sm"
+          >
+            Retry Connection
+          </button>
         </div>
       </div>
     );

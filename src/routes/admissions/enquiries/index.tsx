@@ -19,7 +19,11 @@ import createCampaignLink from '@/routes/audience-manager/list/-utils/createCamp
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FilterChips } from '@/components/design-system/chips';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Search } from 'lucide-react';
 import { CreateEnquiryDialog } from './-components/create-enquiry-dialog/CreateEnquiryDialog';
+import { SelectedEnquirySidebarProvider } from './-context/selected-enquiry-sidebar-context';
+import { EnquirySidebar } from './-components/enquiry-side-view/enquiry-sidebar';
 
 export const Route = createFileRoute('/admissions/enquiries/')({
     component: RouteComponent,
@@ -106,6 +110,8 @@ function EnquiryPage() {
     const [packageSessionFilters, setPackageSessionFilters] = useState<
         { id: string; label: string }[]
     >([]);
+    const [searchInput, setSearchInput] = useState('');
+    const [searchFilter, setSearchFilter] = useState('');
 
     // Fetch all enquiries (campaigns)
     const { data: enquiriesData, refetch: refetchEnquiries } = useSuspenseQuery(
@@ -176,13 +182,16 @@ function EnquiryPage() {
         statusFilters.length > 0 ||
         sourceFilters.length > 0 ||
         dateRangeFilters.length > 0 ||
-        packageSessionFilters.length > 0;
+        packageSessionFilters.length > 0 ||
+        searchFilter.length > 0;
 
     const clearAllFilters = () => {
         setStatusFilters([]);
         setSourceFilters([]);
         setDateRangeFilters([]);
         setPackageSessionFilters([]);
+        setSearchInput('');
+        setSearchFilter('');
     };
 
     return (
@@ -301,6 +310,30 @@ function EnquiryPage() {
                     />
                 )}
 
+                {/* Search Bar */}
+                <div className="ml-auto flex items-center gap-2">
+                    <Input
+                        type="text"
+                        placeholder="Search..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                setSearchFilter(searchInput);
+                            }
+                        }}
+                        className="h-8 bg-white text-xs md:w-[250px]"
+                    />
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 px-3"
+                        onClick={() => setSearchFilter(searchInput)}
+                    >
+                        <Search className="h-4 w-4" />
+                    </Button>
+                </div>
+
                 {hasActiveFilters && (
                     <MyButton
                         buttonType="secondary"
@@ -324,6 +357,7 @@ function EnquiryPage() {
                     sourceFilter={sourceFilter}
                     packageSessionFilter={packageSessionFilter}
                     dateRangeFilter={dateRange}
+                    searchFilter={searchFilter}
                 />
             )}
 
@@ -344,8 +378,11 @@ function EnquiryPage() {
 
 function RouteComponent() {
     return (
-        <LayoutContainer>
-            <EnquiryPage />
-        </LayoutContainer>
+        <SelectedEnquirySidebarProvider>
+            <LayoutContainer>
+                <EnquiryPage />
+                <EnquirySidebar />
+            </LayoutContainer>
+        </SelectedEnquirySidebarProvider>
     );
 }

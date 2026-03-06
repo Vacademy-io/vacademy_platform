@@ -97,12 +97,12 @@ function mergeDisplayWithDefaults(
             } as DisplaySettingsData['sidebar'][number]);
         const subTabsMerged = mergeArrayById(
             tab.subTabs as
-            | Array<
-                Partial<
-                    NonNullable<DisplaySettingsData['sidebar'][number]['subTabs']>[number]
-                >
-            >
-            | undefined,
+                | Array<
+                      Partial<
+                          NonNullable<DisplaySettingsData['sidebar'][number]['subTabs']>[number]
+                      >
+                  >
+                | undefined,
             defTab.subTabs || []
         );
         return {
@@ -134,8 +134,8 @@ function mergeDisplayWithDefaults(
     // Dashboard widgets merge
     const mergedWidgets = mergeArrayById(
         incoming?.dashboard?.widgets as
-        | Array<Partial<DisplaySettingsData['dashboard']['widgets'][number]>>
-        | undefined,
+            | Array<Partial<DisplaySettingsData['dashboard']['widgets'][number]>>
+            | undefined,
         defaults.dashboard.widgets
     );
     merged.dashboard.widgets = mergedWidgets.map((w) => {
@@ -182,13 +182,13 @@ function mergeDisplayWithDefaults(
         };
     const mergedCourseListTabs = mergeArrayById(
         incoming?.courseList?.tabs as
-        | Array<{
-            id: string;
-            label?: string;
-            order?: number;
-            visible?: boolean;
-        }>
-        | undefined,
+            | Array<{
+                  id: string;
+                  label?: string;
+                  order?: number;
+                  visible?: boolean;
+              }>
+            | undefined,
         defaultCourseList.tabs as Array<{
             id: string;
             label?: string;
@@ -200,10 +200,10 @@ function mergeDisplayWithDefaults(
         tabs: mergedCourseListTabs.map((t) => ({
             id: t.id as unknown as DisplaySettingsData['courseList'] extends infer C
                 ? C extends { tabs: Array<infer U> }
-                ? U extends { id: infer I }
-                ? I
-                : never
-                : never
+                    ? U extends { id: infer I }
+                        ? I
+                        : never
+                    : never
                 : never,
             label: t.label,
             order: t.order ?? 0,
@@ -211,8 +211,8 @@ function mergeDisplayWithDefaults(
         })) as NonNullable<DisplaySettingsData['courseList']>['tabs'],
         defaultTab: (incoming?.courseList?.defaultTab ||
             defaultCourseList.defaultTab) as NonNullable<
-                DisplaySettingsData['courseList']
-            >['defaultTab'],
+            DisplaySettingsData['courseList']
+        >['defaultTab'],
     };
 
     // Course Details merge with defaults
@@ -231,13 +231,13 @@ function mergeDisplayWithDefaults(
         };
     const mergedDetailsTabs = mergeArrayById(
         incoming?.courseDetails?.tabs as
-        | Array<{
-            id: string;
-            label?: string;
-            order?: number;
-            visible?: boolean;
-        }>
-        | undefined,
+            | Array<{
+                  id: string;
+                  label?: string;
+                  order?: number;
+                  visible?: boolean;
+              }>
+            | undefined,
         defaultDetails.tabs as Array<{
             id: string;
             label?: string;
@@ -249,10 +249,10 @@ function mergeDisplayWithDefaults(
         tabs: mergedDetailsTabs.map((t) => ({
             id: t.id as unknown as DisplaySettingsData['courseDetails'] extends infer C
                 ? C extends { tabs: Array<infer U> }
-                ? U extends { id: infer I }
-                ? I
-                : never
-                : never
+                    ? U extends { id: infer I }
+                        ? I
+                        : never
+                    : never
                 : never,
             label: t.label,
             order: t.order ?? 0,
@@ -260,8 +260,8 @@ function mergeDisplayWithDefaults(
         })) as NonNullable<DisplaySettingsData['courseDetails']>['tabs'],
         defaultTab: (incoming?.courseDetails?.defaultTab ||
             defaultDetails.defaultTab) as NonNullable<
-                DisplaySettingsData['courseDetails']
-            >['defaultTab'],
+            DisplaySettingsData['courseDetails']
+        >['defaultTab'],
     };
 
     // UI
@@ -368,6 +368,7 @@ function mergeDisplayWithDefaults(
         portalAccessTab: false,
         reportsTab: false,
         enrollDerollTab: false,
+        enquiryTab: true,
     };
     merged.studentSideView = {
         overviewTab: incoming?.studentSideView?.overviewTab ?? defStudentSideView.overviewTab,
@@ -387,6 +388,7 @@ function mergeDisplayWithDefaults(
         reportsTab: incoming?.studentSideView?.reportsTab ?? defStudentSideView.reportsTab,
         enrollDerollTab:
             incoming?.studentSideView?.enrollDerollTab ?? defStudentSideView.enrollDerollTab,
+        enquiryTab: incoming?.studentSideView?.enquiryTab ?? defStudentSideView.enquiryTab,
     };
 
     const defLearnerManagement = defaults.learnerManagement || {
@@ -516,7 +518,9 @@ export function clearDisplaySettingsCache(role?: RoleKey): void {
         if (instituteId) {
             localStorage.removeItem(getLocalStorageKey(ADMIN_DISPLAY_SETTINGS_KEY, instituteId));
             localStorage.removeItem(getLocalStorageKey(TEACHER_DISPLAY_SETTINGS_KEY, instituteId));
-            localStorage.removeItem(getLocalStorageKey(CUSTOM_ROLE_DISPLAY_SETTINGS_KEY, instituteId));
+            localStorage.removeItem(
+                getLocalStorageKey(CUSTOM_ROLE_DISPLAY_SETTINGS_KEY, instituteId)
+            );
         }
         // Clean legacy keys as well
         localStorage.removeItem(LEGACY_ADMIN_KEY);
@@ -557,7 +561,11 @@ export async function getDisplaySettings(
             const resDataDynamic = res.data as any;
             if (resDataDynamic[apiSettingKey] && resDataDynamic[apiSettingKey].data) {
                 serverData = resDataDynamic[apiSettingKey].data;
-            } else if (resDataDynamic.data && resDataDynamic.data[apiSettingKey] && resDataDynamic.data[apiSettingKey].data) {
+            } else if (
+                resDataDynamic.data &&
+                resDataDynamic.data[apiSettingKey] &&
+                resDataDynamic.data[apiSettingKey].data
+            ) {
                 serverData = resDataDynamic.data[apiSettingKey].data;
             } else if (resDataDynamic.data) {
                 serverData = resDataDynamic.data;
@@ -637,7 +645,11 @@ export async function saveDisplaySettings(
                 const resDataDynamic = res.data as any;
                 if (resDataDynamic[apiSettingKey] && resDataDynamic[apiSettingKey].data) {
                     tempExisting = resDataDynamic[apiSettingKey].data;
-                } else if (resDataDynamic.data && resDataDynamic.data[apiSettingKey] && resDataDynamic.data[apiSettingKey].data) {
+                } else if (
+                    resDataDynamic.data &&
+                    resDataDynamic.data[apiSettingKey] &&
+                    resDataDynamic.data[apiSettingKey].data
+                ) {
                     tempExisting = resDataDynamic.data[apiSettingKey].data;
                 } else if (resDataDynamic.data) {
                     tempExisting = resDataDynamic.data;
@@ -653,7 +665,7 @@ export async function saveDisplaySettings(
 
         finalSettingData = {
             ...existingData,
-            [roleId]: settings
+            [roleId]: settings,
         };
     }
 
@@ -662,8 +674,8 @@ export async function saveDisplaySettings(
             role === ADMIN_DISPLAY_SETTINGS_KEY
                 ? 'Admin Display Settings'
                 : isCustomRole
-                    ? 'Role Display Settings'
-                    : 'Teacher Display Settings',
+                  ? 'Role Display Settings'
+                  : 'Teacher Display Settings',
         setting_data: finalSettingData,
     };
 

@@ -17,6 +17,22 @@ import { handleFetchEnquiries } from '../-services/get-enquiries';
 import { format } from 'date-fns';
 import { useNavigate } from '@tanstack/react-router';
 import { MyButton } from '@/components/design-system/button';
+import { useEnquirySidebar } from '../-context/selected-enquiry-sidebar-context';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+    updateEnquiryStatus,
+    ENQUIRY_STATUS_OPTIONS,
+    CONVERSION_STATUS_OPTIONS,
+    EnquiryStatus,
+    ConversionStatus,
+} from '../-services/update-enquiry-status';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 // Helper function to generate key from name
 const generateKeyFromName = (name: string): string =>
@@ -33,6 +49,7 @@ interface EnquiryTableProps {
     sourceFilter?: string;
     packageSessionFilter?: string;
     dateRangeFilter?: { from?: string; to?: string };
+    searchFilter?: string;
 }
 
 export const EnquiryTable = ({
@@ -43,6 +60,7 @@ export const EnquiryTable = ({
     sourceFilter,
     packageSessionFilter,
     dateRangeFilter,
+    searchFilter,
 }: EnquiryTableProps) => {
     const [page, setPage] = useState(0);
     const pageSize = 10;
@@ -51,13 +69,53 @@ export const EnquiryTable = ({
     const [isDownloading, setIsDownloading] = useState(false);
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const navigate = useNavigate();
+    const { openSidebar } = useEnquirySidebar();
+    const queryClient = useQueryClient();
+    const [bulkEnquiryStatus, setBulkEnquiryStatus] = useState<EnquiryStatus | ''>('');
+    const [bulkConversionStatus, setBulkConversionStatus] = useState<ConversionStatus | ''>('');
 
     // Reset page and selected rows when enquiry or filters change
     useEffect(() => {
         setPage(0);
         setSelectedRows(new Set());
         console.log('🔄 [EnquiryTable] Enquiry or filters changed, resetting page and selection');
-    }, [enquiryId, statusFilter, sourceFilter, packageSessionFilter, dateRangeFilter]);
+    }, [
+        enquiryId,
+        statusFilter,
+        sourceFilter,
+        packageSessionFilter,
+        dateRangeFilter,
+        searchFilter,
+    ]);
+
+    const bulkUpdateMutation = useMutation({
+        mutationFn: updateEnquiryStatus,
+        onSuccess: () => {
+            toast.success(
+                `Updated ${selectedRows.size} enquir${selectedRows.size === 1 ? 'y' : 'ies'} successfully`
+            );
+            setSelectedRows(new Set());
+            setBulkEnquiryStatus('');
+            setBulkConversionStatus('');
+            queryClient.invalidateQueries();
+        },
+        onError: () => {
+            toast.error('Failed to update enquiry statuses');
+        },
+    });
+
+    const handleBulkApply = () => {
+        if (selectedRows.size === 0) return;
+        if (!bulkEnquiryStatus && !bulkConversionStatus) {
+            toast.warning('Please select at least one status to update');
+            return;
+        }
+        bulkUpdateMutation.mutate({
+            enquiry_ids: Array.from(selectedRows),
+            ...(bulkEnquiryStatus ? { enquiry_status: bulkEnquiryStatus } : {}),
+            ...(bulkConversionStatus ? { conversion_status: bulkConversionStatus } : {}),
+        });
+    };
 
     // Parse custom fields from JSON
     const customFields = useMemo(() => {
@@ -116,6 +174,7 @@ export const EnquiryTable = ({
             destination_package_session_id: packageSessionFilter,
             created_from: dateRangeFilter?.from,
             created_to: dateRangeFilter?.to,
+            search: searchFilter,
         }),
         [
             enquiryId,
@@ -125,6 +184,7 @@ export const EnquiryTable = ({
             sourceFilter,
             packageSessionFilter,
             dateRangeFilter,
+            searchFilter,
         ]
     );
 
@@ -198,9 +258,10 @@ export const EnquiryTable = ({
             customFieldMap,
             selectedRows,
             handleRowSelectionChange,
-            handleSelectAll
+            handleSelectAll,
+            openSidebar
         );
-    }, [customFields, allFieldIdsFromAllEnquiries, customFieldMap, selectedRows]);
+    }, [customFields, allFieldIdsFromAllEnquiries, customFieldMap, selectedRows, openSidebar]);
 
     const tableKey = useMemo(() => {
         const fieldIdsKey =
@@ -290,6 +351,7 @@ export const EnquiryTable = ({
 
             const allDataPayload = {
                 ...enquiriesPayload,
+                search: searchFilter,
                 page: 0,
                 size: tableData.total_elements,
             };
@@ -530,6 +592,101 @@ export const EnquiryTable = ({
                         </PaginationItem>
                     </PaginationContent>
                 </Pagination>
+            )}
+
+            {/* Bulk Action Bar */}
+            {selectedRows.size > 0 && (
+                <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+                    <div className="flex items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-5 py-3 shadow-2xl ring-1 ring-black/5">
+                        {/* Count Badge */}
+                        <div className="flex items-center gap-2">
+                            <span className="flex size-7 items-center justify-center rounded-full bg-primary-500 text-xs font-bold text-white">
+                                {selectedRows.size}
+                            </span>
+                            <span className="text-sm font-medium text-neutral-700">selected</span>
+                        </div>
+
+                        <div className="h-5 w-px bg-neutral-200" />
+
+                        {/* Enquiry Status Dropdown */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-neutral-500">
+                                Enquiry Status
+                            </span>
+                            <Select
+                                value={bulkEnquiryStatus}
+                                onValueChange={(v) => setBulkEnquiryStatus(v as EnquiryStatus)}
+                            >
+                                <SelectTrigger className="h-8 w-36 rounded-lg border-neutral-200 text-xs">
+                                    <SelectValue placeholder="Select…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {ENQUIRY_STATUS_OPTIONS.map((opt) => (
+                                        <SelectItem
+                                            key={opt.value}
+                                            value={opt.value}
+                                            className="text-xs"
+                                        >
+                                            {opt.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="h-5 w-px bg-neutral-200" />
+
+                        {/* Conversion Status Dropdown */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-neutral-500">Conversion</span>
+                            <Select
+                                value={bulkConversionStatus}
+                                onValueChange={(v) =>
+                                    setBulkConversionStatus(v as ConversionStatus)
+                                }
+                            >
+                                <SelectTrigger className="h-8 w-28 rounded-lg border-neutral-200 text-xs">
+                                    <SelectValue placeholder="Select…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {CONVERSION_STATUS_OPTIONS.map((opt) => (
+                                        <SelectItem
+                                            key={opt.value}
+                                            value={opt.value}
+                                            className="text-xs"
+                                        >
+                                            {opt.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="h-5 w-px bg-neutral-200" />
+
+                        {/* Apply / Clear */}
+                        <Button
+                            size="sm"
+                            className="h-8 rounded-lg bg-primary-500 px-4 text-xs font-semibold text-white hover:bg-primary-600"
+                            onClick={handleBulkApply}
+                            disabled={bulkUpdateMutation.isPending}
+                        >
+                            {bulkUpdateMutation.isPending ? 'Applying…' : 'Apply'}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 rounded-lg px-3 text-xs text-neutral-500 hover:text-neutral-700"
+                            onClick={() => {
+                                setSelectedRows(new Set());
+                                setBulkEnquiryStatus('');
+                                setBulkConversionStatus('');
+                            }}
+                        >
+                            Clear
+                        </Button>
+                    </div>
+                </div>
             )}
         </div>
     );

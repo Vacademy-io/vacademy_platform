@@ -74,23 +74,15 @@ export const ResponseDistributionModal: React.FC<DistributionModalProps> = ({
 
         // Create a mapping function to match response IDs to slide option IDs
         const getMatchingSlideOptionId = (responseOptionId: string): string | null => {
-            // First, try exact match
+            // Try exact match on option id
             const exactMatch = slideOptions.find((opt: any) => opt.id === responseOptionId);
             if (exactMatch) {
                 return exactMatch.id;
             }
 
-            // Fallback: Try to match by index if IDs don't match
-            if (responseOptionId.includes('-') && responseOptionId.length > 10) {
-                const responseIndex = uniqueSelectedIds.indexOf(responseOptionId);
-                if (responseIndex >= 0 && responseIndex < slideOptions.length) {
-                    console.log(
-                        `[Distribution] Mapping response ID ${responseOptionId} to slide option at index ${responseIndex}`
-                    );
-                    return slideOptions[responseIndex].id;
-                }
-            }
-
+            // The participant sends the real database UUID (option.id), which should
+            // always match the local slideOptions[].id. If no match is found, the
+            // admin's local slide data may be out-of-sync. Log for debugging.
             console.log(`[Distribution] Could not match response option ID: ${responseOptionId}`);
             return null;
         };

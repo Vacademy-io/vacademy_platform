@@ -60,7 +60,8 @@ export const generateDynamicColumns = (
     fieldLookup?: Map<string, CustomFieldSetupItem>,
     selectedRows?: Set<string>,
     onRowSelectionChange?: (id: string, selected: boolean) => void,
-    onSelectAll?: (selected: boolean) => void
+    onSelectAll?: (selected: boolean) => void,
+    onViewDetails?: (enquiryId: string) => void
 ): ColumnDef<EnquiryTableRow>[] => {
     const columns: ColumnDef<EnquiryTableRow>[] = [];
 
@@ -360,7 +361,12 @@ export const generateDynamicColumns = (
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                    <DropdownMenuItem>View Details</DropdownMenuItem>
+                    <DropdownMenuItem
+                        onClick={() => onViewDetails?.(row.original.id)}
+                        className="cursor-pointer"
+                    >
+                        View Details
+                    </DropdownMenuItem>
                     <DropdownMenuItem>Edit</DropdownMenuItem>
                     <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
                 </DropdownMenuContent>

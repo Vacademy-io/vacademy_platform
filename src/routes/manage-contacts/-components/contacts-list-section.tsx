@@ -9,6 +9,7 @@ import RootErrorComponent from '@/components/core/deafult-error';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarContext } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
+import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { StudentTable } from '@/types/student-table-types';
 import { ContactUser } from '../-types/contact-types';
 import { getContactColumns } from './contacts-table-columns';
@@ -18,10 +19,8 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 export const ContactsListSection = () => {
     const { setNavHeading } = useNavHeadingStore();
     const filters = useContactFilters();
-    const { contactTableData, isLoading, error, handleSort, handlePageChange, page } = useContactTable(
-        filters.appliedFilters,
-        filters.setAppliedFilters
-    );
+    const { contactTableData, isLoading, error, handleSort, handlePageChange, page } =
+        useContactTable(filters.appliedFilters, filters.setAppliedFilters);
     const [selectedStudent, setSelectedStudent] = useState<StudentTable | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const tableRef = useRef<HTMLDivElement>(null);
@@ -77,14 +76,16 @@ export const ContactsListSection = () => {
 
     return (
         <ErrorBoundary>
-            <StudentSidebarContext.Provider value={{ selectedStudent, setSelectedStudent }}>
+            <StudentSidebarProvider>
                 <section className="animate-fadeIn flex max-w-full flex-col gap-3 overflow-visible">
                     <ContactFilters filters={filters} />
 
                     {isLoading ? (
                         <div className="flex w-full flex-col items-center gap-2 py-6">
                             <DashboardLoader />
-                            <p className="animate-pulse text-xs text-neutral-500">Loading contacts...</p>
+                            <p className="animate-pulse text-xs text-neutral-500">
+                                Loading contacts...
+                            </p>
                         </div>
                     ) : !contactTableData || contactTableData.users.length === 0 ? (
                         <EmptyState />
@@ -138,7 +139,7 @@ export const ContactsListSection = () => {
                         </div>
                     )}
                 </section>
-            </StudentSidebarContext.Provider>
+            </StudentSidebarProvider>
         </ErrorBoundary>
     );
 };

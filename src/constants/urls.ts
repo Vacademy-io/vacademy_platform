@@ -540,6 +540,8 @@ export const GET_CATALOGUE_BY_TAG = (instituteId: string, tagName: string) =>
     `${CATALOGUE_BASE_URL}/institute/get/by-tag?instituteId=${instituteId}&tagName=${encodeURIComponent(tagName)}`;
 
 export const LINK_COUNSELLOR = `${BASE_URL}/admin-core-service/enquiry/link-counselor`;
+export const GET_ENQUIRY_DETAILS = `${BASE_URL}/admin-core-service/enquiry/v1/admin/details`;
+export const UPDATE_ENQUIRY_STATUS = `${BASE_URL}/admin-core-service/enquiry/v1/admin/update-status`;
 // Booking System URLs
 export const BOOKING_BASE = `${BASE_URL}/admin-core-service/booking/v1`;
 

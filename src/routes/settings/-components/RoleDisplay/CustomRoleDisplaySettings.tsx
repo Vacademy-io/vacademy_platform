@@ -48,6 +48,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     portalAccessTab: false,
     reportsTab: false,
     enrollDerollTab: false,
+    enquiryTab: false,
 };
 
 const STUDENT_SIDE_VIEW_OPTIONS: Array<{
@@ -55,54 +56,59 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
     label: string;
     defaultValue: boolean;
 }> = [
-        {
-            key: 'overviewTab',
-            label: 'Overview Tab',
-            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.overviewTab,
-        },
-        { key: 'testTab', label: 'Test Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.testTab },
-        {
-            key: 'progressTab',
-            label: 'Progress Tab',
-            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.progressTab,
-        },
-        {
-            key: 'notificationTab',
-            label: 'Notification Tab',
-            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.notificationTab,
-        },
-        {
-            key: 'membershipTab',
-            label: 'Membership Tab',
-            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.membershipTab,
-        },
-        {
-            key: 'paymentHistoryTab',
-            label: 'Payment History Tab',
-            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.paymentHistoryTab,
-        },
-        {
-            key: 'userTaggingTab',
-            label: 'User Tagging Tab',
-            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.userTaggingTab,
-        },
-        { key: 'fileTab', label: 'File Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fileTab },
-        {
-            key: 'portalAccessTab',
-            label: 'Portal Access Tab',
-            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.portalAccessTab,
-        },
-        {
-            key: 'reportsTab',
-            label: 'Reports Tab',
-            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.reportsTab,
-        },
-        {
-            key: 'enrollDerollTab',
-            label: 'Enroll/Deroll Tab',
-            defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.enrollDerollTab,
-        },
-    ];
+    {
+        key: 'overviewTab',
+        label: 'Overview Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.overviewTab,
+    },
+    { key: 'testTab', label: 'Test Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.testTab },
+    {
+        key: 'progressTab',
+        label: 'Progress Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.progressTab,
+    },
+    {
+        key: 'notificationTab',
+        label: 'Notification Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.notificationTab,
+    },
+    {
+        key: 'membershipTab',
+        label: 'Membership Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.membershipTab,
+    },
+    {
+        key: 'paymentHistoryTab',
+        label: 'Payment History Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.paymentHistoryTab,
+    },
+    {
+        key: 'userTaggingTab',
+        label: 'User Tagging Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.userTaggingTab,
+    },
+    { key: 'fileTab', label: 'File Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fileTab },
+    {
+        key: 'portalAccessTab',
+        label: 'Portal Access Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.portalAccessTab,
+    },
+    {
+        key: 'reportsTab',
+        label: 'Reports Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.reportsTab,
+    },
+    {
+        key: 'enrollDerollTab',
+        label: 'Enroll/Deroll Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.enrollDerollTab,
+    },
+    {
+        key: 'enquiryTab',
+        label: 'Enquiry Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.enquiryTab,
+    },
+];
 
 const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowPortalAccess: true,
@@ -115,22 +121,22 @@ const LEARNER_MANAGEMENT_OPTIONS: Array<{
     label: string;
     defaultValue: boolean;
 }> = [
-        {
-            key: 'allowPortalAccess',
-            label: 'Allow Learner Portal Access',
-            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowPortalAccess,
-        },
-        {
-            key: 'allowViewPassword',
-            label: 'Allow Viewing Learner Password',
-            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowViewPassword,
-        },
-        {
-            key: 'allowSendResetPasswordMail',
-            label: 'Allow Sending Reset Password Mail',
-            defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowSendResetPasswordMail,
-        },
-    ];
+    {
+        key: 'allowPortalAccess',
+        label: 'Allow Learner Portal Access',
+        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowPortalAccess,
+    },
+    {
+        key: 'allowViewPassword',
+        label: 'Allow Viewing Learner Password',
+        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowViewPassword,
+    },
+    {
+        key: 'allowSendResetPasswordMail',
+        label: 'Allow Sending Reset Password Mail',
+        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowSendResetPasswordMail,
+    },
+];
 
 export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }) {
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
@@ -239,7 +245,9 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
             toast.success('Custom role display settings saved');
         } catch (e: any) {
             console.error('Failed to save settings:', e);
-            toast.error(`Failed to save: ${e?.response?.data?.message || e?.message || 'Unknown error'}`);
+            toast.error(
+                `Failed to save: ${e?.response?.data?.message || e?.message || 'Unknown error'}`
+            );
         } finally {
             setIsSaving(false);
         }
@@ -502,8 +510,8 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                         const enforcedVisible = isForcedVisible
                             ? true
                             : isForcedHidden
-                                ? false
-                                : cfg.visible;
+                              ? false
+                              : cfg.visible;
                         return (
                             <div
                                 key={id}
@@ -522,9 +530,9 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                     tabs: (prev.courseList?.tabs || []).map((t) =>
                                                         t.id === id
                                                             ? {
-                                                                ...t,
-                                                                order: Number(e.target.value),
-                                                            }
+                                                                  ...t,
+                                                                  order: Number(e.target.value),
+                                                              }
                                                             : t
                                                     ),
                                                     defaultTab:
@@ -626,9 +634,9 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                         (t) =>
                                                             t.id === id
                                                                 ? {
-                                                                    ...t,
-                                                                    order: Number(e.target.value),
-                                                                }
+                                                                      ...t,
+                                                                      order: Number(e.target.value),
+                                                                  }
                                                                 : t
                                                     ),
                                                     defaultTab:
@@ -657,18 +665,18 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                 };
                                                 const tabs = exists
                                                     ? prevTabs.map((t) =>
-                                                        t.id === id
-                                                            ? { ...t, visible: checked }
-                                                            : t
-                                                    )
+                                                          t.id === id
+                                                              ? { ...t, visible: checked }
+                                                              : t
+                                                      )
                                                     : [
-                                                        ...prevTabs,
-                                                        {
-                                                            id,
-                                                            order: orderForId[id] ?? 99,
-                                                            visible: checked,
-                                                        },
-                                                    ];
+                                                          ...prevTabs,
+                                                          {
+                                                              id,
+                                                              order: orderForId[id] ?? 99,
+                                                              visible: checked,
+                                                          },
+                                                      ];
                                                 return {
                                                     ...prev,
                                                     courseDetails: {
@@ -850,8 +858,8 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                             cfg.visible === false
                                                 ? 'hidden'
                                                 : cfg.locked
-                                                    ? 'locked'
-                                                    : 'visible'
+                                                  ? 'locked'
+                                                  : 'visible'
                                         }
                                         onValueChange={(value) => {
                                             updateSettings((prev) => {
@@ -1036,9 +1044,9 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                         sidebar: prev.sidebar.map((t) =>
                                                             t.id === tab.id
                                                                 ? {
-                                                                    ...t,
-                                                                    order: Number(e.target.value),
-                                                                }
+                                                                      ...t,
+                                                                      order: Number(e.target.value),
+                                                                  }
                                                                 : t
                                                         ),
                                                     }))
@@ -1067,8 +1075,8 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                     tab.visible === false
                                                         ? 'hidden'
                                                         : tab.locked
-                                                            ? 'locked'
-                                                            : 'visible'
+                                                          ? 'locked'
+                                                          : 'visible'
                                                 }
                                                 onValueChange={(value) =>
                                                     updateSettings((prev) => ({
@@ -1147,22 +1155,22 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                                         (t) =>
                                                                             t.id === tab.id
                                                                                 ? {
-                                                                                    ...t,
-                                                                                    subTabs: (
-                                                                                        t.subTabs ||
-                                                                                        []
-                                                                                    ).map((s) =>
-                                                                                        s.id ===
-                                                                                            sub.id
-                                                                                            ? {
-                                                                                                ...s,
-                                                                                                label: e
-                                                                                                    .target
-                                                                                                    .value,
-                                                                                            }
-                                                                                            : s
-                                                                                    ),
-                                                                                }
+                                                                                      ...t,
+                                                                                      subTabs: (
+                                                                                          t.subTabs ||
+                                                                                          []
+                                                                                      ).map((s) =>
+                                                                                          s.id ===
+                                                                                          sub.id
+                                                                                              ? {
+                                                                                                    ...s,
+                                                                                                    label: e
+                                                                                                        .target
+                                                                                                        .value,
+                                                                                                }
+                                                                                              : s
+                                                                                      ),
+                                                                                  }
                                                                                 : t
                                                                     ),
                                                                 }))
@@ -1180,24 +1188,24 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                                         (t) =>
                                                                             t.id === tab.id
                                                                                 ? {
-                                                                                    ...t,
-                                                                                    subTabs: (
-                                                                                        t.subTabs ||
-                                                                                        []
-                                                                                    ).map((s) =>
-                                                                                        s.id ===
-                                                                                            sub.id
-                                                                                            ? {
-                                                                                                ...s,
-                                                                                                order: Number(
-                                                                                                    e
-                                                                                                        .target
-                                                                                                        .value
-                                                                                                ),
-                                                                                            }
-                                                                                            : s
-                                                                                    ),
-                                                                                }
+                                                                                      ...t,
+                                                                                      subTabs: (
+                                                                                          t.subTabs ||
+                                                                                          []
+                                                                                      ).map((s) =>
+                                                                                          s.id ===
+                                                                                          sub.id
+                                                                                              ? {
+                                                                                                    ...s,
+                                                                                                    order: Number(
+                                                                                                        e
+                                                                                                            .target
+                                                                                                            .value
+                                                                                                    ),
+                                                                                                }
+                                                                                              : s
+                                                                                      ),
+                                                                                  }
                                                                                 : t
                                                                     ),
                                                                 }))
@@ -1214,22 +1222,22 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                                         (t) =>
                                                                             t.id === tab.id
                                                                                 ? {
-                                                                                    ...t,
-                                                                                    subTabs: (
-                                                                                        t.subTabs ||
-                                                                                        []
-                                                                                    ).map((s) =>
-                                                                                        s.id ===
-                                                                                            sub.id
-                                                                                            ? {
-                                                                                                ...s,
-                                                                                                route: e
-                                                                                                    .target
-                                                                                                    .value,
-                                                                                            }
-                                                                                            : s
-                                                                                    ),
-                                                                                }
+                                                                                      ...t,
+                                                                                      subTabs: (
+                                                                                          t.subTabs ||
+                                                                                          []
+                                                                                      ).map((s) =>
+                                                                                          s.id ===
+                                                                                          sub.id
+                                                                                              ? {
+                                                                                                    ...s,
+                                                                                                    route: e
+                                                                                                        .target
+                                                                                                        .value,
+                                                                                                }
+                                                                                              : s
+                                                                                      ),
+                                                                                  }
                                                                                 : t
                                                                     ),
                                                                 }))
@@ -1242,8 +1250,8 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                                 sub.visible === false
                                                                     ? 'hidden'
                                                                     : sub.locked
-                                                                        ? 'locked'
-                                                                        : 'visible'
+                                                                      ? 'locked'
+                                                                      : 'visible'
                                                             }
                                                             onValueChange={(value) =>
                                                                 updateSettings((prev) => ({
@@ -1252,46 +1260,46 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                                         (t) =>
                                                                             t.id === tab.id
                                                                                 ? {
-                                                                                    ...t,
-                                                                                    subTabs: (
-                                                                                        t.subTabs ||
-                                                                                        []
-                                                                                    ).map((s) => {
-                                                                                        if (
-                                                                                            s.id !==
-                                                                                            sub.id
-                                                                                        )
-                                                                                            return s;
-                                                                                        if (
-                                                                                            value ===
-                                                                                            'hidden'
-                                                                                        ) {
-                                                                                            return {
-                                                                                                ...s,
-                                                                                                visible:
-                                                                                                    false,
-                                                                                                locked: false,
-                                                                                            };
-                                                                                        }
-                                                                                        if (
-                                                                                            value ===
-                                                                                            'locked'
-                                                                                        ) {
-                                                                                            return {
-                                                                                                ...s,
-                                                                                                visible:
-                                                                                                    true,
-                                                                                                locked: true,
-                                                                                            };
-                                                                                        }
-                                                                                        return {
-                                                                                            ...s,
-                                                                                            visible:
-                                                                                                true,
-                                                                                            locked: false,
-                                                                                        };
-                                                                                    }),
-                                                                                }
+                                                                                      ...t,
+                                                                                      subTabs: (
+                                                                                          t.subTabs ||
+                                                                                          []
+                                                                                      ).map((s) => {
+                                                                                          if (
+                                                                                              s.id !==
+                                                                                              sub.id
+                                                                                          )
+                                                                                              return s;
+                                                                                          if (
+                                                                                              value ===
+                                                                                              'hidden'
+                                                                                          ) {
+                                                                                              return {
+                                                                                                  ...s,
+                                                                                                  visible:
+                                                                                                      false,
+                                                                                                  locked: false,
+                                                                                              };
+                                                                                          }
+                                                                                          if (
+                                                                                              value ===
+                                                                                              'locked'
+                                                                                          ) {
+                                                                                              return {
+                                                                                                  ...s,
+                                                                                                  visible:
+                                                                                                      true,
+                                                                                                  locked: true,
+                                                                                              };
+                                                                                          }
+                                                                                          return {
+                                                                                              ...s,
+                                                                                              visible:
+                                                                                                  true,
+                                                                                              locked: false,
+                                                                                          };
+                                                                                      }),
+                                                                                  }
                                                                                 : t
                                                                     ),
                                                                 }))
@@ -1623,9 +1631,9 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                     widgets: prev.dashboard.widgets.map((x) =>
                                                         x.id === w.id
                                                             ? {
-                                                                ...x,
-                                                                order: Number(e.target.value),
-                                                            }
+                                                                  ...x,
+                                                                  order: Number(e.target.value),
+                                                              }
                                                             : x
                                                     ),
                                                 },
@@ -1680,7 +1688,7 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             <Switch
                                 checked={
                                     settings.permissions[
-                                    key as keyof DisplaySettingsData['permissions']
+                                        key as keyof DisplaySettingsData['permissions']
                                     ]
                                 }
                                 onCheckedChange={(checked) =>

@@ -48,6 +48,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     portalAccessTab: false,
     reportsTab: false,
     enrollDerollTab: false,
+    enquiryTab: false,
 };
 
 const STUDENT_SIDE_VIEW_OPTIONS: Array<{
@@ -101,6 +102,11 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         key: 'enrollDerollTab',
         label: 'Enroll/Deroll Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.enrollDerollTab,
+    },
+    {
+        key: 'enquiryTab',
+        label: 'Enquiry Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.enquiryTab,
     },
 ];
 

@@ -70,6 +70,7 @@ export interface EnquiriesRequest {
     destination_package_session_id?: string;
     created_from?: string;
     created_to?: string;
+    search?: string;
     page: number;
     size: number;
 }
@@ -92,6 +93,7 @@ export const fetchEnquiries = async (payload: EnquiriesRequest): Promise<Enquiri
                     destination_package_session_id: payload.destination_package_session_id,
                     created_from: payload.created_from,
                     created_to: payload.created_to,
+                    search: payload.search || undefined,
                     page: payload.page,
                     size: payload.size,
                 }),
@@ -121,6 +123,7 @@ export const handleFetchEnquiries = (payload: EnquiriesRequest) => {
             payload.destination_package_session_id,
             payload.created_from,
             payload.created_to,
+            payload.search,
         ],
         queryFn: () => fetchEnquiries(payload),
         staleTime: 60 * 1000, // 1 minute

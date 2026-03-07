@@ -192,3 +192,4 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
 
         Optional<AudienceResponse> findFirstByStudentUserIdAndApplicantIdIsNotNull(String studentUserId);
 }
+

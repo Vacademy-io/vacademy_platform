@@ -58,6 +58,7 @@ import vacademy.io.admin_core_service.features.notification.enums.NotificationEv
 import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationTemplateType;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 
 import java.util.*;
 
@@ -126,6 +127,9 @@ public class ApplicantService {
 
         @Autowired
         private InstituteRepository instituteRepository;
+
+        @Autowired
+        private TimelineEventService timelineEventService;
 
         // Correct Imports for Payment DTOs
         // using fully qualified names in method signature to avoid ambiguity if needed
@@ -981,6 +985,23 @@ public class ApplicantService {
                 if (ApplicantStageType.PAYMENT.equals(firstStage.getType())) {
                         sendApplicationPaymentEmail(savedApplicant.getId().toString(), firstStage);
                 }
+
+                // Log timeline event for Applicant creation
+                String actorId = (parentUser != null) ? parentUser.getId() : "SYSTEM";
+                String actorName = (parentUser != null) ? parentUser.getFullName() : "SYSTEM";
+
+                timelineEventService.logEvent(
+                                "APPLICANT",
+                                savedApplicant.getId().toString(),
+                                isTransition ? "APPLICATION_TRANSITIONED" : "APPLICATION_SUBMITTED",
+                                "USER", // Standarding to USER or SYSTEM for applicants
+                                actorId,
+                                actorName,
+                                isTransition ? "Applicant Transitioned to Admission" : "Application Submitted",
+                                "Applicant moved to stage: " + firstStage.getStageName(),
+                                Map.of(
+                                                "workflow_type", workflowType,
+                                                "stage_name", firstStage.getStageName()));
 
                 return ApplyResponseDTO.builder()
                                 .applicantId(savedApplicant.getId().toString())

@@ -169,6 +169,7 @@ const convertRewardToBenefit = (reward: ReferrerReward | RefereeReward) => {
                 templateId: templateId,
                 subject: null,
                 body: null,
+                contentType:reward.content?.contentType
             };
 
             // Add either contentUrl or fileIds based on content type
@@ -521,7 +522,11 @@ const convertBenefitToReward = (
             return {
                 type: 'bonus_content',
                 content: {
-                    contentType: 'pdf',
+                    contentType: benefitValue.contentType as
+                        | 'pdf'
+                        | 'video'
+                        | 'audio'
+                        | 'course',
                     content: contentOption,
                 },
                 delivery,

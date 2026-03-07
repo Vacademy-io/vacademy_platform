@@ -172,17 +172,29 @@ export const UnifiedReferralSettings: React.FC<UnifiedReferralSettingsProps> = (
     const [showTierCreator, setShowTierCreator] = useState(false);
 
     useEffect(() => {
-        if (editingSettings) {
-            setFormData(editingSettings);
-        } else if (isOpen) {
-            // Only reset form data when dialog opens for a new referral program
-            setFormData({
-                label: '',
-                isDefault: false,
-                allowCombineOffers: false,
-                payoutVestingDays: 7,
-                referrerRewards: [],
-            });
+        if (isOpen) {
+            if (editingSettings) {
+                setFormData(editingSettings);
+            } else {
+                setFormData({
+                    label: '',
+                    isDefault: false,
+                    allowCombineOffers: false,
+                    payoutVestingDays: 7,
+                    referrerRewards: [],
+                });
+            }
+        } else {
+            // Reset when closed so there's no flash of old data on next open
+            setTimeout(() => {
+                setFormData({
+                    label: '',
+                    isDefault: false,
+                    allowCombineOffers: false,
+                    payoutVestingDays: 7,
+                    referrerRewards: [],
+                });
+            }, 300); // 300ms matches Dialog out animation roughly
         }
     }, [editingSettings, isOpen]);
 
@@ -915,7 +927,7 @@ const ContentEditor: React.FC<ContentEditorProps> = ({ content, onChange }) => {
                                     scale="large"
                                     type="button"
                                 >
-                                    Upload Image
+                                    Upload File
                                 </MyButton>
                             </div>
                         )}

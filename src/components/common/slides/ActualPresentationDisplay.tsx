@@ -268,6 +268,16 @@ export const ActualPresentationDisplay: React.FC<ActualPresentationDisplayProps>
         currentSlideData?.type === SlideTypeEnum.Quiz ||
         currentSlideData?.type === SlideTypeEnum.Feedback;
 
+    // Extract the added_question for the current slide from the live session data.
+    // The session API returns options with real DB UUIDs, which we need for matching
+    // participant responses in LeaderboardModal and ResponseDistributionModal.
+    const currentAddedQuestion = React.useMemo(() => {
+        const sessionSlides = (liveSessionData as any)?.slides?.added_slides;
+        if (!sessionSlides) return null;
+        const sessionSlide = sessionSlides.find((s: any) => s.id === currentSlideId);
+        return sessionSlide?.added_question || null;
+    }, [liveSessionData, currentSlideId]);
+
     // Calculate total recommendations count
     const totalRecommendations = recommendationBatches.reduce((sum, batch) => sum + batch.slides.length, 0);
 
@@ -444,6 +454,7 @@ export const ActualPresentationDisplay: React.FC<ActualPresentationDisplayProps>
                             slideData={currentSlideData}
                             slideStartTimestamp={localSlideStart}
                             defaultSecondsForQuestion={(liveSessionData as any).default_seconds_for_question || 0}
+                            addedQuestion={currentAddedQuestion}
                         />
                     </div>
                 )}

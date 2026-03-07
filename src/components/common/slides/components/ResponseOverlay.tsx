@@ -27,6 +27,7 @@ interface ResponseOverlayProps {
     slideData: QuizSlideData;
     slideStartTimestamp: number | null;
     defaultSecondsForQuestion: number;
+    addedQuestion?: any; // added_question from session API — has real DB option UUIDs
 }
 
 // Countdown Timer Component for Admin
@@ -86,7 +87,7 @@ const CountdownTimer: React.FC<{ secondsRemaining: number; totalSeconds: number;
     );
   };
 
-export const ResponseOverlay: React.FC<ResponseOverlayProps> = ({ sessionId, slideData, slideStartTimestamp, defaultSecondsForQuestion }) => {
+export const ResponseOverlay: React.FC<ResponseOverlayProps> = ({ sessionId, slideData, slideStartTimestamp, defaultSecondsForQuestion, addedQuestion }) => {
     const [responses, setResponses] = useState<ResponseData[]>([]);
     const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
     const [isDistributionOpen, setIsDistributionOpen] = useState(false);
@@ -249,6 +250,7 @@ export const ResponseOverlay: React.FC<ResponseOverlayProps> = ({ sessionId, sli
                 responses={responses}
                 slideData={slideData}
                 isMcq={isMcqQuestion}
+                addedQuestion={addedQuestion}
             />
             {isMcqQuestion ? (
                 <ResponseDistributionModal
@@ -256,6 +258,7 @@ export const ResponseOverlay: React.FC<ResponseOverlayProps> = ({ sessionId, sli
                     onClose={() => setIsDistributionOpen(false)}
                     responses={responses}
                     slideData={slideData}
+                    addedQuestion={addedQuestion}
                 />
             ) : (
                 <WordCloudModal

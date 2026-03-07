@@ -31,7 +31,12 @@ import { Preferences } from "@capacitor/preferences";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { CourseStructureDetails } from "./course-structure-details";
 // CourseStructureResponse no longer needed - using single course fetch
-import { getIdByLevelAndSession } from "@/routes/courses/course-details/-utils/helper";
+import {
+  getIdByLevelAndSession,
+  hasChildSubgroups,
+  getBatchOptionsForSessionLevel,
+  resolvePackageSessionId,
+} from "@/routes/courses/course-details/-utils/helper";
 import { DonationDialog } from "@/components/common/donation/DonationDialog";
 import { EnrollmentPaymentDialog } from "./payment-dialogs/EnrollmentPaymentDialog";
 import { EnrollmentPendingApprovalDialog } from "./payment-dialogs/EnrollmentPendingApprovalDialog";
@@ -196,6 +201,7 @@ export const CourseDetailsPage = () => {
 
   const [selectedSession, setSelectedSession] = useState<string>("");
   const [selectedLevel, setSelectedLevel] = useState<string>("");
+  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const router = useRouter();
   const searchParams = router.state.location.search;
 
@@ -319,13 +325,14 @@ export const CourseDetailsPage = () => {
     }
 
     // Navigate to slides with whatever IDs we found
-    // Even if some IDs are missing, the slides page should handle it gracefully
+    // sessionId is used by slides route as packageSessionId (batch id) for content/progress
     const navigationParams = {
       courseId: searchParams.courseId,
       subjectId: subjectId || "",
       moduleId: moduleId || "",
       chapterId: chapterId || "",
       slideId: slideId || "",
+      sessionId: packageSessionIdForCurrentLevel || "",
     };
 
     navigateTo(
@@ -656,67 +663,75 @@ export const CourseDetailsPage = () => {
   // Effect 2: Map session/level to packageSessionId when batches or selections change.
   // Uses batches API when available; falls back to course-init's package_sessions when
   // batches are empty or session/level IDs don't match (e.g. "DEFAULT" vs UUID), so content still loads.
+  // "URL" = page query params (e.g. ?courseId=...&packageSessionId=...) from React Router (searchParams), not an API URL.
   // Must run after courseDetailsData is defined (useSuspenseQuery above).
   useEffect(() => {
-    let resolved: string | null = null;
+    const urlPackageSessionId = searchParams.packageSessionId;
 
-    // 1) Prioritize packageSessionId from URL if available (and we can validate from batches when present)
-    if (searchParams.packageSessionId) {
-      if (fetchedBatches.length > 0) {
-        const targetBatch = fetchedBatches.find(
-          (b) => b.id === searchParams.packageSessionId
+    // 1) Apply URL packageSessionId only when it matches current selection, or on initial load when selection not yet set.
+    //    If user has changed session/level/subgroup, URL param is stale – fall through to block 2 to resolve from selection.
+    if (urlPackageSessionId && fetchedBatches.length > 0) {
+      const targetBatch = fetchedBatches.find((b) => b.id === urlPackageSessionId);
+      const urlMatchesCurrentSelection =
+        targetBatch &&
+        targetBatch.session?.id === selectedSession &&
+        targetBatch.level?.id === selectedLevel &&
+        (!selectedBatchId || targetBatch.id === selectedBatchId);
+
+      if (targetBatch?.session?.id && targetBatch?.level?.id && urlMatchesCurrentSelection) {
+        setPackageSessionIdForCurrentLevel(targetBatch.id);
+        setSelectedBatchId(targetBatch.id);
+        return;
+      }
+      // Initial load: no session/level selected yet – sync from URL once
+      if (targetBatch?.session?.id && targetBatch?.level?.id && !selectedSession && !selectedLevel) {
+        setPackageSessionIdForCurrentLevel(targetBatch.id);
+        setSelectedBatchId(targetBatch.id);
+        setSelectedSession(targetBatch.session.id);
+        setSelectedLevel(targetBatch.level.id);
+        const sessions = form.getValues("courseData")?.sessions || [];
+        const selectedSessionData = sessions.find(
+          (s) => s.sessionDetails.id === targetBatch.session.id
         );
-        if (targetBatch?.session?.id && targetBatch?.level?.id) {
-          resolved = targetBatch.id;
-          setPackageSessionIdForCurrentLevel(targetBatch.id);
-          const sessions = form.getValues("courseData")?.sessions || [];
-          const selectedSessionData = sessions.find(
-            (s) => s.sessionDetails.id === targetBatch.session.id
+        if (selectedSessionData) {
+          setLevelOptions(
+            selectedSessionData.levelDetails.map((level) => ({
+              _id: level.id,
+              value: level.id,
+              label: level.name,
+            }))
           );
-          if (selectedSessionData) {
-            setLevelOptions(
-              selectedSessionData.levelDetails.map((level) => ({
-                _id: level.id,
-                value: level.id,
-                label: level.name,
-              }))
-            );
-          }
-          if (selectedSession !== targetBatch.session.id) {
-            setSelectedSession(targetBatch.session.id);
-            if (selectedLevel !== targetBatch.level.id) {
-              setSelectedLevel(targetBatch.level.id);
-            }
-          } else if (selectedLevel !== targetBatch.level.id) {
-            setSelectedLevel(targetBatch.level.id);
-          }
         }
-      }
-      if (resolved) {
         return;
       }
-      // URL has packageSessionId but no batch match (e.g. batches empty) – trust URL
-      if (!resolved && searchParams.packageSessionId) {
-        resolved = searchParams.packageSessionId;
-        setPackageSessionIdForCurrentLevel(searchParams.packageSessionId);
-        return;
-      }
+      // URL doesn't match current selection – do not return; block 2 will resolve from selectedSession/selectedLevel/selectedBatchId
     }
 
-    // 2) From batches: exact match or fallbacks
+    // When batches empty but URL has packageSessionId, trust URL
+    if (urlPackageSessionId && fetchedBatches.length === 0) {
+      setPackageSessionIdForCurrentLevel(urlPackageSessionId);
+      return;
+    }
+
+    // 2) From batches: use resolvePackageSessionId (supports subgroup selection)
     if (fetchedBatches.length > 0) {
-      const packageSessionId = getIdByLevelAndSession(
+      const packageSessionId = resolvePackageSessionId(
         fetchedBatches,
         selectedSession,
         selectedLevel,
-        searchParams.courseId || ""
+        searchParams.courseId || "",
+        selectedBatchId || undefined
       );
       if (packageSessionId) {
         setPackageSessionIdForCurrentLevel(packageSessionId);
+        if (!selectedBatchId && hasChildSubgroups(fetchedBatches, selectedSession, selectedLevel, searchParams.courseId || "")) {
+          setSelectedBatchId(packageSessionId);
+        }
         if (import.meta.env.MODE !== "production") {
           console.info("[CourseDetailsPage] mapping result", {
             selectedSession,
             selectedLevel,
+            selectedBatchId,
             courseId: searchParams.courseId,
             packageSessionIdForCurrentLevel: packageSessionId,
           });
@@ -805,6 +820,7 @@ export const CourseDetailsPage = () => {
     fetchedBatches,
     selectedSession,
     selectedLevel,
+    selectedBatchId,
     searchParams.courseId,
     searchParams.packageSessionId,
     courseDetailsData,
@@ -1134,6 +1150,30 @@ export const CourseDetailsPage = () => {
     }
   }, [selectedTab, watchedSessions, enrolledSessions]);
 
+  const courseIdForBatch = searchParams.courseId || "";
+
+  const shouldShowBatchDropdown = useMemo(
+    () =>
+      hasChildSubgroups(
+        fetchedBatches,
+        selectedSession,
+        selectedLevel,
+        courseIdForBatch
+      ),
+    [fetchedBatches, selectedSession, selectedLevel, courseIdForBatch]
+  );
+
+  const batchOptions = useMemo(
+    () =>
+      getBatchOptionsForSessionLevel(
+        fetchedBatches,
+        selectedSession,
+        selectedLevel,
+        courseIdForBatch
+      ),
+    [fetchedBatches, selectedSession, selectedLevel, courseIdForBatch]
+  );
+
   // Update level options when session changes - filter based on selectedTab
   const handleSessionChange = useCallback(
     async (sessionId: string) => {
@@ -1143,6 +1183,7 @@ export const CourseDetailsPage = () => {
       }
 
       setSelectedSession(sessionId);
+      setSelectedBatchId("");
       const sessions = form.getValues("courseData")?.sessions || [];
       const selectedSessionData = sessions.find(
         (session) => session.sessionDetails.id === sessionId
@@ -1248,9 +1289,14 @@ export const CourseDetailsPage = () => {
   // Handle level change - clear expanded items and reset state
   const handleLevelChange = (levelId: string) => {
     setSelectedLevel(levelId);
+    setSelectedBatchId("");
     if (import.meta.env.MODE !== "production") {
       console.info("[CourseDetailsPage] handleLevelChange", { levelId });
     }
+  };
+
+  const handleBatchChange = (batchId: string) => {
+    setSelectedBatchId(batchId);
   };
 
   // Set initial session and its levels - auto-select if only one option
@@ -1886,8 +1932,11 @@ export const CourseDetailsPage = () => {
                 selectedTab={selectedTab}
                 sessionOptions={sessionOptions || []}
                 levelOptions={levelOptions || []}
+                batchOptions={batchOptions}
                 selectedSession={selectedSession}
                 selectedLevel={selectedLevel}
+                selectedBatchId={selectedBatchId}
+                shouldShowBatchDropdown={shouldShowBatchDropdown}
                 enrolledSessions={enrolledSessions || []}
                 courseId={searchParams.courseId || ""}
                 hasRightSidebar={hasRightSidebar}
@@ -1895,6 +1944,7 @@ export const CourseDetailsPage = () => {
                 certificateUrl={certificateUrl}
                 onSessionChange={handleSessionChange}
                 onLevelChange={handleLevelChange}
+                onBatchChange={handleBatchChange}
                 onEnrollmentClick={async () => {
                   // Check user status for free payment types before opening enrollment dialog
                   const isFreePayment =

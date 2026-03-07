@@ -340,6 +340,75 @@ export function getIdByLevelAndSession(
   return match?.id || "";
 }
 
+/** Check if selected session+level has child subgroups (batches with name) */
+export function hasChildSubgroups(
+  batches: BatchForSessionType[],
+  sessionId: string,
+  levelId: string,
+  courseId: string
+): boolean {
+  if (!batches?.length || !sessionId || !levelId) return false;
+  return batches.some(
+    (b) =>
+      b.session?.id === sessionId &&
+      b.level?.id === levelId &&
+      (b.package_dto?.id === courseId || !b.package_dto?.id) &&
+      (b.is_parent === false || b.parent_id != null) &&
+      (b.name?.trim?.() || (b as { package_session_name?: string }).package_session_name?.trim?.())
+  );
+}
+
+/** Get batch options for Session+Level dropdown (parent + children with names) */
+export function getBatchOptionsForSessionLevel(
+  batches: BatchForSessionType[],
+  sessionId: string,
+  levelId: string,
+  courseId: string
+): { id: string; label: string; isParent: boolean }[] {
+  if (!batches?.length || !sessionId || !levelId) return [];
+  const matching = batches.filter(
+    (b) =>
+      b.session?.id === sessionId &&
+      b.level?.id === levelId &&
+      (b.package_dto?.id === courseId || !b.package_dto?.id)
+  );
+  return matching.map((b) => {
+    const name = b.name?.trim?.() || (b as { package_session_name?: string }).package_session_name?.trim?.();
+    const isParent = b.is_parent === true;
+    const label = name || (isParent ? "Parent batch" : b.package_dto?.package_name || b.level?.level_name || "Batch");
+    return { id: b.id, label: isParent && !name ? `${label} (Parent)` : label, isParent };
+  });
+}
+
+/** Resolve packageSessionId: use selectedBatchId when provided and valid; otherwise session+level mapping (prefer parent) */
+export function resolvePackageSessionId(
+  batches: BatchForSessionType[],
+  sessionId: string,
+  levelId: string,
+  courseId: string,
+  selectedBatchId?: string | null
+): string {
+  if (selectedBatchId) {
+    const found = batches.find(
+      (b) =>
+        b.id === selectedBatchId &&
+        b.session?.id === sessionId &&
+        b.level?.id === levelId &&
+        (b.package_dto?.id === courseId || !b.package_dto?.id)
+    );
+    if (found) return found.id;
+  }
+  const matches = (batches || []).filter(
+    (b) =>
+      b.session?.id === sessionId &&
+      b.level?.id === levelId &&
+      (b.package_dto?.id === courseId || !b.package_dto?.id)
+  );
+  if (matches.length === 0) return "";
+  const parent = matches.find((b) => b.is_parent === true);
+  return (parent || matches[0]).id;
+}
+
 export function getYouTubeVideoId(url: string): string | null {
   if (!url) return null;
 

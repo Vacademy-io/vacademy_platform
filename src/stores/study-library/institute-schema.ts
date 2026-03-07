@@ -33,6 +33,12 @@ export const BatchForSessionSchema = z.object({
     start_time: z.string().nullable(),
     status: z.string(),
     package_dto: PackageSchema,
+    /** Subgroup name (from package_session.name) */
+    name: z.string().optional().nullable(),
+    /** True for parent batch when subgroups exist */
+    is_parent: z.boolean().optional().nullable(),
+    /** Parent batch ID for child subgroups */
+    parent_id: z.string().optional().nullable(),
 });
 
 const SubjectSchema = z.object({

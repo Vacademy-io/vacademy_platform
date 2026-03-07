@@ -23,6 +23,12 @@ interface LevelOption {
     label: string;
 }
 
+interface BatchOption {
+    id: string;
+    label: string;
+    isParent: boolean;
+}
+
 interface EnrolledSession {
     id: string;
     session: {
@@ -51,8 +57,11 @@ interface CourseEnrollmentProps {
     selectedTab: string;
     sessionOptions: SessionOption[];
     levelOptions: LevelOption[];
+    batchOptions: BatchOption[];
     selectedSession: string;
     selectedLevel: string;
+    selectedBatchId: string;
+    shouldShowBatchDropdown: boolean;
     enrolledSessions: EnrolledSession[];
     courseId: string;
     hasRightSidebar: boolean;
@@ -60,6 +69,7 @@ interface CourseEnrollmentProps {
     certificateUrl?: string | null;
     onSessionChange: (value: string) => void;
     onLevelChange: (value: string) => void;
+    onBatchChange: (value: string) => void;
     onEnrollmentClick: () => void;
 }
 
@@ -68,8 +78,11 @@ export const CourseEnrollment = ({
     selectedTab,
     sessionOptions,
     levelOptions,
+    batchOptions,
     selectedSession,
     selectedLevel,
+    selectedBatchId,
+    shouldShowBatchDropdown,
     enrolledSessions,
     courseId,
     hasRightSidebar,
@@ -77,6 +90,7 @@ export const CourseEnrollment = ({
     certificateUrl,
     onSessionChange,
     onLevelChange,
+    onBatchChange,
     onEnrollmentClick,
 }: CourseEnrollmentProps) => {
     if (!showCourseConfiguration) return null;
@@ -211,6 +225,36 @@ export const CourseEnrollment = ({
                                             </Select>
                                         </div>
                                     ) : null)}
+
+                            {/* Batch / Subgroup Selector - only when child subgroups exist */}
+                            {shouldShowBatchDropdown &&
+                                batchOptions.length > 0 &&
+                                selectedSession &&
+                                selectedLevel && (
+                                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                        <span className="text-xs font-medium text-muted-foreground ml-1">
+                                            Class / Section
+                                        </span>
+                                        <Select
+                                            value={selectedBatchId}
+                                            onValueChange={onBatchChange}
+                                        >
+                                            <SelectTrigger className="w-full bg-background">
+                                                <SelectValue placeholder="Select class or section" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {batchOptions.map((option) => (
+                                                    <SelectItem
+                                                        key={option.id}
+                                                        value={option.id}
+                                                    >
+                                                        {option.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
                         </div>
                     </div>
                 ) : (
@@ -252,7 +296,8 @@ export const CourseEnrollment = ({
                                 (enrolledSession) =>
                                     enrolledSession.package_dto.id === courseId &&
                                     enrolledSession.session.id === selectedSession &&
-                                    enrolledSession.level.id === selectedLevel
+                                    enrolledSession.level.id === selectedLevel &&
+                                    (!selectedBatchId || enrolledSession.id === selectedBatchId)
                             );
                         if (isAlreadyEnrolled) return null;
                         return (

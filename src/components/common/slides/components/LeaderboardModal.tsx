@@ -134,7 +134,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
             // Use the corresponding slide option for display text (preserves HTML), else DB text
             const displayName =
                 slideOptions[dbOptionIndex]?.name ||
-                dbOpt.text?.content ||
+                dbOpt?.text?.content ||
                 selectedId;
             const optionLetter = String.fromCharCode(65 + dbOptionIndex);
             return (
@@ -161,7 +161,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                     </div>
                     <div
                         className="prose prose-sm max-w-none flex-1"
-                        dangerouslySetInnerHTML={{ __html: slideOptions[slideOptionIndex].name }}
+                        dangerouslySetInnerHTML={{ __html: slideOptions[slideOptionIndex]?.name || '' }}
                     />
                 </div>
             );

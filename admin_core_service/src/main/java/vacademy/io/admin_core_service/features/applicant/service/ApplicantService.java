@@ -1413,10 +1413,51 @@ public class ApplicantService {
                                         UserPlanStatusEnum.PENDING_FOR_PAYMENT.name());
                 }
 
-                vacademy.io.common.payment.dto.PaymentResponseDTO response = paymentService
-                                .handleUserPlanPayment(requestDTO, instituteId, userDetails, userPlan.getId());
+                vacademy.io.common.payment.dto.PaymentResponseDTO response;
+                boolean isManualPayment = "MANUAL".equalsIgnoreCase(requestDTO.getVendor());
 
-                // 3. Update Response JSON with Order ID
+                if (isManualPayment) {
+                        // ── OFFLINE / CASH PAYMENT PATH ──────────────────────────────────────────
+                        // Skip gateway entirely. Admin is recording a cash/offline payment.
+
+                        // 1. Activate the UserPlan immediately (no webhook needed)
+                        userPlan.setStatus(
+                                        vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum.ACTIVE
+                                                        .name());
+                        userPlanService.save(userPlan);
+
+                        // 2. Build a reference ID — use admin-supplied receipt/transaction ID if
+                        // present
+                        String transactionRef = (requestDTO.getManualRequest() != null
+                                        && org.springframework.util.StringUtils
+                                                        .hasText(requestDTO.getManualRequest().getTransactionId()))
+                                                                        ? requestDTO.getManualRequest()
+                                                                                        .getTransactionId()
+                                                                        : "MANUAL-" + System.currentTimeMillis();
+
+                        // 3. Build response (no gateway response to parse)
+                        response = new vacademy.io.common.payment.dto.PaymentResponseDTO();
+                        response.setOrderId(transactionRef);
+                        response.setMessage("Offline payment recorded successfully");
+                        java.util.Map<String, Object> responseData = new java.util.HashMap<>();
+                        responseData.put("paymentStatus", "PAID");
+                        responseData.put("paymentMode", "MANUAL");
+                        responseData.put("transactionRef", transactionRef);
+                        response.setResponseData(responseData);
+
+                        logger.info("Manual payment recorded for applicant: {}, ref: {}", applicantId, transactionRef);
+
+                        // 4. Auto-advance applicant stage immediately (no webhook wait)
+                        completeStageAndMoveNext(applicantId);
+
+                } else {
+                        // ── ONLINE GATEWAY PAYMENT PATH ──────────────────────────────────────────
+                        // Existing unchanged logic — calls Razorpay/Stripe/etc.
+                        response = paymentService
+                                        .handleUserPlanPayment(requestDTO, instituteId, userDetails, userPlan.getId());
+                }
+
+                // 3. Update Response JSON with Order ID / Transaction Ref
                 try {
                         // Read existing JSON (which is the Template)
                         java.util.Map<String, Object> jsonMap = new java.util.HashMap<>();
@@ -1433,7 +1474,8 @@ public class ApplicantService {
 
                         // Update Keys
                         jsonMap.put("order_id", response.getOrderId());
-                        jsonMap.put("payment_status", "INITIATED");
+                        jsonMap.put("payment_status", isManualPayment ? "COMPLETED" : "INITIATED");
+                        jsonMap.put("payment_mode", requestDTO.getVendor()); // e.g. "MANUAL", "RAZORPAY"
 
                         // Save
                         currentStage.setResponseJson(objectMapper.writeValueAsString(jsonMap));

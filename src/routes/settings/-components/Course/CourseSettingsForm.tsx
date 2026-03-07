@@ -573,7 +573,6 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                     <span>Default Course Filter (Explore Courses)</span>
                                 </Label>
                                 <Select
-                                    id="course-filter-type"
                                     value={
                                         formData.permissions.courseFilterType === 'PARENTS_ONLY' ||
                                         formData.permissions.courseFilterType === 'CHILDREN_ONLY'
@@ -591,7 +590,7 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                         }
                                     }}
                                 >
-                                    <SelectTrigger className="w-full max-w-xs">
+                                    <SelectTrigger id="course-filter-type" className="w-full max-w-xs">
                                         <SelectValue placeholder="Select default filter" />
                                     </SelectTrigger>
                                     <SelectContent>

@@ -138,7 +138,6 @@ export const AddCourseForm = ({
     );
     const lastLoadedCourseIdRef = useRef<string | undefined>(
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-expect-error
         initialCourseData?.courseData?.id
     );
 
@@ -152,7 +151,6 @@ export const AddCourseForm = ({
     useEffect(() => {
         if (!isEdit || !initialCourseData) return;
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-expect-error
         const currentCourseId: string | undefined = initialCourseData.courseData?.id;
         if (!currentCourseId || lastLoadedCourseIdRef.current === currentCourseId) {
             return;

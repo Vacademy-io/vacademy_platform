@@ -1,5 +1,5 @@
 import { MyButton } from "@/components/design-system/button";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types/types";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
@@ -29,13 +29,14 @@ export default function SessionStatusCard({
   const [currentTime, setCurrentTime] = useState(new Date());
   const navigate = useNavigate();
   const { mutateAsync: markAttendance } = useMarkAttendance();
+  const hasNavigated = useRef(false);
 
   // Helper function to get timezone-aware session times
   const getSessionTimes = useCallback(() => {
     const sessionTimezone =
       "timezone" in sessionDetails
         ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
-            .timezone
+          .timezone
         : undefined;
 
     if (sessionTimezone) {
@@ -82,7 +83,11 @@ export default function SessionStatusCard({
       const isInMainSession = now >= sessionDate;
 
       const handleSessionNavigation = async () => {
+        if (hasNavigated.current) return;
+
+        const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
         if (isInWaitingRoom) {
+          hasNavigated.current = true;
           await navigate({
             to: "/live-class-guest/waiting-room",
             search: {
@@ -93,16 +98,20 @@ export default function SessionStatusCard({
         } else if (
           isInMainSession &&
           sessionDetails?.defaultMeetLink &&
-          sessionDetails?.sessionStreamingServiceType ===
-            SessionStreamingServiceType.EMBED
+          streamingType === SessionStreamingServiceType.EMBED.toLowerCase()
         ) {
-          await markAttendance({
-            sessionId: sessionDetails.sessionId,
-            scheduleId: earliestScheduleId || "",
-            userSourceType: "EXTERNAL_USER",
-            userSourceId: registrationResponse || "",
-            details: "Guest joined live class from waiting room",
-          });
+          hasNavigated.current = true;
+          try {
+            await markAttendance({
+              sessionId: sessionDetails.sessionId,
+              scheduleId: earliestScheduleId || "",
+              userSourceType: "EXTERNAL_USER",
+              userSourceId: registrationResponse || "",
+              details: "Guest joined live class from waiting room",
+            });
+          } catch (err) {
+            console.error("Attendance marking failed, but proceeding to embed:", err);
+          }
           navigate({
             to: "/live-class-guest/embed",
             search: {
@@ -112,14 +121,11 @@ export default function SessionStatusCard({
         } else if (
           isInMainSession &&
           sessionDetails?.defaultMeetLink &&
-          sessionDetails?.sessionStreamingServiceType ===
-            SessionStreamingServiceType.REDIRECT
+          (streamingType === SessionStreamingServiceType.REDIRECT.toLowerCase() || !streamingType)
         ) {
-          window.open(
-            sessionDetails?.defaultMeetLink,
-            "_blank",
-            "noopener,noreferrer"
-          );
+          hasNavigated.current = true;
+          const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+          window.location.href = joinLink;
         }
       };
 
@@ -144,7 +150,7 @@ export default function SessionStatusCard({
   const getSessionTimezone = useCallback(() => {
     return "timezone" in sessionDetails
       ? (sessionDetails as SessionDetailsResponse & { timezone?: string })
-          .timezone
+        .timezone
       : undefined;
   }, [sessionDetails]);
 
@@ -183,7 +189,7 @@ export default function SessionStatusCard({
       // Subtract waiting room time
       const waitingRoomStartTime = new Date(
         sessionStartInUserTz.getTime() -
-          sessionDetails.waitingRoomTime! * 60 * 1000
+        sessionDetails.waitingRoomTime! * 60 * 1000
       );
 
       return format(waitingRoomStartTime, "h:mm aa");
@@ -194,7 +200,7 @@ export default function SessionStatusCard({
           new Date(
             `${sessionDetails.meetingDate}T${sessionDetails.scheduleStartTime}`
           ).getTime() -
-            sessionDetails.waitingRoomTime! * 60 * 1000
+          sessionDetails.waitingRoomTime! * 60 * 1000
         ).toISOString()
       );
     }
@@ -207,10 +213,8 @@ export default function SessionStatusCard({
 
   // Helper functions for session actions
   const handleJoinLiveSession = async () => {
-    if (
-      sessionDetails.sessionStreamingServiceType ===
-      SessionStreamingServiceType.EMBED
-    ) {
+    const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+    if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
       await markAttendance({
         sessionId: sessionDetails.sessionId,
         scheduleId: earliestScheduleId || "",
@@ -225,11 +229,8 @@ export default function SessionStatusCard({
         },
       });
     } else {
-      window.open(
-        sessionDetails.defaultMeetLink,
-        "_blank",
-        "noopener,noreferrer"
-      );
+      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      window.location.href = joinLink;
     }
   };
 

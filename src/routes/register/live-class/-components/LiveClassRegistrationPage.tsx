@@ -31,7 +31,7 @@ import SessionInfo from "./SessionInfo";
 import { Preferences } from "@capacitor/preferences";
 
 export default function LiveClassRegistrationPage() {
-  const [dialog, setDialog] = useState<boolean>(false); // Start with false, will be set based on localStorage
+  const [dialog, setDialog] = useState<boolean>(false);
   const [sessionDetails, setSessionDetails] =
     useState<SessionDetailsResponse | null>(null);
   const router = useRouter();
@@ -54,46 +54,19 @@ export default function LiveClassRegistrationPage() {
 
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
-  // Check localStorage for verified emails on component mount
+  // Load verified emails from local storage
   useEffect(() => {
-    const autoRegisterWithStoredEmail = async () => {
-      const savedVerifiedEmails = JSON.parse(
-        localStorage.getItem("verifiedEmail") || "[]"
-      );
-      setVerifiedEmails(savedVerifiedEmails);
+    const savedVerifiedEmails = JSON.parse(
+      localStorage.getItem("verifiedEmail") || "[]"
+    );
+    setVerifiedEmails(savedVerifiedEmails);
 
-      if (savedVerifiedEmails.length > 0) {
-        // Auto-select first email and set it as verified
-        const firstEmail = savedVerifiedEmails[0];
-        setVerifiedEmail(firstEmail);
-        setDialog(false);
-
-        // Automatically check email registration status
-        if (sessionId && data) {
-          try {
-            await registerGuestUser({
-              session_id: sessionId,
-              email: firstEmail,
-              custom_fields: [],
-            });
-          } catch (error) {
-            // @ts-expect-error : error is of unknown type
-            if (error.response.data.ex.includes("already")) {
-              setIsUserAlreadyRegistered(true);
-              setAlreadyRegisteredEmail(firstEmail);
-            } else {
-              toast.error("Please register yourself to join");
-              console.log("User needs to register:", error);
-            }
-          }
-        }
-      } else {
-        setDialog(true);
-      }
-    };
-
-    autoRegisterWithStoredEmail();
-  }, [sessionId, data, earliestScheduleId]);
+    if (savedVerifiedEmails.length > 0) {
+      setVerifiedEmail(savedVerifiedEmails[0]);
+    } else {
+      setDialog(true);
+    }
+  }, []);
 
   const fetchCoverFileUrl = useCallback(async () => {
     const response = await getPublicFileUrl(data?.coverFileId || "");
@@ -149,7 +122,6 @@ export default function LiveClassRegistrationPage() {
     }
 
     try {
-      // First, handle the critical registration API call
       const registerResponse = await registerGuestUser(payload);
       setRegistrationResponse(registerResponse);
 
@@ -179,25 +151,18 @@ export default function LiveClassRegistrationPage() {
         }
       }
 
-      // Handle collectPublicUserData independently - don't let it affect the main flow
       try {
-        const collectResponse = await collectPublicUserData({
+        await collectPublicUserData({
           payload: userPayload,
           instituteId: data?.instituteId || "",
         });
-        if (collectResponse) {
-          console.log("Public user data collected successfully");
-        }
       } catch (collectError) {
         console.error("Failed to collect public user data:", collectError);
-        // Don't show error to user as this is not critical for registration flow
       }
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error("Registration API call failed:", error);
 
-      if (
-        (error as { response?: { status?: number } })?.response?.status === 511
-      ) {
+      if (error?.response?.status === 511 || error?.response?.data?.ex?.includes("already")) {
         setIsUserAlreadyRegistered(true);
         setAlreadyRegisteredEmail(email);
         const storedGuestId = await Preferences.get({
@@ -205,7 +170,6 @@ export default function LiveClassRegistrationPage() {
         });
         if (storedGuestId?.value) {
           setRegistrationResponse(storedGuestId.value);
-
           const sessionDetailResponse = await fetchSessionDetails(
             earliestScheduleId || ""
           );
@@ -218,7 +182,6 @@ export default function LiveClassRegistrationPage() {
             setSessionDetails(sessionDetailResponse);
           }
         }
-        return;
       }
     }
   };
@@ -229,24 +192,13 @@ export default function LiveClassRegistrationPage() {
   ) => {
     const now = new Date();
 
-    // Validate required session data
-    if (
-      !sessionDetailResponse.meetingDate ||
-      !sessionDetailResponse.scheduleStartTime
-    ) {
+    if (!sessionDetailResponse.meetingDate || !sessionDetailResponse.scheduleStartTime) {
       console.error("Missing session date or time data");
       return;
     }
 
     // Check if session has timezone information
-    const sessionTimezone =
-      "timezone" in sessionDetailResponse
-        ? (
-            sessionDetailResponse as SessionDetailsResponse & {
-              timezone?: string;
-            }
-          ).timezone
-        : undefined;
+    const sessionTimezone = (sessionDetailResponse as any).timezone;
 
     let sessionDate: Date;
 
@@ -257,78 +209,67 @@ export default function LiveClassRegistrationPage() {
           sessionDetailResponse.scheduleStartTime,
           sessionTimezone
         );
-
-        // Validate the converted date
-        if (isNaN(sessionDate.getTime())) {
-          throw new Error("Invalid converted date");
-        }
       } catch (error) {
         console.error("Error converting timezone:", error);
-        // Fallback to original logic if timezone conversion fails
-        sessionDate = new Date(
-          `${sessionDetailResponse.meetingDate}T${sessionDetailResponse.scheduleStartTime}`
-        );
+        sessionDate = new Date(`${sessionDetailResponse.meetingDate}T${sessionDetailResponse.scheduleStartTime}`);
       }
     } else {
-      // Fallback to original logic
-      sessionDate = new Date(
-        `${sessionDetailResponse.meetingDate}T${sessionDetailResponse.scheduleStartTime}`
-      );
+      sessionDate = new Date(`${sessionDetailResponse.meetingDate}T${sessionDetailResponse.scheduleStartTime}`);
     }
 
-    // Validate the final session date
-    if (isNaN(sessionDate.getTime())) {
-      return;
-    }
+    if (isNaN(sessionDate.getTime())) return;
 
     const waitingRoomStart = new Date(sessionDate);
     waitingRoomStart.setMinutes(
-      waitingRoomStart.getMinutes() -
-        (sessionDetailResponse.waitingRoomTime ?? 0)
+      waitingRoomStart.getMinutes() - (sessionDetailResponse.waitingRoomTime ?? 0)
     );
 
     const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
     const isInMainSession = now >= sessionDate;
 
-    if (isInWaitingRoom) {
-      await navigate({
-        to: "/live-class-guest/waiting-room",
-        search: {
-          sessionId: earliestScheduleId || "",
-          guestId: guestId || "",
-        },
-      });
-    } else if (
-      isInMainSession &&
-      sessionDetailResponse.defaultMeetLink &&
-      sessionDetailResponse.sessionStreamingServiceType ===
-        SessionStreamingServiceType.EMBED
-    ) {
-      await markAttendance({
-        sessionId: sessionDetailResponse.sessionId,
-        scheduleId: earliestScheduleId || "",
-        userSourceType: "EXTERNAL_USER",
-        userSourceId: guestId || "",
-        details: "Guest joined live class after registration",
-      });
-      navigate({
-        to: "/live-class-guest/embed",
-        search: {
-          sessionId: earliestScheduleId || "",
-        },
-      });
-    } else if (
-      isInMainSession &&
-      sessionDetailResponse.defaultMeetLink &&
-      sessionDetailResponse.sessionStreamingServiceType ===
-        SessionStreamingServiceType.REDIRECT
-    ) {
-      window.open(
-        sessionDetailResponse.defaultMeetLink,
-        "_blank",
-        "noopener,noreferrer"
-      );
-    }
+    const handleSessionNavigation = async () => {
+      const streamingType = sessionDetailResponse.sessionStreamingServiceType?.toLowerCase();
+      if (isInWaitingRoom) {
+        await navigate({
+          to: "/live-class-guest/waiting-room",
+          search: {
+            sessionId: earliestScheduleId || "",
+            guestId: guestId || "",
+          },
+        });
+      } else if (
+        isInMainSession &&
+        sessionDetailResponse.defaultMeetLink &&
+        streamingType === SessionStreamingServiceType.EMBED.toLowerCase()
+      ) {
+        try {
+          await markAttendance({
+            sessionId: sessionDetailResponse.sessionId,
+            scheduleId: earliestScheduleId || "",
+            userSourceType: "EXTERNAL_USER",
+            userSourceId: guestId || "",
+            details: "Guest joined live class after registration",
+          });
+        } catch (err) {
+          console.error("Attendance marking failed, but proceeding to embed:", err);
+        }
+        navigate({
+          to: "/live-class-guest/embed",
+          search: {
+            sessionId: earliestScheduleId || "",
+          },
+        });
+      } else if (
+        isInMainSession &&
+        sessionDetailResponse.defaultMeetLink &&
+        (streamingType === SessionStreamingServiceType.REDIRECT.toLowerCase() || !streamingType)
+      ) {
+        const joinLink = sessionDetailResponse.customMeetingLink || sessionDetailResponse.defaultMeetLink;
+        window.location.href = joinLink;
+      }
+    };
+
+    await handleSessionNavigation();
   };
 
   const onError = (errors: unknown) => {
@@ -338,9 +279,6 @@ export default function LiveClassRegistrationPage() {
   const checkEmailRegistration = async (email: string) => {
     try {
       const response = await axios.get(LIVE_SESSION_CHECK_EMAIL_REGISTRATION, {
-        headers: {
-          "Content-Type": "application/json",
-        },
         params: {
           sessionId: data?.sessionId,
           email: email,
@@ -371,16 +309,12 @@ export default function LiveClassRegistrationPage() {
 
   const handleEmailVerified = (email: string) => {
     setVerifiedEmail(email);
-
-    // Update local state with the new verified email
-    const existingEmails = JSON.parse(
-      localStorage.getItem("verifiedEmail") || "[]"
-    );
+    const existingEmails = JSON.parse(localStorage.getItem("verifiedEmail") || "[]");
     if (!existingEmails.includes(email)) {
       const updatedEmails = [...existingEmails, email];
+      localStorage.setItem("verifiedEmail", JSON.stringify(updatedEmails));
       setVerifiedEmails(updatedEmails);
     }
-
     checkEmailRegistration(email);
     setDialog(false);
   };

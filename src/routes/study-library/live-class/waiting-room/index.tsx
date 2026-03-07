@@ -88,37 +88,28 @@ function WaitingRoomComponent() {
           userSourceId: "",
           details: "Joined live class from waiting room",
         });
-        if (
-          sessionDetails.sessionStreamingServiceType ===
-          SessionStreamingServiceType.EMBED
-        ) {
+        const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+        if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
           navigate({
             to: "/study-library/live-class/embed",
             search: { sessionId },
           });
         } else {
-          window.location.href = sessionDetails.defaultMeetLink;
-
-          // navigate({ to: "/study-library/live-class" });
+          const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+          window.location.href = joinLink;
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
-        if (
-          sessionDetails.sessionStreamingServiceType ===
-          SessionStreamingServiceType.EMBED
-        ) {
+        const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+        if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
           navigate({
             to: "/study-library/live-class/embed",
             search: { sessionId },
           });
         } else {
-          window.open(
-            sessionDetails.defaultMeetLink,
-            "_blank",
-            "noopener,noreferrer"
-          );
-          navigate({ to: "/study-library/live-class" });
+          const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+          window.location.href = joinLink;
         }
       }
     }

@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import axios, { AxiosError } from "axios";
+import { AxiosError } from "axios";
 import { toast } from "sonner";
 import {
   COLLECT_PUBLIC_USER_DATA,
@@ -9,6 +9,7 @@ import {
   CollectPublicUserDataDTO,
   GuestRegistrationRequestDTO,
 } from "../-utils/helper";
+import { guestAxiosInstance } from "@/lib/auth/axiosInstance";
 
 interface ErrorResponse {
   message: string;
@@ -19,7 +20,7 @@ interface ErrorResponse {
 export const useLiveSessionGuestRegistration = () => {
   return useMutation({
     mutationFn: async (payload: GuestRegistrationRequestDTO) => {
-      const response = await axios.post(
+      const response = await guestAxiosInstance.post(
         LIVE_SESSION_REGISTER_GUEST_USER,
         payload,
         {
@@ -53,7 +54,7 @@ export const useCollectPublicUserData = () => {
       payload: CollectPublicUserDataDTO;
       instituteId: string;
     }) => {
-      const response = await axios.post(COLLECT_PUBLIC_USER_DATA, payload, {
+      const response = await guestAxiosInstance.post(COLLECT_PUBLIC_USER_DATA, payload, {
         params: { instituteId },
       });
       return response.data;

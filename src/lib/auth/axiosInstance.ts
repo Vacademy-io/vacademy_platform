@@ -59,19 +59,10 @@ authenticatedAxiosInstance.interceptors.request.use(
     // For public/open endpoints, do not attach auth or perform refresh logic
     if (isPublicDomainRouting || isOpenEndpoint) {
       try {
-        let instituteId = await getTokenFromStorage("InstituteId");
-        if (!instituteId) {
-          instituteId = await getTokenFromStorage("instituteId");
-        }
-        if (instituteId) {
-          request.headers["clientId"] = instituteId;
-          request.headers["X-Institute-Id"] = instituteId;
-        }
-
         // Attempt to attach local token if available, but do not force refresh/logout logic
         const accessToken = await getTokenFromStorage(TokenKey.accessToken);
         if (accessToken && !isTokenExpired(accessToken)) {
-            request.headers["Authorization"] = `Bearer ${accessToken}`;
+          request.headers["Authorization"] = `Bearer ${accessToken}`;
         }
       } catch {
         // no-op
@@ -135,8 +126,8 @@ authenticatedAxiosInstance.interceptors.request.use(
         // Serve from client cache for GET when possible
         request = maybeServeFromCache(request);
         return request;
-      } catch{
-      
+      } catch {
+
         // If token refresh fails, remove tokens and institute ID
         await removeTokensAndInstituteId();
 
@@ -184,5 +175,23 @@ authenticatedAxiosInstance.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export const guestAxiosInstance = axios.create();
+
+guestAxiosInstance.interceptors.request.use(async (request) => {
+  try {
+    let instituteId = await getTokenFromStorage("InstituteId");
+    if (!instituteId) {
+      instituteId = await getTokenFromStorage("instituteId");
+    }
+    if (instituteId) {
+      request.headers["clientId"] = instituteId;
+      request.headers["X-Institute-Id"] = instituteId;
+    }
+  } catch (err) {
+    console.error("[GuestAxios] Error attaching institute ID:", err);
+  }
+  return request;
+});
 
 export default authenticatedAxiosInstance;

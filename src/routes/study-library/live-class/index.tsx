@@ -260,10 +260,8 @@ function RouteComponent() {
         });
 
         // Navigate to live session
-        if (
-          session.session_streaming_service_type ===
-          SessionStreamingServiceType.EMBED
-        ) {
+        const streamingType = session.session_streaming_service_type?.toLowerCase();
+        if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
           (navigate as any)({
             to: "/study-library/live-class/embed",
             search: {
@@ -272,17 +270,16 @@ function RouteComponent() {
             },
           });
         } else {
-          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+          const joinLink = (session as any).custom_meeting_link || (session as any).customMeetingLink || session.meeting_link;
+          window.location.href = joinLink;
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
 
         // Still proceed with navigation even if attendance marking fails
-        if (
-          session.session_streaming_service_type ===
-          SessionStreamingServiceType.EMBED
-        ) {
+        const streamingType = session.session_streaming_service_type?.toLowerCase();
+        if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
           (navigate as any)({
             to: "/study-library/live-class/embed",
             search: {
@@ -291,7 +288,8 @@ function RouteComponent() {
             },
           });
         } else {
-          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+          const joinLink = (session as any).custom_meeting_link || (session as any).customMeetingLink || session.meeting_link;
+          window.location.href = joinLink;
         }
       }
     } else {
@@ -327,10 +325,6 @@ function RouteComponent() {
 
   // Helper function to determine if a session is currently live (in waiting room or active)
   const isSessionLive = useCallback((session: SessionDetails) => {
-    // We access currentTime here just to ensure this function (and dependents) updating
-    // But we still use new Date() for the most precise check at moment of execution
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _tick = currentTime;
     const now = new Date();
 
     let sessionStart, sessionEnd, waitingRoomStart;
@@ -499,21 +493,21 @@ function RouteComponent() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-          {isLive && session.meeting_link && (
-            <Button
-              variant="default"
-              size="sm"
-              className="shrink-0 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
-              onClick={() => handleJoinSession(session)}
-            >
-              <ArrowSquareOut size={16} className="mr-1.5" />
-              {isBeforeWaitingRoom
-                ? "Not Started"
-                : isInWaitingRoom
-                  ? "Join Waiting Room"
-                  : "Join Session"}
-            </Button>
-          )}
+            {isLive && session.meeting_link && (
+              <Button
+                variant="default"
+                size="sm"
+                className="shrink-0 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
+                onClick={() => handleJoinSession(session)}
+              >
+                <ArrowSquareOut size={16} className="mr-1.5" />
+                {isBeforeWaitingRoom
+                  ? "Not Started"
+                  : isInWaitingRoom
+                    ? "Join Waiting Room"
+                    : "Join Session"}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -605,22 +599,24 @@ function RouteComponent() {
             </div>
           </div>
           <div className="space-y-2">
-          {isLive && session.meeting_link && (
-            <Button
-              variant="default"
-              size="sm"
-              className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
-              onClick={() => handleJoinSession(session)}
-            >
-              <ArrowSquareOut size={16} className="mr-1.5" />
-              {isBeforeWaitingRoom
-                ? "Not Started"
-                : isInWaitingRoom
-                  ? "Join Waiting Room"
-                  : "Join Session"}
-            </Button>
-          )}
-        </div>
+            {isLive && session.meeting_link && (
+              <Button
+                variant="default"
+                size="sm"
+                className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
+                onClick={() => handleJoinSession(session)}
+              >
+                <ArrowSquareOut size={16} className="mr-1.5" />
+                {isBeforeWaitingRoom
+                  ? "Not Started"
+                  : isInWaitingRoom
+                    ? "Join Waiting Room"
+                    : (session.session_streaming_service_type?.toLowerCase() === SessionStreamingServiceType.EMBED.toLowerCase())
+                      ? "Join Session"
+                      : "Join Session"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -686,9 +682,9 @@ function RouteComponent() {
       sessions?.upcoming_sessions?.includes(session)
     );
 
-    const isToday = selectedDayData.date.toDateString() === new Date().toDateString();
-    const defaultDayConfig = (sessions as any)?.defaultDayConfig;
-    const showDefaultClass = isToday && defaultDayConfig?.defaultClassLink && liveSessions.length === 0;
+    // const defaultDayConfig = (sessions as any)?.defaultDayConfig;
+    // const isToday = selectedDayData.date.toDateString() === new Date().toDateString();
+    // const showDefaultClass = isToday && defaultDayConfig?.defaultClassLink && liveSessions.length === 0;
 
     return (
       <Dialog open={dayModalOpen} onOpenChange={setDayModalOpen}>
@@ -757,20 +753,22 @@ function RouteComponent() {
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-2 shrink-0 ml-4">
-                          {session.meeting_link && (
-                            <Button
-                              size="sm"
-                              className="bg-danger-600 hover:bg-danger-700 text-white"
-                              onClick={() => {
-                                handleJoinSession(session);
-                                setDayModalOpen(false);
-                              }}
-                            >
-                              <ArrowSquareOut size={14} className="mr-1" />
-                              Join
-                            </Button>
-                          )}
-                        </div>
+                            {session.meeting_link && (
+                              <Button
+                                size="sm"
+                                className="bg-danger-600 hover:bg-danger-700 text-white"
+                                onClick={() => {
+                                  handleJoinSession(session);
+                                  setDayModalOpen(false);
+                                }}
+                              >
+                                <ArrowSquareOut size={14} className="mr-1" />
+                                {(session.session_streaming_service_type?.toLowerCase() === SessionStreamingServiceType.EMBED.toLowerCase())
+                                  ? "Join"
+                                  : "Join"}
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}

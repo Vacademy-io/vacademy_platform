@@ -9,6 +9,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer";
+import ZohoEmbedPlayer from "./-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { toast } from "sonner";
@@ -164,13 +165,15 @@ function EmbedComponent() {
   };
 
   const renderEmbeddedSession = () => {
+    console.log("[LearnerEmbed] Session details:", sessionDetails);
     // Fixed typo: "Embeded" -> "Embedded"
     if (!sessionDetails?.defaultMeetLink) return null;
 
     // Check link type - default to YouTube if we have a videoUrl but no valid linkType
-    const linkType =
+    const linkType = (
       sessionDetails.linkType ||
-      (videoUrl ? LinkType.YOUTUBE : LinkType.UNKNOWN);
+      (videoUrl ? LinkType.YOUTUBE : LinkType.UNKNOWN)
+    ).toLowerCase();
 
     // --- YouTube & recorded YouTube links ---
     if (
@@ -253,6 +256,51 @@ function EmbedComponent() {
       return (
         <div className="w-full h-full flex flex-col gap-4">
           <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />
+          {learnerButtonConfig?.visible && (
+            <div className="flex justify-end w-full mt-2">
+              <Button
+                variant="default"
+                size="sm"
+                className="h-9 px-6 text-sm font-medium shadow-sm hover:shadow transition-all duration-200 rounded-full"
+                style={{
+                  backgroundColor: learnerButtonConfig.background_color,
+                  color: learnerButtonConfig.text_color,
+                  border: `1px solid ${learnerButtonConfig.background_color}20`,
+                }}
+                onClick={() => window.open(learnerButtonConfig.url, "_blank")}
+              >
+                <span>{learnerButtonConfig.text}</span>
+                <ArrowSquareOut size={14} weight="bold" className="ml-2 opacity-90" />
+              </Button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Check if embedding is enabled
+    if (sessionDetails.sessionStreamingServiceType &&
+      sessionDetails.sessionStreamingServiceType.toLowerCase() !== "embed") {
+      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      // Immediate redirect if not embeddable
+      window.location.replace(joinLink);
+      return (
+        <div className="flex flex-col items-center justify-center p-8 h-full">
+          <DashboardLoader />
+          <p className="mt-4 text-neutral-600 animate-pulse">Redirecting to session...</p>
+        </div>
+      );
+    }
+
+    // --- Zoho links ---
+    if (
+      linkType === LinkType.ZOHO ||
+      linkType === LinkType.ZOHO_MEETING ||
+      linkType === LinkType.ZOHO_RECORDED
+    ) {
+      return (
+        <div className="w-full h-full flex flex-col gap-4">
+          <ZohoEmbedPlayer meetingUrl={sessionDetails.defaultMeetLink} />
           {learnerButtonConfig?.visible && (
             <div className="flex justify-end w-full mt-2">
               <Button

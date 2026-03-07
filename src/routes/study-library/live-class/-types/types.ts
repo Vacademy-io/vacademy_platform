@@ -63,6 +63,7 @@ export interface SessionDetails {
   timezone: string;
   learner_button_config?: LearnerButtonConfig | null;
   default_class_link?: string | null;
+  custom_meeting_link?: string | null;
 }
 
 export interface DaySession {

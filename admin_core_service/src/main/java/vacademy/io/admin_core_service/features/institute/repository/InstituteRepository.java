@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.institute.repository;
 
-
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
@@ -22,16 +21,22 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
             "WHERE s.user_id = :userId", nativeQuery = true)
     List<Institute> findInstitutesByUserId(@Param("userId") String userId);
 
+    @Query(value = "SELECT CASE WHEN (" +
+            "EXISTS (SELECT 1 FROM user_role ur WHERE ur.user_id = :userId AND ur.institute_id = :instituteId AND ur.status = 'ACTIVE') "
+            +
+            "OR EXISTS (SELECT 1 FROM staff s WHERE s.user_id = :userId AND s.institute_id = :instituteId) " +
+            ") THEN true ELSE false END", nativeQuery = true)
+    boolean isUserInInstitute(@Param("userId") String userId, @Param("instituteId") String instituteId);
 
     @Transactional
     @Modifying
-    @Query(value = "INSERT INTO institutes (id, name, country, state, city, address_line, pin_code, email, mobile_number, website_url) " +
-            "VALUES (:newId, :#{#institute.instituteName}, :#{#institute.country}, :#{#institute.state}, :#{#institute.city}, " +
-            ":#{#institute.address}, :#{#institute.pinCode}, :#{#institute.email}, :#{#institute.mobileNumber}, :#{#institute.websiteUrl})",
-            nativeQuery = true)
+    @Query(value = "INSERT INTO institutes (id, name, country, state, city, address_line, pin_code, email, mobile_number, website_url) "
+            +
+            "VALUES (:newId, :#{#institute.instituteName}, :#{#institute.country}, :#{#institute.state}, :#{#institute.city}, "
+            +
+            ":#{#institute.address}, :#{#institute.pinCode}, :#{#institute.email}, :#{#institute.mobileNumber}, :#{#institute.websiteUrl})", nativeQuery = true)
     void insertInstitute(@Param("newId") String newId,
-                         @Param("institute") Institute institute);
-
+            @Param("institute") Institute institute);
 
     @Query(value = """
             SELECT
@@ -58,20 +63,20 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
     @Query(value = """
             SELECT * from institutes where subdomain = :subdomain
             ORDER BY created_at DESC LIMIT 1
-            """,nativeQuery = true)
+            """, nativeQuery = true)
     Optional<Institute> findBySubdomainLimit1(@Param("subdomain") String subdomain);
 
     @Query(value = """
-    SELECT id, name AS instituteName
-    FROM institutes
-    WHERE LOWER(name) LIKE LOWER(CONCAT('%', :query, '%'))
-       OR LOWER(address_line) LIKE LOWER(CONCAT('%', :query, '%'))
-       OR LOWER(city) LIKE LOWER(CONCAT('%', :query, '%'))
-       OR LOWER(state) LIKE LOWER(CONCAT('%', :query, '%'))
-       OR LOWER(pin_code) LIKE LOWER(CONCAT('%', :query, '%'))
-    ORDER BY name ASC
-    LIMIT 20
-    """, nativeQuery = true)
+            SELECT id, name AS instituteName
+            FROM institutes
+            WHERE LOWER(name) LIKE LOWER(CONCAT('%', :query, '%'))
+               OR LOWER(address_line) LIKE LOWER(CONCAT('%', :query, '%'))
+               OR LOWER(city) LIKE LOWER(CONCAT('%', :query, '%'))
+               OR LOWER(state) LIKE LOWER(CONCAT('%', :query, '%'))
+               OR LOWER(pin_code) LIKE LOWER(CONCAT('%', :query, '%'))
+            ORDER BY name ASC
+            LIMIT 20
+            """, nativeQuery = true)
     List<InstituteSearchProjection> searchByQuery(@Param("query") String query);
 
     @Query(value = """
@@ -79,7 +84,7 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
             JOIN student_session_institute_group_mapping ssigm ON ssigm.institute_id = i.id
             WHERE ssigm.user_id = :userId
             AND ssigm.package_session_id = :sessionId ORDER BY created_at DESC LIMIT 1
-            """,nativeQuery = true)
+            """, nativeQuery = true)
     Optional<Institute> findInstitutesByUserIdAndPackageSessionId(@Param("userId") String userId,
-                                                                  @Param("sessionId") String packageSessionId);
+            @Param("sessionId") String packageSessionId);
 }

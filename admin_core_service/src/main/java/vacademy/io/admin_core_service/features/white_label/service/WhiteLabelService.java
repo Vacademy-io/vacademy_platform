@@ -251,9 +251,7 @@ public class WhiteLabelService {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private void assertInstituteAccess(CustomUserDetails user, String instituteId) {
-        boolean isMember = instituteRepository.findInstitutesByUserId(user.getId())
-                .stream()
-                .anyMatch(i -> i.getId().equals(instituteId));
+        boolean isMember = instituteRepository.isUserInInstitute(user.getId(), instituteId);
         if (!isMember) {
             log.warn("[WhiteLabel] Unauthorized attempt by userId={} on instituteId={}",
                     user.getId(), instituteId);

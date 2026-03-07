@@ -465,13 +465,23 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
     );
   };
 
+  // Compute slider style unconditionally (Rules of Hooks: no hooks inside conditionals)
+  const slideCount = isSliderFormat && slides ? slides.length : 1;
+  const slideWidthPercent = 100 / slideCount;
+  const transformPercent = currentIndex * slideWidthPercent;
+  const sliderStyle = useMemo((): React.CSSProperties => ({
+    transform: `translateX(-${transformPercent}%)`,
+    width: `${slideCount * 100}%`,
+    display: 'flex',
+    transition: 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)',
+    willChange: 'transform',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
+    perspective: '1000px'
+  }), [currentIndex, slideCount, transformPercent]);
+
   // Render slider format
   if (isSliderFormat && slides && slides.length > 0) {
-    // Calculate transform: each slide takes 100/slides.length % of the container
-    // So to move to slide N, we move by N * (100/slides.length)%
-    const slideWidthPercent = 100 / slides.length;
-    const transformPercent = currentIndex * slideWidthPercent;
-    
     console.log("[MediaShowcaseComponent] ✅ Rendering SLIDER format:", {
       currentIndex,
       slidesLength: slides.length,
@@ -488,17 +498,6 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
         resolvedUrl: resolvedSlideImages[i] || s.backgroundImage
       }))
     });
-    
-    const sliderStyle = useMemo((): React.CSSProperties => ({
-      transform: `translateX(-${transformPercent}%)`,
-      width: `${slides.length * 100}%`,
-      display: 'flex',
-      transition: 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)', // Smoother easing
-      willChange: 'transform',
-      backfaceVisibility: 'hidden', // Prevent flickering
-      WebkitBackfaceVisibility: 'hidden', // Safari support
-      perspective: '1000px' // Enable 3D transforms for better performance
-    }), [currentIndex, slides.length, transformPercent]);
     
     
     return (

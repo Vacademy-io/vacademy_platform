@@ -38,6 +38,7 @@ import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
 import { Route as AiSettingsIndexRouteImport } from './routes/ai-settings/index'
 import { Route as TagNameIndexRouteImport } from './routes/$tagName/index'
 import { Route as ParentDocumentsRouteImport } from './routes/parent/documents'
+import { Route as TagNamePageSlugRouteImport } from './routes/$tagName/$pageSlug'
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
@@ -228,6 +229,11 @@ const TagNameIndexRoute = TagNameIndexRouteImport.update({
 const ParentDocumentsRoute = ParentDocumentsRouteImport.update({
   id: '/parent/documents',
   path: '/parent/documents',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TagNamePageSlugRoute = TagNamePageSlugRouteImport.update({
+  id: '/$tagName/$pageSlug',
+  path: '/$tagName/$pageSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const UserProfileEditIndexRoute = UserProfileEditIndexRouteImport.update({
@@ -488,6 +494,7 @@ const StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute =
   )
 
 export interface FileRoutesByFullPath {
+  '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/$tagName': typeof TagNameIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
@@ -564,6 +571,7 @@ export interface FileRoutesByFullPath {
   '/study-library/courses/course-details/subjects/modules/chapters/slides': typeof StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersSlidesIndexRoute
 }
 export interface FileRoutesByTo {
+  '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/$tagName': typeof TagNameIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
@@ -640,6 +648,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/$tagName/': typeof TagNameIndexRoute
   '/ai-settings/': typeof AiSettingsIndexRoute
@@ -718,6 +727,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/$tagName/$pageSlug'
     | '/parent/documents'
     | '/$tagName'
     | '/ai-settings'
@@ -794,6 +804,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/$tagName/$pageSlug'
     | '/$tagName'
     | '/ai-settings'
     | '/assessment'
@@ -869,6 +880,7 @@ export interface FileRouteTypes {
     | '/study-library/courses/course-details/subjects/modules/chapters/slides'
   id:
     | '__root__'
+    | '/$tagName/$pageSlug'
     | '/parent/documents'
     | '/$tagName/'
     | '/ai-settings/'
@@ -946,6 +958,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  TagNamePageSlugRoute: typeof TagNamePageSlugRoute
   ParentDocumentsRoute: typeof ParentDocumentsRouteWithChildren
   TagNameIndexRoute: typeof TagNameIndexRoute
   AiSettingsIndexRoute: typeof AiSettingsIndexRoute
@@ -1224,6 +1237,13 @@ declare module '@tanstack/react-router' {
       path: '/parent/documents'
       fullPath: '/parent/documents'
       preLoaderRoute: typeof ParentDocumentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$tagName/$pageSlug': {
+      id: '/$tagName/$pageSlug'
+      path: '/$tagName/$pageSlug'
+      fullPath: '/$tagName/$pageSlug'
+      preLoaderRoute: typeof TagNamePageSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/user-profile/edit/': {
@@ -1557,6 +1577,7 @@ const ParentDocumentsRouteWithChildren = ParentDocumentsRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
+  TagNamePageSlugRoute: TagNamePageSlugRoute,
   ParentDocumentsRoute: ParentDocumentsRouteWithChildren,
   TagNameIndexRoute: TagNameIndexRoute,
   AiSettingsIndexRoute: AiSettingsIndexRoute,

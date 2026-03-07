@@ -56,4 +56,11 @@ export const flavorConfig: FlavorConfigs = {
     domain: "vacademy.io",
     subdomain: "fivesep",
   },
+
+  // Shiksha Nation Android app
+  "com.shikshanation.new.app": {
+    appName: "Shiksha Nation",
+    domain: "vacademy.io",
+    subdomain: "shiksha-nation",
+  },
 };

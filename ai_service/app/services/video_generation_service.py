@@ -973,7 +973,18 @@ class VideoGenerationService:
                                         db_updated = True
                                         break
                                     except Exception as db_error:
-                                        if "server closed the connection" in str(db_error) or "OperationalError" in str(type(db_error).__name__):
+                                        _db_err_str = str(db_error).lower()
+                                        _db_err_type = type(db_error).__name__
+                                        _is_conn_err = (
+                                            "server closed the connection" in _db_err_str
+                                            or "ssl connection has been closed" in _db_err_str
+                                            or "connection was reset" in _db_err_str
+                                            or "broken pipe" in _db_err_str
+                                            or "OperationalError" in _db_err_type
+                                            or "PendingRollbackError" in _db_err_type
+                                            or "InterfaceError" in _db_err_type
+                                        )
+                                        if _is_conn_err:
                                             if retry < max_db_retries - 1:
                                                 logger.warning(f"[VideoGenService] Database connection error (attempt {retry + 1}/{max_db_retries}): {db_error}. Retrying...")
                                                 time.sleep(1)  # Wait 1 second before retry
@@ -1007,13 +1018,21 @@ class VideoGenerationService:
                         logger.warning(f"[VideoGenService] Could not process file path {file_path}: {e}")
             
             if stage_has_files:
-                # Update stage status
-                self.repository.update_stage(
-                    video_id=video_id,
-                    stage=stage_name,
-                    status="COMPLETED"
-                )
-                
+                # Update stage status — wrap in try/except so a stale-session error
+                # doesn't abort the entire pipeline after files were already uploaded.
+                try:
+                    self.repository.update_stage(
+                        video_id=video_id,
+                        stage=stage_name,
+                        status="COMPLETED"
+                    )
+                except Exception as stage_update_err:
+                    logger.error(
+                        f"[VideoGenService] Failed to update stage {stage_name} in DB: {stage_update_err}. "
+                        "Files may have been uploaded but stage is not marked complete.",
+                        exc_info=True
+                    )
+
                 logger.info(f"[VideoGenService] Stage {stage_name} completed. Uploaded {len(uploaded_files)} files.")
                 
                 yield {

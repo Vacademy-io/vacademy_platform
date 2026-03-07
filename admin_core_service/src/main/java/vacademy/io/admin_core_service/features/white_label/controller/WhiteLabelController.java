@@ -47,7 +47,7 @@ public class WhiteLabelController {
 
     /**
      * Returns current white-label configuration for the institute.
-     * Safe read-only endpoint — still enforces institute membership.
+     * Safe read-only endpoint.
      */
     @GetMapping("/status")
     public ResponseEntity<WhiteLabelStatusResponse> getStatus(

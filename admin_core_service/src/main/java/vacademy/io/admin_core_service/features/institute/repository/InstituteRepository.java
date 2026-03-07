@@ -21,13 +21,6 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
             "WHERE s.user_id = :userId", nativeQuery = true)
     List<Institute> findInstitutesByUserId(@Param("userId") String userId);
 
-    @Query(value = "SELECT CASE WHEN (" +
-            "EXISTS (SELECT 1 FROM user_role ur WHERE ur.user_id = :userId AND ur.institute_id = :instituteId AND ur.status = 'ACTIVE') "
-            +
-            "OR EXISTS (SELECT 1 FROM staff s WHERE s.user_id = :userId AND s.institute_id = :instituteId) " +
-            ") THEN true ELSE false END", nativeQuery = true)
-    boolean isUserInInstitute(@Param("userId") String userId, @Param("instituteId") String instituteId);
-
     @Transactional
     @Modifying
     @Query(value = "INSERT INTO institutes (id, name, country, state, city, address_line, pin_code, email, mobile_number, website_url) "

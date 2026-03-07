@@ -176,7 +176,6 @@ public class WhiteLabelService {
 
     @Transactional(readOnly = true)
     public WhiteLabelStatusResponse getStatus(CustomUserDetails user, String instituteId) {
-        assertInstituteAccess(user, instituteId);
 
         if (!cloudflareService.isEnabled()) {
             log.info("[WhiteLabel] getStatus called but Cloudflare is not configured on this deployment");
@@ -251,7 +250,9 @@ public class WhiteLabelService {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private void assertInstituteAccess(CustomUserDetails user, String instituteId) {
-        boolean isMember = instituteRepository.isUserInInstitute(user.getId(), instituteId);
+        boolean isMember = instituteRepository.findInstitutesByUserId(user.getId())
+                .stream()
+                .anyMatch(i -> i.getId().equals(instituteId));
         if (!isMember) {
             log.warn("[WhiteLabel] Unauthorized attempt by userId={} on instituteId={}",
                     user.getId(), instituteId);

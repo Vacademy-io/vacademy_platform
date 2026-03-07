@@ -10,10 +10,24 @@ from datetime import datetime
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, PendingRollbackError
 
 from ..models.ai_gen_video import AiGenVideo
 from ..db import get_engine
+
+
+def _is_connection_error(exc: Exception) -> bool:
+    """Return True if the exception looks like a stale/dropped DB connection."""
+    if isinstance(exc, (OperationalError, PendingRollbackError)):
+        return True
+    msg = str(exc).lower()
+    return (
+        "server closed the connection" in msg
+        or "connection was reset" in msg
+        or "ssl connection has been closed" in msg
+        or "could not connect" in msg
+        or "broken pipe" in msg
+    )
 
 
 class AiVideoRepository:
@@ -31,6 +45,14 @@ class AiVideoRepository:
         """Get session for database operations."""
         if self.session:
             return self.session
+        return Session(self._engine)
+
+    def _get_fresh_session(self) -> Session:
+        """Always create a fresh session from the engine.
+
+        Used for post-pipeline DB operations where the injected FastAPI session
+        may have become stale after a long-running background task.
+        """
         return Session(self._engine)
     
     def create(
@@ -124,49 +146,53 @@ class AiVideoRepository:
         Returns:
             Updated AiGenVideo instance
         """
-        session = self._get_session()
-        try:
-            # Query in current session to ensure object is attached
+        def _do_update_stage(session: Session) -> Optional[AiGenVideo]:
             video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
             if not video:
                 return None
-            
-            # Update stage and status
             video.current_stage = stage
             video.status = status
             video.updated_at = datetime.utcnow()
-            
-            # Update file_ids and s3_urls if provided
             if file_id or s3_url:
                 key = stage_key or stage.lower()
-                
                 if file_id:
-                    # Create a completely new dict to ensure SQLAlchemy detects the change
                     file_ids = {}
                     if video.file_ids:
                         file_ids.update(video.file_ids)
                     file_ids[key] = file_id
                     video.file_ids = file_ids
-                    flag_modified(video, "file_ids")  # Mark JSONB as modified
-                
+                    flag_modified(video, "file_ids")
                 if s3_url:
-                    # Create a completely new dict to ensure SQLAlchemy detects the change
                     s3_urls = {}
                     if video.s3_urls:
                         s3_urls.update(video.s3_urls)
                     s3_urls[key] = s3_url
                     video.s3_urls = s3_urls
-                    flag_modified(video, "s3_urls")  # Mark JSONB as modified
-            
-            # Mark as completed if stage is COMPLETED
+                    flag_modified(video, "s3_urls")
             if stage == "COMPLETED":
                 video.completed_at = datetime.utcnow()
-            
             session.commit()
             session.refresh(video)
             return video
+
+        session = self._get_session()
+        try:
+            return _do_update_stage(session)
         except Exception as e:
-            session.rollback()
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            # If the injected session is stale, retry with a fresh engine session
+            if self.session and _is_connection_error(e):
+                fresh = self._get_fresh_session()
+                try:
+                    return _do_update_stage(fresh)
+                except Exception as e2:
+                    fresh.rollback()
+                    raise e2
+                finally:
+                    fresh.close()
             raise e
         finally:
             if not self.session:
@@ -189,37 +215,47 @@ class AiVideoRepository:
         Returns:
             Updated AiGenVideo instance
         """
-        session = self._get_session()
-        try:
-            # Query in current session to ensure object is attached
+        def _do_update_files(session: Session) -> Optional[AiGenVideo]:
             video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
             if not video:
                 return None
-            
             if file_ids:
-                # Create a completely new dict to ensure SQLAlchemy detects the change
                 current_file_ids = {}
                 if video.file_ids:
                     current_file_ids.update(video.file_ids)
                 current_file_ids.update(file_ids)
                 video.file_ids = current_file_ids
-                flag_modified(video, "file_ids")  # Mark JSONB column as modified for SQLAlchemy change detection
-            
+                flag_modified(video, "file_ids")
             if s3_urls:
-                # Create a completely new dict to ensure SQLAlchemy detects the change
                 current_s3_urls = {}
                 if video.s3_urls:
                     current_s3_urls.update(video.s3_urls)
                 current_s3_urls.update(s3_urls)
                 video.s3_urls = current_s3_urls
-                flag_modified(video, "s3_urls")  # Mark JSONB column as modified for SQLAlchemy change detection
-            
+                flag_modified(video, "s3_urls")
             video.updated_at = datetime.utcnow()
             session.commit()
             session.refresh(video)
             return video
+
+        session = self._get_session()
+        try:
+            return _do_update_files(session)
         except Exception as e:
-            session.rollback()
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            # If the injected session is stale, retry with a fresh engine session
+            if self.session and _is_connection_error(e):
+                fresh = self._get_fresh_session()
+                try:
+                    return _do_update_files(fresh)
+                except Exception as e2:
+                    fresh.rollback()
+                    raise e2
+                finally:
+                    fresh.close()
             raise e
         finally:
             if not self.session:
@@ -242,24 +278,36 @@ class AiVideoRepository:
         Returns:
             Updated AiGenVideo instance
         """
-        session = self._get_session()
-        try:
-            # Query in current session to ensure object is attached
+        def _do_mark_failed(session: Session) -> Optional[AiGenVideo]:
             video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
             if not video:
                 return None
-            
             video.status = "FAILED"
             video.error_message = error_message
             if current_stage:
                 video.current_stage = current_stage
             video.updated_at = datetime.utcnow()
-            
             session.commit()
             session.refresh(video)
             return video
+
+        session = self._get_session()
+        try:
+            return _do_mark_failed(session)
         except Exception as e:
-            session.rollback()
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            if self.session and _is_connection_error(e):
+                fresh = self._get_fresh_session()
+                try:
+                    return _do_mark_failed(fresh)
+                except Exception as e2:
+                    fresh.rollback()
+                    raise e2
+                finally:
+                    fresh.close()
             raise e
         finally:
             if not self.session:

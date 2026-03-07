@@ -137,6 +137,7 @@ const SlidesEditorComponent = ({
     }, [isEdit, slides, isLoadingPresentation, isRefetchingPresentation, editMode]);
 
     const [isSaving, setIsSaving] = useState<boolean>(false);
+    const [isExitDialogOpen, setIsExitDialogOpen] = useState<boolean>(false);
 
     // ... after isParticipantsPanelOpen state
     const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState<boolean>(false);
@@ -155,6 +156,18 @@ const SlidesEditorComponent = ({
 
     // State to store the IDs of slides initially loaded for an existing presentation
     const [originalSlideIds, setOriginalSlideIds] = useState(new Set<string>());
+
+    // A deletion is pending if any originally-loaded slide ID is no longer in the slides array
+    const hasPendingDeletions = isEdit && [...originalSlideIds].some(id => !slides.find(s => s.id === id));
+    const hasUnsavedChanges = dirtySlideIds.size > 0 || hasPendingDeletions;
+
+    const handleBackNavigation = () => {
+        if (hasUnsavedChanges) {
+            setIsExitDialogOpen(true);
+        } else {
+            router.navigate({ to: '/study-library/volt' });
+        }
+    };
 
     // States for Audio Recording
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1364,34 +1377,20 @@ const SlidesEditorComponent = ({
         }
     };
 
-    const autoSaveCallback = useRef<() => void>();
+    // Auto-save has been removed to prevent data loss and duplicate presentations.
+    // Changes are tracked via dirtySlideIds. User must manually save or will be prompted on exit.
 
+    // Warn the user if they try to close/refresh the tab with unsaved changes
     useEffect(() => {
-        // Keep the callback ref up to date with the latest state and props,
-        // so the setInterval callback always has the fresh state.
-        autoSaveCallback.current = () => {
-            if (!isSaving && slides && slides.length > 0) {
-                console.log(`Auto-saving... Current isEdit: ${isEdit}, presentationId: ${presentationId}`);
-                savePresentation(true); // isAutoSave = true
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '';
             }
         };
-    }); // No dependency array: this runs on every render to keep the ref updated.
-
-    // Auto-save useEffect
-    useEffect(() => {
-        if (!editMode) return; // Only run if editor UI is active
-
-        const performAutoSave = () => {
-            autoSaveCallback.current?.();
-        };
-
-        const intervalId = setInterval(performAutoSave, 60000); // 60000 ms = 1 minute
-
-        return () => {
-            clearInterval(intervalId);
-            console.log("Auto-save interval cleared.");
-        };
-    }, [editMode]); // The interval is only started/stopped based on editMode.
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [hasUnsavedChanges]);
 
     // New useEffect to reset the justExitedSession flag after render.
     useEffect(() => {
@@ -2007,7 +2006,7 @@ const SlidesEditorComponent = ({
                     <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => router.navigate({ to: '/study-library/volt' })}
+                        onClick={handleBackNavigation}
                         className="text-slate-600 hover:bg-slate-100 hover:text-slate-800"
                     >
                         <ArrowLeft size={22} />
@@ -2055,7 +2054,7 @@ const SlidesEditorComponent = ({
                     <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => router.navigate({ to: '/study-library/volt' })}
+                        onClick={handleBackNavigation}
                         className="rounded-full text-slate-600 hover:bg-slate-100 hover:text-slate-800"
                     >
                         <ArrowLeft size={20} />
@@ -2101,6 +2100,13 @@ const SlidesEditorComponent = ({
                     )}
                 </div>
                 <div className="flex items-center gap-2 sm:gap-2.5">
+                    {/* Unsaved changes indicator */}
+                    {hasUnsavedChanges && !isSaving && (
+                        <span className="hidden items-center gap-1 text-xs font-medium text-amber-600 sm:flex">
+                            <span className="size-1.5 rounded-full bg-amber-500" />
+                            Unsaved changes
+                        </span>
+                    )}
                     {isEdit ? (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -2125,9 +2131,7 @@ const SlidesEditorComponent = ({
                                 <DropdownMenuItem
                                     onClick={async () => {
                                         await savePresentation();
-                                        if (!isSaving) { // Ensure save was successful (or not in progress) before navigating
-                                            router.navigate({ to: '/study-library/volt' });
-                                        }
+                                        router.navigate({ to: '/study-library/volt' });
                                     }}
                                     disabled={isSaving}
                                 >
@@ -2396,6 +2400,41 @@ const SlidesEditorComponent = ({
                     sessionId={finishedSessionId}
                 />
             )}
+
+            {/* Unsaved Changes Exit Dialog */}
+            <Dialog open={isExitDialogOpen} onOpenChange={setIsExitDialogOpen}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Unsaved changes</DialogTitle>
+                        <DialogDescription>
+                            You have unsaved changes. Do you want to save before leaving?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="flex-col gap-2 sm:flex-row">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setIsExitDialogOpen(false);
+                                router.navigate({ to: '/study-library/volt' });
+                            }}
+                        >
+                            Exit without saving
+                        </Button>
+                        <Button
+                            className="bg-orange-500 text-white hover:bg-orange-600"
+                            disabled={isSaving}
+                            onClick={async () => {
+                                await savePresentation();
+                                setIsExitDialogOpen(false);
+                                router.navigate({ to: '/study-library/volt' });
+                            }}
+                        >
+                            {isSaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+                            Save and exit
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

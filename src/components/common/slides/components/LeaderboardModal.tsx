@@ -42,6 +42,7 @@ interface LeaderboardModalProps {
     responses: ResponseData[];
     slideData: QuizSlideData;
     isMcq: boolean;
+    addedQuestion?: any; // added_question from session API — has real DB option UUIDs
 }
 
 export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
@@ -50,6 +51,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
     responses,
     slideData,
     isMcq,
+    addedQuestion,
 }) => {
     useEffect(() => {
         if (isOpen) {
@@ -118,50 +120,23 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
             return <span className="italic text-slate-500">No answer submitted</span>;
         }
 
-        const slideOptions = slideData?.elements?.singleChoiceOptions || [];
+        // Prefer addedQuestion.options (real DB UUIDs from session API) for matching.
+        // Fall back to slideData.elements.singleChoiceOptions (may have local temp IDs).
+        const dbOptions: Array<{ id: string; text?: { content?: string } }> =
+            addedQuestion?.options || [];
+        const slideOptions: Array<{ id: string; name: string }> =
+            slideData?.elements?.singleChoiceOptions || [];
 
-        // First, try to find by exact ID match
-        let selectedOption = slideOptions.find(
-            (opt: { id: string; name: string }) => opt.id === selectedId
-        );
-
-        // If not found by ID, this might be a case where we have database IDs vs temp IDs
-        // Let's try to find a reasonable fallback
-        if (!selectedOption) {
-            console.log(
-                `[Leaderboard] Option with ID ${selectedId} not found in slide options:`,
-                slideOptions
-            );
-
-            // Try to match by index if the selectedId looks like a database UUID
-            // This is a fallback for when temp IDs don't match database IDs
-            if (selectedId.includes('-') && selectedId.length > 10) {
-                // Check if we have responses from other users to see a pattern
-                const allSelectedIds = responses
-                    .map((r) => r.response_data?.selected_option_ids?.[0])
-                    .filter(Boolean);
-
-                const uniqueSelectedIds = [...new Set(allSelectedIds)];
-
-                // If we have unique IDs that match the number of options, map by index
-                if (uniqueSelectedIds.length <= slideOptions.length) {
-                    const selectedIndex = uniqueSelectedIds.indexOf(selectedId);
-                    if (selectedIndex >= 0 && selectedIndex < slideOptions.length) {
-                        selectedOption = slideOptions[selectedIndex];
-                        console.log(
-                            `[Leaderboard] Matched by index ${selectedIndex}:`,
-                            selectedOption
-                        );
-                    }
-                }
-            }
-        }
-
-        if (selectedOption?.name) {
-            // Get the option index for display
-            const optionIndex = slideOptions.findIndex((opt: any) => opt.id === selectedOption.id);
-            const optionLetter = optionIndex >= 0 ? String.fromCharCode(65 + optionIndex) : '?';
-
+        // Try exact UUID match against DB options first
+        const dbOptionIndex = dbOptions.findIndex((opt) => opt.id === selectedId);
+        if (dbOptionIndex >= 0) {
+            const dbOpt = dbOptions[dbOptionIndex];
+            // Use the corresponding slide option for display text (preserves HTML), else DB text
+            const displayName =
+                slideOptions[dbOptionIndex]?.name ||
+                dbOpt?.text?.content ||
+                selectedId;
+            const optionLetter = String.fromCharCode(65 + dbOptionIndex);
             return (
                 <div className="flex items-start gap-2">
                     <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-xs font-bold text-white shadow-sm">
@@ -169,13 +144,29 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                     </div>
                     <div
                         className="prose prose-sm max-w-none flex-1"
-                        dangerouslySetInnerHTML={{ __html: selectedOption.name }}
+                        dangerouslySetInnerHTML={{ __html: displayName }}
                     />
                 </div>
             );
         }
 
-        // Still not found - show the ID for debugging
+        // Fall back to exact match against slideOptions (works when IDs already match)
+        const slideOptionIndex = slideOptions.findIndex((opt) => opt.id === selectedId);
+        if (slideOptionIndex >= 0) {
+            const optionLetter = String.fromCharCode(65 + slideOptionIndex);
+            return (
+                <div className="flex items-start gap-2">
+                    <div className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-xs font-bold text-white shadow-sm">
+                        {optionLetter}
+                    </div>
+                    <div
+                        className="prose prose-sm max-w-none flex-1"
+                        dangerouslySetInnerHTML={{ __html: slideOptions[slideOptionIndex]?.name || '' }}
+                    />
+                </div>
+            );
+        }
+
         return (
             <div className="text-sm italic text-red-500">
                 Option not found (ID: {selectedId.substring(0, 8)}...)

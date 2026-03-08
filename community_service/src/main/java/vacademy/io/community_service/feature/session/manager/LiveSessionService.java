@@ -1294,20 +1294,27 @@ public class LiveSessionService {
             return Collections.emptyList();
         }
 
-        // Gather all unique participant usernames from all slides
+        // Gather all unique participant usernames from all slides.
         Set<String> allUsernames = new LinkedHashSet<>();
-        // Map: slideId -> parsed SlideResponsesLogDto
-        Map<String, SlideResponsesLogDto> slideLogsMap = new HashMap<>();
+        // Pre-build: slideId -> (username -> latest ParticipantResponseDto)
+        // Avoids the O(N×M×R) triple-nested loop (1000 users × 20 slides × 1000 responses = 20M iterations).
+        // With the map, lookup per (user, slide) is O(1), reducing total work to O(M×R + N×M).
+        Map<String, Map<String, ParticipantResponseDto>> slideToUserLatest = new HashMap<>();
 
         for (PresentationSlideDto slide : mcqSlides) {
             String responsesJson = session.getSlideStatsJson().get(slide.getId());
             if (responsesJson != null) {
                 try {
                     SlideResponsesLogDto slideLog = objectMapper.readValue(responsesJson, SlideResponsesLogDto.class);
-                    slideLogsMap.put(slide.getId(), slideLog);
+                    // Iterate once to build username→latest map (responses are in append order,
+                    // so later put() calls overwrite with the most-recent response — same
+                    // semantics as the original "keep overwriting" inner loop).
+                    Map<String, ParticipantResponseDto> latestByUser = new HashMap<>();
                     for (ParticipantResponseDto r : slideLog.getResponses()) {
                         allUsernames.add(r.getUsername());
+                        latestByUser.put(r.getUsername(), r);
                     }
+                    slideToUserLatest.put(slide.getId(), latestByUser);
                 } catch (JsonProcessingException e) {
                     System.err.println("Error parsing slide responses for leaderboard, slide " + slide.getId() + ": "
                             + e.getMessage());
@@ -1322,7 +1329,8 @@ public class LiveSessionService {
             }
         }
 
-        // For each participant, compute score and total time across all MCQ slides
+        // For each participant, compute score and total time across all MCQ slides.
+        // Each (username, slideId) lookup is now O(1) via the pre-built map.
         List<LeaderboardEntryDto> entries = new ArrayList<>();
 
         for (String username : allUsernames) {
@@ -1333,20 +1341,13 @@ public class LiveSessionService {
             int unanswered = 0;
 
             for (PresentationSlideDto slide : mcqSlides) {
-                SlideResponsesLogDto slideLog = slideLogsMap.get(slide.getId());
-                if (slideLog == null) {
+                Map<String, ParticipantResponseDto> latestByUser = slideToUserLatest.get(slide.getId());
+                if (latestByUser == null) {
                     unanswered++;
                     continue;
                 }
 
-                // Find the LAST response by this user for this slide (in case of multiple
-                // attempts)
-                ParticipantResponseDto latestResponse = null;
-                for (ParticipantResponseDto r : slideLog.getResponses()) {
-                    if (username.equals(r.getUsername())) {
-                        latestResponse = r; // keep overwriting to get the last one
-                    }
-                }
+                ParticipantResponseDto latestResponse = latestByUser.get(username); // O(1)
 
                 if (latestResponse == null) {
                     unanswered++;

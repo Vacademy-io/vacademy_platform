@@ -59,6 +59,9 @@ public class LiveSessionService {
     @Autowired
     DeepSeekApiService deepSeekApiService;
 
+    @Autowired
+    LiveSessionPersistenceService persistenceService;
+
     public LiveSessionService() {
         heartbeatMonitor.scheduleAtFixedRate(this::checkInactiveParticipants, 0, 15, TimeUnit.SECONDS);
         sessionCleanupScheduler.scheduleAtFixedRate(this::cleanupExpiredSessions, 0, 1, TimeUnit.HOURS);
@@ -170,6 +173,36 @@ public class LiveSessionService {
         session.setSlides(getLinkedPresentation(createSessionDto));
         sessions.put(session.getSessionId(), session);
         inviteCodeToSessionId.put(session.getInviteCode(), session.getSessionId());
+
+        // Async DB persist
+        int mcqSlideCount = 0;
+        if (session.getSlides() != null && session.getSlides().getAddedSlides() != null) {
+            for (var slide : session.getSlides().getAddedSlides()) {
+                if (slide.getAddedQuestion() != null) {
+                    String qt = slide.getAddedQuestion().getQuestionType();
+                    if ("MCQS".equalsIgnoreCase(qt) || "MCQM".equalsIgnoreCase(qt)) mcqSlideCount++;
+                }
+            }
+        }
+        vacademy.io.community_service.feature.session.entity.LiveSessionRecord record =
+                vacademy.io.community_service.feature.session.entity.LiveSessionRecord.builder()
+                        .id(session.getSessionId())
+                        .presentationId(createSessionDto.getSourceId())
+                        .presentationTitle(session.getSlides() != null ? session.getSlides().getTitle() : null)
+                        .inviteCode(session.getInviteCode())
+                        .status(session.getSessionStatus())
+                        .canJoinInBetween(session.getCanJoinInBetween())
+                        .showResultsAtLastSlide(session.getShowResultsAtLastSlide())
+                        .defaultSecondsForQuestion(session.getDefaultSecondsForQuestion())
+                        .studentAttempts(session.getStudentAttempts())
+                        .pointsPerCorrectAnswer(session.getPointsPerCorrectAnswer())
+                        .negativeMarkingEnabled(session.getNegativeMarkingEnabled())
+                        .negativeMarksPerWrongAnswer(session.getNegativeMarksPerWrongAnswer())
+                        .totalMcqSlides(mcqSlideCount)
+                        .createdAt(session.getCreationTime())
+                        .build();
+        persistenceService.asyncSaveSession(record);
+
         return session;
     }
 
@@ -384,6 +417,10 @@ public class LiveSessionService {
             System.out.println("New participant " + participantDto.getUsername() + " added to session " + sessionId);
         }
         notifyTeacherAboutParticipants(session); // Notify teacher about new/rejoining participant
+
+        // Persist participant asynchronously (upsert handles rejoin case)
+        persistenceService.asyncUpsertParticipant(session.getSessionId(), participantDto);
+
         return session;
     }
 
@@ -509,6 +546,9 @@ public class LiveSessionService {
         session.setStartTime(new Date(System.currentTimeMillis()));
         sendSlideToStudents(session); // Notify students about the first slide
         notifyTeacherAboutParticipants(session); // Update teacher
+
+        persistenceService.asyncUpdateSessionStatus(session.getSessionId(), "LIVE", session.getStartTime(), null);
+
         return session;
     }
 
@@ -578,8 +618,9 @@ public class LiveSessionService {
 
         sessionParticipantHeartbeats.remove(session.getSessionId());
         System.out.println("Session " + session.getSessionId() + " finished.");
-        // Session itself is removed by cleanupExpiredSessions later or can be removed
-        // here if desired
+
+        persistenceService.asyncUpdateSessionStatus(session.getSessionId(), "FINISHED", null, session.getEndTime());
+
         return session;
     }
 
@@ -706,6 +747,20 @@ public class LiveSessionService {
         System.out.println("Response recorded for user " + responseRequest.getUsername() + " for slide " + slideId
                 + " in session " + sessionId);
         scheduleTeacherResponseUpdateNotification(sessionId, slideId);
+
+        // Evaluate correctness and persist response asynchronously
+        PresentationSlideDto currentSlide = session.getSlides().getAddedSlides().stream()
+                .filter(s -> s.getId().equals(slideId)).findFirst().orElse(null);
+        Boolean isCorrect = (currentSlide != null)
+                ? evaluateResponse(participantResponse, currentSlide.getAddedQuestion()) : null;
+        persistenceService.asyncSaveResponse(
+                sessionId, slideId,
+                responseRequest.getUsername(),
+                responseRequest.getResponseType(),
+                responseRequest.getSelectedOptionIds(),
+                responseRequest.getTextAnswer(),
+                isCorrect,
+                responseRequest.getTimeToResponseMillis());
     }
 
     public List<AdminSlideResponseViewDto> getSlideResponses(String sessionId, String slideId) {
@@ -713,7 +768,8 @@ public class LiveSessionService {
         ObjectMapper objectMapper = new ObjectMapper();
 
         if (session == null) {
-            throw new VacademyException("Session not found: " + sessionId);
+            // Session no longer in memory — fall back to DB
+            return persistenceService.getSlideResponsesFromDb(sessionId, slideId);
         }
         if (session.getSlides() == null || session.getSlides().getAddedSlides() == null) {
             throw new VacademyException("No slides found in session " + sessionId);
@@ -1239,7 +1295,8 @@ public class LiveSessionService {
         ObjectMapper objectMapper = new ObjectMapper();
 
         if (session == null) {
-            throw new VacademyException("Session not found: " + sessionId);
+            // Session no longer in memory — fall back to DB
+            return persistenceService.computeLeaderboardFromDb(sessionId);
         }
 
         int pointsPerCorrect = session.getPointsPerCorrectAnswer() != null ? session.getPointsPerCorrectAnswer() : 10;

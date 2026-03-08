@@ -6,10 +6,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vacademy.io.community_service.feature.presentation.dto.question.PresentationSlideDto;
 import vacademy.io.community_service.feature.session.dto.admin.*;
+import vacademy.io.community_service.feature.session.manager.LiveSessionPersistenceService;
 import vacademy.io.community_service.feature.session.manager.LiveSessionService;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -21,6 +23,9 @@ public class AdminSessionController {
 
     @Autowired
     LiveSessionService liveSessionService;
+
+    @Autowired
+    LiveSessionPersistenceService persistenceService;
 
     @PostMapping("/create")
     public ResponseEntity<LiveSessionDto> createSession(@RequestBody CreateSessionDto createSessionDto) {
@@ -113,6 +118,13 @@ public class AdminSessionController {
     public ResponseEntity<List<LeaderboardEntryDto>> getLeaderboard(@PathVariable String sessionId) {
         List<LeaderboardEntryDto> leaderboard = liveSessionService.computeLeaderboard(sessionId);
         return ResponseEntity.ok(leaderboard);
+    }
+
+    // Session history for a presentation (DB-backed, works even after in-memory cleanup)
+    @GetMapping("/presentation/{presentationId}/sessions")
+    public ResponseEntity<List<Map<String, Object>>> getSessionHistory(
+            @PathVariable String presentationId) {
+        return ResponseEntity.ok(persistenceService.getSessionHistoryForPresentation(presentationId));
     }
 
     // Leaderboard endpoint - CSV download

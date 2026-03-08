@@ -9,7 +9,8 @@ data:
     ; Primary (read-write)
     admin_core_service   = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=admin_core_service
     auth_service         = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=auth_service
-    assessment_service   = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=assessment_service
+    ; community_service also writes here (live session persistence) — higher pool needed
+    assessment_service   = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=assessment_service pool_size=12
     community_service    = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=community_service
     media_service        = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=media_service
     notification_service = host={{ .Values.pgbouncer.dbHost }} port={{ .Values.pgbouncer.dbPort }} dbname=notification_service

@@ -32,8 +32,8 @@ spec:
               cpu: "200m"
               memory: "512Mi"
             limits:
-              cpu: "250m"
-              memory: "800Mi"
+              cpu: "400m"
+              memory: "1Gi"
           livenessProbe:
             httpGet:
               path: /media-service/actuator/health

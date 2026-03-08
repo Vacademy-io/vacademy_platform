@@ -30,4 +30,4 @@ WORKDIR /app
 COPY --from=build /build/target/admin_core_service.jar admin_core_service.jar
 EXPOSE 8072
 
-CMD ["java", "-XX:+UseZGC", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=70.0", "-Dspring.profiles.active=stage", "-jar", "admin_core_service.jar"]
+CMD ["java", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=200", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-Dspring.profiles.active=stage", "-jar", "admin_core_service.jar"]

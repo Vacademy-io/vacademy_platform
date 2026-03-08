@@ -36,4 +36,4 @@ COPY --from=build /build/target/notification_service.jar notification_service.ja
 EXPOSE 8076
 
 # Define the command to run the application
-CMD ["java", "-XX:+UseZGC", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=70.0", "-Dspring.profiles.active=stage", "-jar", "notification_service.jar"]
+CMD ["java", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=200", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-Dspring.profiles.active=stage", "-jar", "notification_service.jar"]

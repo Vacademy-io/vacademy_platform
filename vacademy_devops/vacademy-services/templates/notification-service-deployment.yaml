@@ -32,8 +32,8 @@ spec:
               cpu: "200m"
               memory: "512Mi"
             limits:
-              cpu: "250m"
-              memory: "768Mi"
+              cpu: "350m"
+              memory: "1Gi"
           livenessProbe:
             httpGet:
               path: /notification-service/actuator/health

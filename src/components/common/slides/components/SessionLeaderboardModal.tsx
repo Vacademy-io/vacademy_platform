@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, X, Trophy, Download, Medal, MessageSquare } from 'lucide-react';
+import { Loader2, X, Trophy, Download, Medal, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { toast } from 'sonner';
 
@@ -70,10 +70,13 @@ export const SessionLeaderboardModal: React.FC<SessionLeaderboardModalProps> = (
     sessionId,
     slides = [],
 }) => {
+    const PAGE_SIZE = 20;
+
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'scores' | 'feedback'>('scores');
+    const [currentPage, setCurrentPage] = useState(1);
 
     // { [slideId]: SlideResponse[] }
     const [feedbackResponses, setFeedbackResponses] = useState<Record<string, SlideResponse[]>>({});
@@ -84,8 +87,15 @@ export const SessionLeaderboardModal: React.FC<SessionLeaderboardModalProps> = (
         [slides]
     );
 
+    const totalPages = Math.max(1, Math.ceil(leaderboard.length / PAGE_SIZE));
+    const paginatedLeaderboard = leaderboard.slice(
+        (currentPage - 1) * PAGE_SIZE,
+        currentPage * PAGE_SIZE,
+    );
+
     useEffect(() => {
         if (isOpen && sessionId) {
+            setCurrentPage(1);
             fetchLeaderboard();
             if (feedbackSlides.length > 0) {
                 fetchFeedbackResponses();
@@ -269,7 +279,7 @@ export const SessionLeaderboardModal: React.FC<SessionLeaderboardModalProps> = (
                                         <span className="text-center">-</span>
                                         <span className="text-right">Time</span>
                                     </div>
-                                    {leaderboard.map((entry) => (
+                                    {paginatedLeaderboard.map((entry) => (
                                         <div
                                             key={entry.username}
                                             className={`grid grid-cols-[50px_1fr_80px_80px_80px_80px_90px] gap-2 items-center rounded-lg px-3 py-2.5 transition-colors ${
@@ -301,6 +311,37 @@ export const SessionLeaderboardModal: React.FC<SessionLeaderboardModalProps> = (
                                             </span>
                                         </div>
                                     ))}
+                                    {/* Pagination controls */}
+                                    {totalPages > 1 && (
+                                        <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-2">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                                disabled={currentPage === 1}
+                                                className="flex items-center gap-1 text-slate-500"
+                                            >
+                                                <ChevronLeft className="size-4" />
+                                                Prev
+                                            </Button>
+                                            <span className="text-xs text-slate-500">
+                                                Page {currentPage} of {totalPages}
+                                                <span className="ml-1 text-slate-400">
+                                                    ({leaderboard.length} total)
+                                                </span>
+                                            </span>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                                disabled={currentPage === totalPages}
+                                                className="flex items-center gap-1 text-slate-500"
+                                            >
+                                                Next
+                                                <ChevronRight className="size-4" />
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </>

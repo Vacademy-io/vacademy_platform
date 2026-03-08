@@ -16,6 +16,9 @@ import {
     Tv2,
     UploadCloud,
     HelpCircle,
+    Clock,
+    Trophy,
+    Users,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +60,7 @@ import { VoltFeaturesGrid } from '@/components/landing/VoltFeaturesGrid';
 import { useFileUpload } from "@/hooks/use-file-upload";
 
 import type { PresentationData } from './types';
+import { SessionLeaderboardModal } from './components/SessionLeaderboardModal';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
 const IMPORT_PPT_API_URL = `${BACKEND_URL}/media-service/convert-presentations/import-ppt`;
@@ -92,6 +96,13 @@ export default function ManageVolt() {
     const [presentationToDelete, setPresentationToDelete] = useState<PresentationData | null>(null);
     const [isProcessingDelete, setIsProcessingDelete] = useState(false);
     const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+
+    // Session history
+    const [isSessionHistoryOpen, setIsSessionHistoryOpen] = useState(false);
+    const [sessionHistorySessions, setSessionHistorySessions] = useState<any[]>([]);
+    const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
+    const [historyPresentationTitle, setHistoryPresentationTitle] = useState('');
+    const [leaderboardSessionId, setLeaderboardSessionId] = useState<string | null>(null);
 
     useEffect(() => {
         const hasVisited = localStorage.getItem(VOLT_FIRST_VISIT_KEY);
@@ -454,6 +465,25 @@ export default function ManageVolt() {
         });
     };
 
+    const BACKEND_URL_HIST = import.meta.env.VITE_BACKEND_URL || 'https://backend-stage.vacademy.io';
+
+    const openSessionHistory = async (presentation: PresentationData) => {
+        setHistoryPresentationTitle(presentation.title || 'Untitled');
+        setSessionHistorySessions([]);
+        setIsSessionHistoryOpen(true);
+        setIsLoadingSessionHistory(true);
+        try {
+            const res = await authenticatedAxiosInstance.get(
+                `${BACKEND_URL_HIST}/community-service/engage/admin/presentation/${presentation.id}/sessions`
+            );
+            setSessionHistorySessions(res.data || []);
+        } catch {
+            toast.error('Failed to load session history');
+        } finally {
+            setIsLoadingSessionHistory(false);
+        }
+    };
+
     const filteredPresentations = presentations.filter((p) => {
         const query = searchQuery.toLowerCase();
         return (
@@ -608,6 +638,18 @@ export default function ManageVolt() {
                                     <ShadButton
                                         variant="ghost"
                                         size="icon"
+                                        className="h-8 w-8 rounded-md text-neutral-500 hover:bg-purple-100 hover:text-purple-600"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            openSessionHistory(p);
+                                        }}
+                                        title="Session History"
+                                    >
+                                        <Clock className="h-4 w-4" />
+                                    </ShadButton>
+                                    <ShadButton
+                                        variant="ghost"
+                                        size="icon"
                                         className="h-8 w-8 rounded-md text-neutral-500 hover:bg-orange-100 hover:text-orange-600"
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -655,6 +697,92 @@ export default function ManageVolt() {
                         </MyButton>
                     )}
                 </div>
+            )}
+
+            {/* Session History Modal */}
+            <Dialog open={isSessionHistoryOpen} onOpenChange={setIsSessionHistoryOpen}>
+                <DialogContent className="p-0 sm:max-w-2xl max-h-[85vh] flex flex-col">
+                    <DialogHeader className="px-6 pt-6 pb-4 border-b">
+                        <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+                            <Clock className="size-5 text-purple-500" />
+                            Session History — {historyPresentationTitle}
+                        </DialogTitle>
+                        <DialogDescription className="text-sm text-slate-500">
+                            Past live sessions for this presentation, stored in DB.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-y-auto px-6 py-4">
+                        {isLoadingSessionHistory ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader2 className="size-8 animate-spin text-purple-500" />
+                            </div>
+                        ) : sessionHistorySessions.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-12 text-center">
+                                <Clock className="mb-3 size-12 text-slate-200" />
+                                <p className="text-sm text-slate-500">No sessions found for this presentation.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {sessionHistorySessions.map((s: any) => (
+                                    <div
+                                        key={s.session_id}
+                                        className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"
+                                    >
+                                        <div className="space-y-0.5">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`inline-block h-2 w-2 rounded-full ${
+                                                    s.status === 'FINISHED' ? 'bg-green-500' :
+                                                    s.status === 'LIVE' ? 'bg-blue-500 animate-pulse' :
+                                                    'bg-slate-300'
+                                                }`} />
+                                                <span className="text-sm font-medium text-slate-700">
+                                                    {s.started_at
+                                                        ? new Date(s.started_at).toLocaleString()
+                                                        : new Date(s.created_at).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs text-slate-400">
+                                                <span className="flex items-center gap-1">
+                                                    <Users className="size-3" />
+                                                    {s.participant_count} participants
+                                                </span>
+                                                {s.ended_at && s.started_at && (
+                                                    <span>
+                                                        {Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000)} min
+                                                    </span>
+                                                )}
+                                                <span className="font-mono text-slate-300">#{s.invite_code}</span>
+                                            </div>
+                                        </div>
+                                        <ShadButton
+                                            size="sm"
+                                            variant="outline"
+                                            className="ml-4 shrink-0 gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50"
+                                            onClick={() => setLeaderboardSessionId(s.session_id)}
+                                        >
+                                            <Trophy className="size-3.5" />
+                                            Results
+                                        </ShadButton>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <div className="border-t px-6 py-3 flex justify-end">
+                        <ShadButton variant="outline" size="sm" onClick={() => setIsSessionHistoryOpen(false)}>
+                            Close
+                        </ShadButton>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Leaderboard from history */}
+            {leaderboardSessionId && (
+                <SessionLeaderboardModal
+                    isOpen={!!leaderboardSessionId}
+                    onClose={() => setLeaderboardSessionId(null)}
+                    sessionId={leaderboardSessionId}
+                />
             )}
 
             <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

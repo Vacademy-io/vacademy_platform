@@ -125,7 +125,7 @@ export default function SessionStatusCard({
         ) {
           hasNavigated.current = true;
           const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-          window.location.href = joinLink;
+          window.open(joinLink, "_blank", "noopener,noreferrer");
         }
       };
 
@@ -230,7 +230,7 @@ export default function SessionStatusCard({
       });
     } else {
       const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-      window.location.href = joinLink;
+      window.open(joinLink, "_blank", "noopener,noreferrer");
     }
   };
 

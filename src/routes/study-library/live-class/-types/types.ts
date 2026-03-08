@@ -64,6 +64,7 @@ export interface SessionDetails {
   learner_button_config?: LearnerButtonConfig | null;
   default_class_link?: string | null;
   custom_meeting_link?: string | null;
+  provider_meeting_id?: string | null;
 }
 
 export interface DaySession {
@@ -108,4 +109,5 @@ export interface SessionDetailsResponse {
   scheduleLastEntryTime: string;
   customMeetingLink: string;
   customWaitingRoomMediaId: string | null;
+  providerMeetingId: string | null;
 }

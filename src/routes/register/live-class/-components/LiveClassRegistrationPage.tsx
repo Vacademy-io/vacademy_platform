@@ -265,7 +265,7 @@ export default function LiveClassRegistrationPage() {
         (streamingType === SessionStreamingServiceType.REDIRECT.toLowerCase() || !streamingType)
       ) {
         const joinLink = sessionDetailResponse.customMeetingLink || sessionDetailResponse.defaultMeetLink;
-        window.location.href = joinLink;
+        window.open(joinLink, "_blank", "noopener,noreferrer");
       }
     };
 

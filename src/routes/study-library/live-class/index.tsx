@@ -271,7 +271,7 @@ function RouteComponent() {
           });
         } else {
           const joinLink = (session as any).custom_meeting_link || (session as any).customMeetingLink || session.meeting_link;
-          window.location.href = joinLink;
+          window.open(joinLink, "_blank", "noopener,noreferrer");
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);
@@ -289,7 +289,7 @@ function RouteComponent() {
           });
         } else {
           const joinLink = (session as any).custom_meeting_link || (session as any).customMeetingLink || session.meeting_link;
-          window.location.href = joinLink;
+          window.open(joinLink, "_blank", "noopener,noreferrer");
         }
       }
     } else {

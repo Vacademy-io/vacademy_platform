@@ -1,48 +1,68 @@
+import React from "react";
+
 interface ZohoEmbedPlayerProps {
     meetingUrl: string;
+    /** The provider_meeting_id from the backend — used as the Zoho embed key */
+    providerMeetingId?: string | null;
 }
 
 const ZohoEmbedPlayer: React.FC<ZohoEmbedPlayerProps> = ({
     meetingUrl = "",
+    providerMeetingId,
 }) => {
-    const getEmbedUrl = (url: string) => {
-        if (!url) return "";
-
-        // If it's already an embed URL, leave it
-        if (url.includes("/meeting/embed/")) return url;
-
-        // Transform meet.zoho.xx or meeting.zoho.xx into public embed join format
-        const match = url.match(/(?:meet|meeting)\.zoho\.(in|com)\/([a-zA-Z0-9-]+)/);
-        if (match) {
-            const domain = match[1];
-            const id = match[2];
-            // Trying the public join path which is more permissive in some Zoho regions
-            return `https://meeting.zoho.${domain}/meeting/public/join?key=${id}&embed=true`;
+    const getEmbedUrl = () => {
+        // --- Primary: use providerMeetingId directly as the Zoho key ---
+        if (providerMeetingId) {
+            // Infer the Zoho regional domain from the meetingUrl if possible
+            const tldMatch = meetingUrl.match(/zoho\.(in|eu|com\.au|jp|com)/);
+            const tld = tldMatch ? tldMatch[1] : "com";
+            const embedUrl = `https://meeting.zoho.${tld}/embed?key=${providerMeetingId}`;
+            console.log("[ZohoEmbed] Using providerMeetingId:", providerMeetingId);
+            console.log("[ZohoEmbed] Embed URL:", embedUrl);
+            return embedUrl;
         }
 
-        // Fallback: Add embed=true
-        if (url.includes("zoho") && !url.includes("embed=true")) {
-            const separator = url.includes("?") ? "&" : "?";
-            return `${url}${separator}embed=true`;
+        // --- Fallback: parse the key from the meeting URL ---
+        console.log("[ZohoEmbed] providerMeetingId not available, parsing URL:", meetingUrl);
+        if (!meetingUrl) return "";
+
+        // Matches: meet.zoho.xx/KEY  or  meeting.zoho.xx/meeting/KEY
+        const urlMatch = meetingUrl.match(
+            /(?:meet|meeting)\.zoho\.(in|eu|com\.au|jp|com)\/(?:meeting\/)?([a-zA-Z0-9-]+)\/?(?:\?.*)?$/
+        );
+        if (urlMatch) {
+            const tld = urlMatch[1];
+            const key = urlMatch[2];
+            const embedUrl = `https://meeting.zoho.${tld}/embed?key=${key}`;
+            console.log("[ZohoEmbed] Parsed key from URL:", key, "→", embedUrl);
+            return embedUrl;
         }
 
-        return url;
+        console.warn("[ZohoEmbed] Could not determine embed URL, using meetingUrl as-is");
+        return meetingUrl;
     };
 
-    const embedUrl = getEmbedUrl(meetingUrl);
-    console.log("[ZohoEmbed] Original URL:", meetingUrl);
-    console.log("[ZohoEmbed] Trying Public Join URL:", embedUrl);
+    const embedUrl = getEmbedUrl();
+
+    if (!embedUrl) {
+        return (
+            <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
+                No meeting URL provided.
+            </div>
+        );
+    }
 
     return (
         <div className="relative w-full h-full flex-1 min-h-[400px] bg-black rounded-lg overflow-hidden">
-            {/* Zoho iframe */}
             <iframe
                 src={embedUrl}
                 className="absolute inset-0 w-full h-full"
-                allow="camera; microphone; display-capture; autoplay; fullscreen; clipboard-write"
-                allowFullScreen
+                width="100%"
+                height="100%"
                 frameBorder={0}
-                title="Zoho Session"
+                allow="camera; microphone; display-capture; fullscreen"
+                allowFullScreen
+                title="Zoho Meeting"
             />
         </div>
     );

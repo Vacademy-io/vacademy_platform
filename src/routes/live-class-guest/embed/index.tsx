@@ -107,16 +107,14 @@ function GuestEmbedComponent() {
       return <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />;
     }
 
-    // Check if embedding is enabled
+    // Check if embedding is enabled — if not, open the link in a new tab
     if (sessionDetails.sessionStreamingServiceType &&
       sessionDetails.sessionStreamingServiceType.toLowerCase() !== "embed") {
       const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-      // Immediate redirect if not embeddable
-      window.location.replace(joinLink);
+      window.open(joinLink, "_blank", "noopener,noreferrer");
       return (
         <div className="flex flex-col items-center justify-center p-12 h-screen bg-white">
-          <DashboardLoader />
-          <p className="mt-4 text-neutral-600 animate-pulse">Redirecting to live session...</p>
+          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
         </div>
       );
     }
@@ -127,7 +125,13 @@ function GuestEmbedComponent() {
       linkType === LinkType.ZOHO_MEETING ||
       linkType === LinkType.ZOHO_RECORDED
     ) {
-      return <ZohoEmbedPlayer meetingUrl={sessionDetails.defaultMeetLink} />;
+      const zohoUrl = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      return (
+        <ZohoEmbedPlayer
+          meetingUrl={zohoUrl}
+          providerMeetingId={(sessionDetails as any).providerMeetingId}
+        />
+      );
     }
 
     // TODO: handle Google Meet etc.

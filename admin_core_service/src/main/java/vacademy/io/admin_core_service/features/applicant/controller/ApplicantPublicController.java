@@ -57,7 +57,16 @@ public class ApplicantPublicController {
             @RequestBody PaymentInitiationRequestDTO requestDTO,
             @RequestAttribute(name = "user", required = false) CustomUserDetails userDetails) {
 
-        logger.info("Request to initiate payment. Applicant: {}, Option: {}", applicantId, paymentOptionId);
+        logger.info("Request to initiate payment. Applicant: {}, Option: {}, Vendor: {}", applicantId, paymentOptionId,
+                requestDTO.getVendor());
+
+        // MANUAL (offline/cash) payments are admin-only — reject unauthenticated
+        // callers
+        if ("MANUAL".equalsIgnoreCase(requestDTO.getVendor()) && userDetails == null) {
+            logger.warn("Rejected unauthenticated attempt to record manual payment for applicant: {}", applicantId);
+            return ResponseEntity.status(403).build();
+        }
+
         PaymentResponseDTO response = applicantService.preparePayment(applicantId, paymentOptionId,
                 requestDTO, userDetails);
         return ResponseEntity.ok(response);

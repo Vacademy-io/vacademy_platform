@@ -1,6 +1,7 @@
 package vacademy.io.community_service.feature.session.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -13,8 +14,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 @RestController
@@ -26,6 +27,10 @@ public class AdminSessionController {
 
     @Autowired
     LiveSessionPersistenceService persistenceService;
+
+    @Autowired
+    @Qualifier("sseHeartbeatScheduler")
+    private ScheduledExecutorService sseHeartbeatScheduler;
 
     @PostMapping("/create")
     public ResponseEntity<LiveSessionDto> createSession(@RequestBody CreateSessionDto createSessionDto) {
@@ -39,34 +44,20 @@ public class AdminSessionController {
 
         liveSessionService.setPresenterEmitter(sessionId, emitter, true); // Send initial state
 
-        final ScheduledExecutorService heartBeatExecutor = Executors.newSingleThreadScheduledExecutor();
         Runnable heartbeatTask = () -> {
             try {
                 emitter.send(
                         SseEmitter.event().name("presenter_heartbeat").id(UUID.randomUUID().toString()).data("ping"));
-            } catch (IOException e) {
-                if (!heartBeatExecutor.isShutdown()) {
-                    heartBeatExecutor.shutdown();
-                }
+            } catch (IOException | IllegalStateException ignored) {
+                // Emitter already closed; the future will be cancelled by the handlers below.
             }
         };
-        heartBeatExecutor.scheduleAtFixedRate(heartbeatTask, 0, 30, TimeUnit.SECONDS);
+        ScheduledFuture<?> heartbeatFuture =
+                sseHeartbeatScheduler.scheduleAtFixedRate(heartbeatTask, 0, 30, TimeUnit.SECONDS);
 
-        emitter.onCompletion(() -> {
-            if (!heartBeatExecutor.isShutdown())
-                heartBeatExecutor.shutdown();
-            // Service handles clearing the emitter from the session.
-        });
-        emitter.onTimeout(() -> {
-            if (!heartBeatExecutor.isShutdown())
-                heartBeatExecutor.shutdown();
-            // Service handles clearing the emitter from the session.
-        });
-        emitter.onError(e -> {
-            if (!heartBeatExecutor.isShutdown())
-                heartBeatExecutor.shutdown();
-            // Service handles clearing the emitter from the session.
-        });
+        emitter.onCompletion(() -> heartbeatFuture.cancel(false));
+        emitter.onTimeout(() -> heartbeatFuture.cancel(false));
+        emitter.onError(e -> heartbeatFuture.cancel(false));
 
         return emitter;
     }

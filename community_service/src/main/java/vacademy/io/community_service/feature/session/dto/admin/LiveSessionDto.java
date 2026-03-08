@@ -10,7 +10,6 @@ import vacademy.io.community_service.feature.presentation.dto.question.Presentat
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 @Data
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
@@ -35,10 +34,12 @@ public class LiveSessionDto {
     @JsonIgnore
     private CreateSessionDto createSessionDto;
     private Integer currentSlideIndex = 0;
+    // username → latest SseEmitter; ConcurrentHashMap ensures atomic replace on reconnect
+    // and eliminates stale emitter accumulation from CopyOnWriteArrayList.add() on reconnect.
     @JsonIgnore
-    private List<SseEmitter> studentEmitters = new CopyOnWriteArrayList<>();
+    private Map<String, SseEmitter> studentEmitters = new ConcurrentHashMap<>();
     @JsonIgnore
-    private List<ParticipantDto> participants = new CopyOnWriteArrayList<>();
+    private List<ParticipantDto> participants = new java.util.concurrent.CopyOnWriteArrayList<>();
     @JsonIgnore
     private SseEmitter teacherEmitter;
     @JsonIgnore

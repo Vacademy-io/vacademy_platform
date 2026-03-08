@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,7 +91,7 @@ export interface UnifiedReferralSettings {
     isDefault: boolean;
     requireReferrerActiveInBatch?: boolean;
     // Referee Settings - Simple one-time reward
-    refereeReward: {
+    refereeReward?: {
         type:
             | 'discount_percentage'
             | 'discount_fixed'
@@ -108,7 +109,7 @@ export interface UnifiedReferralSettings {
     };
 
     // Referrer Settings - Tiered rewards
-    referrerRewards: ReferrerTier[];
+    referrerRewards?: ReferrerTier[];
 
     // Program Settings
     allowCombineOffers: boolean;
@@ -166,46 +167,71 @@ export const UnifiedReferralSettings: React.FC<UnifiedReferralSettingsProps> = (
         },
         referrerRewards: [],
     });
-
+    const [errors, setErrors] = useState<{ label?: boolean; referrerRewards?: boolean }>({});
     const [editingTier, setEditingTier] = useState<ReferrerTier | null>(null);
     const [showTierCreator, setShowTierCreator] = useState(false);
 
     useEffect(() => {
-        if (editingSettings) {
-            setFormData(editingSettings);
-        } else if (isOpen) {
-            // Only reset form data when dialog opens for a new referral program
-            setFormData({
-                label: '',
-                isDefault: false,
-                allowCombineOffers: false,
-                payoutVestingDays: 7,
-                refereeReward: {
-                    type: 'discount_percentage',
-                    value: 10,
-                    currency: 'INR',
-                },
-                referrerRewards: [],
-            });
+        if (isOpen) {
+            if (editingSettings) {
+                setFormData(editingSettings);
+            } else {
+                setFormData({
+                    label: '',
+                    isDefault: false,
+                    allowCombineOffers: false,
+                    payoutVestingDays: 7,
+                    referrerRewards: [],
+                });
+            }
+        } else {
+            // Reset when closed so there's no flash of old data on next open
+            setTimeout(() => {
+                setFormData({
+                    label: '',
+                    isDefault: false,
+                    allowCombineOffers: false,
+                    payoutVestingDays: 7,
+                    referrerRewards: [],
+                });
+            }, 300); // 300ms matches Dialog out animation roughly
         }
     }, [editingSettings, isOpen]);
 
     const handleSave = () => {
-        if (!formData.label || !formData.refereeReward || !formData.referrerRewards) {
+        // 1. Validate Label
+        if (!formData.label || formData.label.trim() === '') {
+            setErrors({ label: true });
+            toast.error('Program Label is required');
             return;
         }
 
+        // 2. Evaluate presence of rewards
+        const hasRefereeReward = !!formData.refereeReward;
+        const hasReferrerRewards = formData.referrerRewards && formData.referrerRewards.length > 0;
+
+        // 3. Validate 'At Least One' Rule
+        if (!hasRefereeReward && !hasReferrerRewards) {
+            // Set error on the referrer tier section to visually indicate missing data
+            setErrors({ referrerRewards: true });
+            toast.error('You must configure either a Referee Benefit or at least one Referrer Reward tier');
+            return;
+        }
+
+        // 4. Clear all errors if validation passes
+        setErrors({});
+
+        // 5. Construct payload
         const settings: UnifiedReferralSettings = {
             id: editingSettings?.id || Date.now().toString(),
             label: formData.label,
             isDefault: formData.isDefault || false,
             requireReferrerActiveInBatch: formData.requireReferrerActiveInBatch || false,
             refereeReward: formData.refereeReward,
-            referrerRewards: formData.referrerRewards,
+            referrerRewards: formData.referrerRewards || [], // Provide fallback empty array if undefined
             allowCombineOffers: formData.allowCombineOffers || false,
             payoutVestingDays: formData.payoutVestingDays || 7,
         };
-
         onSave(settings);
     };
 
@@ -238,6 +264,10 @@ export const UnifiedReferralSettings: React.FC<UnifiedReferralSettingsProps> = (
                 ...prev,
                 referrerRewards: [...(prev.referrerRewards || []), tier],
             }));
+        }
+        // Clear the error state if they just added a tier
+        if (errors.referrerRewards) {
+            setErrors(prev => ({ ...prev, referrerRewards: false }));
         }
         setEditingTier(null);
         setShowTierCreator(false);
@@ -295,37 +325,86 @@ export const UnifiedReferralSettings: React.FC<UnifiedReferralSettingsProps> = (
                 <div className="space-y-6">
                     {/* Program Label */}
                     <div className="space-y-2">
-                        <Label>Program Label *</Label>
+                        <Label>
+                            Program Label <span className="text-red-500">*</span>
+                        </Label>
                         <Input
                             value={formData.label || ''}
-                            onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+                            onChange={(e) => {
+                                setFormData({ ...formData, label: e.target.value });
+                                // Clear the error as soon as the user starts typing
+                                if (errors.label) setErrors({ ...errors, label: false });
+                            }}
                             placeholder="Enter a name for your referral program"
+                            className={errors.label ? "border-red-500 focus-visible:ring-red-500" : ""}
                         />
                     </div>
-
                     {/* Referee Settings */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Gift className="size-5" />
-                                Referee Benefits (One-time Reward)
-                            </CardTitle>
-                            <p className="text-sm text-gray-600">
-                                What new users get when they use a referral code
-                            </p>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Gift className="size-5" />
+                                        Referee Benefits (One-time Reward)
+                                    </CardTitle>
+                                    <p className="text-sm text-gray-600">
+                                        What new users get when they use a referral code
+                                    </p>
+                                </div>
+                                {/* Only show Remove button if the reward exists */}
+                                {formData.refereeReward && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                        onClick={() =>
+                                            setFormData({ ...formData, refereeReward: undefined })
+                                        }
+                                    >
+                                        <Trash2 className="mr-2 size-4" />
+                                        Remove Benefit
+                                    </Button>
+                                )}
+                            </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <RefereeRewardEditor
-                                reward={formData.refereeReward}
-                                onChange={(reward) =>
-                                    setFormData({ ...formData, refereeReward: reward })
-                                }
-                            />
+                            {formData.refereeReward ? (
+                                <RefereeRewardEditor
+                                    reward={formData.refereeReward}
+                                    onChange={(reward) =>
+                                        setFormData({ ...formData, refereeReward: reward })
+                                    }
+                                />
+                            ) : (
+                                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-6 text-center">
+                                    <Gift className="mb-2 size-8 text-gray-300" />
+                                    <p className="mb-4 text-sm text-gray-500">
+                                        No referee benefits configured yet.
+                                    </p>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() =>
+                                            setFormData({
+                                                ...formData,
+                                                refereeReward: {
+                                                    type: 'discount_percentage',
+                                                    value: 10,
+                                                    currency: 'INR',
+                                                },
+                                            })
+                                        }
+                                    >
+                                        <Plus className="mr-2 size-4" />
+                                        Add Referee Benefit
+                                    </Button>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
                     {/* Referrer Tiered Rewards */}
-                    <Card>
+                    <Card className={errors.referrerRewards ? "border-red-500 shadow-sm shadow-red-100" : ""}>
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>
@@ -338,14 +417,6 @@ export const UnifiedReferralSettings: React.FC<UnifiedReferralSettingsProps> = (
                                         referrals
                                     </p>
                                 </div>
-                                <MyButton
-                                    buttonType="secondary"
-                                    onClick={handleAddTier}
-                                    className="flex items-center gap-2"
-                                >
-                                    <Plus className="size-4" />
-                                    Add Tier
-                                </MyButton>
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -393,8 +464,27 @@ export const UnifiedReferralSettings: React.FC<UnifiedReferralSettingsProps> = (
                                                     {getRewardIcon(tier.reward.type)}
                                                     <span className="text-sm font-medium">
                                                         {getRewardTypeLabel(tier.reward.type)}
+                                                        
+                                                        {/* Safely display the specific values based on the reward type */}
+                                                        <span className="ml-1 text-gray-500 font-normal">
+                                                            {tier.reward.type === 'discount_percentage' && tier.reward.value && (
+                                                                `(${tier.reward.value}%)`
+                                                            )}
+                                                            
+                                                            {tier.reward.type === 'discount_fixed' && tier.reward.value && (
+                                                                `(${tier.reward.currency === 'INR' ? '₹' : tier.reward.currency === 'USD' ? '$' : tier.reward.currency}${tier.reward.value})`
+                                                            )}
+                                                            
+                                                            {tier.reward.type === 'free_days' && tier.reward.value && (
+                                                                `(${tier.reward.value} Days)`
+                                                            )}
+                                                            
+                                                            {tier.reward.type === 'points_system' && tier.reward.pointsPerReferral && (
+                                                                `(${tier.reward.pointsPerReferral} pts/referral)`
+                                                            )}
+                                                        </span>
                                                     </span>
-                                                </div>
+                                                    </div>
                                             </div>
                                         ))}
                                 </div>
@@ -534,7 +624,7 @@ const RefereeRewardEditor: React.FC<RefereeRewardEditorProps> = ({ reward, onCha
                     onValueChange={(value) =>
                         onChange({
                             ...currentReward,
-                            type: value as UnifiedReferralSettings['refereeReward']['type'],
+                            type: value as NonNullable<UnifiedReferralSettings['refereeReward']>['type']
                         })
                     }
                 >
@@ -837,7 +927,7 @@ const ContentEditor: React.FC<ContentEditorProps> = ({ content, onChange }) => {
                                     scale="large"
                                     type="button"
                                 >
-                                    Upload Image
+                                    Upload File
                                 </MyButton>
                             </div>
                         )}
@@ -1108,6 +1198,7 @@ const ReferrerTierCreator: React.FC<ReferrerTierCreatorProps> = ({
             pointsRewardType: 'discount_fixed',
         },
     });
+    const [errors, setErrors] = useState<{ tierName?: boolean }>({});
 
     useEffect(() => {
         if (editingTier) {
@@ -1149,27 +1240,49 @@ const ReferrerTierCreator: React.FC<ReferrerTierCreatorProps> = ({
     ]);
 
     const handleSave = () => {
-        if (!formData.tierName || !formData.reward) {
+        let hasError = false;
+        const newErrors: { tierName?: boolean } = {};
+
+        // Validate Tier Name
+        if (!formData.tierName || formData.tierName.trim() === '') {
+            newErrors.tierName = true;
+            hasError = true;
+            toast.error('Tier Name is required');
+        }
+
+        // Validate Reward (Safety check, though UI usually prevents this from being null)
+        if (!formData.reward) {
+            hasError = true;
+            toast.error('Reward configuration is missing');
+        }
+
+        setErrors(newErrors);
+
+        if (hasError) {
             return;
         }
 
+        // Clear errors
+        setErrors({});
+
         const tier: ReferrerTier = {
             id: editingTier?.id || Date.now().toString(),
-            tierName: formData.tierName,
+            tierName: formData.tierName!, // Safe to use ! here because we validated it above
             referralCount: formData.referralCount || 1,
             reward: {
-                type: formData.reward.type as ReferrerTier['reward']['type'],
-                value: formData.reward.value,
-                currency: formData.reward.currency,
-                content: formData.reward.content,
-                courseId: formData.reward.courseId,
-                sessionId: formData.reward.sessionId,
-                levelId: formData.reward.levelId,
-                delivery: formData.reward.delivery,
-                pointsPerReferral: formData.reward.pointsPerReferral,
-                pointsToReward: formData.reward.pointsToReward,
-                pointsRewardType: formData.reward.pointsRewardType,
-                pointsRewardValue: formData.reward.pointsRewardValue,
+                // ... rest of the existing reward mapping ...
+                type: formData.reward!.type as ReferrerTier['reward']['type'],
+                value: formData.reward!.value,
+                currency: formData.reward!.currency,
+                content: formData.reward!.content,
+                courseId: formData.reward!.courseId,
+                sessionId: formData.reward!.sessionId,
+                levelId: formData.reward!.levelId,
+                delivery: formData.reward!.delivery,
+                pointsPerReferral: formData.reward!.pointsPerReferral,
+                pointsToReward: formData.reward!.pointsToReward,
+                pointsRewardType: formData.reward!.pointsRewardType,
+                pointsRewardValue: formData.reward!.pointsRewardValue,
             },
         };
 
@@ -1192,11 +1305,18 @@ const ReferrerTierCreator: React.FC<ReferrerTierCreatorProps> = ({
 
                 <div className="space-y-4">
                     <div className="space-y-2">
-                        <Label>Tier Name</Label>
+                        <Label className={errors.tierName ? "text-red-500" : ""}>
+                            Tier Name <span className="text-red-500">*</span>
+                        </Label>
                         <Input
                             value={formData.tierName || ''}
-                            onChange={(e) => setFormData({ ...formData, tierName: e.target.value })}
+                            onChange={(e) => {
+                                setFormData({ ...formData, tierName: e.target.value });
+                                // Clear the error when the user starts typing
+                                if (errors.tierName) setErrors({ ...errors, tierName: false });
+                            }}
                             placeholder="e.g., First Referral, 10 Referrals"
+                            className={errors.tierName ? "border-red-500 focus-visible:ring-red-500" : ""}
                         />
                     </div>
 

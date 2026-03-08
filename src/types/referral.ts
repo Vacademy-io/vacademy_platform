@@ -92,8 +92,8 @@ export interface UnifiedReferralSettings {
     label: string;
     isDefault: boolean;
     requireReferrerActiveInBatch?: boolean;
-    refereeReward: RefereeReward;
-    referrerRewards: ReferrerTier[];
+    refereeReward?: RefereeReward;
+    referrerRewards?: ReferrerTier[];
     allowCombineOffers: boolean;
     payoutVestingDays: number;
     description?: string;

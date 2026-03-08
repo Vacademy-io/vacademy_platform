@@ -22,13 +22,11 @@ const Switch = React.forwardRef<
             )}
         >
             {/* Conditionally render the Check icon based on the data-state */}
-            <SwitchPrimitives.Root data-state="checked">
-                {props.checked ? (
-                    <Check size={12} weight="thin" />
-                ) : (
-                    <X size={12} className="rounded-full bg-neutral-500 text-white" />
-                )}
-            </SwitchPrimitives.Root>
+            {props.checked ? (
+                <Check size={12} weight="thin" className="text-primary-500" />
+            ) : (
+                <X size={12} className="rounded-full bg-neutral-500 text-white" />
+            )}
         </SwitchPrimitives.Thumb>
     </SwitchPrimitives.Root>
 ));

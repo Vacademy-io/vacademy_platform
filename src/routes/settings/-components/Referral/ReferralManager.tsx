@@ -141,39 +141,45 @@ export const ReferralManager: React.FC<ReferralManagerProps> = ({
                                             Referee Benefit
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-lg">
-                                            {getRewardTypeIcon(program.refereeReward.type)}
-                                        </span>
-                                        <div className="text-sm">
-                                            {program.refereeReward.type === 'discount_percentage' &&
-                                                `${program.refereeReward.value}% off`}
-                                            {program.refereeReward.type === 'discount_fixed' &&
-                                                `₹${program.refereeReward.value} off`}
-                                            {program.refereeReward.type === 'free_days' &&
-                                                `${program.refereeReward.value} free days`}
-                                            {program.refereeReward.type === 'points_system' &&
-                                                `${program.refereeReward.value} points`}
-                                            {program.refereeReward.type === 'bonus_content' && (
-                                                <div className="flex flex-col gap-1">
-                                                    <span>
-                                                        {program.refereeReward.content?.content
-                                                            ?.title || 'Bonus content'}
-                                                    </span>
-                                                    {program.refereeReward.content?.content
-                                                        ?.template && (
-                                                        <span className="text-xs text-gray-500">
-                                                            Template:{' '}
-                                                            {program.refereeReward.content.content.template.replace(
-                                                                'template_',
-                                                                'Template '
-                                                            )}
+                                    {program.refereeReward ? (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-lg">
+                                                {getRewardTypeIcon(program.refereeReward.type)}
+                                            </span>
+                                            <div className="text-sm">
+                                                {program.refereeReward.type === 'discount_percentage' &&
+                                                    `${program.refereeReward.value}% off`}
+                                                {program.refereeReward.type === 'discount_fixed' &&
+                                                    `₹${program.refereeReward.value} off`}
+                                                {program.refereeReward.type === 'free_days' &&
+                                                    `${program.refereeReward.value} free days`}
+                                                {program.refereeReward.type === 'points_system' &&
+                                                    `${program.refereeReward.value} points`}
+                                                {program.refereeReward.type === 'bonus_content' && (
+                                                    <div className="flex flex-col gap-1">
+                                                        <span>
+                                                            {program.refereeReward.content?.content
+                                                                ?.title || 'Bonus content'}
                                                         </span>
-                                                    )}
-                                                </div>
-                                            )}
+                                                        {program.refereeReward.content?.content
+                                                            ?.template && (
+                                                            <span className="text-xs text-gray-500">
+                                                                Template:{' '}
+                                                                {program.refereeReward.content.content.template.replace(
+                                                                    'template_',
+                                                                    'Template '
+                                                                )}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <div className="text-sm italic text-gray-500">
+                                            No referee benefit configured
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Referrer Tiers Summary */}
@@ -186,56 +192,62 @@ export const ReferralManager: React.FC<ReferralManagerProps> = ({
                                             Referrer Tiers
                                         </span>
                                     </div>
-                                    <div className="space-y-1">
-                                        {program.referrerRewards.slice(0, 2).map((tier) => (
-                                            <div
-                                                key={tier.id}
-                                                className="flex items-center justify-between text-xs"
-                                            >
-                                                <span>
-                                                    {tier.referralCount} referral
-                                                    {tier.referralCount !== 1 ? 's' : ''}
-                                                </span>
-                                                <div className="flex items-center gap-1">
+                                    {program.referrerRewards && program.referrerRewards.length > 0 ? (
+                                        <div className="space-y-1">
+                                            {program.referrerRewards.slice(0, 2).map((tier) => (
+                                                <div
+                                                    key={tier.id}
+                                                    className="flex items-center justify-between text-xs"
+                                                >
                                                     <span>
-                                                        {getRewardTypeIcon(tier.reward.type)}
+                                                        {tier.referralCount} referral
+                                                        {tier.referralCount !== 1 ? 's' : ''}
                                                     </span>
-                                                    {tier.reward.type === 'points_system' &&
-                                                        tier.reward.pointsPerReferral && (
-                                                            <span className="text-xs font-medium text-blue-600">
-                                                                +{tier.reward.pointsPerReferral}pts
-                                                            </span>
-                                                        )}
-                                                    {tier.reward.type === 'bonus_content' &&
-                                                        tier.reward.content?.content?.title && (
-                                                            <span className="text-xs font-medium text-purple-600">
-                                                                {tier.reward.content.content.title}
-                                                            </span>
-                                                        )}
-                                                    {(tier.reward.type === 'discount_percentage' ||
-                                                        tier.reward.type === 'discount_fixed' ||
-                                                        tier.reward.type === 'free_days') &&
-                                                        tier.reward.value && (
-                                                            <span className="text-xs font-medium">
-                                                                {tier.reward.value}
-                                                                {tier.reward.type ===
-                                                                'discount_percentage'
-                                                                    ? '%'
-                                                                    : tier.reward.type ===
-                                                                        'free_days'
-                                                                      ? 'd'
-                                                                      : '₹'}
-                                                            </span>
-                                                        )}
+                                                    <div className="flex items-center gap-1">
+                                                        <span>
+                                                            {getRewardTypeIcon(tier.reward.type)}
+                                                        </span>
+                                                        {tier.reward.type === 'points_system' &&
+                                                            tier.reward.pointsPerReferral && (
+                                                                <span className="font-medium text-blue-600 text-xs">
+                                                                    +{tier.reward.pointsPerReferral}pts
+                                                                </span>
+                                                            )}
+                                                        {tier.reward.type === 'bonus_content' &&
+                                                            tier.reward.content?.content?.title && (
+                                                                <span className="font-medium text-purple-600 text-xs">
+                                                                    {tier.reward.content.content.title}
+                                                                </span>
+                                                            )}
+                                                        {(tier.reward.type === 'discount_percentage' ||
+                                                            tier.reward.type === 'discount_fixed' ||
+                                                            tier.reward.type === 'free_days') &&
+                                                            tier.reward.value && (
+                                                                <span className="font-medium text-xs">
+                                                                    {tier.reward.value}
+                                                                    {tier.reward.type ===
+                                                                    'discount_percentage'
+                                                                        ? '%'
+                                                                        : tier.reward.type ===
+                                                                          'free_days'
+                                                                          ? 'd'
+                                                                          : '₹'}
+                                                                </span>
+                                                            )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                        {program.referrerRewards.length > 2 && (
-                                            <div className="text-xs text-gray-500">
-                                                +{program.referrerRewards.length - 2} more tiers
-                                            </div>
-                                        )}
-                                    </div>
+                                            ))}
+                                            {program.referrerRewards.length > 2 && (
+                                                <div className="text-xs text-gray-500">
+                                                    +{program.referrerRewards.length - 2} more tiers
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm italic text-gray-500">
+                                            No referrer tiers configured
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Program Settings Summary */}
@@ -262,7 +274,7 @@ export const ReferralManager: React.FC<ReferralManagerProps> = ({
                                                 Combine Offers
                                             </span>
                                             <div className="font-medium text-gray-800">
-                                                {program.allowCombineOffers ? 'Yes' : 'No'}
+                                                {program.allowCombineOffers === true ? 'Yes' : 'No'}
                                             </div>
                                         </div>
                                     </div>
@@ -393,6 +405,7 @@ const ProgramDetailsModal: React.FC<ProgramDetailsModalProps> = ({
 
                 <div className="space-y-6 p-6">
                     {/* Referee Benefits */}
+                    {/* Referee Benefits */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
@@ -401,98 +414,106 @@ const ProgramDetailsModal: React.FC<ProgramDetailsModalProps> = ({
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="rounded-lg bg-green-50 p-4">
-                                <div className="mb-2 flex items-center justify-between">
-                                    <span className="font-medium">
-                                        {getRewardTypeLabel(program.refereeReward.type)}
-                                    </span>
-                                    {program.refereeReward.value && (
-                                        <Badge variant="secondary">
-                                            {program.refereeReward.value}
-                                            {program.refereeReward.type === 'discount_percentage'
-                                                ? '%'
-                                                : program.refereeReward.type === 'free_days'
-                                                  ? ' days'
-                                                  : program.refereeReward.type === 'points_system'
-                                                    ? ' points'
-                                                    : ''}
-                                        </Badge>
-                                    )}
-                                </div>
-                                <p className="text-sm text-gray-700">
-                                    {program.refereeReward.description}
-                                </p>
-                                {program.refereeReward.delivery && (
-                                    <div className="mt-2 flex items-center gap-2">
-                                        <span className="text-xs text-gray-500">Delivery:</span>
-                                        {program.refereeReward.delivery.email && (
-                                            <Badge variant="outline" className="text-xs">
-                                                📧 Email
-                                            </Badge>
-                                        )}
-                                        {program.refereeReward.delivery.whatsapp && (
-                                            <Badge variant="outline" className="text-xs">
-                                                💬 WhatsApp
+                            {/* Conditional Wrapper Starts Here */}
+                            {program.refereeReward ? (
+                                <div className="rounded-lg bg-green-50 p-4">
+                                    <div className="mb-2 flex items-center justify-between">
+                                        <span className="font-medium">
+                                            {getRewardTypeLabel(program.refereeReward.type)}
+                                        </span>
+                                        {program.refereeReward.value && (
+                                            <Badge variant="secondary">
+                                                {program.refereeReward.value}
+                                                {program.refereeReward.type === 'discount_percentage'
+                                                    ? '%'
+                                                    : program.refereeReward.type === 'free_days'
+                                                      ? ' days'
+                                                      : program.refereeReward.type === 'points_system'
+                                                        ? ' points'
+                                                        : ''}
                                             </Badge>
                                         )}
                                     </div>
-                                )}
-
-                                {/* Bonus Content Details */}
-                                {program.refereeReward.type === 'bonus_content' &&
-                                    program.refereeReward.content && (
-                                        <div className="mt-3 rounded border bg-white p-3">
-                                            <h6 className="mb-2 text-xs font-medium text-gray-700">
-                                                Content Details
-                                            </h6>
-                                            <div className="space-y-1 text-xs">
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-500">
-                                                        Content Type:
-                                                    </span>
-                                                    <span className="font-medium capitalize">
-                                                        {program.refereeReward.content.contentType}
-                                                    </span>
-                                                </div>
-                                                {program.refereeReward.content.content?.title && (
-                                                    <div className="flex justify-between">
-                                                        <span className="text-gray-500">
-                                                            Title:
-                                                        </span>
-                                                        <span className="font-medium">
-                                                            {
-                                                                program.refereeReward.content
-                                                                    .content.title
-                                                            }
-                                                        </span>
-                                                    </div>
-                                                )}
-                                                {program.refereeReward.content.content
-                                                    ?.template && (
-                                                    <div className="flex justify-between">
-                                                        <span className="text-gray-500">
-                                                            Template:
-                                                        </span>
-                                                        <span className="font-medium">
-                                                            {program.refereeReward.content.content.template.replace(
-                                                                'template_',
-                                                                'Template '
-                                                            )}
-                                                        </span>
-                                                    </div>
-                                                )}
-                                                {program.refereeReward.content.content?.fileId && (
-                                                    <div className="flex justify-between">
-                                                        <span className="text-gray-500">File:</span>
-                                                        <span className="font-medium text-green-600">
-                                                            ✓ Uploaded
-                                                        </span>
-                                                    </div>
-                                                )}
-                                            </div>
+                                    <p className="text-sm text-gray-700">
+                                        {program.refereeReward.description}
+                                    </p>
+                                    {program.refereeReward.delivery && (
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <span className="text-xs text-gray-500">Delivery:</span>
+                                            {program.refereeReward.delivery.email && (
+                                                <Badge variant="outline" className="text-xs">
+                                                    📧 Email
+                                                </Badge>
+                                            )}
+                                            {program.refereeReward.delivery.whatsapp && (
+                                                <Badge variant="outline" className="text-xs">
+                                                    💬 WhatsApp
+                                                </Badge>
+                                            )}
                                         </div>
                                     )}
-                            </div>
+
+                                    {/* Bonus Content Details */}
+                                    {program.refereeReward.type === 'bonus_content' &&
+                                        program.refereeReward.content && (
+                                            <div className="mt-3 rounded border bg-white p-3">
+                                                <h6 className="mb-2 text-xs font-medium text-gray-700">
+                                                    Content Details
+                                                </h6>
+                                                <div className="space-y-1 text-xs">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-500">
+                                                            Content Type:
+                                                        </span>
+                                                        <span className="font-medium capitalize">
+                                                            {program.refereeReward.content.contentType}
+                                                        </span>
+                                                    </div>
+                                                    {program.refereeReward.content.content?.title && (
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-500">
+                                                                Title:
+                                                            </span>
+                                                            <span className="font-medium">
+                                                                {
+                                                                    program.refereeReward.content
+                                                                        .content.title
+                                                                }
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {program.refereeReward.content.content
+                                                        ?.template && (
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-500">
+                                                                Template:
+                                                            </span>
+                                                            <span className="font-medium">
+                                                                {program.refereeReward.content.content.template.replace(
+                                                                    'template_',
+                                                                    'Template '
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {program.refereeReward.content.content?.fileId && (
+                                                        <div className="flex justify-between">
+                                                            <span className="text-gray-500">File:</span>
+                                                            <span className="font-medium text-green-600">
+                                                                ✓ Uploaded
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                </div>
+                            ) : (
+                                /* Fallback if no Referee Benefit exists */
+                                <div className="text-sm italic text-gray-500">
+                                    No referee benefit configured for this program.
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 
@@ -506,7 +527,7 @@ const ProgramDetailsModal: React.FC<ProgramDetailsModalProps> = ({
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-3">
-                                {program.referrerRewards
+                                {[...(program.referrerRewards || [])]
                                     .sort((a, b) => a.referralCount - b.referralCount)
                                     .map((tier) => (
                                         <div key={tier.id} className="rounded-lg bg-blue-50 p-4">
@@ -698,7 +719,7 @@ const ProgramDetailsModal: React.FC<ProgramDetailsModalProps> = ({
                                         Combine with Other Offers
                                     </span>
                                     <div className="font-medium">
-                                        {program.allowCombineOffers ? 'Yes' : 'No'}
+                                        {program.allowCombineOffers===true ? 'Yes' : 'No'}
                                     </div>
                                 </div>
                                 <div className="rounded bg-gray-50 p-3">

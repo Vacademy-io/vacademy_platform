@@ -2398,6 +2398,7 @@ const SlidesEditorComponent = ({
                         setFinishedSessionId(null);
                     }}
                     sessionId={finishedSessionId}
+                    slides={slides}
                 />
             )}
 

@@ -38,6 +38,7 @@ import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -134,6 +135,10 @@ public class SchoolFeeReceiptService {
                 log.warn("No fee payments found for userPlanId: {}", userPlanId);
                 return;
             }
+
+            // Sort fees chronologically (earliest due date first) to match FIFO allocation order
+            feePayments.sort(Comparator.comparing(StudentFeePayment::getDueDate, 
+                    Comparator.nullsLast(Comparator.naturalOrder())));
 
             // 4. Build receipt data
             BigDecimal totalExpected = BigDecimal.ZERO;

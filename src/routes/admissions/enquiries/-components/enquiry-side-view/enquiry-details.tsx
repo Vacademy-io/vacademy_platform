@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { handleFetchEnquiryDetails } from '../../-services/get-enquiry-details';
-import { useEnquirySidebar } from '../../-context/selected-enquiry-sidebar-context';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { format } from 'date-fns';
+import { TimelinePanel } from './timeline-panel';
+import { toast } from 'sonner';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 const InfoRow = ({ label, value }: { label: string; value: string | null | undefined }) => (
     <div className="flex flex-col gap-0.5 border-b border-neutral-100 py-2 last:border-0">
@@ -49,11 +51,10 @@ const formatDate = (dateStr: string | null | undefined) => {
     }
 };
 
-export const EnquiryDetails = () => {
-    const { selectedEnquiryId } = useEnquirySidebar();
-
+export const EnquiryDetails = ({ enquiryId }: { enquiryId: string | null }) => {
+    const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
     const { data, isLoading, error } = useQuery({
-        ...handleFetchEnquiryDetails(selectedEnquiryId),
+        ...handleFetchEnquiryDetails(enquiryId),
     });
 
     if (isLoading) {
@@ -77,6 +78,20 @@ export const EnquiryDetails = () => {
         ([, v]) => v !== null && v !== undefined && v !== ''
     );
 
+    const packageDetails = data.campaign?.destination_package_session_id
+        ? getDetailsFromPackageSessionId({
+              packageSessionId: data.campaign.destination_package_session_id,
+          })
+        : null;
+
+    const applyingForClass = packageDetails
+        ? `${packageDetails.package_dto.package_name} - ${packageDetails.level.level_name}`
+        : data.child?.applying_for_class ?? null;
+
+    const academicYear = packageDetails
+        ? packageDetails.session.session_name
+        : data.child?.academic_year ?? null;
+
     return (
         <div className="flex flex-col gap-4">
             {/* Header Card */}
@@ -93,7 +108,10 @@ export const EnquiryDetails = () => {
                             </p>
                         </div>
                         <button
-                            onClick={() => navigator.clipboard.writeText(data.tracking_id!)}
+                            onClick={() => {
+                                navigator.clipboard.writeText(data.tracking_id!);
+                                toast.success('Tracking ID copied!');
+                            }}
                             className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-500 shadow-sm transition hover:border-primary-300 hover:text-primary-600"
                         >
                             <svg
@@ -130,6 +148,16 @@ export const EnquiryDetails = () => {
                 </div>
             </div>
 
+            {/* Child Info */}
+            <SectionCard title="Student / Child">
+                <InfoRow label="Name" value={data.child?.name} />
+                <InfoRow label="Date of Birth" value={formatDate(data.child?.dob)} />
+                <InfoRow label="Gender" value={data.child?.gender} />
+                <InfoRow label="Applying For Class" value={applyingForClass} />
+                <InfoRow label="Academic Year" value={academicYear} />
+                <InfoRow label="Previous School" value={data.child?.previous_school_name} />
+            </SectionCard>
+
             {/* Parent / Guardian Info */}
             <SectionCard title="Parent / Guardian">
                 <InfoRow label="Name" value={data.parent?.name} />
@@ -138,16 +166,6 @@ export const EnquiryDetails = () => {
                 <InfoRow label="Address" value={data.parent?.address_line} />
                 <InfoRow label="City" value={data.parent?.city} />
                 <InfoRow label="Pin Code" value={data.parent?.pin_code} />
-            </SectionCard>
-
-            {/* Child Info */}
-            <SectionCard title="Student / Child">
-                <InfoRow label="Name" value={data.child?.name} />
-                <InfoRow label="Date of Birth" value={formatDate(data.child?.dob)} />
-                <InfoRow label="Gender" value={data.child?.gender} />
-                <InfoRow label="Applying For Class" value={data.child?.applying_for_class} />
-                <InfoRow label="Academic Year" value={data.child?.academic_year} />
-                <InfoRow label="Previous School" value={data.child?.previous_school_name} />
             </SectionCard>
 
             {/* Enquiry Metadata */}
@@ -172,6 +190,9 @@ export const EnquiryDetails = () => {
                     <InfoRow label="Session" value={data.campaign.package_session_name} />
                 </SectionCard>
             )}
+
+            {/* Activity & Notes Timeline */}
+            {data.enquiry_id && <TimelinePanel entityType="ENQUIRY" entityId={data.enquiry_id} />}
 
             {/* Application Status */}
             <SectionCard title="Application Status">

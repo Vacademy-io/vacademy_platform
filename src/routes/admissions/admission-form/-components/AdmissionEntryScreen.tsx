@@ -29,7 +29,7 @@ const MOCK_ENQUIRY_DATA: StudentSearchResult[] = [
         source: 'Website',
         dob: '2015-05-12',
         address: '123 Main St, New Delhi',
-        gender: 'Boy',
+        gender: 'MALE',
         email: 'ramesh.sharma@example.com'
     },
     {
@@ -41,7 +41,7 @@ const MOCK_ENQUIRY_DATA: StudentSearchResult[] = [
         source: 'Walk-in',
         dob: '2017-08-22',
         address: '456 Park Avenue, Mumbai',
-        gender: 'Girl',
+        gender: 'FEMALE',
         email: 'suresh.p@example.com'
     }
 ];
@@ -56,7 +56,7 @@ const MOCK_APPLICATION_DATA: StudentSearchResult[] = [
         status: 'Approved',
         dob: '2012-02-15',
         address: '789 Lake View, Bangalore',
-        gender: 'Boy',
+        gender: 'MALE',
         email: 'vikram.singh@example.com'
     },
     {
@@ -68,7 +68,7 @@ const MOCK_APPLICATION_DATA: StudentSearchResult[] = [
         status: 'Pending Review',
         dob: '2019-11-05',
         address: '321 Hill Road, Pune',
-        gender: 'Girl',
+        gender: 'FEMALE',
         email: 'rahul.g@example.com'
     }
 ];
@@ -109,7 +109,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
         <div className="flex h-full flex-col p-6 animate-in fade-in duration-300">
             {/* Header Section */}
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
-                <h1 className="text-2xl font-bold text-gray-800">Default Admission Form</h1>
+                <h1 className="text-2xl font-bold text-gray-800">Admission Form</h1>
                 <button
                     onClick={() => onStartAdmission(null)}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors shadow-sm"
@@ -117,7 +117,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
                     </svg>
-                    Admission Form
+                    New Admission
                 </button>
             </div>
 
@@ -240,7 +240,7 @@ export default function AdmissionEntryScreen({ onStartAdmission }: Props) {
                                                     onClick={() => onStartAdmission(result)}
                                                     className="inline-flex items-center justify-center px-3 py-1.5 border border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white rounded text-xs font-medium transition-colors"
                                                 >
-                                                    {fromSource === 'From Enquiry' ? 'Create Admission' : 'Start Admission'}
+                                                    {fromSource === 'From Enquiry' ? 'Start Admission' : 'Start Admission'}
                                                 </button>
                                             </td>
                                         </tr>

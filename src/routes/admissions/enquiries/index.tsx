@@ -21,10 +21,9 @@ import { FilterChips } from '@/components/design-system/chips';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
+import { toast } from 'sonner';
 import { CreateEnquiryDialog } from './-components/create-enquiry-dialog/CreateEnquiryDialog';
-import { SelectedEnquirySidebarProvider } from './-context/selected-enquiry-sidebar-context';
-import { EnquirySidebar } from './-components/enquiry-side-view/enquiry-sidebar';
-
+import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 export const Route = createFileRoute('/admissions/enquiries/')({
     component: RouteComponent,
 });
@@ -44,6 +43,10 @@ const ENQUIRY_STATUSES = [
     { id: 'CONTACTED', label: 'Contacted' },
     { id: 'NOT_ELIGIBLE', label: 'Not Eligible' },
     { id: 'QUALIFIED', label: 'Qualified' },
+    { id: 'FOLLOW_UP', label: 'Follow up' },
+    { id: 'CLOSED', label: 'Closed' },
+    { id: 'CONVERTED', label: 'Converted' },
+    { id: 'ADMITTED', label: 'Admitted' },
 ];
 
 const SOURCE_TYPES = [
@@ -112,6 +115,7 @@ function EnquiryPage() {
     >([]);
     const [searchInput, setSearchInput] = useState('');
     const [searchFilter, setSearchFilter] = useState('');
+    const { setNavHeading } = useNavHeadingStore();
 
     // Fetch all enquiries (campaigns)
     const { data: enquiriesData, refetch: refetchEnquiries } = useSuspenseQuery(
@@ -122,7 +126,11 @@ function EnquiryPage() {
         })
     );
 
-    const enquiries = enquiriesData?.content || [];
+    const enquiries = useMemo(() => enquiriesData?.content || [], [enquiriesData?.content]);
+
+    useEffect(() => {
+        setNavHeading('Enquiries');
+    }, [setNavHeading]);
 
     // Auto-select first enquiry by default
     useEffect(() => {
@@ -138,9 +146,15 @@ function EnquiryPage() {
             instituteDetails?.learner_portal_base_url,
             true
         );
-        navigator.clipboard.writeText(shareableLink).catch((error) => {
-            console.error('Unable to copy enquiry link', error);
-        });
+        navigator.clipboard
+            .writeText(shareableLink)
+            .then(() => {
+                toast.success('Enquiry link copied to clipboard!');
+            })
+            .catch((error) => {
+                console.error('Unable to copy enquiry link', error);
+                toast.error('Failed to copy link');
+            });
     };
 
     const handleCreateSuccess = () => {
@@ -198,7 +212,7 @@ function EnquiryPage() {
         <div className="space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Enquiries</h1>
+                <h1 className="text-2xl font-bold">Enquiries</h1>
                 <div className="flex items-center gap-4">
                     <Select value={selectedEnquiryId} onValueChange={setSelectedEnquiryId}>
                         <SelectTrigger className="w-[280px]">
@@ -218,15 +232,19 @@ function EnquiryPage() {
                         onClick={() => setIsCreateDialogOpen(true)}
                         className="h-8"
                     >
-                        <Plus className="mr-1 h-4 w-4" />
-                        Create Enquiry
+                        <Plus className="mr-1 size-4" />
+                        New Enquiry Form
                     </MyButton>
                     <MyButton
                         buttonType="secondary"
                         scale="small"
                         onClick={handleCopy}
                         className="h-8"
+                        title="Copy enquiry link to clipboard"
+                        aria-label="Copy enquiry link to clipboard"
                     >
+                        {' '}
+                        Copy Form Link
                         <Copy />
                     </MyButton>
                 </div>
@@ -291,7 +309,7 @@ function EnquiryPage() {
                 {/* Package Session Filter */}
                 {packageSessionOptions.length > 0 && (
                     <FilterChips
-                        label="Package Session"
+                        label="Class"
                         filterList={packageSessionOptions}
                         selectedFilters={packageSessionFilters}
                         handleSelect={(option) => {
@@ -314,7 +332,7 @@ function EnquiryPage() {
                 <div className="ml-auto flex items-center gap-2">
                     <Input
                         type="text"
-                        placeholder="Search..."
+                        placeholder="Search by name or mobile..."
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -378,11 +396,8 @@ function EnquiryPage() {
 
 function RouteComponent() {
     return (
-        <SelectedEnquirySidebarProvider>
-            <LayoutContainer>
-                <EnquiryPage />
-                <EnquirySidebar />
-            </LayoutContainer>
-        </SelectedEnquirySidebarProvider>
+        <LayoutContainer>
+            <EnquiryPage />
+        </LayoutContainer>
     );
 }

@@ -6,7 +6,11 @@ import Step4AddressDetails from './steps/Step4AddressDetails';
 import Step5AFeeAssignment from './steps/Step5AFeeAssignment';
 import Step6Finish from './steps/Step6Finish';
 import AdmissionEntryScreen, { StudentSearchResult } from './AdmissionEntryScreen';
-import { Button } from '@/components/ui/button'; // Assuming button exists, if not I will use simple html buttons or flowbite
+import { Button } from '@/components/ui/button';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { BASE_URL } from '@/constants/urls';
+import { toast } from 'sonner';
 
 export interface AdmissionFormData {
     // Step 1
@@ -76,7 +80,7 @@ export interface AdmissionFormData {
 
 const STEPS = [
     { id: 1, title: 'Student Details' },
-    { id: 2, title: 'Previous School & Other Details' },
+    { id: 2, title: 'Previous School & Personal Details' },
     { id: 3, title: 'Student Parent Details' },
     { id: 4, title: 'Address Details' },
     { id: 5, title: 'Fee Assignment' },
@@ -87,6 +91,8 @@ export default function AdmissionFormWizard() {
     const [wizardStarted, setWizardStarted] = useState(false);
     const [currentStep, setCurrentStep] = useState(1);
     const [admissionId, setAdmissionId] = useState('');
+    const { instituteDetails } = useInstituteDetailsStore();
+    const instituteId = instituteDetails?.id || '';
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [formData, setFormData] = useState<AdmissionFormData>({
@@ -139,14 +145,23 @@ export default function AdmissionFormWizard() {
 
     const handleStartAdmission = (data: Partial<StudentSearchResult> | null) => {
         if (data) {
+            // Normalize gender from display value to API value
+            const normalizeGender = (g?: string) => {
+                if (!g) return '';
+                const lower = g.toLowerCase();
+                if (lower === 'boy' || lower === 'male') return 'MALE';
+                if (lower === 'girl' || lower === 'female') return 'FEMALE';
+                return 'OTHER';
+            };
+
             setFormData(prev => ({
                 ...prev,
                 studentFirstName: data.studentName || '',
-                gender: data.gender || '',
+                gender: normalizeGender(data.gender),
                 studentClass: data.classVal || '',
                 dateOfBirth: data.dob || '',
                 residentialPhone: data.mobile || '',
-                fatherName: data.parentName || '', // assuming father for now
+                fatherName: data.parentName || '',
                 fatherMobile: data.mobile || '',
                 fatherEmail: data.email || '',
                 currentAddress: data.address || ''
@@ -156,17 +171,22 @@ export default function AdmissionFormWizard() {
     };
 
     const handleSubmitAdmission = async () => {
+        if (!instituteId) {
+            toast.error('Institute details not available. Please try again.');
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             const payload = {
-                institute_id: "4983ac8a-4527-496d-89f0-79c6bc25f753",
+                institute_id: instituteId,
                 source: "INSTITUTE",
-                source_id: "4983ac8a-4527-496d-89f0-79c6bc25f753",
-                first_name: formData.studentFirstName || "Default",
+                source_id: instituteId,
+                first_name: formData.studentFirstName || "",
                 last_name: formData.studentLastName || "",
-                gender: formData.gender ? formData.gender.toUpperCase() : "MALE",
-                date_of_birth: formData.dateOfBirth || "2000-01-01",
-                class_applying_for: formData.studentClass || "Class 1",
+                gender: formData.gender || "",
+                date_of_birth: formData.dateOfBirth || "",
+                class_applying_for: formData.studentClass || "",
                 admission_type: formData.admissionType || "NEW",
                 father_name: formData.fatherName || "",
                 father_mobile: formData.fatherMobile || "",
@@ -176,30 +196,26 @@ export default function AdmissionFormWizard() {
                 mother_email: formData.motherEmail || "",
                 current_address: formData.currentAddress || "",
                 current_locality: formData.currentLocality || "",
-                current_pin_code: "110001",
-                blood_group: formData.bloodGroup || "B+",
-                nationality: formData.nationality || "Indian"
+                current_pin_code: formData.permanentLocality || "",
+                blood_group: formData.bloodGroup || "",
+                nationality: formData.nationality || ""
             };
 
-            const response = await fetch('https://backend-stage.vacademy.io/admin-core-service/v1/admission/submit', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
+            const response = await authenticatedAxiosInstance.post(
+                `${BASE_URL}/admin-core-service/v1/admission/submit`,
+                payload
+            );
 
-            if (response.ok) {
-                alert(`Admission Form Submitted Successfully! Admission ID: ${admissionId}`);
-                // Simple reset back to entry screen upon success
+            if (response.status === 200 || response.status === 201) {
+                toast.success(`Admission Form Submitted Successfully! Admission ID: ${admissionId}`);
                 setWizardStarted(false);
                 setCurrentStep(1);
             } else {
-                alert('Failed to submit admission form. Please try again.');
+                toast.error('Failed to submit admission form. Please try again.');
             }
         } catch (error) {
             console.error('Error submitting form:', error);
-            alert('An error occurred. Please check your network and try again.');
+            toast.error('An error occurred. Please check your network and try again.');
         } finally {
             setIsSubmitting(false);
         }
@@ -277,7 +293,7 @@ export default function AdmissionFormWizard() {
                         onClick={nextStep}
                         className="px-6 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
                     >
-                        Save & Next
+                        Next
                     </button>
                 ) : (
                     <button

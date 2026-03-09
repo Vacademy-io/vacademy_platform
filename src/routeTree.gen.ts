@@ -37,7 +37,6 @@ import { Route as DashboardIndexRouteImport } from "./routes/dashboard/index"
 import { Route as CommunityIndexRouteImport } from "./routes/community/index"
 import { Route as ChallengeAnalyticsIndexRouteImport } from "./routes/challenge-analytics/index"
 import { Route as AuthTransferIndexRouteImport } from "./routes/auth-transfer/index"
-import { Route as AiVideoStudioIndexRouteImport } from "./routes/ai-video-studio/index"
 import { Route as AiCenterIndexRouteImport } from "./routes/ai-center/index"
 import { Route as AdmissionsIndexRouteImport } from "./routes/admissions/index"
 import { Route as AdminPackageManagementIndexRouteImport } from "./routes/admin-package-management/index"
@@ -342,13 +341,6 @@ const AuthTransferIndexRoute = AuthTransferIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/auth-transfer/index.lazy").then((d) => d.Route),
-)
-const AiVideoStudioIndexRoute = AiVideoStudioIndexRouteImport.update({
-  id: "/ai-video-studio/",
-  path: "/ai-video-studio/",
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() =>
-  import("./routes/ai-video-studio/index.lazy").then((d) => d.Route),
 )
 const AiCenterIndexRoute = AiCenterIndexRouteImport.update({
   id: "/ai-center/",
@@ -1177,7 +1169,6 @@ export interface FileRoutesByFullPath {
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
   "/ai-center/": typeof AiCenterIndexRoute
-  "/ai-video-studio/": typeof AiVideoStudioIndexRoute
   "/auth-transfer/": typeof AuthTransferIndexRoute
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
@@ -1309,7 +1300,6 @@ export interface FileRoutesByTo {
   "/admin-package-management": typeof AdminPackageManagementIndexRoute
   "/admissions": typeof AdmissionsIndexRoute
   "/ai-center": typeof AiCenterIndexRoute
-  "/ai-video-studio": typeof AiVideoStudioIndexRoute
   "/auth-transfer": typeof AuthTransferIndexRoute
   "/challenge-analytics": typeof ChallengeAnalyticsIndexRoute
   "/community": typeof CommunityIndexRoute
@@ -1443,7 +1433,6 @@ export interface FileRoutesById {
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
   "/ai-center/": typeof AiCenterIndexRoute
-  "/ai-video-studio/": typeof AiVideoStudioIndexRoute
   "/auth-transfer/": typeof AuthTransferIndexRoute
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
@@ -1578,7 +1567,6 @@ export interface FileRouteTypes {
     | "/admin-package-management/"
     | "/admissions/"
     | "/ai-center/"
-    | "/ai-video-studio/"
     | "/auth-transfer/"
     | "/challenge-analytics/"
     | "/community/"
@@ -1710,7 +1698,6 @@ export interface FileRouteTypes {
     | "/admin-package-management"
     | "/admissions"
     | "/ai-center"
-    | "/ai-video-studio"
     | "/auth-transfer"
     | "/challenge-analytics"
     | "/community"
@@ -1843,7 +1830,6 @@ export interface FileRouteTypes {
     | "/admin-package-management/"
     | "/admissions/"
     | "/ai-center/"
-    | "/ai-video-studio/"
     | "/auth-transfer/"
     | "/challenge-analytics/"
     | "/community/"
@@ -1977,7 +1963,6 @@ export interface RootRouteChildren {
   AdminPackageManagementIndexRoute: typeof AdminPackageManagementIndexRoute
   AdmissionsIndexRoute: typeof AdmissionsIndexRoute
   AiCenterIndexRoute: typeof AiCenterIndexRoute
-  AiVideoStudioIndexRoute: typeof AiVideoStudioIndexRoute
   AuthTransferIndexRoute: typeof AuthTransferIndexRoute
   ChallengeAnalyticsIndexRoute: typeof ChallengeAnalyticsIndexRoute
   CommunityIndexRoute: typeof CommunityIndexRoute
@@ -2317,13 +2302,6 @@ declare module "@tanstack/react-router" {
       path: "/auth-transfer"
       fullPath: "/auth-transfer/"
       preLoaderRoute: typeof AuthTransferIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/ai-video-studio/": {
-      id: "/ai-video-studio/"
-      path: "/ai-video-studio"
-      fullPath: "/ai-video-studio/"
-      preLoaderRoute: typeof AiVideoStudioIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/ai-center/": {
@@ -3043,7 +3021,6 @@ const rootRouteChildren: RootRouteChildren = {
   AdminPackageManagementIndexRoute: AdminPackageManagementIndexRoute,
   AdmissionsIndexRoute: AdmissionsIndexRoute,
   AiCenterIndexRoute: AiCenterIndexRoute,
-  AiVideoStudioIndexRoute: AiVideoStudioIndexRoute,
   AuthTransferIndexRoute: AuthTransferIndexRoute,
   ChallengeAnalyticsIndexRoute: ChallengeAnalyticsIndexRoute,
   CommunityIndexRoute: CommunityIndexRoute,

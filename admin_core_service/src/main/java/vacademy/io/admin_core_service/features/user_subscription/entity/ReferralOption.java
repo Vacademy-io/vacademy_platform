@@ -31,19 +31,19 @@ public class ReferralOption {
     private String source; // e.g., "campaign", "user_referral"
 
     @Column(name = "source_id")
-    private String sourceId; // Could link to a campaign or user
+    private String sourceId;  // Could link to a campaign or user
 
     @Column(name = "status", nullable = false)
-    private String status; // ACTIVE, INACTIVE, EXPIRED
+    private String status;  // ACTIVE, INACTIVE, EXPIRED
 
     @Column(name = "referrer_discount_json", columnDefinition = "TEXT")
-    private String referrerDiscountJson; // JSON with referrer discount details
+    private String referrerDiscountJson;  // JSON with referrer discount details
 
     @Column(name = "referee_discount_json", columnDefinition = "TEXT")
-    private String refereeDiscountJson; // JSON with referree discount details
+    private String refereeDiscountJson;  // JSON with referree discount details
 
     @Column(name = "referrer_vesting_days")
-    private Integer referrerVestingDays; // Days after which the discount applies
+    private Integer referrerVestingDays;  // Days after which the discount applies
 
     @Column(name = "tag")
     private String tag;
@@ -53,6 +53,10 @@ public class ReferralOption {
 
     @Column(name = "setting_json", columnDefinition = "TEXT")
     private String settingJson;
+
+    // --- NEW FIELD ADDED HERE ---
+    @Column(name = "allow_combine_offers", columnDefinition = "boolean default false")
+    private Boolean allowCombineOffers = false;
 
     @CreationTimestamp
     @Temporal(TemporalType.TIMESTAMP)
@@ -76,6 +80,10 @@ public class ReferralOption {
         this.description = referralOptionDTO.getDescription();
         this.tag = referralOptionDTO.getTag();
         this.settingJson = referralOptionDTO.getSettingJson();
+        // Null check to prevent NullPointerException if older DTOs don't send this field
+        this.allowCombineOffers = referralOptionDTO.getAllowCombineOffers() != null 
+                                  ? referralOptionDTO.getAllowCombineOffers() 
+                                  : false;
     }
 
     public ReferralOptionDTO toReferralOptionDTO(){
@@ -93,6 +101,7 @@ public class ReferralOption {
                 .description(description)
                 .updatedAt(updatedAt)
                 .settingJson(settingJson)
+                .allowCombineOffers(allowCombineOffers)
                 .build();
     }
 }

@@ -3,6 +3,7 @@ import {
     CREATE_LIVE_SESSION_STEP_2,
     GET_LIVE_SESSIONS,
     DELETE_LIVE_SESSION,
+    CREATE_PROVIDER_MEETING
     // GET_LIVE_SESSIONS,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
@@ -66,6 +67,28 @@ export const createLiveSessionStep1 = async (data: LiveSessionStep1RequestDTO) =
 
 export const createLiveSessionStep2 = async (data: LiveSessionStep2RequestDTO) => {
     const response = await authenticatedAxiosInstance.post(CREATE_LIVE_SESSION_STEP_2, data, {
+        headers: {
+            Accept: '*/*',
+            'Content-Type': 'application/json',
+        },
+    });
+    return response.data;
+};
+
+export interface CreateProviderMeetingParams {
+    instituteId: string;
+    sessionId: string;
+    scheduleId: string;
+    topic: string;
+    agenda: string;
+    startTime: string;
+    durationMinutes: number;
+    timezone: string;
+    provider: string;
+}
+
+export const createProviderMeeting = async (data: CreateProviderMeetingParams) => {
+    const response = await authenticatedAxiosInstance.post(CREATE_PROVIDER_MEETING, data, {
         headers: {
             Accept: '*/*',
             'Content-Type': 'application/json',

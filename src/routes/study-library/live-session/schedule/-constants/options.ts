@@ -12,7 +12,8 @@ const STREAMING_OPTIONS = [
     { value: StreamingPlatform.YOUTUBE, label: 'Youtube', _id: 1 },
     { value: StreamingPlatform.MEET, label: 'Google Meet', _id: 2 },
     { value: StreamingPlatform.ZOOM, label: 'Zoom', _id: 3 },
-    { value: StreamingPlatform.OTHER, label: 'Other', _id: 4 },
+    { value: StreamingPlatform.ZOHO, label: 'Zoho', _id: 4 },
+    { value: StreamingPlatform.OTHER, label: 'Other', _id: 5 },
 ];
 
 const TIMEZONE_OPTIONS = [

@@ -35,5 +35,6 @@ export enum StreamingPlatform {
     YOUTUBE = 'youtube',
     MEET = 'google meet',
     ZOOM = 'zoom',
+    ZOHO = 'zoho',
     OTHER = 'other',
 }

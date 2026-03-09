@@ -413,48 +413,48 @@ export default function ScheduleStep1() {
                     default_class_link:
                         matchingSchedules.length > 0
                             ? (matchingSchedules[0] as any)?.default_class_link ??
-                              (matchingSchedules[0] as any)?.defaultClassLink ??
-                              null
+                            (matchingSchedules[0] as any)?.defaultClassLink ??
+                            null
                             : null,
                     default_class_name:
                         matchingSchedules.length > 0
                             ? (matchingSchedules[0] as any)?.default_class_name ??
-                              (matchingSchedules[0] as any)?.defaultClassName ??
-                              null
+                            (matchingSchedules[0] as any)?.defaultClassName ??
+                            null
                             : null,
                     learner_button_config:
                         matchingSchedules.length > 0
                             ? (matchingSchedules[0] as any)?.learner_button_config ??
-                              (matchingSchedules[0] as any)?.learnerButtonConfig ??
-                              null
+                            (matchingSchedules[0] as any)?.learnerButtonConfig ??
+                            null
                             : null,
                     sessions:
                         matchingSchedules.length > 0
                             ? matchingSchedules.map((matchingSchedule) => {
-                                  const duration = parseInt(matchingSchedule.duration || '0') || 0;
-                                  return {
-                                      id: matchingSchedule.id,
-                                      startTime: matchingSchedule.startTime || '00:00',
-                                      durationHours: String(Math.floor(duration / 60)),
-                                      durationMinutes: String(duration % 60),
-                                      link: matchingSchedule.link || '',
-                                      thumbnailFileId: matchingSchedule.thumbnailFileId || '',
-                                      countAttendanceDaily:
-                                          matchingSchedule.countAttendanceDaily ??
-                                          (matchingSchedule as any).dailyAttendance ??
-                                          false,
-                                  };
-                              })
+                                const duration = parseInt(matchingSchedule.duration || '0') || 0;
+                                return {
+                                    id: matchingSchedule.id,
+                                    startTime: matchingSchedule.startTime || '00:00',
+                                    durationHours: String(Math.floor(duration / 60)),
+                                    durationMinutes: String(duration % 60),
+                                    link: matchingSchedule.link || '',
+                                    thumbnailFileId: matchingSchedule.thumbnailFileId || '',
+                                    countAttendanceDaily:
+                                        matchingSchedule.countAttendanceDaily ??
+                                        (matchingSchedule as any).dailyAttendance ??
+                                        false,
+                                };
+                            })
                             : [
-                                  {
-                                      startTime: '00:00',
-                                      durationHours: '0',
-                                      durationMinutes: '30',
-                                      link: '',
-                                      thumbnailFileId: '',
-                                      countAttendanceDaily: false,
-                                  },
-                              ],
+                                {
+                                    startTime: '00:00',
+                                    durationHours: '0',
+                                    durationMinutes: '30',
+                                    link: '',
+                                    thumbnailFileId: '',
+                                    countAttendanceDaily: false,
+                                },
+                            ],
                 };
             });
         }
@@ -578,12 +578,13 @@ export default function ScheduleStep1() {
 
     const isMeetPlatform = sessionPlatformWatch === StreamingPlatform.MEET;
     const isZoomPlatform = sessionPlatformWatch === StreamingPlatform.ZOOM;
+    const isZohoPlatform = sessionPlatformWatch === StreamingPlatform.ZOHO;
 
     // Disabled options logic based on current platform selection
     const disabledLiveClassOptions = useMemo(() => {
-        if (isMeetPlatform) return [SessionType.PRE_RECORDED];
+        if (isMeetPlatform || isZohoPlatform) return [SessionType.PRE_RECORDED];
         return [];
-    }, [isMeetPlatform]);
+    }, [isMeetPlatform, isZohoPlatform]);
 
     const sessionTypeWatch = useWatch({ control, name: 'sessionType' });
 
@@ -624,18 +625,18 @@ export default function ScheduleStep1() {
         [defaultLinkWatch, detectedEnumPlatform]
     );
 
-    // When Google Meet is selected, enforce Live session type and Redirect streaming type
+    // When Google Meet or Zoho is selected, enforce Live session type
     useEffect(() => {
-        if (isMeetPlatform) {
+        if (isMeetPlatform || isZohoPlatform) {
             // Enforce only if not already selected to avoid unnecessary re-renders
             if (form.getValues('sessionType') !== SessionType.LIVE) {
                 form.setValue('sessionType', SessionType.LIVE);
             }
-            if (form.getValues('streamingType') !== SessionPlatform.REDIRECT_TO_OTHER_PLATFORM) {
+            if (isMeetPlatform && form.getValues('streamingType') !== SessionPlatform.REDIRECT_TO_OTHER_PLATFORM) {
                 form.setValue('streamingType', SessionPlatform.REDIRECT_TO_OTHER_PLATFORM);
             }
         }
-    }, [isMeetPlatform]);
+    }, [isMeetPlatform, isZohoPlatform]);
     const meetingType = useWatch({ control, name: 'meetingType' });
 
     // Auth and Institute Data
@@ -795,7 +796,7 @@ export default function ScheduleStep1() {
 
         if (selectedMusicFile) {
             try {
-                musicFileId = await UploadFileInS3(selectedMusicFile, () => {}, 'your-user-id');
+                musicFileId = await UploadFileInS3(selectedMusicFile, () => { }, 'your-user-id');
             } catch (error) {
                 console.error('Error uploading music file:', error);
                 toast.error('Failed to upload background music. Please try again.');
@@ -804,7 +805,7 @@ export default function ScheduleStep1() {
         }
         if (selectedFile) {
             try {
-                thumbnailFileId = await UploadFileInS3(selectedFile, () => {}, 'your-user-id');
+                thumbnailFileId = await UploadFileInS3(selectedFile, () => { }, 'your-user-id');
             } catch (error) {
                 console.error('Error uploading thumbnail:', error);
                 toast.error('Failed to upload thumbnail image. Please try again.');
@@ -854,7 +855,7 @@ export default function ScheduleStep1() {
                 try {
                     const sessionThumbnailId = await UploadFileInS3(
                         sessionThumbnail,
-                        () => {},
+                        () => { },
                         'your-user-id'
                     );
                     const target =
@@ -1808,10 +1809,10 @@ export default function ScheduleStep1() {
                             // Ensure end date is after start date to satisfy validation
                             const computedMin = minEndDate
                                 ? (() => {
-                                      const d = new Date(minEndDate);
-                                      d.setDate(d.getDate() + 1);
-                                      return format(d, 'yyyy-MM-dd');
-                                  })()
+                                    const d = new Date(minEndDate);
+                                    d.setDate(d.getDate() + 1);
+                                    return format(d, 'yyyy-MM-dd');
+                                })()
                                 : undefined;
                             return (
                                 <FormItem>
@@ -1846,17 +1847,18 @@ export default function ScheduleStep1() {
                     <FormItem>
                         <FormLabel className="text-sm font-medium">
                             Live Class Link
-                            <span className="text-danger-600">*</span>
+                            {!isZohoPlatform && <span className="text-danger-600">*</span>}
                         </FormLabel>
                         <FormControl>
                             <MyInput
                                 inputType="text"
-                                inputPlaceholder="Add Link"
+                                inputPlaceholder={isZohoPlatform ? "Auto-generated by Zoho" : "Add Link"}
                                 input={field.value}
                                 labelStyle="font-thin"
                                 onChangeFunction={field.onChange}
                                 error={form.formState.errors.defaultLink?.message}
-                                required
+                                required={!isZohoPlatform}
+                                disabled={isZohoPlatform}
                                 size="large"
                                 {...field}
                                 onBlur={(e) => {
@@ -1953,10 +1955,10 @@ export default function ScheduleStep1() {
                                             sessionPlatformWatch === StreamingPlatform.YOUTUBE
                                                 ? 'Redirect to YouTube'
                                                 : sessionPlatformWatch === StreamingPlatform.MEET
-                                                  ? 'Redirect to Google Meet'
-                                                  : sessionPlatformWatch === StreamingPlatform.ZOOM
-                                                    ? 'Redirect to Zoom'
-                                                    : 'Redirect to other platform',
+                                                    ? 'Redirect to Google Meet'
+                                                    : sessionPlatformWatch === StreamingPlatform.ZOOM
+                                                        ? 'Redirect to Zoom'
+                                                        : 'Redirect to other platform',
                                         value: SessionPlatform.REDIRECT_TO_OTHER_PLATFORM,
                                     },
                                 ]}
@@ -1967,44 +1969,45 @@ export default function ScheduleStep1() {
                     />
                 </div>
             </div>
-            {/* Lock video playback settings */}
-            <div className="flex flex-col items-start gap-4">
-                <h4 className="text-sm font-semibold">Lock video playback settings</h4>
-                <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-                    <Controller
-                        control={control}
-                        name="allowRewind"
-                        render={({ field }) => (
-                            <label className="flex items-center gap-2">
-                                <span className="text-sm">Allow rewind</span>
-                                <Switch
-                                    disabled={
-                                        watch('streamingType') !== SessionPlatform.EMBED_IN_APP
-                                    }
-                                    checked={field.value}
-                                    onCheckedChange={field.onChange}
-                                />
-                            </label>
-                        )}
-                    />
-                    <Controller
-                        control={control}
-                        name="allowPause"
-                        render={({ field }) => (
-                            <label className="flex items-center gap-2">
-                                <span className="text-sm">Allow play pause</span>
-                                <Switch
-                                    disabled={
-                                        watch('streamingType') !== SessionPlatform.EMBED_IN_APP
-                                    }
-                                    checked={field.value}
-                                    onCheckedChange={field.onChange}
-                                />
-                            </label>
-                        )}
-                    />
+            {!isZohoPlatform && (
+                <div className="flex flex-col items-start gap-4">
+                    <h4 className="text-sm font-semibold">Lock video playback settings</h4>
+                    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+                        <Controller
+                            control={control}
+                            name="allowRewind"
+                            render={({ field }) => (
+                                <label className="flex items-center gap-2">
+                                    <span className="text-sm">Allow rewind</span>
+                                    <Switch
+                                        disabled={
+                                            watch('streamingType') !== SessionPlatform.EMBED_IN_APP
+                                        }
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </label>
+                            )}
+                        />
+                        <Controller
+                            control={control}
+                            name="allowPause"
+                            render={({ field }) => (
+                                <label className="flex items-center gap-2">
+                                    <span className="text-sm">Allow play pause</span>
+                                    <Switch
+                                        disabled={
+                                            watch('streamingType') !== SessionPlatform.EMBED_IN_APP
+                                        }
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </label>
+                            )}
+                        />
+                    </div>
                 </div>
-            </div>
+            )}
             <div>
                 <div className="flex h-full flex-col items-start gap-4 sm:flex-row">
                     <Controller
@@ -2207,11 +2210,10 @@ export default function ScheduleStep1() {
                             <div key={dayField.day} className="group">
                                 {/* Day Header Card */}
                                 <div
-                                    className={`rounded-xl border-2 transition-all duration-200 ${
-                                        isSelect
-                                            ? 'border-primary-200 bg-primary-50/50 shadow-sm'
-                                            : 'border-gray-200 bg-white hover:border-gray-300'
-                                    }`}
+                                    className={`rounded-xl border-2 transition-all duration-200 ${isSelect
+                                        ? 'border-primary-200 bg-primary-50/50 shadow-sm'
+                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                        }`}
                                 >
                                     {/* Day Toggle Header */}
                                     <div className="flex flex-col items-start gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
@@ -2226,11 +2228,10 @@ export default function ScheduleStep1() {
                                             className="flex items-center gap-3 text-left transition-colors duration-200"
                                         >
                                             <div
-                                                className={`flex size-5 items-center justify-center rounded-full border-2 transition-all duration-200 ${
-                                                    isSelect
-                                                        ? 'border-primary-500 bg-primary-500'
-                                                        : 'border-gray-300 bg-white group-hover:border-gray-400'
-                                                }`}
+                                                className={`flex size-5 items-center justify-center rounded-full border-2 transition-all duration-200 ${isSelect
+                                                    ? 'border-primary-500 bg-primary-500'
+                                                    : 'border-gray-300 bg-white group-hover:border-gray-400'
+                                                    }`}
                                             >
                                                 {isSelect && (
                                                     <div className="size-2 rounded-full bg-white"></div>
@@ -2238,11 +2239,10 @@ export default function ScheduleStep1() {
                                             </div>
                                             <div>
                                                 <h3
-                                                    className={`text-lg font-semibold transition-colors duration-200 ${
-                                                        isSelect
-                                                            ? 'text-primary-900'
-                                                            : 'text-gray-900'
-                                                    }`}
+                                                    className={`text-lg font-semibold transition-colors duration-200 ${isSelect
+                                                        ? 'text-primary-900'
+                                                        : 'text-gray-900'
+                                                        }`}
                                                 >
                                                     {dayName}
                                                 </h3>
@@ -2752,11 +2752,10 @@ export default function ScheduleStep1() {
                                                 : [...prev, day.day]
                                         );
                                     }}
-                                    className={`rounded-md border p-2 text-sm transition-colors ${
-                                        selectedDaysForLink.includes(day.day)
-                                            ? 'border-primary-500 bg-primary-50 text-primary-700'
-                                            : 'border-gray-200 hover:border-gray-300'
-                                    }`}
+                                    className={`rounded-md border p-2 text-sm transition-colors ${selectedDaysForLink.includes(day.day)
+                                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                        }`}
                                 >
                                     {day.day}
                                 </button>
@@ -2810,11 +2809,10 @@ export default function ScheduleStep1() {
                                                 : [...prev, index]
                                         );
                                     }}
-                                    className={`rounded-md border p-2 text-sm transition-colors ${
-                                        selectedDaysToCopy.includes(index)
-                                            ? 'border-primary-500 bg-primary-50 text-primary-700'
-                                            : 'border-gray-200 hover:border-gray-300'
-                                    }`}
+                                    className={`rounded-md border p-2 text-sm transition-colors ${selectedDaysToCopy.includes(index)
+                                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                        }`}
                                 >
                                     {day.day}
                                 </button>
@@ -2865,11 +2863,10 @@ export default function ScheduleStep1() {
                                                 : [...prev, index]
                                         );
                                     }}
-                                    className={`rounded-md border p-2 text-sm transition-colors ${
-                                        selectedDaysToCopyDefaultLink.includes(index)
-                                            ? 'border-primary-500 bg-primary-50 text-primary-700'
-                                            : 'border-gray-200 hover:border-gray-300'
-                                    }`}
+                                    className={`rounded-md border p-2 text-sm transition-colors ${selectedDaysToCopyDefaultLink.includes(index)
+                                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                        }`}
                                 >
                                     {day.day}
                                 </button>

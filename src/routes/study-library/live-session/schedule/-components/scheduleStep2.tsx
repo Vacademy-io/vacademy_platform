@@ -5,7 +5,7 @@ import { Separator } from '@radix-ui/react-separator';
 import { MyButton } from '@/components/design-system/button';
 import { MyRadioButton } from '@/components/design-system/radio';
 import { FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
-import { AccessType, InputType } from '../../-constants/enums';
+import { AccessType, InputType, StreamingPlatform } from '../../-constants/enums';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { MyDropdown } from '@/components/common/students/enroll-manually/dropdownForPackageItems';
@@ -31,7 +31,8 @@ import { MyDialog } from '@/components/design-system/dialog';
 import SelectField from '@/components/design-system/select-field';
 import { FieldErrors } from 'react-hook-form';
 import { transformFormToDTOStep2 } from '../../-constants/helper';
-import { createLiveSessionStep2 } from '../-services/utils';
+import { createLiveSessionStep2, createProviderMeeting } from '../-services/utils';
+import { getSessionBySessionId } from '../../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -52,13 +53,31 @@ const TimeOptions = [
     { label: '1 hour before', value: '1h' },
 ];
 
+const formatZohoStartTime = (dateStr?: string, timeStr?: string) => {
+    if (!dateStr || !timeStr) return '';
+
+    const datePart = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+
+    let timeParts = timeStr;
+    if (timeStr.includes('T')) {
+        const afterT = timeStr.split('T')[1];
+        if (afterT) {
+            timeParts = afterT.split('+')[0] || timeStr;
+        }
+    }
+
+    const timePart = timeParts?.length === 5 ? `${timeParts}:00` : timeParts || '';
+
+    return `${datePart}T${timePart}+05:30`;
+};
+
 export default function ScheduleStep2() {
     const { clearSessionId, clearStep1Data } = useLiveSessionStore();
     const { studyLibraryData } = useStudyLibraryStore();
     const [addCustomFieldDialog, setAddCustomFieldDialog] = useState<boolean>(false);
     const queryClient = useQueryClient();
     const [previewDialog, setPreviewDialog] = useState<boolean>(false);
-    const { sessionId } = useLiveSessionStore();
+    const { sessionId, step1Data } = useLiveSessionStore();
     const isEditState = useLiveSessionStore((state) => state.isEdit);
     const { sessionDetails } = useSessionDetailsStore();
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -140,10 +159,10 @@ export default function ScheduleStep2() {
                         };
                     })
                     .filter(Boolean) as {
-                    courseId: string;
-                    sessionId: string;
-                    levelId: string;
-                }[];
+                        courseId: string;
+                        sessionId: string;
+                        levelId: string;
+                    }[];
 
                 if (selectedLevelsFromPackages.length) {
                     form.setValue('selectedLevels', selectedLevelsFromPackages);
@@ -428,6 +447,40 @@ export default function ScheduleStep2() {
                 `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} created successfully!`
             );
 
+            // Handle potential Zoho meeting creation
+            if (step1Data?.sessionPlatform === StreamingPlatform.ZOHO && instituteDetails?.id) {
+                try {
+                    const sessionDetailsPayload = await getSessionBySessionId(sessionId);
+                    const schedules = sessionDetailsPayload?.schedule?.added_schedules || [];
+
+                    for (const schedule of schedules) {
+                        try {
+                            const durationMinutes = Number(schedule.duration) ||
+                                (Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes));
+
+                            const sessionStartDate = schedule.meetingDate || schedule.meeting_date || (step1Data as any)?.startDate || new Date().toISOString().split('T')[0];
+                            const formattedStartTime = formatZohoStartTime(sessionStartDate, schedule.startTime || schedule.start_time);
+
+                            await createProviderMeeting({
+                                instituteId: instituteDetails.id,
+                                sessionId: sessionId,
+                                scheduleId: schedule.id,
+                                topic: step1Data.title || sessionDetailsPayload?.schedule?.title || 'Live Class',
+                                agenda: step1Data.description || 'Live Subject Class',
+                                startTime: formattedStartTime,
+                                durationMinutes: durationMinutes > 0 ? durationMinutes : 30,
+                                timezone: step1Data.timeZone || sessionDetailsPayload?.schedule?.timezone || 'Asia/Kolkata',
+                                provider: 'ZOHO_MEETING'
+                            });
+                        } catch (err) {
+                            console.error(`Error creating Zoho meeting for schedule ${schedule.id}:`, err);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error fetching session details to create Zoho meeting:', err);
+                }
+            }
+
             await queryClient.invalidateQueries({ queryKey: ['liveSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['upcomingSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['pastSessions'] });
@@ -456,9 +509,9 @@ export default function ScheduleStep2() {
             options:
                 data.fieldType === 'dropdown'
                     ? data.options.map((option) => ({
-                          name: option.optionField,
-                          label: option.optionField,
-                      }))
+                        name: option.optionField,
+                        label: option.optionField,
+                    }))
                     : [],
         });
         setAddCustomFieldDialog(false);
@@ -778,11 +831,10 @@ export default function ScheduleStep2() {
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${
-                                                    field.value
-                                                        ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
-                                                        : '' // Default styles when unchecked
-                                                }`}
+                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
+                                                    ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
+                                                    : '' // Default styles when unchecked
+                                                    }`}
                                             />
                                         </FormControl>
                                         <FormLabel className="!mb-[3px] font-thin">
@@ -800,11 +852,10 @@ export default function ScheduleStep2() {
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${
-                                                    field.value
-                                                        ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
-                                                        : '' // Default styles when unchecked
-                                                }`}
+                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
+                                                    ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
+                                                    : '' // Default styles when unchecked
+                                                    }`}
                                             />
                                         </FormControl>
                                         <FormLabel className="!mb-[3px] font-thin">
@@ -827,11 +878,10 @@ export default function ScheduleStep2() {
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${
-                                                    field.value
-                                                        ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
-                                                        : '' // Default styles when unchecked
-                                                }`}
+                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
+                                                    ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
+                                                    : '' // Default styles when unchecked
+                                                    }`}
                                             />
                                         </FormControl>
                                         <FormLabel className="!mb-[3px] font-thin">
@@ -888,11 +938,10 @@ export default function ScheduleStep2() {
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${
-                                                    field.value
-                                                        ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
-                                                        : '' // Default styles when unchecked
-                                                }`}
+                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
+                                                    ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
+                                                    : '' // Default styles when unchecked
+                                                    }`}
                                             />
                                         </FormControl>
                                         <FormLabel className="!mb-[3px] font-thin">
@@ -943,7 +992,7 @@ export default function ScheduleStep2() {
                                             inputType="text"
                                             inputPlaceholder={testInputFields.label}
                                             input=""
-                                            onChangeFunction={() => {}}
+                                            onChangeFunction={() => { }}
                                             size="large"
                                             disabled
                                             className="!min-w-full"

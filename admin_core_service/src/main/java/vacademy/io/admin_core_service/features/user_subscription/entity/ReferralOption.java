@@ -28,22 +28,22 @@ public class ReferralOption {
     private String name;
 
     @Column(name = "source", nullable = false)
-    private String source;
+    private String source; // e.g., "campaign", "user_referral"
 
     @Column(name = "source_id")
-    private String sourceId;
+    private String sourceId;  // Could link to a campaign or user
 
     @Column(name = "status", nullable = false)
-    private String status;
+    private String status;  // ACTIVE, INACTIVE, EXPIRED
 
     @Column(name = "referrer_discount_json", columnDefinition = "TEXT")
-    private String referrerDiscountJson;
+    private String referrerDiscountJson;  // JSON with referrer discount details
 
     @Column(name = "referee_discount_json", columnDefinition = "TEXT")
-    private String refereeDiscountJson;
+    private String refereeDiscountJson;  // JSON with referree discount details
 
     @Column(name = "referrer_vesting_days")
-    private Integer referrerVestingDays;
+    private Integer referrerVestingDays;  // Days after which the discount applies
 
     @Column(name = "tag")
     private String tag;

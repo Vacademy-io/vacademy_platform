@@ -58,6 +58,18 @@ public class AdmissionResponsesRepositoryCustomImpl implements AdmissionResponse
             where.append(" AND ar.applicant_id IS NOT NULL ");
         }
 
+        // Optional status filter (audience_response.overall_status)
+        if (filter.getStatuses() != null && !filter.getStatuses().isEmpty()) {
+            where.append(" AND ar.overall_status IN (:statuses) ");
+            params.put("statuses", filter.getStatuses());
+        }
+
+        // Optional source filter (audience_response.source_type)
+        if (filter.getSources() != null && !filter.getSources().isEmpty()) {
+            where.append(" AND ar.source_type IN (:sources) ");
+            params.put("sources", filter.getSources());
+        }
+
         // Optional search
         String searchBy = StringUtils.hasText(filter.getSearchBy()) ? filter.getSearchBy().trim().toUpperCase(Locale.ROOT)
                 : null;

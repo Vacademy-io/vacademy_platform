@@ -9,6 +9,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.sql.Timestamp;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -35,6 +36,18 @@ public class AdmissionResponsesListRequestDTO {
      * Optional: ENQUIRY | APPLICATION | ALL
      */
     private String from;
+
+    /**
+     * Filter by audience_response.overall_status.
+     * Accepts a list so multiple statuses can be selected (e.g. ["NEW","QUALIFIED","CONTACT_NOT_ELIGIBLE"]).
+     */
+    private List<String> statuses;
+
+    /**
+     * Filter by audience_response.source_type.
+     * Accepts a list so multiple sources can be selected (e.g. ["WEBSITE","FACEBOOK","REFERRAL"]).
+     */
+    private List<String> sources;
 
     /**
      * Optional: PARENT_EMAIL | PARENT_MOBILE | STUDENT_NAME | ENQUIRY_ID | APPLICANT_ID

@@ -19,6 +19,8 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
+import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
+import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
 import vacademy.io.admin_core_service.features.institute.entity.Template;
 import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
@@ -38,7 +40,6 @@ import vacademy.io.common.notification.dto.GenericEmailRequest;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.stream.Collectors;
 import vacademy.io.common.auth.dto.ParentWithChildDTO;
 
 @Service
@@ -71,10 +72,10 @@ public class AdmissionService {
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
     @Autowired
-    private NotificationService notificationService; // For Default Fallback
+    private NotificationService notificationService;
 
     @Autowired
-    private SendUniqueLinkService sendUniqueLinkService; // For Template Emails
+    private SendUniqueLinkService sendUniqueLinkService;
 
     @Autowired
     private NotificationEventConfigRepository notificationEventConfigRepository;
@@ -82,25 +83,39 @@ public class AdmissionService {
     @Autowired
     private TemplateRepository templateRepository;
 
+    @Autowired
+    private EnquiryRepository enquiryRepository;
+
     @Transactional
     public AdmissionResponseDTO submitAdmissionForm(AdmissionRequestDTO request, CustomUserDetails userDetails) {
         logger.info("Processing Admission Form for Institute: {}, Source: {}, SourceId: {}",
                 request.getInstituteId(), request.getSource(), request.getSourceId());
 
-        // 1. User Management (Parent & Child)
+        boolean hasApplication = request.getApplicationId() != null && !request.getApplicationId().isBlank();
+        boolean hasEnquiry = request.getEnquiryId() != null && !request.getEnquiryId().isBlank();
+
+        if (hasApplication) {
+            return handleAdmissionFromApplication(request);
+        } else if (hasEnquiry) {
+            return handleAdmissionFromEnquiry(request);
+        } else {
+            return handleFreshAdmission(request);
+        }
+    }
+
+    // ========================================================================
+    // PATH 1: Fresh Admission (no enquiry_id, no application_id)
+    // ========================================================================
+    private AdmissionResponseDTO handleFreshAdmission(AdmissionRequestDTO request) {
         UserManagementResult userResult = handleUserCreation(request);
 
-        // 2. Student Persistence
         Student student = createStudentProfile(userResult.childUser(), request);
         saveCustomFieldValues(request.getCustomFieldValues(), student.getId(), request.getInstituteId());
 
-        // 3. Audience Response (AR) Logic
         AudienceResponse ar = handleAudienceResponse(request, userResult.parentUser(), userResult.childUser(), student);
 
-        // 4. Applicant & Stage Logic (Transition/Creation)
         Applicant applicant = handleApplicantAndStage(request, ar, userResult.parentUser());
 
-        // 5. Notification (Welcome Email)
         sendAdmissionWelcomeEmail(userResult.parentUser(), userResult.childUser(), userResult.sendCredentials(),
                 userResult.password(), request.getInstituteId());
 
@@ -113,6 +128,236 @@ public class AdmissionService {
                 .message("Admission processed successfully.")
                 .isTransition(false)
                 .build();
+    }
+
+    // ========================================================================
+    // PATH 2: Admission from Enquiry
+    // ========================================================================
+    private AdmissionResponseDTO handleAdmissionFromEnquiry(AdmissionRequestDTO request) {
+        logger.info("Processing admission from enquiry: {}", request.getEnquiryId());
+
+        AudienceResponse ar = audienceResponseRepository.findByEnquiryId(request.getEnquiryId())
+                .orElseThrow(() -> new VacademyException(
+                        "No audience response found for enquiry_id: " + request.getEnquiryId()));
+
+        UserManagementResult userResult = handleUserCreation(request);
+
+        Student student = createStudentProfile(userResult.childUser(), request);
+        saveCustomFieldValues(request.getCustomFieldValues(), student.getId(), request.getInstituteId());
+
+        ar.setOverallStatus("ADMISSION");
+        ar.setStudentUserId(userResult.childUser().getId());
+        ar.setUserId(userResult.parentUser().getId());
+        ar.setParentName(userResult.parentUser().getFullName());
+        ar.setParentEmail(userResult.parentUser().getEmail());
+        ar.setParentMobile(userResult.parentUser().getMobileNumber());
+        if (request.getDestinationPackageSessionId() != null
+                && !request.getDestinationPackageSessionId().isBlank()) {
+            ar.setDestinationPackageSessionId(request.getDestinationPackageSessionId());
+        }
+        audienceResponseRepository.save(ar);
+
+        Applicant applicant = handleApplicantAndStage(request, ar, userResult.parentUser());
+
+        updateEnquiryStatus(request.getEnquiryId());
+
+        sendAdmissionWelcomeEmail(userResult.parentUser(), userResult.childUser(), userResult.sendCredentials(),
+                userResult.password(), request.getInstituteId());
+
+        return AdmissionResponseDTO.builder()
+                .applicantId(applicant.getId().toString())
+                .trackingId(applicant.getTrackingId())
+                .workflowType("ADMISSION")
+                .overallStatus("ADMISSION_INITIATED")
+                .currentStageId(applicant.getApplicationStageId())
+                .message("Admission from enquiry processed successfully.")
+                .isTransition(true)
+                .build();
+    }
+
+    // ========================================================================
+    // PATH 3: Admission from Application
+    // ========================================================================
+    private AdmissionResponseDTO handleAdmissionFromApplication(AdmissionRequestDTO request) {
+        logger.info("Processing admission from application (applicant_id): {}", request.getApplicationId());
+
+        AudienceResponse ar = audienceResponseRepository.findByApplicantId(request.getApplicationId())
+                .orElseThrow(() -> new VacademyException(
+                        "No audience response found for application_id (applicant): " + request.getApplicationId()));
+
+        Applicant applicant = applicantRepository.findById(UUID.fromString(request.getApplicationId()))
+                .orElseThrow(() -> new VacademyException(
+                        "No applicant found for application_id: " + request.getApplicationId()));
+
+        UserDTO parentUser = resolveExistingParent(ar);
+        UserDTO childUser = resolveExistingChild(ar);
+
+        Student student = updateExistingStudentProfile(ar.getStudentUserId(), request);
+        saveCustomFieldValues(request.getCustomFieldValues(), student.getId(), request.getInstituteId());
+
+        ar.setOverallStatus("ADMISSION");
+        if (request.getDestinationPackageSessionId() != null
+                && !request.getDestinationPackageSessionId().isBlank()) {
+            ar.setDestinationPackageSessionId(request.getDestinationPackageSessionId());
+        }
+        audienceResponseRepository.save(ar);
+
+        ApplicationStage admissionStage = applicationStageRepository
+                .findFirstStage(request.getInstituteId(), request.getSource(), request.getSourceId(), "ADMISSION")
+                .orElseThrow(() -> new VacademyException(
+                        "No ADMISSION stage configured for this institute/source. Please configure it first."));
+
+        applicant.setWorkflowType("ADMISSION");
+        applicant.setOverallStatus("ADMISSION_INITIATED");
+        applicant.setApplicationStageId(admissionStage.getId().toString());
+        applicant.setApplicationStageStatus("INITIATED");
+        applicant = applicantRepository.save(applicant);
+
+        String configJson = admissionStage.getConfigJson();
+        if (configJson == null || configJson.isEmpty()) {
+            configJson = "{}";
+        }
+        ApplicantStage applicantStage = ApplicantStage.builder()
+                .applicantId(applicant.getId().toString())
+                .stageId(admissionStage.getId().toString())
+                .stageStatus("COMPLETED")
+                .responseJson(configJson)
+                .build();
+        applicantStageRepository.save(applicantStage);
+
+        applicant.setApplicationStageStatus("COMPLETED");
+        applicant.setOverallStatus("ADMISSION_COMPLETED");
+        applicant = applicantRepository.save(applicant);
+
+        sendAdmissionWelcomeEmail(parentUser, childUser, false, null, request.getInstituteId());
+
+        return AdmissionResponseDTO.builder()
+                .applicantId(applicant.getId().toString())
+                .trackingId(applicant.getTrackingId())
+                .workflowType("ADMISSION")
+                .overallStatus("ADMISSION_COMPLETED")
+                .currentStageId(applicant.getApplicationStageId())
+                .message("Admission from application processed successfully.")
+                .isTransition(true)
+                .build();
+    }
+
+    // ========================================================================
+    // Helpers for from-application path
+    // ========================================================================
+
+    private UserDTO resolveExistingParent(AudienceResponse ar) {
+        if (ar.getUserId() == null) {
+            throw new VacademyException("Audience response has no linked parent user_id.");
+        }
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(ar.getUserId()));
+            if (users != null && !users.isEmpty()) return users.get(0);
+        } catch (Exception e) {
+            logger.warn("Could not fetch parent user {} from auth service: {}", ar.getUserId(), e.getMessage());
+        }
+        UserDTO fallback = new UserDTO();
+        fallback.setId(ar.getUserId());
+        fallback.setFullName(ar.getParentName());
+        fallback.setEmail(ar.getParentEmail());
+        fallback.setMobileNumber(ar.getParentMobile());
+        return fallback;
+    }
+
+    private UserDTO resolveExistingChild(AudienceResponse ar) {
+        if (ar.getStudentUserId() == null) {
+            throw new VacademyException("Audience response has no linked student_user_id.");
+        }
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(ar.getStudentUserId()));
+            if (users != null && !users.isEmpty()) return users.get(0);
+        } catch (Exception e) {
+            logger.warn("Could not fetch child user {} from auth service: {}", ar.getStudentUserId(), e.getMessage());
+        }
+        UserDTO fallback = new UserDTO();
+        fallback.setId(ar.getStudentUserId());
+        return fallback;
+    }
+
+    private Student updateExistingStudentProfile(String studentUserId, AdmissionRequestDTO req) {
+        Student student = instituteStudentRepository.findTopByUserId(studentUserId)
+                .orElseThrow(() -> new VacademyException(
+                        "No student record found for student_user_id: " + studentUserId));
+
+        String fullName = buildFullName(req.getFirstName(), req.getLastName());
+        if (!fullName.isBlank()) student.setFullName(fullName);
+        if (req.getGender() != null && !req.getGender().isBlank()) student.setGender(req.getGender());
+        if (req.getClassApplyingFor() != null && !req.getClassApplyingFor().isBlank())
+            student.setApplyingForClass(req.getClassApplyingFor());
+        if (req.getAdmissionNo() != null && !req.getAdmissionNo().isBlank())
+            student.setAdmissionNo(req.getAdmissionNo());
+        if (req.getDateOfAdmission() != null && !req.getDateOfAdmission().isBlank())
+            student.setDateOfAdmission(parseDate(req.getDateOfAdmission()));
+        if (req.getDateOfBirth() != null && !req.getDateOfBirth().isBlank())
+            student.setDateOfBirth(parseDate(req.getDateOfBirth()));
+        if (req.getMobileNumber() != null && !req.getMobileNumber().isBlank())
+            student.setMobileNumber(req.getMobileNumber());
+        if (req.getAdmissionType() != null && !req.getAdmissionType().isBlank())
+            student.setAdmissionType(req.getAdmissionType());
+        if (req.getStudentAadhaar() != null && !req.getStudentAadhaar().isBlank()) {
+            student.setIdNumber(req.getStudentAadhaar());
+            student.setIdType("AADHAAR");
+        }
+        if (req.getPreviousSchoolName() != null && !req.getPreviousSchoolName().isBlank())
+            student.setPreviousSchoolName(req.getPreviousSchoolName());
+        if (req.getPreviousClass() != null && !req.getPreviousClass().isBlank())
+            student.setLastClassAttended(req.getPreviousClass());
+        if (req.getPreviousBoard() != null && !req.getPreviousBoard().isBlank())
+            student.setPreviousSchoolBoard(req.getPreviousBoard());
+        if (req.getPreviousPercentage() != null && !req.getPreviousPercentage().isBlank())
+            student.setLastExamResult(req.getPreviousPercentage());
+        if (req.getMotherTongue() != null && !req.getMotherTongue().isBlank())
+            student.setMotherTongue(req.getMotherTongue());
+        if (req.getBloodGroup() != null && !req.getBloodGroup().isBlank())
+            student.setBloodGroup(req.getBloodGroup());
+        if (req.getNationality() != null && !req.getNationality().isBlank())
+            student.setNationality(req.getNationality());
+        if (req.getFatherName() != null && !req.getFatherName().isBlank())
+            student.setFatherName(req.getFatherName());
+        if (req.getFatherMobile() != null && !req.getFatherMobile().isBlank())
+            student.setParentsMobileNumber(req.getFatherMobile());
+        if (req.getFatherEmail() != null && !req.getFatherEmail().isBlank())
+            student.setParentsEmail(req.getFatherEmail());
+        if (req.getMotherName() != null && !req.getMotherName().isBlank())
+            student.setMotherName(req.getMotherName());
+        if (req.getMotherMobile() != null && !req.getMotherMobile().isBlank())
+            student.setParentToMotherMobileNumber(req.getMotherMobile());
+        if (req.getMotherEmail() != null && !req.getMotherEmail().isBlank())
+            student.setParentsToMotherEmail(req.getMotherEmail());
+        if (req.getGuardianName() != null && !req.getGuardianName().isBlank())
+            student.setGuardianName(req.getGuardianName());
+        if (req.getGuardianMobile() != null && !req.getGuardianMobile().isBlank())
+            student.setGuardianMobile(req.getGuardianMobile());
+        if (req.getCurrentAddress() != null && !req.getCurrentAddress().isBlank())
+            student.setAddressLine(req.getCurrentAddress());
+        if (req.getCurrentLocality() != null && !req.getCurrentLocality().isBlank())
+            student.setCity(req.getCurrentLocality());
+        if (req.getCurrentPinCode() != null && !req.getCurrentPinCode().isBlank())
+            student.setPinCode(req.getCurrentPinCode());
+
+        return instituteStudentRepository.save(student);
+    }
+
+    private void updateEnquiryStatus(String enquiryId) {
+        try {
+            Optional<Enquiry> enquiryOpt = enquiryRepository.findById(UUID.fromString(enquiryId));
+            if (enquiryOpt.isPresent()) {
+                Enquiry enquiry = enquiryOpt.get();
+                enquiry.setConvertionStatus("CONVERTED");
+                enquiry.setEnquiryStatus("ADMITTED");
+                enquiryRepository.save(enquiry);
+                logger.info("Updated enquiry {} status to ADMITTED/CONVERTED", enquiryId);
+            } else {
+                logger.warn("Enquiry row not found for enquiry_id: {}", enquiryId);
+            }
+        } catch (Exception e) {
+            logger.warn("Could not update enquiry status for enquiry_id: {} - {}", enquiryId, e.getMessage());
+        }
     }
 
     // --- Helper Methods ---

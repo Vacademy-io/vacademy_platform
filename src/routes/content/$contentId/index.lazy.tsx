@@ -42,7 +42,15 @@ function ContentEmbedPage() {
     }
 
     return (
-        <div className="h-screen w-full bg-black">
+        <div
+            className="w-full bg-black"
+            style={{
+                height: '100dvh',
+                overflow: 'hidden',
+                position: 'fixed',
+                inset: 0,
+            }}
+        >
             <AIContentPlayer
                 timelineUrl={timeline}
                 audioUrl={audio}

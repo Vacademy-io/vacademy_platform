@@ -160,6 +160,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     // Compact mode: hide text labels in controls when player is too narrow for them (tablet/mobile)
     // At ~700px wide, text labels on Focus/Chapters/Quiz buttons push fullscreen off-screen
     const isCompact = containerWidth > 0 && containerWidth < 700;
+    // Extra compact for very small screens (phones in portrait)
+    const isMini = containerWidth > 0 && containerWidth < 400;
 
     // Captions hook (only for time-driven content with audio)
     const {
@@ -744,9 +746,20 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         if (!playerRef.current) return;
 
         if (!document.fullscreenElement) {
-            playerRef.current.requestFullscreen().then(() => setIsFullscreen(true));
+            playerRef.current.requestFullscreen().then(() => {
+                setIsFullscreen(true);
+                // Try to lock landscape on mobile for better video viewing
+                try {
+                    screen.orientation?.lock?.('landscape').catch(() => {});
+                } catch {}
+            });
         } else {
-            document.exitFullscreen().then(() => setIsFullscreen(false));
+            document.exitFullscreen().then(() => {
+                setIsFullscreen(false);
+                try {
+                    screen.orientation?.unlock?.();
+                } catch {}
+            });
         }
     }, []);
 
@@ -1118,6 +1131,23 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     ) as HTMLElement;
                     if (controls) controls.style.opacity = '0';
                 }}
+                onTouchStart={(e) => {
+                    // On mobile touch: toggle controls visibility for time_driven
+                    if (navigationMode !== 'time_driven') return;
+                    const controls = e.currentTarget.querySelector(
+                        '.video-controls-overlay'
+                    ) as HTMLElement;
+                    if (controls) {
+                        const visible = controls.style.opacity === '1';
+                        controls.style.opacity = visible ? '0' : '1';
+                        // Auto-hide after 4 seconds
+                        if (!visible) {
+                            setTimeout(() => {
+                                if (controls) controls.style.opacity = '0';
+                            }, 4000);
+                        }
+                    }
+                }}
                 onClick={navigationMode === 'time_driven' ? handleTimeDrivenPlayPause : undefined}
             >
                 {/* Content Frame */}
@@ -1127,7 +1157,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                     style={{
                         width: '100%',
                         height: '100%',
-                        minHeight: isFullscreen ? '0px' : '300px',
+                        minHeight: isFullscreen ? '0px' : isCompact ? '0px' : '300px',
                         aspectRatio: isFullscreen ? 'auto' : '16/9',
                         background: '#ffffff',
                         position: 'relative',
@@ -1231,8 +1261,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             transform: 'translate(-50%, -50%)',
                             background: 'rgba(0, 0, 0, 0.7)',
                             borderRadius: '50%',
-                            width: '80px',
-                            height: '80px',
+                            width: isMini ? '56px' : '80px',
+                            height: isMini ? '56px' : '80px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -1244,7 +1274,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             handleTimeDrivenPlayPause();
                         }}
                     >
-                        <Play className="size-10 text-white" style={{ marginLeft: '4px' }} />
+                        <Play className={`${isMini ? 'size-7' : 'size-10'} text-white`} style={{ marginLeft: '4px' }} />
                     </div>
                 )}
 
@@ -1299,16 +1329,19 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             alignItems: 'center',
                             justifyContent: 'center',
                             zIndex: 55,
-                            padding: '24px',
+                            padding: isCompact ? '12px' : '24px',
+                            overflowY: 'auto',
                         }}
                     >
                         <div style={{
                             background: '#0f172a',
                             border: '1px solid rgba(255,255,255,0.12)',
-                            borderRadius: '16px',
-                            padding: '28px 32px',
+                            borderRadius: isCompact ? '12px' : '16px',
+                            padding: isCompact ? '16px' : '28px 32px',
                             maxWidth: '640px',
                             width: '100%',
+                            maxHeight: '100%',
+                            overflowY: 'auto',
                             boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
                             animation: 'slideUpBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
                         }}>
@@ -1328,12 +1361,12 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             </div>
 
                             {/* Question */}
-                            <p style={{ color: '#f1f5f9', fontSize: '16px', fontWeight: 600, lineHeight: 1.5, marginBottom: '20px' }}>
+                            <p style={{ color: '#f1f5f9', fontSize: isCompact ? '14px' : '16px', fontWeight: 600, lineHeight: 1.5, marginBottom: isCompact ? '12px' : '20px' }}>
                                 {activeQuestion.question}
                             </p>
 
                             {/* Options */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: isCompact ? '6px' : '10px', marginBottom: isCompact ? '12px' : '20px' }}>
                                 {activeQuestion.options.map((option, i) => {
                                     const isSelected = selectedAnswer === i;
                                     const isCorrect = i === activeQuestion.correct;
@@ -1367,34 +1400,34 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                                             style={{
                                                 background: bg,
                                                 border: `1px solid ${border}`,
-                                                borderRadius: '10px',
-                                                padding: '12px 16px',
+                                                borderRadius: isCompact ? '8px' : '10px',
+                                                padding: isCompact ? '8px 12px' : '12px 16px',
                                                 cursor: hasAnswered ? 'default' : 'pointer',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '12px',
+                                                gap: isCompact ? '8px' : '12px',
                                                 transition: 'all 0.15s ease',
                                                 textAlign: 'left',
                                                 width: '100%',
                                             }}
                                         >
                                             <span style={{
-                                                width: '26px',
-                                                height: '26px',
+                                                width: isCompact ? '22px' : '26px',
+                                                height: isCompact ? '22px' : '26px',
                                                 borderRadius: '50%',
                                                 background: 'rgba(255,255,255,0.08)',
                                                 border: `1px solid ${border}`,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
-                                                fontSize: '12px',
+                                                fontSize: isCompact ? '10px' : '12px',
                                                 fontWeight: 700,
                                                 color: color,
                                                 flexShrink: 0,
                                             }}>
                                                 {String.fromCharCode(65 + i)}
                                             </span>
-                                            <span style={{ color, fontSize: '14px', fontWeight: 500 }}>{option}</span>
+                                            <span style={{ color, fontSize: isCompact ? '13px' : '14px', fontWeight: 500 }}>{option}</span>
                                             {hasAnswered && isCorrect && (
                                                 <CheckCircle2 size={16} style={{ color: '#22c55e', marginLeft: 'auto', flexShrink: 0 }} />
                                             )}
@@ -1464,13 +1497,23 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
 
                 {/* Chapters Panel — slides in from left when open */}
                 {isChaptersOpen && meta.chapters && meta.chapters.length > 0 && (
+                    <>
+                    {/* Backdrop to close on outside click */}
+                    <div
+                        onClick={(e) => { e.stopPropagation(); setIsChaptersOpen(false); }}
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 34,
+                        }}
+                    />
                     <div
                         onClick={(e) => e.stopPropagation()}
                         style={{
                             position: 'absolute',
                             top: '12px',
                             left: '12px',
-                            width: '280px',
+                            width: 'min(280px, calc(100% - 24px))',
                             maxHeight: '65%',
                             background: 'rgba(10, 15, 25, 0.92)',
                             borderRadius: '12px',
@@ -1539,17 +1582,28 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             );
                         })}
                     </div>
+                    </>
                 )}
 
                 {/* Glossary Panel — slides in from right when open */}
                 {isGlossaryOpen && seenGlossaryTerms.length > 0 && (
+                    <>
+                    {/* Backdrop to close on outside click */}
+                    <div
+                        onClick={(e) => { e.stopPropagation(); setIsGlossaryOpen(false); }}
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 34,
+                        }}
+                    />
                     <div
                         onClick={(e) => e.stopPropagation()}
                         style={{
                             position: 'absolute',
                             top: '12px',
                             right: '12px',
-                            width: '260px',
+                            width: 'min(260px, calc(100% - 24px))',
                             maxHeight: '65%',
                             background: 'rgba(10, 15, 25, 0.92)',
                             borderRadius: '12px',
@@ -1595,6 +1649,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                             </div>
                         ))}
                     </div>
+                    </>
                 )}
 
                 {/* Controls Overlay */}
@@ -1609,7 +1664,9 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                         background: isFullscreen
                             ? 'linear-gradient(transparent, rgba(0,0,0,0.8))'
                             : 'linear-gradient(rgba(0,0,0,0.8), transparent)',
-                        padding: isFullscreen ? '40px 16px 16px 16px' : '16px 16px 40px 16px',
+                        padding: isFullscreen
+                            ? (isMini ? '24px 8px 8px 8px' : '40px 16px 16px 16px')
+                            : (isMini ? '8px 8px 24px 8px' : '16px 16px 40px 16px'),
                         // For user_driven/self_contained, controls are always visible (no hover needed — navigation IS the UI)
                         // For time_driven, controls fade in on hover (standard video player behaviour)
                         opacity: isFullscreen || navigationMode !== 'time_driven' ? 1 : 0,
@@ -1740,8 +1797,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                         style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: isCompact ? '6px' : '16px',
-                            flexWrap: 'nowrap',
+                            gap: isMini ? '4px' : isCompact ? '6px' : '16px',
+                            flexWrap: 'wrap',
                             minWidth: 0,
                         }}
                     >
@@ -1872,8 +1929,8 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
                         {/* Content type badge — hidden in compact mode to save space */}
                         {!isCompact && <span style={badgeStyle}>{CONTENT_TYPE_LABELS[contentType]}</span>}
 
-                        {/* Focus Mode Toggle (Dynamic Playback Speed) */}
-                        {navigationMode === 'time_driven' && (
+                        {/* Focus Mode Toggle (Dynamic Playback Speed) — hidden on very small screens */}
+                        {navigationMode === 'time_driven' && !isMini && (
                             <button
                                 onClick={() => setIsFocusMode(!isFocusMode)}
                                 style={{

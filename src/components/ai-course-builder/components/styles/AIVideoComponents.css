@@ -279,11 +279,11 @@
     }
 
     .ai-video-player .video-frame-container {
-        min-height: 200px;
+        min-height: 0;
     }
 
     .ai-video-player .playback-controls {
-        gap: 8px;
+        gap: 6px;
         flex-wrap: wrap;
     }
 
@@ -390,4 +390,54 @@
     font-family: monospace;
     font-size: 0.875rem;
     color: #64748b;
+}
+
+/* Fullscreen overrides */
+.ai-video-player.fullscreen .video-container {
+    max-height: 100%;
+    aspect-ratio: auto;
+    margin-bottom: 0;
+}
+
+.ai-video-player.fullscreen .video-frame-container {
+    min-height: 0;
+    aspect-ratio: auto;
+}
+
+/* Mobile: when player fills viewport (embed page) */
+@media (max-width: 768px) {
+    .ai-video-player.size-full .video-container,
+    .ai-video-player.h-full .video-container {
+        max-height: 100%;
+        height: 100%;
+        aspect-ratio: auto;
+        margin-bottom: 0;
+    }
+}
+
+/* Landscape mobile: use full viewport */
+@media (max-height: 500px) and (orientation: landscape) {
+    .ai-video-player .video-container {
+        max-height: 100%;
+        height: 100%;
+        aspect-ratio: auto;
+        margin-bottom: 0;
+    }
+
+    .ai-video-player .video-frame-container {
+        min-height: 0;
+        aspect-ratio: auto;
+    }
+}
+
+/* MCQ overlay — slideUpBounce animation */
+@keyframes slideUpBounce {
+    0% {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }

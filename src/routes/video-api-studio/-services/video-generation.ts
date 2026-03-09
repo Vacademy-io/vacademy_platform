@@ -499,6 +499,17 @@ interface RemoteHistoryItem {
     completed_at: string | null;
 }
 
+/** Map backend status strings (uppercase) to FE HistoryItem status. */
+function mapRemoteStatus(status: string): HistoryItem['status'] {
+    switch (status.toUpperCase()) {
+        case 'COMPLETED': return 'completed';
+        case 'FAILED':    return 'failed';
+        case 'IN_PROGRESS': return 'generating';
+        case 'PENDING':   return 'pending';
+        default:          return 'pending';
+    }
+}
+
 export async function getRemoteHistory(apiKey: string, limit: number = 20): Promise<HistoryItem[]> {
     const response = await fetch(
         `${AI_SERVICE_BASE_URL}/external/video/v1/history?limit=${limit}`,
@@ -521,7 +532,7 @@ export async function getRemoteHistory(apiKey: string, limit: number = 20): Prom
         video_id: item.video_id,
         prompt: item.prompt,
         content_type: item.content_type,
-        status: item.status.toLowerCase() as HistoryItem['status'],
+        status: mapRemoteStatus(item.status),
         stage: item.current_stage,
         created_at: item.created_at,
         html_url: item.s3_urls.timeline,

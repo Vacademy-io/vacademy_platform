@@ -210,12 +210,30 @@ function VideoConsole() {
                 options: pending.options,
             });
 
+            let pollCount = 0;
+            // Stop polling after ~12 minutes (72 × 10 s) — server restart or stuck job
+            const MAX_POLL_ATTEMPTS = 72;
+
             const poll = async () => {
+                pollCount++;
+
+                if (pollCount > MAX_POLL_ATTEMPTS) {
+                    if (pollingRef.current) clearInterval(pollingRef.current);
+                    pollingRef.current = null;
+                    localStorage.removeItem(PENDING_GENERATION_KEY);
+                    setConsoleState('idle');
+                    setCurrentGeneration(null);
+                    toast.error(
+                        'Generation is taking longer than expected. Please check history for updates or try again.'
+                    );
+                    return;
+                }
+
                 try {
                     const urls = await getVideoUrls(pending.videoId, apiKey);
-                    // Only treat as complete when html_url is actually present
-                    // (backend can return status=COMPLETED with null URLs mid-run)
+
                     if (urls.html_url && (urls.audio_url || !needsAudio(pending.contentType))) {
+                        // Success — content is ready
                         if (pollingRef.current) clearInterval(pollingRef.current);
                         pollingRef.current = null;
                         localStorage.removeItem(PENDING_GENERATION_KEY);
@@ -234,7 +252,26 @@ function VideoConsole() {
                         );
                         setConsoleState('complete');
                         toast.success('Content is ready!');
+                    } else if (urls.status === 'FAILED') {
+                        // Backend marked the job as failed
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        pollingRef.current = null;
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
+                        setConsoleState('idle');
+                        setCurrentGeneration(null);
+                        toast.error('Content generation failed. Please try again.');
+                    } else if (urls.status === 'COMPLETED' && !urls.html_url) {
+                        // Completed at a partial stage (e.g. script-only) — no visual content
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        pollingRef.current = null;
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
+                        setConsoleState('idle');
+                        setCurrentGeneration(null);
+                        toast.info(
+                            'Generation completed but no visual content was produced. The content may only have a script.'
+                        );
                     }
+                    // Otherwise still IN_PROGRESS — keep polling
                 } catch (err) {
                     console.warn('[Polling] Error fetching video URLs:', err);
                 }

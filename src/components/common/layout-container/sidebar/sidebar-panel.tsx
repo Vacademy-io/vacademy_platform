@@ -100,7 +100,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
     const settingsTabs = activeCategory === 'SETTINGS' ? getAvailableSettingsTabs() : [];
     // Reactively read the selectedTab search param from the URL
     const routerState = useRouterState({ select: (s) => s.location.search });
-    const activeSettingsTab = (routerState as Record<string, string>)?.selectedTab || 'tab';
+    const activeSettingsTab = (routerState as unknown as Record<string, string>)?.selectedTab || 'tab';
 
     return (
         <div

@@ -17,8 +17,9 @@ public class EnquiryInternalController {
     private EnquiryService enquiryService;
 
     @PostMapping("/link-counselor")
-    public ResponseEntity<String> linkCounselor(@RequestBody LinkCounselorDTO request) {
-        String response = enquiryService.linkCounselorToSource(request);
+    public ResponseEntity<String> linkCounselor(@RequestBody LinkCounselorDTO request,
+            @RequestAttribute("user") vacademy.io.common.auth.model.CustomUserDetails user) {
+        String response = enquiryService.linkCounselorToSource(request, user);
         return ResponseEntity.ok(response);
     }
 
@@ -31,8 +32,9 @@ public class EnquiryInternalController {
 
     @PostMapping("/v1/admin/update-status")
     public ResponseEntity<BulkEnquiryStatusUpdateResponseDTO> bulkUpdateEnquiryStatus(
-            @RequestBody BulkEnquiryStatusUpdateRequestDTO request) {
-        BulkEnquiryStatusUpdateResponseDTO response = enquiryService.bulkUpdateEnquiryStatus(request);
+            @RequestBody BulkEnquiryStatusUpdateRequestDTO request,
+            @RequestAttribute("user") vacademy.io.common.auth.model.CustomUserDetails user) {
+        BulkEnquiryStatusUpdateResponseDTO response = enquiryService.bulkUpdateEnquiryStatus(request, user);
         return ResponseEntity.ok(response);
     }
 }

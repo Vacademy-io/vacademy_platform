@@ -118,7 +118,8 @@ public class CouponCodeService {
         String shortUrl = shortUrlManagementService.createShortUrl(
                 destinationUrl,
                 SHORT_LINK_SOURCE_COUPON,
-                savedCoupon.getId());
+                savedCoupon.getId(),
+                instituteId);
 
         // Generate Short URL specifically for referral link
         String effectiveLearnerBaseUrl = getLearnerBaseUrlForInstitute(instituteId);
@@ -131,7 +132,8 @@ public class CouponCodeService {
         String shortReferralLink = shortUrlManagementService.createShortUrl(
                 referralDestinationUrl,
                 "REFERRAL_LINK",
-                savedCoupon.getId());
+                savedCoupon.getId(),
+                instituteId);
 
         if (shortUrl != null || shortReferralLink != null) {
             // Priority given to shortReferralLink
@@ -143,6 +145,34 @@ public class CouponCodeService {
         }
 
         return savedCoupon;
+    }
+
+    public String getOrGenerateShortUrl(CouponCode coupon, String instituteId) {
+        if (coupon.getShortUrl() != null && !coupon.getShortUrl().isBlank()) {
+            return coupon.getShortUrl();
+        }
+
+        // Lazy-generate Short URL specifically for referral link for old records
+        String effectiveLearnerBaseUrl = getLearnerBaseUrlForInstitute(instituteId);
+        String referralDestinationUrl = String.format(
+                "%s/learner-invitation-response?instituteId=%s&inviteCode=&ref=%s",
+                effectiveLearnerBaseUrl,
+                instituteId != null ? instituteId : "",
+                coupon.getCode());
+
+        String shortReferralLink = shortUrlManagementService.createShortUrl(
+                referralDestinationUrl,
+                "REFERRAL_LINK",
+                coupon.getId(),
+                instituteId);
+
+        if (shortReferralLink != null) {
+            coupon.setShortUrl(shortReferralLink);
+            couponCodeRepository.save(coupon); // update inline so we don't lose it
+            return shortReferralLink;
+        }
+
+        return null;
     }
 
     public List<CouponCode> getCouponCodesBySource(String sourceId, String sourceType) {

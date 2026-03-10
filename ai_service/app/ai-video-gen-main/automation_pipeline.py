@@ -165,11 +165,53 @@ WHISPER_LANG_MAP = {
     "german": "de", "japanese": "ja", "chinese": "zh",
 }
 
+# Unicode script ranges for validating Whisper output matches expected language
+_SCRIPT_RANGES: dict[str, tuple[int, int]] = {
+    "hi": (0x0900, 0x097F),   # Devanagari (Hindi, Marathi)
+    "mr": (0x0900, 0x097F),   # Devanagari
+    "bn": (0x0980, 0x09FF),   # Bengali
+    "ta": (0x0B80, 0x0BFF),   # Tamil
+    "te": (0x0C00, 0x0C7F),   # Telugu
+    "kn": (0x0C80, 0x0CFF),   # Kannada
+    "gu": (0x0A80, 0x0AFF),   # Gujarati
+    "ml": (0x0D00, 0x0D7F),   # Malayalam
+    "ja": (0x3040, 0x30FF),   # Hiragana/Katakana
+    "zh": (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+}
+
+
+def _validate_whisper_script(word_entries: list, lang_code: str) -> bool:
+    """Check if Whisper output contains characters in the expected script.
+
+    For Latin-script languages (en, es, fr, de) always returns True.
+    For non-Latin scripts, requires ≥30 % of letter characters to be in the
+    expected Unicode range — otherwise Whisper hallucinated in the wrong language.
+    """
+    script_range = _SCRIPT_RANGES.get(lang_code)
+    if script_range is None:
+        return True  # Latin-script language — no validation needed
+
+    lo, hi = script_range
+    total_letters = 0
+    matching_letters = 0
+    for entry in word_entries:
+        for ch in entry.get("word", ""):
+            if ch.isalpha():
+                total_letters += 1
+                if lo <= ord(ch) <= hi:
+                    matching_letters += 1
+
+    if total_letters == 0:
+        return False
+    ratio = matching_letters / total_letters
+    return ratio >= 0.30
+
 
 def _whisper_align(audio_path: Path, language: str = "English") -> list:
     """Standalone Whisper forced alignment. Returns word-level timestamps.
 
     Works for any language supported by Whisper (Hindi, Bengali, etc.).
+    Validates that Whisper output matches expected script; returns [] if not.
     """
     try:
         from faster_whisper import WhisperModel
@@ -178,8 +220,10 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
         return []
     try:
         lang_code = WHISPER_LANG_MAP.get(language.lower().strip(), "en")
-        print(f"    🎯 Running Whisper forced alignment (lang={lang_code})...")
-        model = WhisperModel("base", device="cpu", compute_type="int8")
+        # Use a larger model for non-English to get better accuracy
+        model_size = "medium" if lang_code != "en" else "base"
+        print(f"    🎯 Running Whisper forced alignment (lang={lang_code}, model={model_size})...")
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
         segments, _ = model.transcribe(
             str(audio_path), word_timestamps=True, language=lang_code
         )
@@ -192,10 +236,17 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
                         "start": round(wi.start, 3),
                         "end": round(wi.end, 3),
                     })
-        if word_entries:
-            print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
-        else:
+        if not word_entries:
             print("    ⚠️ Whisper returned no word timestamps")
+            return []
+
+        # Validate Whisper output is in the expected script
+        if not _validate_whisper_script(word_entries, lang_code):
+            print(f"    ⚠️ Whisper output is NOT in expected script for '{language}' "
+                  f"(lang={lang_code}). Discarding Whisper results.")
+            return []
+
+        print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
         return word_entries
     except Exception as e:
         print(f"    ❌ Whisper alignment failed: {e}")
@@ -1206,6 +1257,7 @@ class VideoGenerationPipeline:
                 glossary=getattr(self, '_current_glossary', None),
                 questions=getattr(self, '_current_questions', None),
                 language=language,
+                audio_path=tts_outputs.get("audio_path"),
             )
         
         avatar_video_path = None
@@ -1661,16 +1713,40 @@ class VideoGenerationPipeline:
                     _tmp_audio = _tmpmod.NamedTemporaryFile(suffix=".mp3", delete=False)
                     _tmp_audio.write(audio_data)
                     _tmp_audio.close()
+                    _whisper_ok = False
                     try:
                         _whisper_words = _whisper_align(Path(_tmp_audio.name), language)
                         if _whisper_words and len(_whisper_words) > len(word_entries):
                             word_entries = _whisper_words
+                            _whisper_ok = True
                             print(f"    ✅ Replaced EdgeTTS words with {len(word_entries)} Whisper words")
                         else:
                             print(f"    ℹ️  Whisper returned {len(_whisper_words) if _whisper_words else 0} words "
-                                  f"(EdgeTTS had {len(word_entries)}), keeping EdgeTTS data")
+                                  f"(EdgeTTS had {len(word_entries)})")
                     finally:
                         os.unlink(_tmp_audio.name)
+
+                    # If Whisper failed or returned wrong language, use linear
+                    # interpolation based on script text + estimated audio duration
+                    if not _whisper_ok:
+                        print(f"    🔄 Using linear interpolation on script text "
+                              f"(~{_est_dur:.0f}s estimated audio)...")
+                        import re as _lre
+                        _words_list = _lre.findall(r'\S+', script_text)
+                        if _words_list and _est_dur > 0:
+                            # Distribute words evenly across the audio duration
+                            _per_word = _est_dur / len(_words_list)
+                            _lin_entries = []
+                            for _wi, _wt in enumerate(_words_list):
+                                _ws = _wi * _per_word
+                                _we_t = _ws + _per_word * 0.85  # small gap between words
+                                _lin_entries.append({
+                                    "word": _wt,
+                                    "start": round(_ws, 3),
+                                    "end": round(_we_t, 3),
+                                })
+                            word_entries = _lin_entries
+                            print(f"    ✅ Generated {len(word_entries)} linear word timestamps")
 
                 for w in word_entries:
                     word_str = w["word"]
@@ -3956,6 +4032,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         glossary: Optional[List[Dict[str, Any]]] = None,
         questions: Optional[List[Dict[str, Any]]] = None,
         language: str = "English",
+        audio_path: Optional[Path] = None,
     ) -> Path:
         """
         Write timeline JSON with branding support.
@@ -4087,15 +4164,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # Standard Time-Driven Logic (Video)
             for entry in html_segments:
                 start = int(entry.get("index", len(timeline_entries) + 1))
-                
+
                 # Original times from the content
                 original_in_time = float(entry.get("start", 0))
                 original_exit_time = float(entry.get("end", 0))
-                
+
+                # Sanitize: exitTime must be > inTime
+                if original_exit_time <= original_in_time:
+                    original_exit_time = original_in_time + 1.0
+
                 # Offset times by intro duration (audio starts after intro)
                 adjusted_in_time = original_in_time + content_starts_at
                 adjusted_exit_time = original_exit_time + content_starts_at
-                
+
                 timeline_entry = {
                     "inTime": adjusted_in_time,
                     "exitTime": adjusted_exit_time,
@@ -4122,7 +4203,32 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # If no content entries, use a minimal duration
         if content_max_end <= content_starts_at:
             content_max_end = content_starts_at + 1.0
-        
+
+        # Ensure timeline covers the full audio duration.
+        # Without this, visuals can end before audio finishes.
+        if audio_path and Path(audio_path).exists() and navigation == "time_driven":
+            try:
+                _probe = subprocess.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                _actual_audio_dur = float(_probe.stdout.strip())
+                # Audio starts at content_starts_at, so content should end at
+                # content_starts_at + audio_duration
+                _audio_end = content_starts_at + _actual_audio_dur
+                if _audio_end > content_max_end + 1.0:
+                    print(f"   ⚠️ Audio ({_actual_audio_dur:.1f}s) extends beyond last visual "
+                          f"({content_max_end:.1f}s). Extending last segment to match.")
+                    # Extend the last content entry's exitTime to cover the audio
+                    for _te in reversed(timeline_entries):
+                        if _te.get("id", "").startswith("segment-"):
+                            _te["exitTime"] = _audio_end
+                            break
+                    content_max_end = _audio_end
+            except Exception as _e:
+                print(f"   ℹ️ Could not probe audio duration: {_e}")
+
         # 3. Add WATERMARK entry if enabled (spans entire content duration, positioned in corner)
         if watermark_enabled and watermark_config.get("html"):
             position = watermark_config.get("position", "top-right")

@@ -63,7 +63,7 @@ public class LearnerInvitationLinkService {
             Optional<CouponCode> couponCode = couponCodeService.getCouponCodeBySource(userId, "USER");
             if (couponCode.isPresent() && couponCode.get().getShortUrl() != null
                     && !couponCode.get().getShortUrl().isBlank()) {
-                return couponCode.get().getShortUrl();
+                return shortUrlManagementService.getAbsoluteShortUrl(instituteId, couponCode.get().getShortUrl());
             }
         } catch (Exception e) {
             log.warn("Error getting short URL from coupon for user {}: {}", userId, e.getMessage());
@@ -73,8 +73,8 @@ public class LearnerInvitationLinkService {
 
         try {
             String sourceId = userId + "_" + (enrollInvite != null ? enrollInvite.getId() : "default");
-            String shortUrl = shortUrlManagementService.createShortUrl(longUrl, "REFERRAL_LINK", sourceId);
-            return shortUrl != null ? shortUrl : longUrl;
+            String shortUrl = shortUrlManagementService.createShortUrl(longUrl, "REFERRAL_LINK", sourceId, instituteId);
+            return shortUrl != null ? shortUrlManagementService.getAbsoluteShortUrl(instituteId, shortUrl) : longUrl;
         } catch (Exception e) {
             log.error("Error creating short URL for referral link: {}", e.getMessage());
             return longUrl;

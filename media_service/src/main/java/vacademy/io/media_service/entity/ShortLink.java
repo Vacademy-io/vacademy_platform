@@ -13,6 +13,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
+import jakarta.persistence.Transient;
+
 @Entity
 @Table(name = "short_links")
 @Data
@@ -24,6 +26,9 @@ public class ShortLink {
     @Id
     @Column(name = "id")
     private String id;
+
+    @Transient
+    private String absoluteUrl;
 
     @Column(name = "short_name", unique = true, nullable = false)
     private String shortName;

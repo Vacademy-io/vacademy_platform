@@ -29,6 +29,9 @@ public interface EnrollInviteWithSessionsProjection {
     Timestamp getUpdatedAt();
     String getShortUrl();
 
+    @Value("#{@shortUrlManagementService.getAbsoluteShortUrl(target.instituteId, target.shortUrl)}")
+    String getAbsoluteShortUrl();
+
     // This getter receives the raw comma-separated string from the query.
     // The alias in the query MUST match this getter name (packageSessionIdsCsv).
     List<String>getPackageSessionIds();

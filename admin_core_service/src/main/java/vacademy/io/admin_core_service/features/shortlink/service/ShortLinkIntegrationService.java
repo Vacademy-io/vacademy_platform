@@ -28,7 +28,7 @@ public class ShortLinkIntegrationService {
     @Autowired
     private InternalClientUtils internalClientUtils;
 
-    public String createShortLink(String shortCode, String destinationUrl, String source, String sourceId) {
+    public String createShortLink(String shortCode, String destinationUrl, String source, String sourceId, String instituteId) {
         String route = "/media-service/internal/v1/short-link/create";
 
         CreateShortLinkRequest request = CreateShortLinkRequest.builder()
@@ -36,6 +36,7 @@ public class ShortLinkIntegrationService {
                 .destinationUrl(destinationUrl)
                 .source(source)
                 .sourceId(sourceId)
+                .instituteId(instituteId)
                 .build();
 
         try {
@@ -49,11 +50,55 @@ public class ShortLinkIntegrationService {
             if (!response.getStatusCode().is2xxSuccessful()) {
                 throw new VacademyException("Failed to create short link via media service");
             }
-            return shortLinkBaseUrl + "/s/" + shortCode;
+
+            return shortCode;
         } catch (Exception e) {
             throw new VacademyException(
                     "Error communicating with media service for short link creation: " + e.getMessage());
         }
+    }
+
+    private final java.util.Map<String, String> baseUrlCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private long lastCacheClearTime = System.currentTimeMillis();
+
+    public String buildAbsoluteUrl(String instituteId, String shortCode) {
+        if (shortCode == null || shortCode.isBlank())
+            return null;
+        if (shortCode.startsWith("http"))
+            return shortCode; // For old existing absolute URLs
+
+        if (System.currentTimeMillis() - lastCacheClearTime > 600000) { // Clear cache every 10 mins
+            baseUrlCache.clear();
+            lastCacheClearTime = System.currentTimeMillis();
+        }
+
+        String cacheKey = instituteId != null && !instituteId.isBlank() ? instituteId : "DEFAULT";
+        String host = baseUrlCache.computeIfAbsent(cacheKey, key -> {
+            String route = "/media-service/internal/v1/short-link/base-url"
+                    + (instituteId != null && !instituteId.isBlank() ? "?instituteId=" + instituteId : "");
+            try {
+                ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                        clientName,
+                        HttpMethod.GET.name(),
+                        mediaServiceBaseUrl,
+                        route,
+                        null);
+                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null
+                        && !response.getBody().isBlank()) {
+                    return response.getBody();
+                }
+            } catch (Exception e) {
+                // Fallback gracefully
+            }
+            return shortLinkBaseUrl;
+        });
+
+        // Ensure host doesn't end with slash
+        if (host.endsWith("/")) {
+            host = host.substring(0, host.length() - 1);
+        }
+
+        return host + "/s/" + shortCode;
     }
 
     public String generateRandomCode() {
@@ -115,5 +160,6 @@ public class ShortLinkIntegrationService {
         private String destinationUrl;
         private String source;
         private String sourceId;
+        private String instituteId;
     }
 }

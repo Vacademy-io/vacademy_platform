@@ -156,6 +156,52 @@ VOICE_MAPPING = {
 }
 
 
+# Whisper ISO-639-1 language codes for forced alignment
+WHISPER_LANG_MAP = {
+    "english": "en", "english (us)": "en", "english (uk)": "en",
+    "english (india)": "en", "hindi": "hi", "bengali": "bn",
+    "tamil": "ta", "telugu": "te", "marathi": "mr", "kannada": "kn",
+    "gujarati": "gu", "malayalam": "ml", "spanish": "es", "french": "fr",
+    "german": "de", "japanese": "ja", "chinese": "zh",
+}
+
+
+def _whisper_align(audio_path: Path, language: str = "English") -> list:
+    """Standalone Whisper forced alignment. Returns word-level timestamps.
+
+    Works for any language supported by Whisper (Hindi, Bengali, etc.).
+    """
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        print("    ⚠️ faster-whisper not installed. Run: pip install faster-whisper")
+        return []
+    try:
+        lang_code = WHISPER_LANG_MAP.get(language.lower().strip(), "en")
+        print(f"    🎯 Running Whisper forced alignment (lang={lang_code})...")
+        model = WhisperModel("base", device="cpu", compute_type="int8")
+        segments, _ = model.transcribe(
+            str(audio_path), word_timestamps=True, language=lang_code
+        )
+        word_entries = []
+        for segment in segments:
+            if segment.words:
+                for wi in segment.words:
+                    word_entries.append({
+                        "word": wi.word.strip(),
+                        "start": round(wi.start, 3),
+                        "end": round(wi.end, 3),
+                    })
+        if word_entries:
+            print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
+        else:
+            print("    ⚠️ Whisper returned no word timestamps")
+        return word_entries
+    except Exception as e:
+        print(f"    ❌ Whisper alignment failed: {e}")
+        return []
+
+
 class _GeminiRateLimitError(Exception):
     """Raised by _call_image_generation_llm on HTTP 429 so the executor thread
     is freed immediately and the sleep/requeue happens in the main thread."""
@@ -493,15 +539,29 @@ class GoogleCloudTTSClient:
             if hasattr(response, 'timepoints') and response.timepoints:
                 chunk_word_entries = self._process_timepoints(response, word_list)
 
+            # Get this chunk's audio duration (needed for offset and per-chunk fallback)
+            chunk_duration = self._get_mp3_duration(chunk_audio) if len(chunks) > 1 else 0.0
+
+            # Per-chunk Whisper fallback: if this chunk got no timestamps,
+            # try Whisper on just this chunk's audio so we don't lose data
+            if not chunk_word_entries and len(chunks) > 1:
+                print(f"    ⚠️ Chunk {chunk_idx + 1}/{len(chunks)} has no timepoints — trying Whisper...")
+                import tempfile as _tmpmod
+                _tmp = _tmpmod.NamedTemporaryFile(suffix=".mp3", delete=False)
+                _tmp.write(chunk_audio)
+                _tmp.close()
+                try:
+                    chunk_word_entries = _whisper_align(Path(_tmp.name))
+                finally:
+                    os.unlink(_tmp.name)
+
             # Offset timestamps by cumulative duration of previous chunks
             for entry in chunk_word_entries:
                 entry["start"] = round(entry["start"] + cumulative_offset, 3)
                 entry["end"] = round(entry["end"] + cumulative_offset, 3)
             all_word_entries.extend(chunk_word_entries)
 
-            # Get this chunk's audio duration for the next offset
             if len(chunks) > 1:
-                chunk_duration = self._get_mp3_duration(chunk_audio)
                 cumulative_offset += chunk_duration
 
         # Save concatenated audio
@@ -667,48 +727,9 @@ class GoogleCloudTTSClient:
         
         return word_entries
 
-    def _align_with_whisper(self, audio_path: Path, text: str) -> list:
+    def _align_with_whisper(self, audio_path: Path, text: str, language: str = "English") -> list:
         """Use Whisper for forced alignment to get accurate word timestamps from audio."""
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError:
-            print("    ⚠️ faster-whisper not installed. Run: pip install faster-whisper")
-            return []
-        
-        try:
-            print("    🎯 Running Whisper forced alignment...")
-            
-            # Use tiny or base model for speed (word-level timing is accurate enough)
-            # Compute type determines precision/speed tradeoff
-            model = WhisperModel("base", device="cpu", compute_type="int8")
-            
-            # Transcribe with word timestamps
-            segments, info = model.transcribe(
-                str(audio_path),
-                word_timestamps=True,
-                language="en"  # TODO: Make this dynamic based on video language
-            )
-            
-            word_entries = []
-            for segment in segments:
-                if segment.words:
-                    for word_info in segment.words:
-                        word_entries.append({
-                            "word": word_info.word.strip(),
-                            "start": round(word_info.start, 3),
-                            "end": round(word_info.end, 3)
-                        })
-            
-            if word_entries:
-                print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
-            else:
-                print("    ⚠️ Whisper returned no word timestamps")
-            
-            return word_entries
-            
-        except Exception as e:
-            print(f"    ❌ Whisper alignment failed: {e}")
-            return []
+        return _whisper_align(audio_path, language)
 
     def _generate_timestamps_with_fallback(self, audio_path: Path, text: str, raw_json_path: Path) -> None:
         """Generate word timestamps using Whisper alignment, with linear fallback."""
@@ -1619,6 +1640,38 @@ class VideoGenerationPipeline:
             if word_entries:
                 # ── Normal path: WordBoundary events received ──────────────────
                 print(f"    ✅ Captured {len(word_entries)} words from WordBoundary events.")
+
+                # ── Gap detection: Hindi and other non-Latin languages may have
+                #    incomplete WordBoundary events (Edge TTS bug).  If a gap
+                #    exceeds 10 s or total coverage is < 50 %, fall back to
+                #    Whisper forced alignment for the full audio. ──────────────
+                _sorted_we = sorted(word_entries, key=lambda _w: _w["start"])
+                _max_gap = 0.0
+                for _gi in range(1, len(_sorted_we)):
+                    _gap = _sorted_we[_gi]["start"] - _sorted_we[_gi - 1]["end"]
+                    _max_gap = max(_max_gap, _gap)
+                _covered = sum(w["end"] - w["start"] for w in word_entries)
+                _est_dur = len(audio_data) / 16000.0  # rough MP3 estimate
+
+                if _max_gap > 10.0 or (_est_dur > 5 and _covered / _est_dur < 0.50):
+                    print(f"    ⚠️  WordBoundary gaps detected (max_gap={_max_gap:.1f}s, "
+                          f"coverage={_covered:.1f}s / ~{_est_dur:.1f}s). "
+                          f"Falling back to Whisper forced alignment...")
+                    import tempfile as _tmpmod
+                    _tmp_audio = _tmpmod.NamedTemporaryFile(suffix=".mp3", delete=False)
+                    _tmp_audio.write(audio_data)
+                    _tmp_audio.close()
+                    try:
+                        _whisper_words = _whisper_align(Path(_tmp_audio.name), language)
+                        if _whisper_words and len(_whisper_words) > len(word_entries):
+                            word_entries = _whisper_words
+                            print(f"    ✅ Replaced EdgeTTS words with {len(word_entries)} Whisper words")
+                        else:
+                            print(f"    ℹ️  Whisper returned {len(_whisper_words) if _whisper_words else 0} words "
+                                  f"(EdgeTTS had {len(word_entries)}), keeping EdgeTTS data")
+                    finally:
+                        os.unlink(_tmp_audio.name)
+
                 for w in word_entries:
                     word_str = w["word"]
                     w_start  = w["start"]

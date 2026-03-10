@@ -5,6 +5,8 @@ import { MyButton } from "@/components/design-system/button";
 import { Loader2, MapPin, User, Mail, Phone, CreditCard, ChevronRight, CheckCircle2 } from "lucide-react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
+import { getAccessToken, isTokenExpired } from "@/lib/auth/sessionUtility";
+import { Preferences } from "@capacitor/preferences";
 import {
     ENROLLMENT_PAYMENT_INITIATION,
     ENROLLMENT_PAYMENT_INITIATION_V2,
@@ -51,6 +53,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const [isPhoneVerified, setIsPhoneVerified] = useState(false);
     const [isLoadingPhoneOtp, setIsLoadingPhoneOtp] = useState(false);
     const [isVerifyingPhoneOtp, setIsVerifyingPhoneOtp] = useState(false);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [showFullForm, setShowFullForm] = useState(true);
 
     const [emailError, setEmailError] = useState("");
     const [phoneError, setPhoneError] = useState("");
@@ -80,6 +84,43 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             setPhoneOtpSent(false);
             setOtp("");
             setIsPhoneVerified(false);
+            setShowFullForm(true);
+        } else {
+            const checkAuthAndLoadProfile = async () => {
+                try {
+                    const token = await getAccessToken();
+                    if (token && !isTokenExpired(token)) {
+                        setIsAuthenticated(true);
+                        const { value } = await Preferences.get({ key: "StudentDetails" });
+                        if (value) {
+                            const parsedData = JSON.parse(value);
+                            const studentDetails = Array.isArray(parsedData) ? parsedData[0] : parsedData;
+                            if (studentDetails) {
+                                setFullName(studentDetails.full_name || studentDetails.first_name || "");
+                                setEmail(studentDetails.email || studentDetails.username || "");
+                                const phoneNum = studentDetails.mobile_number || studentDetails.phone_number || "";
+                                setPhone(phoneNum);
+                                setAddress(studentDetails.address_line || studentDetails.address || "");
+                                
+                                const hasPhone = !!(phoneNum && phoneNum.replace(/\D/g, "").length >= 10);
+                                if (hasPhone) {
+                                    setIsPhoneVerified(true);
+                                }
+                                
+                                setShowFullForm(!hasPhone);
+                            }
+                        }
+                    } else {
+                        setIsAuthenticated(false);
+                        setShowFullForm(true);
+                    }
+                } catch (error) {
+                    console.error(error);
+                    setIsAuthenticated(false);
+                    setShowFullForm(true);
+                }
+            };
+            checkAuthAndLoadProfile();
         }
     }, [open]);
 
@@ -198,18 +239,21 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         setNameError("");
         setAddressError("");
 
-        if (!fullName.trim()) {
-            setNameError("Full name is required");
-            hasErrors = true;
+        if (showFullForm) {
+            if (!fullName.trim()) {
+                setNameError("Full name is required");
+                hasErrors = true;
+            }
+            if (!email.trim() || !validateEmail(email)) {
+                setEmailError("Valid email is required");
+                hasErrors = true;
+            }
+            if (!phone.trim() || !validatePhone(phone)) {
+                setPhoneError("Valid phone number is required");
+                hasErrors = true;
+            }
         }
-        if (!email.trim() || !validateEmail(email)) {
-            setEmailError("Valid email is required");
-            hasErrors = true;
-        }
-        if (!phone.trim() || !validatePhone(phone)) {
-            setPhoneError("Valid phone number is required");
-            hasErrors = true;
-        }
+
         if (!isPhoneVerified) {
             setPhoneError("Phone verification is required");
             hasErrors = true;
@@ -230,8 +274,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
             // Common user payload
             const userPayload = {
-                full_name: fullName,
-                email: email,
+                full_name: fullName.trim() || "Student",
+                email: email.trim() || "student@example.com",
                 mobileNumber: phone,
                 address_line: address,
                 city: "",
@@ -489,11 +533,26 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                             </div>
                         ) : (
                             <>
-                                {/* Name */}
-                                <div className="space-y-1">
-                                    <label className="text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5">
-                                        <User className="h-3 w-3" /> Full Name
-                                    </label>
+                                {!showFullForm && (
+                                    <div className="bg-primary-50 p-3 rounded-xl border border-primary-100 flex items-start gap-3 mb-2">
+                                        <div className="bg-primary-100 p-2 rounded-full mt-0.5 shrink-0">
+                                            <User className="h-4 w-4 text-primary-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-gray-900 truncate">{fullName}</p>
+                                            <p className="text-xs text-gray-500 mt-0.5 truncate">{email}</p>
+                                            <p className="text-xs text-gray-500 mt-0.5">+{phone}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {showFullForm && (
+                                    <>
+                                        {/* Name */}
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5">
+                                                <User className="h-3 w-3" /> Full Name
+                                            </label>
                                     <input
                                         type="text"
                                         value={fullName}
@@ -580,6 +639,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                         </div>
                                     )}
                                 </div>
+                                </>
+                                )}
 
                                 {/* Address */}
                                 <div className="space-y-1">

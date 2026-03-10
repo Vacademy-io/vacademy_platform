@@ -30,7 +30,7 @@ public class TaxDeclarationService {
 
         // Check if a declaration already exists for this employee and FY
         Optional<TaxDeclaration> existingOpt = taxDeclarationRepository
-                .findByEmployeeIdAndFinancialYear(dto.getEmployeeId(), dto.getFinancialYear());
+                .findByEmployee_IdAndFinancialYear(dto.getEmployeeId(), dto.getFinancialYear());
 
         if (existingOpt.isPresent()) {
             throw new VacademyException("Tax declaration already exists for this employee and financial year. Use update instead.");
@@ -77,7 +77,7 @@ public class TaxDeclarationService {
     @Transactional(readOnly = true)
     public TaxDeclarationDTO getDeclaration(String employeeId, String financialYear) {
         TaxDeclaration declaration = taxDeclarationRepository
-                .findByEmployeeIdAndFinancialYear(employeeId, financialYear)
+                .findByEmployee_IdAndFinancialYear(employeeId, financialYear)
                 .orElseThrow(() -> new VacademyException("Tax declaration not found for employee in FY: " + financialYear));
 
         return toDTO(declaration);

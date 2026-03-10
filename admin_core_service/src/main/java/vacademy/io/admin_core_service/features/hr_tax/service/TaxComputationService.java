@@ -19,7 +19,7 @@ public class TaxComputationService {
     @Transactional(readOnly = true)
     public List<TaxComputationDTO> getComputation(String employeeId, String financialYear) {
         List<TaxComputation> computations = taxComputationRepository
-                .findByEmployeeIdAndFinancialYearOrderByMonthAsc(employeeId, financialYear);
+                .findByEmployee_IdAndFinancialYearOrderByMonthAsc(employeeId, financialYear);
 
         return computations.stream().map(this::toDTO).collect(Collectors.toList());
     }

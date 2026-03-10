@@ -1085,15 +1085,33 @@ class VideoGenerationPipeline:
                 if self._current_questions:
                     print(f"   📝 Loaded {len(self._current_questions)} MCQ questions from script plan")
 
+                # Get actual audio duration so segments cover the full narration
+                _seg_audio_dur = 0.0
+                _seg_audio_path = tts_outputs.get("audio_path")
+                if _seg_audio_path and Path(_seg_audio_path).exists():
+                    try:
+                        _probe_res = subprocess.run(
+                            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                             "-of", "default=noprint_wrappers=1:nokey=1", str(_seg_audio_path)],
+                            capture_output=True, text=True, timeout=10,
+                        )
+                        _seg_audio_dur = float(_probe_res.stdout.strip())
+                        print(f"   ℹ️  Actual audio duration: {_seg_audio_dur:.1f}s")
+                    except Exception:
+                        pass
+
                 # Configurable max segments to limit LLM expense
                 # Default: max 12 segments (covers ~8 minutes of video at ~40s each)
                 max_segments = getattr(self, '_max_segments', 12)
-                
+
                 if beat_outline and len(beat_outline) >= 2 and words:
-                    segments = self._segment_words_by_beats(words, beat_outline, max_segments=max_segments)
+                    segments = self._segment_words_by_beats(
+                        words, beat_outline, max_segments=max_segments,
+                        audio_duration=_seg_audio_dur,
+                    )
                     print(f"   ✅ Created {len(segments)} concept-aligned segments from {len(beat_outline)} beats (max: {max_segments})")
                 else:
-                    segments = self._segment_words(words)
+                    segments = self._segment_words(words, audio_duration=_seg_audio_dur)
                     print(f"   ℹ️  Using fixed-window segmentation ({len(segments)} segments)")
 
                 # Store segment start times + labels for chapter markers in the frontend player
@@ -2027,10 +2045,15 @@ class VideoGenerationPipeline:
         return json.loads(words_path.read_text())
 
     @staticmethod
-    def _segment_words(words: List[Dict[str, Any]], window: float = 40.0) -> List[Dict[str, Any]]:
+    def _segment_words(words: List[Dict[str, Any]], window: float = 40.0, audio_duration: float = 0.0) -> List[Dict[str, Any]]:
         if not words:
             return []
-        total_duration = float(words[-1]["end"])
+        # Use max of all word end-times (array may not be sorted) and
+        # actual audio duration (words may not cover the full audio).
+        total_duration = max(
+            max(float(w["end"]) for w in words),
+            audio_duration,
+        )
         segments: List[Dict[str, Any]] = []
         idx = 0
         start_time = 0.0
@@ -2057,19 +2080,25 @@ class VideoGenerationPipeline:
         return segments
 
     def _segment_words_by_beats(
-        self, words: List[Dict[str, Any]], beat_outline: List[Dict[str, Any]], max_segments: int = 8
+        self, words: List[Dict[str, Any]], beat_outline: List[Dict[str, Any]],
+        max_segments: int = 8, audio_duration: float = 0.0,
     ) -> List[Dict[str, Any]]:
         """
         Concept-aligned segmentation: uses the beat_outline labels to find natural
         topic transitions in the narration text, then splits words at those boundaries.
-        
+
         Falls back to fixed-window if beat matching fails.
         max_segments caps total segments to control LLM cost.
         """
         if not words or not beat_outline:
-            return self._segment_words(words)
-        
-        total_duration = float(words[-1]["end"])
+            return self._segment_words(words, audio_duration=audio_duration)
+
+        # Use max of all word end-times (array may not be sorted) and
+        # actual audio duration (words may not cover the full audio).
+        total_duration = max(
+            max(float(w["end"]) for w in words),
+            audio_duration,
+        )
         full_text = " ".join(str(w.get("word", "")) for w in words).lower()
         
         # Try to find approximate word positions for each beat label
@@ -2123,7 +2152,7 @@ class VideoGenerationPipeline:
         # If we only got start+end (no useful beat boundaries), fall back
         if len(beat_boundaries) <= 2:
             print("   ⚠️ Beat matching found no useful boundaries, using fixed-window fallback")
-            return self._segment_words(words)
+            return self._segment_words(words, audio_duration=audio_duration)
         
         # Build segments from boundaries
         segments: List[Dict[str, Any]] = []

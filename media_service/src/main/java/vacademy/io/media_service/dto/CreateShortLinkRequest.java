@@ -14,4 +14,5 @@ public class CreateShortLinkRequest {
     private String destinationUrl;
     private String source;
     private String sourceId;
+    private String instituteId;
 }

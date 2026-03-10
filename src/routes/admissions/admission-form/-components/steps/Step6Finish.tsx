@@ -26,20 +26,12 @@ export default function Step6Finish({ formData, handleChange, admissionId }: Pro
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4 border-b pb-2">Admission Summary</h3>
                 <div className="flex flex-col gap-3 text-left">
                     <div className="flex justify-between">
-                        <span className="text-gray-600">Admission ID:</span>
-                        <span className="font-semibold text-primary">{admissionId}</span>
-                    </div>
-                    <div className="flex justify-between">
                         <span className="text-gray-600">Student Name:</span>
                         <span className="font-medium text-gray-800">{formData.studentFirstName} {formData.studentLastName}</span>
                     </div>
                     <div className="flex justify-between">
                         <span className="text-gray-600">Class:</span>
                         <span className="font-medium text-gray-800">{formData.studentClass || '-'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span className="text-gray-600">Father Name:</span>
-                        <span className="font-medium text-gray-800">{formData.fatherName || '-'}</span>
                     </div>
                 </div>
             </div>

@@ -1,15 +1,31 @@
 import React from 'react';
 import { AdmissionFormData } from '../AdmissionFormWizard';
 
+interface PackageSessionOption {
+    id: string;
+    label: string;
+    sessionId: string;
+}
+
 interface Props {
     formData: AdmissionFormData;
     handleChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+    packageSessionOptions: PackageSessionOption[];
+    onFormDataUpdate: (updates: Partial<AdmissionFormData>) => void;
 }
 
-export default function Step1StudentDetails({ formData, handleChange }: Props) {
+export default function Step1StudentDetails({ formData, handleChange, packageSessionOptions, onFormDataUpdate }: Props) {
+    const handleClassChange = (packageSessionId: string) => {
+        const selected = packageSessionOptions.find(opt => opt.id === packageSessionId);
+        onFormDataUpdate({
+            destinationPackageSessionId: packageSessionId,
+            studentClass: selected?.label || '',
+            sessionId: selected?.sessionId || formData.sessionId,
+        });
+    };
+
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in zoom-in-95 duration-200">
-            {/* Full Width Section Header */}
             <div className="col-span-full pb-2 border-b border-gray-100">
                 <h2 className="text-lg font-semibold text-gray-800">Student Details</h2>
             </div>
@@ -67,11 +83,15 @@ export default function Step1StudentDetails({ formData, handleChange }: Props) {
 
             <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700">Class <span className="text-red-500">*</span></label>
-                <select name="studentClass" value={formData.studentClass} onChange={handleChange} className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-shadow">
+                <select
+                    value={formData.destinationPackageSessionId}
+                    onChange={(e) => handleClassChange(e.target.value)}
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-shadow"
+                >
                     <option value="">Select Class</option>
-                    <option value="Class 1">Class 1</option>
-                    <option value="Class 2">Class 2</option>
-                    <option value="Class 3">Class 3</option>
+                    {packageSessionOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>{opt.label}</option>
+                    ))}
                 </select>
             </div>
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Step1StudentDetails from './steps/Step1StudentDetails';
 import Step2PreviousSchool from './steps/Step2PreviousSchool';
 import Step3ParentDetails from './steps/Step3ParentDetails';
@@ -6,13 +6,20 @@ import Step4AddressDetails from './steps/Step4AddressDetails';
 import Step5AFeeAssignment from './steps/Step5AFeeAssignment';
 import Step6Finish from './steps/Step6Finish';
 import AdmissionEntryScreen, { StudentSearchResult } from './AdmissionEntryScreen';
-import { Button } from '@/components/ui/button';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { toast } from 'sonner';
 
 export interface AdmissionFormData {
+    // Source / context
+    sessionId: string;
+    destinationPackageSessionId: string;
+    source: string;
+    sourceId: string;
+    enquiryId: string | null;
+    applicationId: string | null;
+
     // Step 1
     studentFirstName: string;
     studentMiddleName: string;
@@ -66,14 +73,15 @@ export interface AdmissionFormData {
     // Step 4
     currentAddress: string;
     currentLocality: string;
+    currentPinCode: string;
     sameAsPermanent: boolean;
     permanentAddress: string;
     permanentLocality: string;
 
-    // Step 5 (Documents - just flag if toggled for now)
+    // Documents
     documentsUploaded: boolean;
 
-    // Step 6 (Finish options)
+    // Finish options
     sendSms: boolean;
     sendEmail: boolean;
 }
@@ -83,8 +91,8 @@ const STEPS = [
     { id: 2, title: 'Previous School & Personal Details' },
     { id: 3, title: 'Student Parent Details' },
     { id: 4, title: 'Address Details' },
-    { id: 5, title: 'Fee Assignment' },
-    { id: 6, title: 'Finish' },
+    { id: 5, title: 'Finish' },
+    { id: 6, title: 'Fee Assignment' },
 ];
 
 export default function AdmissionFormWizard() {
@@ -94,8 +102,21 @@ export default function AdmissionFormWizard() {
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id || '';
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedSessionId, setSelectedSessionId] = useState('');
+    const packageSessionOptions = useMemo(() => {
+        if (!instituteDetails?.batches_for_sessions) return [];
+        return instituteDetails.batches_for_sessions
+            .filter((batch) => !selectedSessionId || batch.session.id === selectedSessionId)
+            .map((batch) => ({
+                id: batch.id,
+                label: `${batch.package_dto.package_name} - ${batch.level.level_name}`,
+                sessionId: batch.session.id,
+            }));
+    }, [instituteDetails, selectedSessionId]);
 
     const [formData, setFormData] = useState<AdmissionFormData>({
+        sessionId: '', destinationPackageSessionId: '', source: '', sourceId: '', enquiryId: null, applicationId: null,
+
         studentFirstName: '', studentMiddleName: '', studentLastName: '',
         gender: '', applicationNumber: '', studentClass: '', section: '',
         classGroup: '', dateOfAdmission: '', dateOfBirth: '',
@@ -110,12 +131,11 @@ export default function AdmissionFormWizard() {
         motherName: '', motherMobile: '', motherEmail: '', motherAadhaar: '', motherQualification: '', motherOccupation: '',
         guardianName: '', guardianMobile: '',
 
-        currentAddress: '', currentLocality: '', sameAsPermanent: false, permanentAddress: '', permanentLocality: '',
+        currentAddress: '', currentLocality: '', currentPinCode: '', sameAsPermanent: false, permanentAddress: '', permanentLocality: '',
         documentsUploaded: false, sendSms: true, sendEmail: true
     });
 
     useEffect(() => {
-        // Generate UNIQUE ADMISSION ID when form starts
         const newId = `VAC-ADM-2026-${Math.floor(10000 + Math.random() * 90000)}`;
         setAdmissionId(newId);
     }, []);
@@ -139,33 +159,52 @@ export default function AdmissionFormWizard() {
         }
     };
 
+    const handleFormDataUpdate = (updates: Partial<AdmissionFormData>) => {
+        setFormData(prev => ({ ...prev, ...updates }));
+    };
+
     const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, STEPS.length));
     const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
     const goToStep = (stepId: number) => setCurrentStep(stepId);
 
-    const handleStartAdmission = (data: Partial<StudentSearchResult> | null) => {
+    const handleStartAdmission = (data: Partial<StudentSearchResult> | null, sessionId?: string) => {
+        if (sessionId) {
+            setSelectedSessionId(sessionId);
+        }
         if (data) {
-            // Normalize gender from display value to API value
-            const normalizeGender = (g?: string) => {
-                if (!g) return '';
-                const lower = g.toLowerCase();
-                if (lower === 'boy' || lower === 'male') return 'MALE';
-                if (lower === 'girl' || lower === 'female') return 'FEMALE';
-                return 'OTHER';
-            };
+            const nameParts = (data.studentName || '').split(' ');
+            const firstName = nameParts[0] || '';
+            const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+            const parentName = data.parentName || '';
+            const parentMobile = data.mobile || '';
+            const parentEmail = data.email || '';
+            const isMother = data.parentGender === 'mother';
 
             setFormData(prev => ({
                 ...prev,
-                studentFirstName: data.studentName || '',
-                gender: normalizeGender(data.gender),
+                studentFirstName: firstName,
+                studentLastName: lastName,
+                gender: data.gender || '',
                 studentClass: data.classVal || '',
                 dateOfBirth: data.dob || '',
-                residentialPhone: data.mobile || '',
-                fatherName: data.parentName || '',
-                fatherMobile: data.mobile || '',
-                fatherEmail: data.email || '',
-                currentAddress: data.address || ''
+                residentialPhone: parentMobile,
+                fatherName: isMother ? '' : parentName,
+                fatherMobile: isMother ? '' : parentMobile,
+                fatherEmail: isMother ? '' : parentEmail,
+                motherName: isMother ? parentName : '',
+                motherMobile: isMother ? parentMobile : '',
+                motherEmail: isMother ? parentEmail : '',
+                currentAddress: data.address || '',
+                source: data.sourceType || '',
+                sourceId: data.sourceId || '',
+                destinationPackageSessionId: data.destinationPackageSessionId || '',
+                sessionId: sessionId || '',
+                enquiryId: data.enquiryId ?? null,
+                applicationId: data.applicationId ?? null,
             }));
+        } else if (sessionId) {
+            setFormData(prev => ({ ...prev, sessionId }));
         }
         setWizardStarted(true);
     };
@@ -178,27 +217,71 @@ export default function AdmissionFormWizard() {
 
         setIsSubmitting(true);
         try {
-            const payload = {
+            const instituteId = instituteDetails?.id || '';
+
+            // Resolve session_id from the selected package session if not already set
+            let sessionId = formData.sessionId;
+            if (!sessionId && formData.destinationPackageSessionId) {
+                const match = instituteDetails?.batches_for_sessions?.find(
+                    b => b.id === formData.destinationPackageSessionId
+                );
+                if (match) sessionId = match.session.id;
+            }
+
+            const payload: Record<string, any> = {
                 institute_id: instituteId,
-                source: "INSTITUTE",
-                source_id: instituteId,
-                first_name: formData.studentFirstName || "",
-                last_name: formData.studentLastName || "",
-                gender: formData.gender || "",
-                date_of_birth: formData.dateOfBirth || "",
-                class_applying_for: formData.studentClass || "",
-                admission_type: formData.admissionType || "NEW",
-                father_name: formData.fatherName || "",
-                father_mobile: formData.fatherMobile || "",
-                father_email: formData.fatherEmail || "",
-                mother_name: formData.motherName || "",
-                mother_mobile: formData.motherMobile || "",
-                mother_email: formData.motherEmail || "",
-                current_address: formData.currentAddress || "",
-                current_locality: formData.currentLocality || "",
-                current_pin_code: formData.permanentLocality || "",
-                blood_group: formData.bloodGroup || "",
-                nationality: formData.nationality || ""
+                source: formData.source || 'INSTITUTE',
+                source_id: formData.sourceId || instituteId,
+                session_id: sessionId || '',
+                destination_package_session_id: formData.destinationPackageSessionId || '',
+                enquiry_id: formData.enquiryId || null,
+                application_id: formData.applicationId || null,
+                first_name: formData.studentFirstName || '',
+                last_name: formData.studentLastName || '',
+                gender: formData.gender ? formData.gender.toUpperCase() : '',
+                class_applying_for: formData.destinationPackageSessionId || formData.studentClass || '',
+                section: formData.section || '',
+                admission_no: formData.applicationNumber || '',
+                date_of_admission: formData.dateOfAdmission || '',
+                has_transport: formData.transport === 'Yes',
+                student_type: formData.studentType || '',
+                class_group: formData.classGroup || '',
+                date_of_birth: formData.dateOfBirth || '',
+                mobile_number: formData.residentialPhone || '',
+                admission_type: formData.admissionType || '',
+                student_aadhaar: formData.aadhaarNumber || '',
+                previous_school_name: formData.schoolName || '',
+                previous_class: formData.previousClass || '',
+                previous_board: formData.board || '',
+                year_of_passing: formData.yearOfPassing || '',
+                previous_percentage: formData.percentage || '',
+                previous_admission_no: formData.previousAdmissionNo || '',
+                religion: formData.religion || '',
+                caste: formData.caste || '',
+                mother_tongue: formData.motherTongue || '',
+                blood_group: formData.bloodGroup || '',
+                nationality: formData.nationality || '',
+                how_did_you_know: formData.howDidYouKnow || '',
+                father_name: formData.fatherName || '',
+                father_mobile: formData.fatherMobile || '',
+                father_email: formData.fatherEmail || '',
+                father_aadhaar: formData.fatherAadhaar || '',
+                father_qualification: formData.fatherQualification || '',
+                father_occupation: formData.fatherOccupation || '',
+                mother_name: formData.motherName || '',
+                mother_mobile: formData.motherMobile || '',
+                mother_email: formData.motherEmail || '',
+                mother_aadhaar: formData.motherAadhaar || '',
+                mother_qualification: formData.motherQualification || '',
+                mother_occupation: formData.motherOccupation || '',
+                guardian_name: formData.guardianName || '',
+                guardian_mobile: formData.guardianMobile || '',
+                current_address: formData.currentAddress || '',
+                current_locality: formData.currentLocality || '',
+                current_pin_code: formData.currentPinCode || '',
+                permanent_address: formData.permanentAddress || '',
+                permanent_locality: formData.permanentLocality || '',
+                custom_field_values: {},
             };
 
             const response = await authenticatedAxiosInstance.post(
@@ -206,15 +289,17 @@ export default function AdmissionFormWizard() {
                 payload
             );
 
-            if (response.status === 200 || response.status === 201) {
-                toast.success(`Admission Form Submitted Successfully! Admission ID: ${admissionId}`);
+            if (response.status >= 200 && response.status < 300) {
+                toast.success(`Admission submitted successfully! ID: ${admissionId}`);
                 setWizardStarted(false);
                 setCurrentStep(1);
             } else {
                 toast.error('Failed to submit admission form. Please try again.');
+                toast.error('Failed to submit admission form. Please try again.');
             }
         } catch (error) {
             console.error('Error submitting form:', error);
+            toast.error('An error occurred. Please check your network and try again.');
             toast.error('An error occurred. Please check your network and try again.');
         } finally {
             setIsSubmitting(false);
@@ -236,7 +321,6 @@ export default function AdmissionFormWizard() {
                     </button>
                     Admission Form
                 </h1>
-                <p className="text-sm text-gray-500 pl-8">Admission ID: <span className="font-semibold text-primary">{admissionId}</span></p>
             </div>
 
             {/* Stepper Tabs */}
@@ -270,12 +354,19 @@ export default function AdmissionFormWizard() {
 
             {/* Step Content */}
             <div className="flex-1 overflow-y-auto rounded-lg bg-white p-6 shadow-sm border border-gray-100">
-                {currentStep === 1 && <Step1StudentDetails formData={formData} handleChange={handleChange} />}
+                {currentStep === 1 && (
+                    <Step1StudentDetails
+                        formData={formData}
+                        handleChange={handleChange}
+                        packageSessionOptions={packageSessionOptions}
+                        onFormDataUpdate={handleFormDataUpdate}
+                    />
+                )}
                 {currentStep === 2 && <Step2PreviousSchool formData={formData} handleChange={handleChange} />}
                 {currentStep === 3 && <Step3ParentDetails formData={formData} handleChange={handleChange} />}
                 {currentStep === 4 && <Step4AddressDetails formData={formData} handleChange={handleChange} />}
-                {currentStep === 5 && <Step5AFeeAssignment formData={formData} handleChange={handleChange} />}
-                {currentStep === 6 && <Step6Finish formData={formData} handleChange={handleChange} admissionId={admissionId} />}
+                {currentStep === 5 && <Step6Finish formData={formData} handleChange={handleChange} admissionId={admissionId} />}
+                {currentStep === 6 && <Step5AFeeAssignment formData={formData} handleChange={handleChange} />}
             </div>
 
             {/* Footer Navigation */}
@@ -288,14 +379,7 @@ export default function AdmissionFormWizard() {
                     Previous
                 </button>
 
-                {currentStep < STEPS.length ? (
-                    <button
-                        onClick={nextStep}
-                        className="px-6 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
-                    >
-                        Next
-                    </button>
-                ) : (
+                {currentStep === 5 ? (
                     <button
                         onClick={handleSubmitAdmission}
                         disabled={isSubmitting}
@@ -304,6 +388,13 @@ export default function AdmissionFormWizard() {
                         }`}
                     >
                         {isSubmitting ? 'Submitting...' : 'Submit Admission'}
+                    </button>
+                ) : (
+                    <button
+                        onClick={nextStep}
+                        className="px-6 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
+                    >
+                        Save & Next
                     </button>
                 )}
             </div>

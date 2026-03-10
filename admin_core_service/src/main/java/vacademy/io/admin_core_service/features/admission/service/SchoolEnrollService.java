@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.admission.dto.SchoolPaymentDTO;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.SchoolFeeReceiptService;
@@ -89,6 +90,9 @@ public class SchoolEnrollService {
 
     @Autowired
     private PaymentService paymentService;
+
+    @Autowired
+    private PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -178,6 +182,9 @@ public class SchoolEnrollService {
         // Step 7: Generate StudentFeePayment rows from CPO template
         List<String> studentFeePaymentIds = new ArrayList<>();
         if (StringUtils.hasText(request.getCpoId())) {
+            // Validate CPO is valid for this package session
+            validateCpoForPackageSession(request.getPackageSessionId(), request.getCpoId());
+            
             studentFeePaymentIds = studentFeePaymentGenerationService.generateFeeBills(
                     userPlan.getId(),
                     request.getCpoId(),
@@ -218,6 +225,29 @@ public class SchoolEnrollService {
         if (!StringUtils.hasText(request.getPaymentOptionId())) {
             throw new VacademyException("Payment option ID is required");
         }
+    }
+
+    /**
+     * Validates that the given CPO is valid for the specified package session.
+     * Queries the bridge table to ensure the CPO is available for this class.
+     *
+     * @param packageSessionId The package session (class) ID
+     * @param cpoId The ComplexPaymentOption (fee structure) ID
+     * @throws VacademyException if CPO is not valid for this package session
+     */
+    private void validateCpoForPackageSession(String packageSessionId, String cpoId) {
+        List<String> validCpoIds = packageSessionLearnerInvitationRepository
+                .findDistinctCpoIdsByPackageSessionId(packageSessionId);
+        
+        if (!validCpoIds.contains(cpoId)) {
+            log.error("Invalid CPO validation failed. CPO: {} not found in valid options {} for package session: {}",
+                    cpoId, validCpoIds, packageSessionId);
+            throw new VacademyException(
+                    String.format("Invalid fee structure (CPO: %s) for the selected class. "
+                            + "Please select a valid fee structure from the available options.", cpoId));
+        }
+        
+        log.info("CPO validation successful. CPO: {} is valid for package session: {}", cpoId, packageSessionId);
     }
 
     private PaymentResponseDTO handlePayment(SchoolPaymentDTO payment, UserDTO user, UserPlan userPlan,

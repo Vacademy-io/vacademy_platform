@@ -368,6 +368,7 @@ function VideoConsole() {
                                 target_audience: request.target_audience,
                                 target_duration: request.target_duration,
                                 model: request.model,
+                                quality_tier: request.quality_tier,
                             },
                         }));
 
@@ -393,6 +394,7 @@ function VideoConsole() {
                                 target_audience: request.target_audience,
                                 target_duration: request.target_duration,
                                 model: request.model,
+                                quality_tier: request.quality_tier,
                             },
                         });
 
@@ -452,6 +454,7 @@ function VideoConsole() {
                                 tts_provider: request.tts_provider,
                                 target_duration: request.target_duration,
                                 model: request.model,
+                                quality_tier: request.quality_tier,
                             },
                         });
                     } else if (event.type === 'error') {
@@ -498,6 +501,7 @@ function VideoConsole() {
                                 voice_gender: request.voice_gender,
                                 tts_provider: request.tts_provider,
                                 model: request.model,
+                                quality_tier: request.quality_tier,
                             },
                         });
                     }
@@ -522,6 +526,7 @@ function VideoConsole() {
                 tts_provider: request.tts_provider,
                 target_duration: request.target_duration,
                 model: request.model,
+                quality_tier: request.quality_tier,
             };
             localStorage.setItem(
                 PENDING_GENERATION_KEY,
@@ -563,6 +568,7 @@ function VideoConsole() {
                     target_audience: request.target_audience,
                     target_duration: request.target_duration,
                     model: request.model,
+                    quality_tier: request.quality_tier,
                 },
             });
         },

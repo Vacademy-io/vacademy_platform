@@ -4,13 +4,17 @@ Dedicated endpoints for external consumption using API Key authentication.
 """
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
+from typing import Dict, Optional, List
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, Header
 from fastapi.responses import StreamingResponse, JSONResponse
-from uuid import uuid4
 from sqlalchemy.orm import Session
-from typing import Optional, List
 
-from ..db import db_dependency
+from ..db import db_dependency, db_session as make_db_session
 from ..dependencies import get_institute_from_api_key
 from ..schemas.video_generation import (
     VideoGenerationRequest,
@@ -25,7 +29,17 @@ from ..repositories.ai_video_repository import AiVideoRepository
 from ..services.s3_service import S3Service
 from ..constants.models import VIDEO_GENERATION_DEFAULT_MODEL
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/external/video/v1", tags=["external-ai-video"])
+
+# ---------------------------------------------------------------------------
+# Background task registry – survives SSE disconnects
+# ---------------------------------------------------------------------------
+# Maps video_id -> asyncio.Task (the running generation coroutine)
+_generation_tasks: Dict[str, asyncio.Task] = {}
+# Maps video_id -> asyncio.Queue (SSE event stream for the active connection)
+_generation_queues: Dict[str, asyncio.Queue] = {}
 
 
 def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationService:
@@ -44,52 +58,116 @@ def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationSe
 async def generate_video_external(
     payload: VideoGenerationRequest,
     target_stage: str = "HTML",
-    service: VideoGenerationService = Depends(get_video_service),
-    db: Session = Depends(db_dependency),
     institute_id: str = Depends(get_institute_from_api_key)
 ) -> StreamingResponse:
     """
     Generate AI video.
-    
+
     Authentication: Requires 'X-Institute-Key' header.
-    
-    This endpoint allows you to generate a video up to a specific stage.
-    By default, it runs until 'RENDER' (complete video).
+
+    Generation runs as a **background task** so it continues even if the SSE
+    connection is closed (browser tab closed / page refresh). The frontend can
+    re-connect by polling ``/status/{video_id}`` or ``/urls/{video_id}``.
     """
     video_id = payload.video_id or str(uuid4())
-    
-    # Ensure usage tracking uses the authenticated institute_id
-    # We ignore payload.institute_id/user_id from external calls for security
-    
-    async def event_generator():
-        async for event in service.generate_till_stage(
-            video_id=video_id,
-            prompt=payload.prompt,
-            target_stage=target_stage,
-            language=payload.language,
-            captions_enabled=payload.captions_enabled,
-            html_quality=payload.html_quality,
-            resume=False,
-            target_audience=payload.target_audience,
-            target_duration=payload.target_duration,
-            voice_gender=payload.voice_gender,
-            tts_provider=payload.tts_provider,
-            content_type=payload.content_type,  # NEW: Pass content type for multi-format support
-            db_session=db,
-            model=payload.model or VIDEO_GENERATION_DEFAULT_MODEL,
-            institute_id=institute_id, # Authenticated institute
-            user_id=None # External calls don't map to platform internal users easily
-        ):
-            yield f"data: {event}\n\n"
-    
+
+    # Build a per-request event queue that the SSE generator will drain.
+    queue: asyncio.Queue = asyncio.Queue()
+
+    # ------------------------------------------------------------------
+    # If a task is already running for this video_id (rare re-connect),
+    # reuse the existing queue so both connections share the same stream.
+    # ------------------------------------------------------------------
+    if video_id in _generation_tasks and not _generation_tasks[video_id].done():
+        existing_queue = _generation_queues.get(video_id)
+        if existing_queue is not None:
+            queue = existing_queue
+            logger.info(f"[BG-Gen] Re-connecting to existing task for {video_id}")
+    else:
+        # ------------------------------------------------------------------
+        # Start a new background task.  It owns its own DB session so it
+        # keeps running after this HTTP request / SSE connection is closed.
+        # ------------------------------------------------------------------
+        _generation_queues[video_id] = queue
+
+        async def _run_generation(q: asyncio.Queue, vid: str, p: VideoGenerationRequest,
+                                   ts: str, inst_id: str) -> None:
+            try:
+                with make_db_session() as bg_session:
+                    bg_svc = VideoGenerationService(
+                        repository=AiVideoRepository(session=bg_session),
+                        s3_service=S3Service()
+                    )
+                    async for event in bg_svc.generate_till_stage(
+                        video_id=vid,
+                        prompt=p.prompt,
+                        target_stage=ts,
+                        language=p.language,
+                        captions_enabled=p.captions_enabled,
+                        html_quality=p.html_quality,
+                        resume=False,
+                        target_audience=p.target_audience,
+                        target_duration=p.target_duration,
+                        voice_gender=p.voice_gender,
+                        tts_provider=p.tts_provider,
+                        content_type=p.content_type,
+                        db_session=bg_session,
+                        model=p.model or VIDEO_GENERATION_DEFAULT_MODEL,
+                        institute_id=inst_id,
+                        user_id=None,
+                    ):
+                        await q.put(json.dumps(event))
+            except Exception as exc:
+                logger.error(f"[BG-Gen] Background task error for {vid}: {exc}")
+                await q.put(json.dumps({
+                    "type": "error",
+                    "message": str(exc),
+                    "video_id": vid,
+                }))
+            finally:
+                # Sentinel – tells the SSE generator the stream is done
+                await q.put(None)
+                _generation_tasks.pop(vid, None)
+                _generation_queues.pop(vid, None)
+                logger.info(f"[BG-Gen] Background task finished for {vid}")
+
+        task = asyncio.create_task(
+            _run_generation(queue, video_id, payload, target_stage, institute_id)
+        )
+        _generation_tasks[video_id] = task
+        logger.info(f"[BG-Gen] Started background task for {video_id}")
+
+    # ------------------------------------------------------------------
+    # SSE generator – drains the queue.
+    # When the browser closes the connection this generator is cancelled,
+    # but the background task above keeps running independently.
+    # ------------------------------------------------------------------
+    async def sse_stream() -> None:
+        try:
+            while True:
+                try:
+                    event_json = await asyncio.wait_for(queue.get(), timeout=60.0)
+                except asyncio.TimeoutError:
+                    # Send a comment-line heartbeat to keep proxies alive
+                    yield ": heartbeat\n\n"
+                    continue
+
+                if event_json is None:
+                    # Sentinel – generation finished
+                    break
+                yield f"data: {event_json}\n\n"
+        except (GeneratorExit, asyncio.CancelledError):
+            # SSE connection dropped – background task continues unaffected
+            logger.info(f"[BG-Gen] SSE client disconnected for {video_id}; background task continues")
+
     return StreamingResponse(
-        event_generator(),
+        sse_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Video-ID": video_id,
-            "X-Content-Type": payload.content_type  # NEW: Include content type in response headers
+            "X-Content-Type": payload.content_type,
         }
     )
 

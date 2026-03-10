@@ -439,51 +439,173 @@ class GoogleCloudTTSClient:
         voice_short = voice_name.split("-")[-1] if voice_name else ""
         supports_marks = not any(voice_short.startswith(p) for p in unsupported_mark_prefixes)
 
-        response = None
-        word_list = []
+        # ── Split text into chunks if it exceeds the 5000-byte API limit ──
+        # For SSML, each word gets ~20 bytes of markup overhead, so use a
+        # lower limit; for plain text the raw byte limit applies.
+        ssml_max = self._MAX_TTS_BYTES  # ~4500 (leaves room for <speak> tags + marks)
+        plain_max = 4800  # closer to 5000 for plain text
+        chunks = self._split_text_into_chunks(text, max_bytes=ssml_max if supports_marks else plain_max)
 
-        if supports_marks:
-            # Create SSML with marks for each word to get precise timestamps
-            ssml_input, word_list = self._create_ssml_with_marks(text)
-            input_text = texttospeech.SynthesisInput(ssml=ssml_input)
-            try:
-                request = texttospeech.SynthesizeSpeechRequest(
-                    input=input_text,
+        if len(chunks) > 1:
+            print(f"    📄 Text is {len(text.encode('utf-8'))} bytes — split into {len(chunks)} chunks")
+
+        all_audio_bytes = b""
+        all_word_entries: list[dict] = []
+        cumulative_offset = 0.0  # seconds offset for timestamp merging
+
+        for chunk_idx, chunk_text in enumerate(chunks):
+            response = None
+            word_list = []
+
+            if supports_marks:
+                ssml_input, word_list = self._create_ssml_with_marks(chunk_text)
+                # Verify SSML doesn't exceed the byte limit
+                if len(ssml_input.encode("utf-8")) <= 5000:
+                    input_text = texttospeech.SynthesisInput(ssml=ssml_input)
+                    try:
+                        request = texttospeech.SynthesizeSpeechRequest(
+                            input=input_text,
+                            voice=voice,
+                            audio_config=audio_config,
+                            enable_time_pointing=[
+                                texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
+                            ]
+                        )
+                        response = client.synthesize_speech(request=request)
+                    except Exception as tp_error:
+                        print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis")
+                        response = None
+
+            if response is None:
+                simple_input = texttospeech.SynthesisInput(text=chunk_text)
+                response = client.synthesize_speech(
+                    input=simple_input,
                     voice=voice,
-                    audio_config=audio_config,
-                    enable_time_pointing=[
-                        texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
-                    ]
+                    audio_config=audio_config
                 )
-                response = client.synthesize_speech(request=request)
-            except Exception as tp_error:
-                print(f"    ⚠️ Timepoint request failed ({tp_error}), falling back to simple synthesis")
-                response = None
 
-        if response is None:
-            # Plain text synthesis (for unsupported voices or after timepoint failure)
-            simple_input = texttospeech.SynthesisInput(text=text)
-            response = client.synthesize_speech(
-                input=simple_input,
-                voice=voice,
-                audio_config=audio_config
-            )
+            # Accumulate audio bytes (MP3 is concatenatable)
+            chunk_audio = response.audio_content
+            all_audio_bytes += chunk_audio
 
-        # Save audio
-        output_path.write_bytes(response.audio_content)
-        
-        # Process timepoints to create word timestamps (if available)
-        word_entries = []
-        if hasattr(response, 'timepoints') and response.timepoints:
-            word_entries = self._process_timepoints(response, word_list)
-        
-        if word_entries:
-            print(f"    ✅ Got {len(word_entries)} word timestamps from Google TTS Timepoints")
-            raw_json_path.write_text(json.dumps(word_entries, indent=2))
+            # Process timepoints for this chunk
+            chunk_word_entries = []
+            if hasattr(response, 'timepoints') and response.timepoints:
+                chunk_word_entries = self._process_timepoints(response, word_list)
+
+            # Offset timestamps by cumulative duration of previous chunks
+            for entry in chunk_word_entries:
+                entry["start"] = round(entry["start"] + cumulative_offset, 3)
+                entry["end"] = round(entry["end"] + cumulative_offset, 3)
+            all_word_entries.extend(chunk_word_entries)
+
+            # Get this chunk's audio duration for the next offset
+            if len(chunks) > 1:
+                chunk_duration = self._get_mp3_duration(chunk_audio)
+                cumulative_offset += chunk_duration
+
+        # Save concatenated audio
+        output_path.write_bytes(all_audio_bytes)
+
+        if all_word_entries:
+            print(f"    ✅ Got {len(all_word_entries)} word timestamps from Google TTS Timepoints")
+            raw_json_path.write_text(json.dumps(all_word_entries, indent=2))
         else:
             # Fallback to Whisper alignment if no timepoints returned
             print(f"    ⚠️ No timepoints returned, using Whisper alignment fallback")
             self._generate_timestamps_with_fallback(output_path, text, raw_json_path)
+
+    # Maximum bytes for a single Google TTS request (API limit is 5000; leave headroom)
+    _MAX_TTS_BYTES = 4500
+
+    def _split_text_into_chunks(self, text: str, max_bytes: int | None = None) -> list[str]:
+        """Split text into chunks that fit within the Google TTS byte limit.
+
+        Splits on sentence boundaries (. ! ?) first, then on commas/semicolons,
+        and finally mid-sentence if a single sentence is still too long.
+        """
+        max_bytes = max_bytes or self._MAX_TTS_BYTES
+
+        # If already under limit, return as-is
+        if len(text.encode("utf-8")) <= max_bytes:
+            return [text]
+
+        import re
+        # Split into sentences (keep the delimiter attached)
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+
+        chunks: list[str] = []
+        current_chunk = ""
+
+        for sentence in sentences:
+            candidate = (current_chunk + " " + sentence).strip() if current_chunk else sentence
+            if len(candidate.encode("utf-8")) <= max_bytes:
+                current_chunk = candidate
+            else:
+                # Current chunk is full — save it if non-empty
+                if current_chunk:
+                    chunks.append(current_chunk)
+
+                # If this single sentence itself exceeds the limit, split further
+                if len(sentence.encode("utf-8")) > max_bytes:
+                    # Try splitting on commas / semicolons
+                    sub_parts = re.split(r'(?<=[,;])\s+', sentence)
+                    sub_chunk = ""
+                    for part in sub_parts:
+                        sub_candidate = (sub_chunk + " " + part).strip() if sub_chunk else part
+                        if len(sub_candidate.encode("utf-8")) <= max_bytes:
+                            sub_chunk = sub_candidate
+                        else:
+                            if sub_chunk:
+                                chunks.append(sub_chunk)
+                            # Last resort: split by words
+                            if len(part.encode("utf-8")) > max_bytes:
+                                words = part.split()
+                                word_chunk = ""
+                                for w in words:
+                                    wc = (word_chunk + " " + w).strip() if word_chunk else w
+                                    if len(wc.encode("utf-8")) <= max_bytes:
+                                        word_chunk = wc
+                                    else:
+                                        if word_chunk:
+                                            chunks.append(word_chunk)
+                                        word_chunk = w
+                                if word_chunk:
+                                    sub_chunk = word_chunk
+                            else:
+                                sub_chunk = part
+                    if sub_chunk:
+                        current_chunk = sub_chunk
+                    else:
+                        current_chunk = ""
+                else:
+                    current_chunk = sentence
+
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        return chunks
+
+    @staticmethod
+    def _get_mp3_duration(audio_bytes: bytes) -> float:
+        """Get duration of MP3 audio in seconds using ffprobe."""
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+        try:
+            tmp.write(audio_bytes)
+            tmp.flush()
+            result = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", tmp.name],
+                capture_output=True, text=True, timeout=10
+            )
+            return float(result.stdout.strip())
+        except Exception:
+            # Rough fallback: ~16 kB/s for 128kbps MP3
+            return len(audio_bytes) / 16000.0
+        finally:
+            tmp.close()
+            os.unlink(tmp.name)
 
     def _create_ssml_with_marks(self, text: str) -> tuple:
         """Create SSML with <mark> tags for each word to track timing."""

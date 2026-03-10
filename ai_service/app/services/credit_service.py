@@ -438,8 +438,8 @@ class CreditService:
         """Get pricing multiplier for a model."""
         if not model:
             return Decimal("1.0")
-        
-        # Try to get from DB first
+
+        # Try model_pricing table first (pattern-based)
         try:
             query = text("""
                 SELECT multiplier
@@ -450,18 +450,36 @@ class CreditService:
             """)
             result = self.db.execute(query, {"model": model})
             row = result.fetchone()
-            
+
             if row:
                 return row.multiplier
         except Exception as e:
-            logger.warning(f"Failed to get model multiplier from DB: {e}")
-        
+            logger.warning(f"Failed to get model multiplier from model_pricing: {e}")
+
+        # Try ai_models table (DB-backed model registry)
+        try:
+            query = text("""
+                SELECT credit_multiplier, is_free
+                FROM ai_models
+                WHERE model_id = :model_id AND is_active = TRUE
+                LIMIT 1
+            """)
+            result = self.db.execute(query, {"model_id": model})
+            row = result.fetchone()
+
+            if row:
+                if row.is_free:
+                    return Decimal("0")
+                return Decimal(str(row.credit_multiplier)) if row.credit_multiplier else Decimal("1.0")
+        except Exception as e:
+            logger.warning(f"Failed to get model multiplier from ai_models: {e}")
+
         # Fallback to in-code mapping
         model_lower = model.lower()
         for pattern, tier in MODEL_TIER_MAPPING.items():
             if pattern in model_lower:
                 return MODEL_TIER_MULTIPLIERS[tier]
-        
+
         # Default to standard tier
         return Decimal("1.0")
 

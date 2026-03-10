@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import {
     Video,
     FileQuestion,
@@ -13,9 +14,16 @@ import {
     MessageCircle,
     Sparkles,
     GalleryHorizontalEnd,
+    MonitorPlay,
+    ClipboardCheck,
+    Eye,
+    X,
+    Wand2,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { CONTENT_TYPES, ContentType } from '../-services/video-generation';
 import { cn } from '@/lib/utils';
 import React from 'react';
@@ -123,141 +131,275 @@ const SAMPLE_PROMPTS: Record<ContentType, string[]> = {
     ],
 };
 
-const LARGE_TYPES: ContentType[] = ['VIDEO', 'SLIDES', 'QUIZ'];
+interface ContentCategory {
+    id: string;
+    label: string;
+    icon: React.ElementType;
+    types: ContentType[];
+}
+
+const CONTENT_CATEGORIES: ContentCategory[] = [
+    {
+        id: 'video-presentations',
+        label: 'Video & Presentations',
+        icon: MonitorPlay,
+        types: ['VIDEO', 'SLIDES'],
+    },
+    {
+        id: 'assessments',
+        label: 'Assessments & Practice',
+        icon: ClipboardCheck,
+        types: ['QUIZ', 'WORKSHEET', 'FLASHCARDS'],
+    },
+    {
+        id: 'interactive',
+        label: 'Interactive',
+        icon: Gamepad2,
+        types: ['INTERACTIVE_GAME', 'SIMULATION', 'CODE_PLAYGROUND', 'PUZZLE_BOOK'],
+    },
+    {
+        id: 'stories',
+        label: 'Stories & Communication',
+        icon: BookOpen,
+        types: ['STORYBOOK', 'CONVERSATION'],
+    },
+    {
+        id: 'visual',
+        label: 'Visual Learning',
+        icon: Eye,
+        types: ['TIMELINE', 'MAP_EXPLORATION'],
+    },
+];
+
+const POPULAR_TYPES: ContentType[] = ['VIDEO', 'SLIDES', 'QUIZ'];
+
+const WELCOME_DISMISSED_KEY = 'vacademy-content-selector-welcome-dismissed';
 
 export function ContentSelector({
     selectedType,
     onSelect,
     onSamplePromptSelect,
 }: ContentSelectorProps) {
-    // Helper to get Icon
+    const [showWelcome, setShowWelcome] = useState(() => {
+        return localStorage.getItem(WELCOME_DISMISSED_KEY) !== 'true';
+    });
+
+    const promptsRef = useRef<HTMLDivElement>(null);
+
+    const dismissWelcome = () => {
+        setShowWelcome(false);
+        localStorage.setItem(WELCOME_DISMISSED_KEY, 'true');
+    };
+
+    // Scroll sample prompts into view when selection changes
+    useEffect(() => {
+        if (!selectedType || !promptsRef.current) return;
+        const timer = setTimeout(() => {
+            promptsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [selectedType]);
+
     const getIcon = (type: ContentType) => {
         return (ICONS[type] ?? Video) as React.ComponentType<{ className?: string }>;
     };
 
+    const selectedTypeInfo = CONTENT_TYPES.find((t) => t.value === selectedType);
+    const SelectedIcon = getIcon(selectedType);
+
     return (
-        <div className="mx-auto max-w-6xl space-y-3 p-2 duration-500 animate-in fade-in zoom-in sm:space-y-6 sm:p-4">
+        <div className="mx-auto max-w-5xl space-y-4 p-2 duration-500 animate-in fade-in sm:space-y-6 sm:p-4">
+            {/* Welcome/Onboarding Hero */}
+            {showWelcome && (
+                <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-violet-50 via-indigo-50 to-blue-50 p-4 sm:p-6">
+                    <button
+                        onClick={dismissWelcome}
+                        className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground hover:bg-white/60 hover:text-foreground"
+                    >
+                        <X className="size-4" />
+                    </button>
+
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <h2 className="bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-lg font-bold tracking-tight text-transparent sm:text-xl">
+                                Create AI-Powered Learning Content
+                            </h2>
+                            <p className="text-sm text-muted-foreground">
+                                Turn any topic into engaging educational content in minutes.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            {[
+                                {
+                                    step: '1',
+                                    title: 'Choose a format',
+                                    desc: 'Pick from videos, quizzes, games, and more',
+                                    icon: Layers,
+                                },
+                                {
+                                    step: '2',
+                                    title: 'Describe your topic',
+                                    desc: 'Tell AI what you want to teach',
+                                    icon: Wand2,
+                                },
+                                {
+                                    step: '3',
+                                    title: 'Get your content',
+                                    desc: 'AI generates it ready to share',
+                                    icon: Sparkles,
+                                },
+                            ].map((item) => {
+                                const StepIcon = item.icon;
+                                return (
+                                    <div
+                                        key={item.step}
+                                        className="flex items-start gap-3 rounded-lg bg-white/60 p-3"
+                                    >
+                                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-violet-100">
+                                            <StepIcon className="size-4 text-violet-600" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium">{item.title}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {item.desc}
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Section heading */}
             <div className="space-y-1 text-center">
                 <h2 className="bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-lg font-bold tracking-tight text-transparent sm:text-2xl">
                     What would you like to create?
                 </h2>
+                <p className="text-xs text-muted-foreground sm:text-sm">
+                    Select a content type to get started
+                </p>
             </div>
 
-            <div className="grid auto-rows-auto grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
-                {CONTENT_TYPES.map((type) => {
-                    const isLarge = LARGE_TYPES.includes(type.value);
-                    const isSelected = selectedType === type.value;
-                    const Icon = getIcon(type.value);
-
+            {/* Category-grouped content grid */}
+            <div className="space-y-5 sm:space-y-6">
+                {CONTENT_CATEGORIES.map((category) => {
+                    const CategoryIcon = category.icon as React.ComponentType<{ className?: string }>;
                     return (
-                        <Card
-                            key={type.value}
-                            className={cn(
-                                'group relative cursor-pointer overflow-hidden transition-all duration-300',
-                                isSelected
-                                    ? 'col-span-2 scale-[1.02] bg-violet-50/50 shadow-md ring-2 ring-violet-500 md:col-span-4'
-                                    : isLarge
-                                      ? 'col-span-1 md:col-span-2 md:row-span-2'
-                                      : 'col-span-1',
-                                !isSelected &&
-                                    'hover:border-violet-200 hover:bg-slate-50 hover:shadow-lg'
-                            )}
-                            onClick={() => onSelect(type.value)}
-                        >
-                            <div
-                                className={cn(
-                                    'flex h-full flex-col',
-                                    isSelected
-                                        ? 'p-3 sm:p-6'
-                                        : 'items-center justify-center gap-2 p-3 text-center sm:gap-4 sm:p-4'
-                                )}
-                            >
-                                {isSelected ? (
-                                    <div className="grid size-full gap-3 sm:gap-6 md:grid-cols-[200px_1fr]">
-                                        <div className="flex flex-col items-center justify-center gap-2 border-b border-border/50 pb-3 text-center sm:gap-4 sm:pb-6 md:items-start md:border-b-0 md:border-r md:pb-0 md:pr-6 md:text-left">
-                                            <div className="rounded-2xl bg-violet-100 p-2 text-violet-600 sm:p-4">
-                                                <Icon className="size-8 sm:size-10" />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-lg font-bold sm:text-xl">
-                                                    {type.label.replace(/^[^\s]+\s/, '')}
-                                                </h3>
-                                                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
-                                                    {type.description}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-col gap-2 sm:gap-3">
-                                            <div className="mb-1 flex items-center gap-2 text-xs font-medium text-violet-600 sm:text-sm">
-                                                <Sparkles className="size-3 sm:size-4" />
-                                                <span>Try a sample prompt</span>
-                                            </div>
-                                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                                                {(SAMPLE_PROMPTS[type.value] ?? []).map(
-                                                    (prompt, i) => (
-                                                        <Button
-                                                            key={i}
-                                                            variant="outline"
-                                                            className="h-auto justify-start whitespace-normal bg-background px-3 py-2 text-left text-xs hover:border-violet-300 hover:bg-violet-50 sm:px-4 sm:py-3"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                onSamplePromptSelect(prompt);
-                                                            }}
-                                                        >
-                                                            <span className="line-clamp-2">
-                                                                {prompt}
-                                                            </span>
-                                                        </Button>
-                                                    )
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div
-                                            className={cn(
-                                                'rounded-xl bg-muted text-muted-foreground transition-colors group-hover:bg-violet-100 group-hover:text-violet-600',
-                                                isLarge ? 'p-3 md:p-5' : 'p-2 sm:p-3'
-                                            )}
-                                        >
-                                            <Icon
-                                                className={cn(
-                                                    'size-5 sm:size-6',
-                                                    isLarge && 'md:size-10'
-                                                )}
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <h3
-                                                className={cn(
-                                                    'font-semibold',
-                                                    isLarge
-                                                        ? 'text-sm sm:text-lg'
-                                                        : 'text-xs sm:text-sm'
-                                                )}
-                                            >
-                                                {type.label.replace(/^[^\s]+\s/, '')}
-                                            </h3>
-                                            <p
-                                                className={cn(
-                                                    'line-clamp-2 text-muted-foreground',
-                                                    isLarge
-                                                        ? 'line-clamp-3 px-1 text-[10px] md:px-2 md:text-sm'
-                                                        : 'text-[10px] sm:text-xs'
-                                                )}
-                                            >
-                                                {type.description}
-                                            </p>
-                                        </div>
-                                    </>
-                                )}
+                        <div key={category.id} className="space-y-2 sm:space-y-3">
+                            {/* Category header */}
+                            <div className="flex items-center gap-2">
+                                <CategoryIcon className="size-4 text-muted-foreground" />
+                                <h3 className="whitespace-nowrap text-sm font-semibold text-foreground">
+                                    {category.label}
+                                </h3>
+                                <Separator className="flex-1" />
                             </div>
-                        </Card>
+
+                            {/* Cards grid */}
+                            <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
+                                {category.types.map((typeValue) => {
+                                    const typeInfo = CONTENT_TYPES.find(
+                                        (t) => t.value === typeValue
+                                    );
+                                    if (!typeInfo) return null;
+                                    const isSelected = selectedType === typeValue;
+                                    const isPopular = POPULAR_TYPES.includes(typeValue);
+                                    const Icon = getIcon(typeValue);
+
+                                    return (
+                                        <Card
+                                            key={typeValue}
+                                            className={cn(
+                                                'group relative cursor-pointer p-3 transition-all duration-200 sm:p-4',
+                                                isSelected
+                                                    ? 'border-violet-500 bg-violet-50/50 shadow-md ring-2 ring-violet-500'
+                                                    : 'hover:border-violet-200 hover:bg-slate-50 hover:shadow-md'
+                                            )}
+                                            onClick={() => onSelect(typeValue)}
+                                        >
+                                            {isPopular && (
+                                                <Badge className="absolute right-2 top-2 border-0 bg-violet-100 px-1.5 py-0 text-[10px] font-medium text-violet-700 hover:bg-violet-100">
+                                                    Popular
+                                                </Badge>
+                                            )}
+
+                                            <div className="flex flex-col items-center gap-2 text-center sm:flex-row sm:items-start sm:text-left">
+                                                <div
+                                                    className={cn(
+                                                        'shrink-0 rounded-xl p-2 transition-colors sm:p-3',
+                                                        isSelected
+                                                            ? 'bg-violet-100 text-violet-600'
+                                                            : 'bg-muted text-muted-foreground group-hover:bg-violet-100 group-hover:text-violet-600'
+                                                    )}
+                                                >
+                                                    <Icon className="size-5 sm:size-6" />
+                                                </div>
+                                                <div className="min-w-0 space-y-0.5">
+                                                    <h4 className="text-xs font-semibold sm:text-sm">
+                                                        {typeInfo.label.replace(/^[^\s]+\s/, '')}
+                                                    </h4>
+                                                    <p className="line-clamp-2 text-[10px] text-muted-foreground sm:text-xs">
+                                                        {typeInfo.description}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     );
                 })}
             </div>
+
+            {/* Sample prompts panel (below grid) */}
+            {selectedType && (
+                <div
+                    ref={promptsRef}
+                    className="overflow-hidden rounded-xl border border-violet-200 bg-violet-50/30 duration-300 animate-in fade-in slide-in-from-top-2"
+                >
+                    <div className="p-3 sm:p-5">
+                        <div className="mb-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="rounded-lg bg-violet-100 p-1.5">
+                                    <SelectedIcon className="size-4 text-violet-600" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-semibold sm:text-base">
+                                        {selectedTypeInfo?.label.replace(/^[^\s]+\s/, '')}
+                                    </h3>
+                                    <p className="text-[10px] text-muted-foreground sm:text-xs">
+                                        Try a sample prompt to get started quickly
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-violet-600">
+                                <Sparkles className="size-3" />
+                                <span className="hidden sm:inline">Sample prompts</span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {(SAMPLE_PROMPTS[selectedType] ?? []).map((prompt, i) => (
+                                <Button
+                                    key={i}
+                                    variant="outline"
+                                    className="h-auto justify-start whitespace-normal bg-white px-3 py-2.5 text-left text-xs hover:border-violet-300 hover:bg-violet-50 sm:px-4 sm:py-3"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onSamplePromptSelect(prompt);
+                                    }}
+                                >
+                                    <span className="line-clamp-2">{prompt}</span>
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

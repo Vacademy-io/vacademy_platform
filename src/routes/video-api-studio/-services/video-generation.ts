@@ -55,65 +55,67 @@ export const CONTENT_TYPES = [
     {
         value: 'VIDEO' as ContentType,
         label: '📹 Video',
-        description: 'Time-synced HTML overlays with audio',
+        description: 'Narrated videos with animations and visuals',
     },
     {
         value: 'SLIDES' as ContentType,
         label: '🖼️ Slides',
-        description: 'HTML presentation slides with images, tables & diagrams',
+        description: 'Slide decks with images, charts, and diagrams',
     },
-    { value: 'QUIZ' as ContentType, label: '❓ Quiz', description: 'Question-based assessments' },
+    { value: 'QUIZ' as ContentType, label: '❓ Quiz', description: 'Interactive quizzes to test knowledge' },
     {
         value: 'STORYBOOK' as ContentType,
         label: '📚 Storybook',
-        description: 'Page-by-page narratives',
+        description: 'Illustrated stories to flip through',
     },
     {
         value: 'INTERACTIVE_GAME' as ContentType,
         label: '🎮 Interactive Game',
-        description: 'Self-contained HTML games',
+        description: 'Playable games that teach through interaction',
     },
     {
         value: 'PUZZLE_BOOK' as ContentType,
         label: '🧩 Puzzle Book',
-        description: 'Crossword, word search puzzles',
+        description: 'Crosswords, word searches, and brain teasers',
     },
     {
         value: 'SIMULATION' as ContentType,
         label: '🔬 Simulation',
-        description: 'Physics/science sandboxes',
+        description: 'Hands-on science and physics simulations',
     },
     {
         value: 'FLASHCARDS' as ContentType,
         label: '📇 Flashcards',
-        description: 'Spaced-repetition cards',
+        description: 'Study flashcards for quick memorization',
     },
     {
         value: 'MAP_EXPLORATION' as ContentType,
         label: '🗺️ Map Exploration',
-        description: 'Interactive SVG maps',
+        description: 'Interactive maps to click and explore',
     },
     {
         value: 'WORKSHEET' as ContentType,
         label: '📝 Worksheet',
-        description: 'Printable/interactive homework',
+        description: 'Practice worksheets with exercises and answers',
     },
     {
         value: 'CODE_PLAYGROUND' as ContentType,
         label: '💻 Code Playground',
-        description: 'Interactive code exercises',
+        description: 'Coding challenges with a live editor',
     },
     {
         value: 'TIMELINE' as ContentType,
         label: '⏳ Timeline',
-        description: 'Chronological event visualization',
+        description: 'Interactive, scrollable event timelines',
     },
     {
         value: 'CONVERSATION' as ContentType,
         label: '💬 Conversation',
-        description: 'Language learning dialogues',
+        description: 'Real-world conversation simulations',
     },
 ] as const;
+
+export type QualityTier = 'free' | 'standard' | 'premium' | 'ultra';
 
 export interface GenerateVideoRequest {
     prompt: string;
@@ -126,8 +128,38 @@ export interface GenerateVideoRequest {
     target_audience: string;
     target_duration: string;
     model: string;
+    quality_tier: QualityTier;
     video_id?: string; // Optional: auto-generated if not provided
 }
+
+export const QUALITY_TIERS: Array<{
+    value: QualityTier;
+    label: string;
+    description: string;
+    badge?: string;
+}> = [
+    {
+        value: 'free',
+        label: 'Free',
+        description: 'Fast generation, basic quality',
+    },
+    {
+        value: 'standard',
+        label: 'Standard',
+        description: 'Smart visuals with diversity & validation',
+    },
+    {
+        value: 'premium',
+        label: 'Premium',
+        description: 'Script review + image enhancement',
+    },
+    {
+        value: 'ultra',
+        label: 'Ultra',
+        description: 'Best quality — all enhancements enabled',
+        badge: 'Default',
+    },
+];
 
 export interface ProgressEvent {
     type: 'progress';
@@ -276,7 +308,8 @@ export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
     html_quality: 'advanced',
     target_audience: 'Class 5 (Ages 10-11)',
     target_duration: '2-3 minutes',
-    model: 'xiaomi/mimo-v2-flash:free',
+    model: '',
+    quality_tier: 'ultra',
 };
 
 export function generateVideoId(): string {
@@ -549,7 +582,8 @@ export async function getRemoteHistory(apiKey: string, limit: number = 20): Prom
             html_quality: 'advanced',
             target_audience: 'General/Adult',
             target_duration: '2-3 minutes',
-            model: 'vsmart-v1',
+            model: '',
+            quality_tier: 'ultra',
         },
     }));
 }

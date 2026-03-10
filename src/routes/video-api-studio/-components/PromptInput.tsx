@@ -45,9 +45,11 @@ import {
     TARGET_AUDIENCES,
     TARGET_DURATIONS,
     CONTENT_TYPES,
+    QUALITY_TIERS,
     VoiceGender,
     TtsProvider,
     ContentType,
+    QualityTier,
 } from '../-services/video-generation';
 import { useAIModelsList } from '@/hooks/useAiModels';
 import { LatexRenderer } from './LatexRenderer';
@@ -116,18 +118,27 @@ export function PromptInput({
         }
     }, [prompt, showPreview]);
 
+    // Auto-select model based on quality tier
     useEffect(() => {
-        if (modelsList?.models && modelsList.models.length > 0) {
-            const modelExists = modelsList.models.some((m) => m.model_id === options.model);
-            if (!modelExists) {
-                const defaultModel =
-                    modelsList.models.find((m) => m.is_default) || modelsList.models[0];
-                if (defaultModel) {
-                    onOptionsChange({ ...options, model: defaultModel.model_id });
-                }
-            }
+        if (!modelsList?.models || modelsList.models.length === 0) return;
+        const tier = options.quality_tier || 'ultra';
+
+        // If user has explicitly picked a model that exists, keep it
+        if (options.model && modelsList.models.some((m) => m.model_id === options.model)) {
+            return;
         }
-    }, [modelsList, options.model, options, onOptionsChange]);
+
+        // Find best model for the selected tier
+        const tierModels = modelsList.models.filter((m) => m.tier === tier);
+        const defaultForTier =
+            tierModels.find((m) => m.is_default) ||
+            tierModels[0] ||
+            modelsList.models.find((m) => m.is_default) ||
+            modelsList.models[0];
+        if (defaultForTier) {
+            onOptionsChange({ ...options, model: defaultForTier.model_id });
+        }
+    }, [modelsList, options.quality_tier]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleSubmit = () => {
         if (!prompt.trim() || isGenerating || disabled) return;
@@ -185,15 +196,7 @@ export function PromptInput({
     };
 
     const models = modelsList?.models || [];
-    const selectedModel = models.find((m) => m.model_id === options.model);
     const selectedContentType = CONTENT_TYPES.find((c) => c.value === options.content_type);
-
-    const freeModels = models.filter((m) => m.is_free);
-    const openaiModels = models.filter((m) => m.provider === 'OpenAI' && !m.is_free);
-    const geminiModels = models.filter((m) => m.provider === 'Google' && !m.is_free);
-    const otherModels = models.filter(
-        (m) => !m.is_free && m.provider !== 'OpenAI' && m.provider !== 'Google'
-    );
 
     return (
         <div className="border-t bg-background/95 p-1.5 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:p-2">
@@ -232,85 +235,83 @@ export function PromptInput({
                         </Select>
                     </OptionBubble>
 
+                    {/* Quality Tier Selector */}
                     <OptionBubble
                         icon={<Sparkles className="size-3" />}
-                        label="Model"
-                        value={selectedModel?.name.split(' ')[0] || options.model || 'Select'}
+                        label="Quality"
+                        value={
+                            QUALITY_TIERS.find((t) => t.value === options.quality_tier)?.label ||
+                            'Ultra'
+                        }
                     >
                         <Select
-                            value={options.model}
-                            onValueChange={(v) => updateOption('model', v)}
+                            value={options.quality_tier || 'ultra'}
+                            onValueChange={(v) => {
+                                // Update both at once to avoid stale-closure race
+                                onOptionsChange({ ...options, quality_tier: v as QualityTier, model: '' });
+                            }}
                         >
                             <SelectTrigger className="h-8 text-xs">
                                 <SelectValue />
                             </SelectTrigger>
-                            <SelectContent className="max-h-80">
-                                {freeModels.length > 0 && (
-                                    <>
-                                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">
-                                            Free Models
+                            <SelectContent>
+                                {QUALITY_TIERS.map((tier) => (
+                                    <SelectItem
+                                        key={tier.value}
+                                        value={tier.value}
+                                        className="text-xs"
+                                    >
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="font-medium">{tier.label}</span>
+                                            {tier.badge && (
+                                                <Badge
+                                                    variant="secondary"
+                                                    className="h-4 px-1 text-[9px]"
+                                                >
+                                                    {tier.badge}
+                                                </Badge>
+                                            )}
                                         </div>
-                                        {freeModels.map((model) => (
-                                            <SelectItem
-                                                key={model.model_id}
-                                                value={model.model_id}
-                                                className="text-xs"
-                                            >
-                                                {model.name}
-                                            </SelectItem>
-                                        ))}
-                                    </>
-                                )}
-                                {openaiModels.length > 0 && (
-                                    <>
-                                        <div className="mt-2 px-2 py-1 text-xs font-semibold text-muted-foreground">
-                                            OpenAI Models
-                                        </div>
-                                        {openaiModels.map((model) => (
-                                            <SelectItem
-                                                key={model.model_id}
-                                                value={model.model_id}
-                                                className="text-xs"
-                                            >
-                                                {model.name}
-                                            </SelectItem>
-                                        ))}
-                                    </>
-                                )}
-                                {geminiModels.length > 0 && (
-                                    <>
-                                        <div className="mt-2 px-2 py-1 text-xs font-semibold text-muted-foreground">
-                                            Gemini Models
-                                        </div>
-                                        {geminiModels.map((model) => (
-                                            <SelectItem
-                                                key={model.model_id}
-                                                value={model.model_id}
-                                                className="text-xs"
-                                            >
-                                                {model.name}
-                                            </SelectItem>
-                                        ))}
-                                    </>
-                                )}
-                                {otherModels.length > 0 && (
-                                    <>
-                                        <div className="mt-2 px-2 py-1 text-xs font-semibold text-muted-foreground">
-                                            Other Paid Models
-                                        </div>
-                                        {otherModels.map((model) => (
-                                            <SelectItem
-                                                key={model.model_id}
-                                                value={model.model_id}
-                                                className="text-xs"
-                                            >
-                                                {model.name}
-                                            </SelectItem>
-                                        ))}
-                                    </>
-                                )}
+                                        <span className="text-[10px] text-muted-foreground">
+                                            {tier.description}
+                                        </span>
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
+                        {/* Advanced: Override Model */}
+                        <div className="mt-2 border-t pt-2">
+                            <Label className="text-[10px] text-muted-foreground">
+                                Override Model
+                            </Label>
+                            <Select
+                                value={options.model || ''}
+                                onValueChange={(v) => updateOption('model', v)}
+                            >
+                                <SelectTrigger className="mt-1 h-7 text-[11px]">
+                                    <SelectValue placeholder="Auto (recommended)" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-60">
+                                    {models.map((model) => (
+                                        <SelectItem
+                                            key={model.model_id}
+                                            value={model.model_id}
+                                            className="text-xs"
+                                        >
+                                            <span>{model.name}</span>
+                                            {model.is_free && (
+                                                <Badge
+                                                    variant="outline"
+                                                    className="ml-1 h-3.5 px-1 text-[9px]"
+                                                >
+                                                    Free
+                                                </Badge>
+                                            )}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </OptionBubble>
 
                     <OptionBubble

@@ -9,6 +9,11 @@ import { useState, useEffect } from "react";
 import { Search, ShoppingCart } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
 import { isIOSPlatform } from "@/hooks/useIsIOS";
+import { getAccessToken, isTokenExpired } from "@/lib/auth/sessionUtility";
+import { SystemAlertsBar } from "@/components/announcements";
+import { LogoutSidebar } from "@/components/common/layout-container/sidebar/logoutSidebar";
+import useStore from "@/components/common/layout-container/sidebar/useSidebar";
+import { List } from "@phosphor-icons/react";
 
 export const HeaderComponent: React.FC<HeaderProps & {
   navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
@@ -27,6 +32,8 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const domainRouting = useDomainRouting();
     const { getItemCountByMode, items, syncCart } = useCartStore();
     const [cartItemCount, setCartItemCount] = useState(0);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const { setSidebarOpen } = useStore();
     const [currentMode, setCurrentMode] = useState<'buy' | 'rent'>(() => {
       const levelFilter = sessionStorage.getItem('levelFilter') || '';
       return levelFilter.toLowerCase().includes('rent') ? 'rent' : 'buy';
@@ -39,6 +46,16 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     // Calculate cart item count based on current mode (Buy or Rent)
     useEffect(() => {
+      const checkAuth = async () => {
+        try {
+          const token = await getAccessToken();
+          setIsAuthenticated(!!token && !isTokenExpired(token));
+        } catch (error) {
+          setIsAuthenticated(false);
+        }
+      };
+      checkAuth();
+
       const updateCartCount = async () => {
         const levelFilter = sessionStorage.getItem('levelFilter') || '';
         const isRentMode = levelFilter.toLowerCase().includes('rent');
@@ -324,6 +341,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
         } as React.CSSProperties}
       >
         {/* Container with consistent responsive padding */}
+        <LogoutSidebar />
         <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12">
           <div className={`flex items-center justify-between ${headerHeight}`}>
             {/* Mobile menu button - Left side when courseCatalogeType.enabled is true */}
@@ -469,26 +487,41 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
               {/* Auth Links - Desktop only */}
               <div className="hidden md:flex items-center gap-2">
-                {authLinks.map((link, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      if (link.route === 'login' || link.route === 'signup') {
-                        window.location.href = `/${link.route}`;
-                      } else if (link.route === '' || link.route === 'get-started') {
-                        window.dispatchEvent(new CustomEvent('openLeadCollection'));
-                      } else {
-                        navigate({ to: link.route });
-                      }
-                    }}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
-                      ? 'text-white bg-primary-500 hover:bg-primary-400'
-                      : 'text-primary-500 border border-primary-500 hover:bg-primary-50'
-                      }`}
-                  >
-                    {link.label}
-                  </button>
-                ))}
+                {isAuthenticated ? (
+                  <div className="flex items-center gap-3 shrink-0">
+                    <SystemAlertsBar />
+                    <div className="w-px h-6 bg-primary-200/60 dark:bg-neutral-700"></div>
+                    <button
+                      className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200"
+                      onClick={() => {
+                        setSidebarOpen();
+                      }}
+                    >
+                      <List className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
+                    </button>
+                  </div>
+                ) : (
+                  authLinks.map((link, index) => (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        if (link.route === 'login' || link.route === 'signup') {
+                          window.location.href = `/${link.route}`;
+                        } else if (link.route === '' || link.route === 'get-started') {
+                          window.dispatchEvent(new CustomEvent('openLeadCollection'));
+                        } else {
+                          navigate({ to: link.route });
+                        }
+                      }}
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
+                        ? 'text-white bg-primary-500 hover:bg-primary-400'
+                        : 'text-primary-500 border border-primary-500 hover:bg-primary-50'
+                        }`}
+                    >
+                      {link.label}
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -642,32 +675,50 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   })}
 
                   {/* Auth Links */}
-                  {authLinks.length > 0 && (
+                  {(authLinks.length > 0 || isAuthenticated) && (
                     <div className="border-t border-[hsl(var(--catalogue-border-subtle))] pt-3 mt-3 space-y-2">
-                      {authLinks.map((link, index) => (
-                        <button
-                          key={`auth-${index}`}
-                          onClick={() => {
-                            if (link.route === 'login' || link.route === 'signup') {
-                              navigate({ to: `/${link.route}` });
-                            } else if (link.route === 'getStarted' || link.label.toLowerCase().includes('get started')) {
-                              const event = new CustomEvent('openLeadCollection', {
-                                detail: { source: 'mobileMenu' }
-                              });
-                              window.dispatchEvent(event);
-                            } else {
-                              navigate({ to: link.route });
-                            }
-                            setIsMobileMenuOpen(false);
-                          }}
-                          className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
-                            ? 'text-white bg-primary-500 hover:bg-primary-400'
-                            : 'text-primary-500 hover:bg-primary-50'
-                            }`}
-                        >
-                          {link.label}
-                        </button>
-                      ))}
+                      {isAuthenticated ? (
+                        <>
+                          <button
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              navigate({ to: '/dashboard' });
+                            }}
+                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 text-white bg-primary-500 hover:bg-primary-400`}
+                          >
+                            Dashboard
+                          </button>
+                          <div className="px-4 py-1">
+                            {/* In mobile maybe don't need notification bell alone, they can see from dashboard */}
+                            {/* Just have dashboard link */}
+                          </div>
+                        </>
+                      ) : (
+                        authLinks.map((link, index) => (
+                          <button
+                            key={`auth-${index}`}
+                            onClick={() => {
+                              if (link.route === 'login' || link.route === 'signup') {
+                                navigate({ to: `/${link.route}` });
+                              } else if (link.route === 'getStarted' || link.label.toLowerCase().includes('get started')) {
+                                const event = new CustomEvent('openLeadCollection', {
+                                  detail: { source: 'mobileMenu' }
+                                });
+                                window.dispatchEvent(event);
+                              } else {
+                                navigate({ to: link.route });
+                              }
+                              setIsMobileMenuOpen(false);
+                            }}
+                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
+                              ? 'text-white bg-primary-500 hover:bg-primary-400'
+                              : 'text-primary-500 hover:bg-primary-50'
+                              }`}
+                          >
+                            {link.label}
+                          </button>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>

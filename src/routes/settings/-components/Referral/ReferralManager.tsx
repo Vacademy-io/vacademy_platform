@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -376,8 +377,8 @@ const ProgramDetailsModal: React.FC<ProgramDetailsModalProps> = ({
         }
     };
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    const modalContent = (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 p-4">
             <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white">
                 <div className="border-b p-6">
                     <div className="flex items-center justify-between">
@@ -735,4 +736,10 @@ const ProgramDetailsModal: React.FC<ProgramDetailsModalProps> = ({
             </div>
         </div>
     );
+
+    if (typeof document !== 'undefined') {
+        return createPortal(modalContent, document.body);
+    }
+
+    return modalContent;
 };

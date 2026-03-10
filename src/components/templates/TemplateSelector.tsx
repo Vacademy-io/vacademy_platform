@@ -212,6 +212,18 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                         </Button>
                     )}
                 </div>
+
+                {/* Template Editor Dialog */}
+                {showEditor && (
+                    <TemplateEditor
+                        template={null}
+                        onSave={handleSaveTemplate}
+                        onClose={() => {
+                            setShowEditor(false);
+                        }}
+                        isSaving={isSaving}
+                    />
+                )}
             </div>
         );
     }

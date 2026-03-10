@@ -75,4 +75,10 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                         "AND psl.status != 'DELETED' " +
                         "GROUP BY psl.enrollInvite.id")
         List<Object[]> countActiveByEnrollInviteIds(@Param("enrollInviteIds") List<String> enrollInviteIds);
+
+        @Query("SELECT DISTINCT psl.cpoId FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.packageSession.id = :packageSessionId " +
+                        "AND psl.cpoId IS NOT NULL " +
+                        "AND psl.status = 'ACTIVE'")
+        List<String> findDistinctCpoIdsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
 }

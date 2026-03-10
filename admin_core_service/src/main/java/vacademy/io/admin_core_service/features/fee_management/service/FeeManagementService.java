@@ -6,6 +6,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.fee_management.dto.ComplexPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment;
 import vacademy.io.admin_core_service.features.fee_management.entity.AssignedFeeValue;
@@ -17,6 +18,7 @@ import vacademy.io.admin_core_service.features.fee_management.repository.Complex
 import vacademy.io.admin_core_service.features.fee_management.repository.FeeTypeRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -35,6 +37,9 @@ public class FeeManagementService {
 
     @Autowired
     private AftInstallmentRepository aftInstallmentRepository;
+
+    @Autowired
+    private PackageSessionLearnerInvitationToPaymentOptionRepository bridgeRepository;
 
     /**
      * API #1: Create a full CPO with nested fee types, assigned values, and
@@ -330,5 +335,49 @@ public class FeeManagementService {
         }
 
         return request;
+    }
+
+    /**
+     * Get all CPO options available for a package session (class).
+     * Returns full CPO details with total amount calculation.
+     */
+    public List<ComplexPaymentOptionDTO> getCpoOptionsForPackageSession(String packageSessionId) {
+        // Step 1: Query bridge table for distinct CPO IDs
+        List<String> cpoIds = bridgeRepository.findDistinctCpoIdsByPackageSessionId(packageSessionId);
+        
+        if (cpoIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // Step 2: Fetch full CPO details for each ID
+        List<ComplexPaymentOptionDTO> cpoOptions = new ArrayList<>();
+        for (String cpoId : cpoIds) {
+            try {
+                ComplexPaymentOptionDTO cpoDTO = getFullCpo(cpoId);
+                
+                // Step 3: Calculate total amount from all installments
+                BigDecimal totalAmount = BigDecimal.ZERO;
+                if (cpoDTO.getFeeTypes() != null) {
+                    for (ComplexPaymentOptionDTO.FeeTypeDTO feeType : cpoDTO.getFeeTypes()) {
+                        if (feeType.getAssignedFeeValue() != null && 
+                            feeType.getAssignedFeeValue().getInstallments() != null) {
+                            for (ComplexPaymentOptionDTO.AftInstallmentDTO installment : 
+                                 feeType.getAssignedFeeValue().getInstallments()) {
+                                if (installment.getAmount() != null) {
+                                    totalAmount = totalAmount.add(installment.getAmount());
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                cpoOptions.add(cpoDTO);
+            } catch (Exception e) {
+                // Skip invalid CPOs and continue
+                continue;
+            }
+        }
+        
+        return cpoOptions;
     }
 }

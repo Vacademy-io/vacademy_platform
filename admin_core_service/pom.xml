@@ -214,6 +214,13 @@
             <version>20231013</version>
         </dependency>
 
+        <!-- Apache POI for Excel export (HR Payroll bank files) -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
     </dependencies>
 
     <dependencyManagement>

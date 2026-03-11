@@ -22,6 +22,8 @@ import vacademy.io.admin_core_service.features.applicant.repository.ApplicantSta
 import vacademy.io.admin_core_service.features.applicant.repository.ApplicationStageRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
@@ -109,6 +111,9 @@ public class ApplicantService {
 
         @Autowired
         private UserPlanRepository userPlanRepository;
+
+        @Autowired
+        private PaymentLogRepository paymentLogRepository;
 
         @Autowired
         private InstituteDomainRoutingRepository instituteDomainRoutingRepository;
@@ -1456,6 +1461,40 @@ public class ApplicantService {
                                                                                         .getTransactionId()
                                                                         : "MANUAL-" + System.currentTimeMillis();
 
+                        // 2.1. Create PaymentLog for audit trail (matching online payment behavior)
+                        PaymentLog paymentLog = new PaymentLog();
+                        paymentLog.setUserPlan(userPlan);
+                        paymentLog.setUserId(childUserId);
+                        paymentLog.setPaymentAmount(requestDTO.getAmount());
+                        paymentLog.setVendor("MANUAL");
+                        paymentLog.setVendorId(instituteId); // Institute as vendor for manual payments
+                        paymentLog.setStatus("SUCCESS"); // Immediate success for manual
+                        paymentLog.setPaymentStatus("PAID");
+                        paymentLog.setCurrency(requestDTO.getCurrency() != null ? requestDTO.getCurrency() : "INR");
+                        paymentLog.setDate(new java.util.Date());
+                        
+                        // Store transaction reference and admin details in payment_specific_data
+                        java.util.Map<String, Object> paymentData = new java.util.HashMap<>();
+                        paymentData.put("transactionRef", transactionRef);
+                        paymentData.put("paymentType", "APPLICATION_FEE");
+                        if (userDetails != null) {
+                                paymentData.put("recordedByUserId", userDetails.getUserId());
+                                paymentData.put("recordedByUsername", userDetails.getUsername());
+                        }
+                        if (requestDTO.getManualRequest() != null && requestDTO.getManualRequest().getFileId() != null) {
+                                paymentData.put("fileId", requestDTO.getManualRequest().getFileId());
+                        }
+                        
+                        try {
+                                paymentLog.setPaymentSpecificData(objectMapper.writeValueAsString(paymentData));
+                        } catch (Exception e) {
+                                logger.warn("Failed to serialize payment data for manual payment", e);
+                                paymentLog.setPaymentSpecificData("{}");
+                        }
+                        
+                        paymentLogRepository.save(paymentLog);
+                        logger.info("Created PaymentLog for manual payment: {}, user_plan: {}", paymentLog.getId(), userPlan.getId());
+
                         // 3. Build response (no gateway response to parse)
                         response = new vacademy.io.common.payment.dto.PaymentResponseDTO();
                         response.setOrderId(transactionRef);
@@ -1594,45 +1633,67 @@ public class ApplicantService {
                                         .findById(UUID.fromString(currentStage.getStageId()))
                                         .orElseThrow(() -> new VacademyException("Stage definition not found"));
 
-                        // Find next stage (Sequence + 1)
-                        // Assuming sequence is numeric string
-                        int currentSeq = 0;
-                        try {
-                                currentSeq = Integer.parseInt(currentStageDef.getSequence());
-                        } catch (NumberFormatException e) {
-                                logger.error("Invalid sequence format for stage {}", currentStageDef.getId());
-                                return;
-                        }
+                // Check if current stage is marked as last (explicit workflow end)
+                if (currentStageDef.getIsLast() != null && currentStageDef.getIsLast()) {
+                        logger.info("Workflow completed for applicant {}. Stage '{}' is marked as last.",
+                                        applicantId, currentStageDef.getStageName());
+                        return;
+                }
 
-                        String nextSeq = String.valueOf(currentSeq + 1);
+                // Find next stage (Sequence + 1)
+                // Assuming sequence is numeric string
+                int currentSeq = 0;
+                try {
+                        currentSeq = Integer.parseInt(currentStageDef.getSequence());
+                } catch (NumberFormatException e) {
+                        logger.error("Invalid sequence format for stage {}", currentStageDef.getId());
+                        return;
+                }
 
-                        Optional<ApplicationStage> nextStageOpt = applicationStageRepository
+                String nextSeq = String.valueOf(currentSeq + 1);
+
+                // Safe workflow_type filtering: Only filter if workflow_type exists (backward compatible)
+                Optional<ApplicationStage> nextStageOpt;
+                if (currentStageDef.getWorkflowType() != null && !currentStageDef.getWorkflowType().isEmpty()) {
+                        // Filter by workflow_type (prevents cross-workflow jumps)
+                        nextStageOpt = applicationStageRepository
                                         .findByInstituteIdAndSourceAndSourceIdAndSequenceAndWorkflowType(
                                                         currentStageDef.getInstituteId(),
                                                         currentStageDef.getSource(),
                                                         currentStageDef.getSourceId(),
                                                         nextSeq,
                                                         currentStageDef.getWorkflowType());
+                        logger.debug("Searching for next stage with workflow_type: {}", currentStageDef.getWorkflowType());
+                } else {
+                        // Legacy path: No workflow_type filter for NULL/empty values (backward compatible)
+                        nextStageOpt = applicationStageRepository
+                                        .findByInstituteIdAndSourceAndSourceIdAndSequence(
+                                                        currentStageDef.getInstituteId(),
+                                                        currentStageDef.getSource(),
+                                                        currentStageDef.getSourceId(),
+                                                        nextSeq);
+                        logger.warn("Applicant {} current stage has NULL/empty workflow_type, using legacy query", applicantId);
+                }
 
-                        if (nextStageOpt.isPresent()) {
-                                ApplicationStage nextStage = nextStageOpt.get();
+                // Check if next stage exists
+                if (nextStageOpt.isPresent()) {
+                        ApplicationStage nextStage = nextStageOpt.get();
+                        
+                        ApplicantStage newStage = ApplicantStage.builder()
+                                        .applicantId(applicantId)
+                                        .stageId(nextStage.getId().toString())
+                                        .stageStatus("PENDING")
+                                        .build();
+                        applicantStageRepository.save(newStage);
 
-                                // Create Applicant Stage
-                                ApplicantStage newStage = ApplicantStage.builder()
-                                                .applicantId(applicantId)
-                                                .stageId(nextStage.getId().toString())
-                                                .stageStatus("PENDING")
-                                                .build();
-                                applicantStageRepository.save(newStage);
-
-                                // Trigger Email if Payment STAGE
-                                if (ApplicantStageType.PAYMENT.equals(nextStage.getType())) {
-                                        sendApplicationPaymentEmail(applicantId, nextStage);
-                                }
-                        } else {
-                                logger.info("No next stage found for applicant {}. Application process completed.",
-                                                applicantId);
+                        // Trigger Email if Payment STAGE
+                        if (ApplicantStageType.PAYMENT.equals(nextStage.getType())) {
+                                sendApplicationPaymentEmail(applicantId, nextStage);
                         }
+                } else {
+                        logger.info("No next stage found for applicant {}. Application process completed.",
+                                        applicantId);
+                }
 
                 } catch (Exception e) {
                         logger.error("Error moving to next stage for applicant {}", applicantId, e);
@@ -1655,7 +1716,14 @@ public class ApplicantService {
                                 .findById(UUID.fromString(applicant.getApplicationStageId()))
                                 .orElseThrow(() -> new VacademyException("Current application stage not found"));
 
-                // Step 3: Resolve next stage (sequence + 1, same institute/source/sourceId)
+                // Check if current stage is marked as last (explicit workflow end)
+                if (currentStageDef.getIsLast() != null && currentStageDef.getIsLast()) {
+                        throw new VacademyException(
+                                        "Cannot move further. Stage '" + currentStageDef.getStageName()
+                                                        + "' is marked as the last stage of this workflow.");
+                }
+
+                // Step 3: Resolve next stage (sequence + 1, same institute/source/sourceId/workflowType)
                 int currentSeq = 0;
                 try {
                         currentSeq = Integer.parseInt(currentStageDef.getSequence());
@@ -1665,15 +1733,38 @@ public class ApplicantService {
 
                 String nextSeq = String.valueOf(currentSeq + 1);
 
-                Optional<ApplicationStage> nextStageOpt = applicationStageRepository
-                                .findByInstituteIdAndSourceAndSourceIdAndSequence(
-                                                currentStageDef.getInstituteId(),
-                                                currentStageDef.getSource(),
-                                                currentStageDef.getSourceId(),
-                                                nextSeq);
+                // Safe workflow_type filtering: Only filter if workflow_type exists (backward compatible)
+                Optional<ApplicationStage> nextStageOpt;
+                if (currentStageDef.getWorkflowType() != null && !currentStageDef.getWorkflowType().isEmpty()) {
+                        // Filter by workflow_type (prevents cross-workflow jumps)
+                        nextStageOpt = applicationStageRepository
+                                        .findByInstituteIdAndSourceAndSourceIdAndSequenceAndWorkflowType(
+                                                        currentStageDef.getInstituteId(),
+                                                        currentStageDef.getSource(),
+                                                        currentStageDef.getSourceId(),
+                                                        nextSeq,
+                                                        currentStageDef.getWorkflowType());
+                        logger.debug("Admin moving applicant {} with workflow_type filter: {}", applicantId,
+                                        currentStageDef.getWorkflowType());
+                } else {
+                        // Legacy path: No workflow_type filter for NULL/empty values (backward compatible)
+                        nextStageOpt = applicationStageRepository
+                                        .findByInstituteIdAndSourceAndSourceIdAndSequence(
+                                                        currentStageDef.getInstituteId(),
+                                                        currentStageDef.getSource(),
+                                                        currentStageDef.getSourceId(),
+                                                        nextSeq);
+                        logger.warn("Admin moving applicant {} with NULL/empty workflow_type, using legacy query",
+                                        applicantId);
+                }
 
                 if (nextStageOpt.isEmpty()) {
-                        throw new VacademyException("No next stage found. Applicant is already at the last stage.");
+                        // No next stage - graceful handling (no exception)
+                        logger.warn("Cannot move applicant {}. No next stage found (sequence {}). " +
+                                        "Current stage may be misconfigured (is_last=false but no successor exists). " +
+                                        "Consider marking current stage as is_last=true or adding next stage.",
+                                        applicantId, nextSeq);
+                        return; // Graceful exit - applicant remains at current stage
                 }
 
                 ApplicationStage nextStage = nextStageOpt.get();
@@ -1708,20 +1799,9 @@ public class ApplicantService {
                                 .build();
                 applicantStageRepository.save(newApplicantStage);
 
-                // Step 6: UPDATE audience_response if current stage had is_last = 1 (workflow
-                // type completed)
-                Optional<AudienceResponse> audienceResponseOpt = audienceResponseRepository
-                                .findByApplicantId(applicantId);
-
-                if (audienceResponseOpt.isPresent()) {
-                        AudienceResponse audienceResponse = audienceResponseOpt.get();
-                        // Check if the stage we're leaving has is_last = 1
-                        if (Boolean.TRUE.equals(currentStageDef.getIsLast())) {
-                                audienceResponse.setOverallStatus("CHANGED");
-                                audienceResponseRepository.save(audienceResponse);
-                                logger.info("Updated audience_response.overall_status to CHANGED for applicant {} (workflow type completed)",
-                                                applicantId);
-                        }
+                // Step 6: Trigger email if next stage is payment type
+                if (ApplicantStageType.PAYMENT.equals(nextStage.getType())) {
+                        sendApplicationPaymentEmail(applicantId, nextStage);
                 }
 
                 logger.info("Successfully moved applicant {} from stage {} to stage {}", applicantId,

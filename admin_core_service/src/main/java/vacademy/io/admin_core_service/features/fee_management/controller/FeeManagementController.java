@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.fee_management.dto.ComplexPayment
 import vacademy.io.admin_core_service.features.fee_management.service.FeeManagementService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/admin-core-service/v1/fee-management")
 public class FeeManagementController {
@@ -89,5 +91,17 @@ public class FeeManagementController {
             @PathVariable String cpoId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(feeManagementService.softDeleteCpoById(cpoId));
+    }
+
+    /**
+     * API #7: Get all CPO options available for a package session (class).
+     * Returns full CPO details with fee breakdown for admin to select during admission.
+     * GET /admin-core-service/v1/fee-management/package-session/{packageSessionId}/cpo-options
+     */
+    @GetMapping("/package-session/{packageSessionId}/cpo-options")
+    public ResponseEntity<List<ComplexPaymentOptionDTO>> getCpoOptionsForPackageSession(
+            @PathVariable String packageSessionId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(feeManagementService.getCpoOptionsForPackageSession(packageSessionId));
     }
 }

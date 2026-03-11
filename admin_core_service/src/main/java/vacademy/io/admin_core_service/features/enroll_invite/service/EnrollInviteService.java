@@ -99,7 +99,8 @@ public class EnrollInviteService {
         String shortUrl = shortUrlManagementService.createShortUrl(
                 destinationUrl,
                 SHORT_LINK_SOURCE_ENROLL_INVITE,
-                initialSavedEnrollInvite.getId());
+                initialSavedEnrollInvite.getId(),
+                initialSavedEnrollInvite.getInstituteId());
         if (shortUrl != null) {
             initialSavedEnrollInvite.setShortUrl(shortUrl);
             initialSavedEnrollInvite = repository.save(initialSavedEnrollInvite);
@@ -232,14 +233,16 @@ public class EnrollInviteService {
             EnrollInviteFilterDTO enrollInviteFilterDTO, int pageNo, int pageSize) {
         Sort sortColumns = ListService.createSortObject(enrollInviteFilterDTO.getSortColumns());
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
+        Page<EnrollInviteWithSessionsProjection> pageResult;
+
         if (StringUtils.hasText(enrollInviteFilterDTO.getSearchName())) {
-            return repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
+            pageResult = repository.getEnrollInvitesByInstituteIdAndSearchName(instituteId,
                     enrollInviteFilterDTO.getSearchName(),
                     List.of(StatusEnum.ACTIVE.name()),
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     pageable);
         } else {
-            return repository.getEnrollInvitesWithFilters(instituteId,
+            pageResult = repository.getEnrollInvitesWithFilters(instituteId,
                     enrollInviteFilterDTO.getPackageSessionIds(),
                     enrollInviteFilterDTO.getPaymentOptionIds(),
                     enrollInviteFilterDTO.getTags(),
@@ -247,6 +250,8 @@ public class EnrollInviteService {
                     List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
                     pageable);
         }
+
+        return pageResult;
     }
 
     public EnrollInviteDTO findByEnrollInviteId(String enrollInviteId, String instituteId) {
@@ -432,6 +437,8 @@ public class EnrollInviteService {
     private EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId,
             List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
         EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
+        dto.setShortUrl(
+                shortUrlManagementService.getAbsoluteShortUrl(enrollInvite.getInstituteId(), dto.getShortUrl()));
 
         // 1. Fetch and set Custom Fields
         dto.setInstituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(
@@ -723,6 +730,8 @@ public class EnrollInviteService {
      */
     private EnrollInviteDTO convertToEnrollInviteDTO(EnrollInvite enrollInvite) {
         EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
+        dto.setShortUrl(
+                shortUrlManagementService.getAbsoluteShortUrl(enrollInvite.getInstituteId(), dto.getShortUrl()));
         return dto;
     }
 
@@ -750,7 +759,8 @@ public class EnrollInviteService {
         dto.setLearnerAccessDays(enrollInvite.getLearnerAccessDays());
         dto.setWebPageMetaDataJson(enrollInvite.getWebPageMetaDataJson());
         dto.setIsBundled(enrollInvite.getIsBundled());
-        dto.setShortUrl(enrollInvite.getShortUrl());
+        dto.setShortUrl(shortUrlManagementService.getAbsoluteShortUrl(enrollInvite.getInstituteId(),
+                enrollInvite.getShortUrl()));
         return dto;
     }
 

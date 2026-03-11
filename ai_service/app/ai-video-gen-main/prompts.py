@@ -173,6 +173,12 @@ Requirements:
 
 **RECAP MARKERS**: If the video covers 3+ distinct concepts, add `"needs_recap": true` on the beat AFTER the last concept, so the system can optionally insert a visual summary.
 
+**BEAT ENRICHMENT FIELDS** (include in every beat):
+- `emotion`: The emotional tone for this section — drives animation intensity and visual mood. One of: curiosity, surprise, awe, urgency, calm, excitement.
+- `pacing`: How fast the visuals should move. "slow" for contemplative/complex concepts, "normal" for standard explanation, "fast" for rapid-fire facts or energy bursts.
+- `transition_hint`: Suggested transition INTO this beat from the previous. "cut" for sharp topic changes, "crossfade" for smooth continuation, "zoom" for diving deeper into a concept.
+- `complexity_level`: Visual density for this section. "simple" = 1-2 elements on screen, "moderate" = 3-4 elements, "dense" = rich diagram or multi-part layout.
+
 JSON shape:
 {{
   "title": "...",
@@ -191,7 +197,11 @@ JSON shape:
       "visual_idea": "Describe a key visual metaphor for this section",
       "image_prompt_hint": "Only if visual_type uses images: cinematic photo description, 16:9, no text/faces",
       "key_terms": ["term1", "term2"],
-      "needs_recap": false
+      "needs_recap": false,
+      "emotion": "curiosity | surprise | awe | urgency | calm | excitement",
+      "pacing": "slow | normal | fast",
+      "transition_hint": "cut | crossfade | zoom",
+      "complexity_level": "simple | moderate | dense"
     }}
   ],
   "cta": "...",
@@ -230,6 +240,58 @@ JSON shape:
 - For **history** topics: prefer IMAGE_HERO and IMAGE_SPLIT over diagrams
 - For **math** topics: prefer TEXT_DIAGRAM with KaTeX equations, almost no images
 - For **science** topics: balanced mix of IMAGE_SPLIT and SVG diagrams
+"""
+
+# ---------------------------------------------------------------------------
+# Two-pass script review prompts (used in Premium/Ultra tiers)
+# ---------------------------------------------------------------------------
+SCRIPT_REVIEW_SYSTEM_PROMPT = (
+    "You are a senior educational content reviewer and narrative coach. "
+    "You receive a draft script and beat outline for an educational video, "
+    "and return an improved version. You preserve the JSON structure exactly. "
+    "Respond with JSON only — no commentary."
+)
+
+SCRIPT_REVIEW_USER_PROMPT_TEMPLATE = """Review and improve this educational video script. The output JSON must have the EXACT same keys as the input.
+
+**Draft script and beat outline (JSON):**
+```json
+{script_json}
+```
+
+**Improvement checklist — apply ALL that are relevant:**
+
+1. **Hook strength**: Is the opening sentence genuinely attention-grabbing? If it starts with "Today we'll learn…" or similar generic phrases, rewrite it with a surprising fact, a thought-provoking question, or a vivid "imagine you are…" scenario.
+
+2. **Transitions**: Check that each beat flows naturally into the next. Add bridging phrases ("Now that we understand X, let's see how it connects to Y…") where transitions feel abrupt.
+
+3. **Analogies & examples**: For every abstract concept, ensure there is at least one concrete, age-appropriate analogy or real-world example. Replace weak analogies with more vivid, memorable ones.
+
+4. **Pacing**: Check word count against the target duration (~130 words/minute). Trim fluff or expand thin sections.
+
+5. **Emotional arc**: Verify the beat `emotion` fields create a varied arc (not all "calm" or all "excitement"). Adjust if monotone.
+
+6. **Visual variety**: Check beat `visual_type` fields — ensure at least 3 different types are used across all beats. Adjust if too repetitive.
+
+7. **Key takeaway**: Ensure the `key_takeaway` is a single, memorable sentence a student could repeat from memory.
+
+8. **Common mistake**: Ensure `common_mistake` is a genuine, specific misconception (not a vague "students might find this hard").
+
+9. **Beat enrichment**: Verify all beats have meaningful `emotion`, `pacing`, `transition_hint`, and `complexity_level` values — not just defaults.
+
+Return the improved JSON with the same structure. Only modify content — do not add or remove keys.
+"""
+
+# ---------------------------------------------------------------------------
+# Segment context addon (appended to HTML generation user prompt for Standard+ tiers)
+# ---------------------------------------------------------------------------
+SEGMENT_CONTEXT_ADDON = """
+**SEGMENT CONTINUITY CONTEXT:**
+- Segment {seg_index} of {total_segments}.
+{prev_context}
+{next_context}
+{diversity_context}
+Ensure visual continuity with adjacent segments while keeping this segment self-contained.
 """
 
 # NOTE: Style guide prompts below are NOT actively used by the pipeline.
@@ -724,7 +786,72 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "Text-only shots are ONLY acceptable for Key Takeaway cards and LOWER_THIRD overlays.\n"
     "This is backed by cognitive science: learners retain 2x more when information is presented in both verbal and visual channels.\n\n"
 
-    "Output JSON with 2-4 'shots' per segment. Each shot: one concept, clean visual, annotations for key terms.\n"
+    "Output JSON with 2-4 'shots' per segment. Each shot: one concept, clean visual, annotations for key terms.\n\n"
+
+    "═══════════════ FEW-SHOT EXAMPLES ═══════════════\n\n"
+    "Below are 3 examples of excellent shot output. Study the HTML structure, animation patterns, and visual design:\n\n"
+
+    "**EXAMPLE 1 — IMAGE_HERO (Full-screen image with Ken Burns + text overlay)**:\n"
+    "```json\n"
+    '{"offsetSeconds": 0, "durationSeconds": 10, "start_word": "The ancient city", '
+    '"htmlStartX": 0, "htmlStartY": 0, "width": 1920, "height": 1080, "z": 10,\n'
+    ' "html": "<div style=\\"width:1920px;height:1080px;position:relative;overflow:hidden\\">'
+    '<img class=\\"generated-image ken-burns zoom-in gradient-bottom\\" '
+    'data-img-prompt=\\"Ancient Roman city at sunset, marble columns and cobblestone streets, '
+    'golden hour light, cinematic wide angle, 16:9\\" '
+    'style=\\"width:100%;height:100%;object-fit:cover\\" />'
+    '<div style=\\"position:absolute;bottom:100px;left:100px;right:100px\\">'
+    '<h1 id=\\"title\\" style=\\"font-family:Montserrat;font-weight:900;font-size:64px;'
+    'color:#ffffff;margin:0;opacity:0\\">The Rise of Rome</h1>'
+    '<p id=\\"subtitle\\" style=\\"font-family:Inter;font-size:28px;color:rgba(255,255,255,0.9);'
+    'margin-top:16px;opacity:0\\">From Village to Empire</p></div>'
+    '<script>gsap.from(\\"#title\\",{y:60,opacity:0,duration:1.2,delay:0.5,ease:\\"expo.out\\"});'
+    'gsap.from(\\"#subtitle\\",{y:40,opacity:0,duration:1,delay:1,ease:\\"power2.out\\"});<\\/script></div>"}\n'
+    "```\n\n"
+
+    "**EXAMPLE 2 — TEXT_DIAGRAM (Mermaid flowchart with progressive reveal)**:\n"
+    "```json\n"
+    '{"offsetSeconds": 10, "durationSeconds": 12, "start_word": "The process begins", '
+    '"htmlStartX": 0, "htmlStartY": 0, "width": 1920, "height": 1080, "z": 10,\n'
+    ' "html": "<div style=\\"display:flex;align-items:center;justify-content:center;'
+    'width:1920px;height:1080px;padding:80px\\">'
+    '<div style=\\"flex:1;padding-right:60px\\">'
+    '<h2 id=\\"heading\\" style=\\"font-family:Montserrat;font-weight:700;font-size:48px;'
+    'color:var(--text-color);margin:0 0 24px 0;opacity:0\\">How Photosynthesis Works</h2>'
+    '<p id=\\"desc\\" style=\\"font-family:Inter;font-size:24px;line-height:1.6;'
+    'color:var(--text-color);opacity:0\\">Plants convert sunlight into energy through a series of chemical reactions.</p></div>'
+    '<div id=\\"diagram\\" style=\\"flex:1;opacity:0\\">'
+    '<div class=\\"mermaid\\">%%{init: {\\x27theme\\x27: \\x27default\\x27}}%%\\n'
+    'graph TD\\n  A[Sunlight] --> B[Chlorophyll]\\n  B --> C[Water Split]\\n  C --> D[Glucose + O2]</div></div>'
+    '<script>gsap.from(\\"#heading\\",{x:-40,opacity:0,duration:0.8,delay:0.3});'
+    'gsap.from(\\"#desc\\",{x:-40,opacity:0,duration:0.8,delay:0.6});'
+    'gsap.from(\\"#diagram\\",{scale:0.9,opacity:0,duration:1,delay:1});<\\/script></div>"}\n'
+    "```\n\n"
+
+    "**EXAMPLE 3 — IMAGE_SPLIT (Image left + annotated text right)**:\n"
+    "```json\n"
+    '{"offsetSeconds": 22, "durationSeconds": 10, "start_word": "The heart pumps", '
+    '"htmlStartX": 0, "htmlStartY": 0, "width": 1920, "height": 1080, "z": 10,\n'
+    ' "html": "<div style=\\"display:flex;width:1920px;height:1080px\\">'
+    '<div style=\\"flex:1;position:relative;overflow:hidden\\">'
+    '<img class=\\"generated-image ken-burns zoom-out\\" '
+    'data-img-prompt=\\"Anatomical illustration of human heart, cross-section showing chambers, '
+    'clean white background, medical textbook style, 16:9\\" '
+    'style=\\"width:100%;height:100%;object-fit:cover\\" /></div>'
+    '<div style=\\"flex:1;display:flex;flex-direction:column;justify-content:center;padding:80px\\">'
+    '<h2 id=\\"title\\" style=\\"font-family:Montserrat;font-weight:700;font-size:44px;'
+    'color:var(--text-color);margin:0 0 32px 0;opacity:0\\">The Human Heart</h2>'
+    '<ul id=\\"points\\" style=\\"list-style:none;padding:0;margin:0\\">'
+    '<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
+    'padding:12px 0;border-bottom:1px solid rgba(0,0,0,0.1);opacity:0\\">4 chambers pump blood</li>'
+    '<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
+    'padding:12px 0;border-bottom:1px solid rgba(0,0,0,0.1);opacity:0\\">100,000 beats per day</li>'
+    '<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
+    'padding:12px 0;opacity:0\\">Delivers oxygen to every cell</li></ul>'
+    '<script>gsap.from(\\"#title\\",{x:40,opacity:0,duration:0.8,delay:0.5});'
+    'gsap.from(\\".point\\",{x:30,opacity:0,duration:0.6,stagger:0.3,delay:1,ease:\\"power2.out\\"});<\\/script></div></div>"}\n'
+    "```\n\n"
+    "═══════════════ END EXAMPLES ═══════════════\n"
 )
 
 HTML_GENERATION_SYSTEM_PROMPT_CLASSIC = (

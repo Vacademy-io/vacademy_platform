@@ -113,7 +113,8 @@ public class DefaultEnrollInviteService {
             String shortUrl = shortUrlManagementService.createShortUrl(
                     destinationUrl,
                     SHORT_LINK_SOURCE_ENROLL_INVITE,
-                    enrollInvite.getId());
+                    enrollInvite.getId(),
+                    instituteId);
             if (shortUrl != null) {
                 enrollInvite.setShortUrl(shortUrl);
                 enrollInvite = repository.save(enrollInvite);

@@ -45,11 +45,14 @@ try:
     from prompts import (
         SCRIPT_SYSTEM_PROMPT,
         SCRIPT_USER_PROMPT_TEMPLATE,
+        SCRIPT_REVIEW_SYSTEM_PROMPT,
+        SCRIPT_REVIEW_USER_PROMPT_TEMPLATE,
         STYLE_GUIDE_SYSTEM_PROMPT,
         STYLE_GUIDE_USER_PROMPT_TEMPLATE,
         HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE,
         HTML_GENERATION_SAFE_AREA,
         HTML_GENERATION_USER_PROMPT_TEMPLATE,
+        SEGMENT_CONTEXT_ADDON,
         BACKGROUND_PRESETS,
         TOPIC_SHOT_PROFILES,
     )
@@ -165,11 +168,104 @@ WHISPER_LANG_MAP = {
     "german": "de", "japanese": "ja", "chinese": "zh",
 }
 
+# Unicode script ranges for validating Whisper output matches expected language
+_SCRIPT_RANGES: dict[str, tuple[int, int]] = {
+    "hi": (0x0900, 0x097F),   # Devanagari (Hindi, Marathi)
+    "mr": (0x0900, 0x097F),   # Devanagari
+    "bn": (0x0980, 0x09FF),   # Bengali
+    "ta": (0x0B80, 0x0BFF),   # Tamil
+    "te": (0x0C00, 0x0C7F),   # Telugu
+    "kn": (0x0C80, 0x0CFF),   # Kannada
+    "gu": (0x0A80, 0x0AFF),   # Gujarati
+    "ml": (0x0D00, 0x0D7F),   # Malayalam
+    "ja": (0x3040, 0x30FF),   # Hiragana/Katakana
+    "zh": (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+}
+
+
+# ---------------------------------------------------------------------------
+# Quality tier configuration
+# ---------------------------------------------------------------------------
+QUALITY_TIERS: dict[str, dict[str, Any]] = {
+    "free": {
+        "script_temperature": 0.5,
+        "script_max_tokens": 16000,
+        "html_temperature": 0.7,
+        "html_max_tokens": 24000,
+        "two_pass_script": False,
+        "html_validation": False,
+        "image_prompt_enhancement": False,
+        "shot_diversity_enforcement": False,
+        "segment_context": False,
+    },
+    "standard": {
+        "script_temperature": 0.5,
+        "script_max_tokens": 16000,
+        "html_temperature": 0.7,
+        "html_max_tokens": 24000,
+        "two_pass_script": False,
+        "html_validation": True,
+        "image_prompt_enhancement": False,
+        "shot_diversity_enforcement": True,
+        "segment_context": True,
+    },
+    "premium": {
+        "script_temperature": 0.6,
+        "script_max_tokens": 24000,
+        "html_temperature": 0.7,
+        "html_max_tokens": 32000,
+        "two_pass_script": True,
+        "html_validation": True,
+        "image_prompt_enhancement": True,
+        "shot_diversity_enforcement": True,
+        "segment_context": True,
+    },
+    "ultra": {
+        "script_temperature": 0.6,
+        "script_max_tokens": 32000,
+        "html_temperature": 0.7,
+        "html_max_tokens": 32000,
+        "two_pass_script": True,
+        "html_validation": True,
+        "image_prompt_enhancement": True,
+        "shot_diversity_enforcement": True,
+        "segment_context": True,
+    },
+}
+
+
+def _validate_whisper_script(word_entries: list, lang_code: str) -> bool:
+    """Check if Whisper output contains characters in the expected script.
+
+    For Latin-script languages (en, es, fr, de) always returns True.
+    For non-Latin scripts, requires ≥30 % of letter characters to be in the
+    expected Unicode range — otherwise Whisper hallucinated in the wrong language.
+    """
+    script_range = _SCRIPT_RANGES.get(lang_code)
+    if script_range is None:
+        return True  # Latin-script language — no validation needed
+
+    lo, hi = script_range
+    total_letters = 0
+    matching_letters = 0
+    for entry in word_entries:
+        for ch in entry.get("word", ""):
+            if ch.isalpha():
+                total_letters += 1
+                if lo <= ord(ch) <= hi:
+                    matching_letters += 1
+
+    if total_letters == 0:
+        return False
+    ratio = matching_letters / total_letters
+    return ratio >= 0.30
+
 
 def _whisper_align(audio_path: Path, language: str = "English") -> list:
     """Standalone Whisper forced alignment. Returns word-level timestamps.
 
     Works for any language supported by Whisper (Hindi, Bengali, etc.).
+    Validates that Whisper output matches expected script; returns [] if not.
     """
     try:
         from faster_whisper import WhisperModel
@@ -178,8 +274,10 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
         return []
     try:
         lang_code = WHISPER_LANG_MAP.get(language.lower().strip(), "en")
-        print(f"    🎯 Running Whisper forced alignment (lang={lang_code})...")
-        model = WhisperModel("base", device="cpu", compute_type="int8")
+        # Use a larger model for non-English to get better accuracy
+        model_size = "medium" if lang_code != "en" else "base"
+        print(f"    🎯 Running Whisper forced alignment (lang={lang_code}, model={model_size})...")
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
         segments, _ = model.transcribe(
             str(audio_path), word_timestamps=True, language=lang_code
         )
@@ -192,10 +290,17 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
                         "start": round(wi.start, 3),
                         "end": round(wi.end, 3),
                     })
-        if word_entries:
-            print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
-        else:
+        if not word_entries:
             print("    ⚠️ Whisper returned no word timestamps")
+            return []
+
+        # Validate Whisper output is in the expected script
+        if not _validate_whisper_script(word_entries, lang_code):
+            print(f"    ⚠️ Whisper output is NOT in expected script for '{language}' "
+                  f"(lang={lang_code}). Discarding Whisper results.")
+            return []
+
+        print(f"    ✅ Whisper alignment extracted {len(word_entries)} word timestamps")
         return word_entries
     except Exception as e:
         print(f"    ❌ Whisper alignment failed: {e}")
@@ -779,6 +884,7 @@ class VideoGenerationPipeline:
         voice_model: str = "eleven_multilingual_v2",
         gemini_image_key: str = DEFAULT_GEMINI_IMAGE_KEY,
         runs_dir: Path = DEFAULT_RUNS_DIR,
+        quality_tier: str = "ultra",
     ) -> None:
         if not openrouter_key:
             raise ValueError("OpenRouter API key is required (set OPENROUTER_API_KEY or pass --openrouter-key).")
@@ -789,6 +895,10 @@ class VideoGenerationPipeline:
         self.gemini_image_api_key = gemini_image_key
         self.runs_dir = runs_dir
         self.runs_dir.mkdir(parents=True, exist_ok=True)
+        # Quality tier configuration
+        self._quality_tier = quality_tier if quality_tier in QUALITY_TIERS else "ultra"
+        self._tier_config = QUALITY_TIERS[self._quality_tier]
+        print(f"⚡ Quality tier: {self._quality_tier}")
 
     @staticmethod
     def _get_default_branding() -> Dict[str, Any]:
@@ -935,6 +1045,15 @@ class VideoGenerationPipeline:
             script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
             script_plan = script_out["result"]
             accumulate_usage(script_out.get("usage", {}))
+
+            # Two-pass script review (Premium/Ultra tiers)
+            if self._tier_config.get("two_pass_script") and content_type == "VIDEO":
+                reviewed_plan = self._review_script(script_plan.get("plan", script_plan), run_dir)
+                if reviewed_plan:
+                    script_plan["plan"] = reviewed_plan
+                    reviewed_text = str(reviewed_plan.get("script") or reviewed_plan.get("script_text") or "").strip()
+                    if reviewed_text:
+                        script_plan["script_text"] = reviewed_text
         else:
             self._require_file(script_path, "script.txt (narration text)")
             # Try to load the plan if it exists, otherwise provide a dummy one
@@ -1034,15 +1153,33 @@ class VideoGenerationPipeline:
                 if self._current_questions:
                     print(f"   📝 Loaded {len(self._current_questions)} MCQ questions from script plan")
 
+                # Get actual audio duration so segments cover the full narration
+                _seg_audio_dur = 0.0
+                _seg_audio_path = tts_outputs.get("audio_path")
+                if _seg_audio_path and Path(_seg_audio_path).exists():
+                    try:
+                        _probe_res = subprocess.run(
+                            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                             "-of", "default=noprint_wrappers=1:nokey=1", str(_seg_audio_path)],
+                            capture_output=True, text=True, timeout=10,
+                        )
+                        _seg_audio_dur = float(_probe_res.stdout.strip())
+                        print(f"   ℹ️  Actual audio duration: {_seg_audio_dur:.1f}s")
+                    except Exception:
+                        pass
+
                 # Configurable max segments to limit LLM expense
                 # Default: max 12 segments (covers ~8 minutes of video at ~40s each)
                 max_segments = getattr(self, '_max_segments', 12)
-                
+
                 if beat_outline and len(beat_outline) >= 2 and words:
-                    segments = self._segment_words_by_beats(words, beat_outline, max_segments=max_segments)
+                    segments = self._segment_words_by_beats(
+                        words, beat_outline, max_segments=max_segments,
+                        audio_duration=_seg_audio_dur,
+                    )
                     print(f"   ✅ Created {len(segments)} concept-aligned segments from {len(beat_outline)} beats (max: {max_segments})")
                 else:
-                    segments = self._segment_words(words)
+                    segments = self._segment_words(words, audio_duration=_seg_audio_dur)
                     print(f"   ℹ️  Using fixed-window segmentation ({len(segments)} segments)")
 
                 # Store segment start times + labels for chapter markers in the frontend player
@@ -1206,6 +1343,7 @@ class VideoGenerationPipeline:
                 glossary=getattr(self, '_current_glossary', None),
                 questions=getattr(self, '_current_questions', None),
                 language=language,
+                audio_path=tts_outputs.get("audio_path"),
             )
         
         avatar_video_path = None
@@ -1341,10 +1479,10 @@ class VideoGenerationPipeline:
             try:
                 # SLIDES needs a large token budget: each slide has rich HTML (inline SVGs,
                 # styles) that must be JSON-escaped, so 10 slides ≈ 20 000–30 000 tokens.
-                _max_tokens = 32000 if content_type == "SLIDES" else 16000
+                _max_tokens = 32000 if content_type == "SLIDES" else self._tier_config.get("script_max_tokens", 16000)
                 raw, usage = self.script_client.chat(
                     messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                    temperature=0.5,
+                    temperature=self._tier_config.get("script_temperature", 0.5),
                     max_tokens=_max_tokens,
                 )
                 data = _extract_json_blob(raw)
@@ -1500,6 +1638,132 @@ class VideoGenerationPipeline:
         script_path = run_dir / "script.txt"
         script_path.write_text(script_text + "\n")
         return {"result": {"plan": data, "script_path": script_path, "script_text": script_text}, "usage": usage}
+
+    def _review_script(
+        self,
+        script_data: Dict[str, Any],
+        run_dir: Path,
+    ) -> Dict[str, Any]:
+        """Two-pass script review — improves transitions, hook, analogies, pacing.
+
+        Only called when tier_config["two_pass_script"] is True (Premium/Ultra).
+        Returns improved script_data with the same JSON structure.
+        """
+        print("🔍 Running two-pass script review (Premium/Ultra tier)...")
+        script_json_str = json.dumps(script_data, indent=2, ensure_ascii=False)
+
+        try:
+            raw, usage = self.script_client.chat(
+                messages=[
+                    {"role": "system", "content": SCRIPT_REVIEW_SYSTEM_PROMPT},
+                    {"role": "user", "content": SCRIPT_REVIEW_USER_PROMPT_TEMPLATE.format(
+                        script_json=script_json_str
+                    )},
+                ],
+                temperature=0.5,
+                max_tokens=32000,
+            )
+            reviewed = _extract_json_blob(raw)
+
+            # Ensure critical fields survived the review
+            if not reviewed.get("script") and not reviewed.get("script_text"):
+                print("⚠️ Script review returned empty script — keeping original.")
+                return script_data
+
+            # Preserve fields that the review shouldn't touch
+            reviewed.setdefault("_content_type", script_data.get("_content_type"))
+
+            # Save reviewed plan
+            reviewed_path = run_dir / "script_plan_reviewed.json"
+            reviewed_path.write_text(json.dumps(reviewed, indent=2, ensure_ascii=False))
+
+            # Update script.txt with reviewed narration
+            reviewed_script = str(reviewed.get("script") or reviewed.get("script_text") or "").strip()
+            if reviewed_script:
+                script_path = run_dir / "script.txt"
+                script_path.write_text(reviewed_script + "\n")
+
+            print("✅ Script review complete — using improved version.")
+            return reviewed
+        except Exception as e:
+            print(f"⚠️ Script review failed ({e}) — keeping original script.")
+            return script_data
+
+    @staticmethod
+    def _validate_html_segment(html_str: str, expected_shot_type: str = "") -> Tuple[bool, List[str]]:
+        """Validate generated HTML for structural correctness.
+
+        Returns (is_valid, list_of_issues).
+        """
+        issues: list[str] = []
+        if not html_str or len(html_str.strip()) < 50:
+            issues.append("HTML is empty or too short (< 50 chars).")
+            return False, issues
+
+        # Check for unclosed script tags (common LLM mistake)
+        open_scripts = html_str.lower().count("<script")
+        close_scripts = html_str.lower().count("</script>")
+        if open_scripts != close_scripts:
+            issues.append(f"Mismatched <script> tags: {open_scripts} open vs {close_scripts} close.")
+
+        # Check image shots have data-img-prompt
+        if expected_shot_type in ("IMAGE_HERO", "IMAGE_SPLIT", "ANNOTATION_MAP"):
+            if "data-img-prompt" not in html_str:
+                issues.append(f"Shot type {expected_shot_type} expected a <img data-img-prompt=...> but none found.")
+
+        # Check Mermaid syntax (basic: must have at least one arrow or node)
+        if "<div class='mermaid'" in html_str or '<div class="mermaid"' in html_str:
+            # Ensure it contains actual diagram content, not empty
+            mermaid_match = re.search(r"class=['\"]mermaid['\"][^>]*>(.*?)</div>", html_str, re.DOTALL)
+            if mermaid_match:
+                content = mermaid_match.group(1).strip()
+                if len(content) < 10:
+                    issues.append("Mermaid diagram block is nearly empty.")
+
+        # Check KaTeX delimiters are paired
+        dollar_count = html_str.count("$$")
+        if dollar_count % 2 != 0:
+            issues.append(f"Unpaired $$ delimiters (found {dollar_count} — should be even).")
+
+        return (len(issues) == 0, issues)
+
+    def _repair_html_segment(
+        self,
+        html_str: str,
+        issues: List[str],
+        original_user_prompt: str,
+    ) -> str:
+        """Attempt a single LLM repair pass on invalid HTML.
+
+        Returns repaired HTML string, or original if repair fails.
+        """
+        print(f"    🔧 Attempting HTML repair for issues: {issues}")
+        repair_prompt = (
+            "The following HTML segment has issues that need fixing:\n\n"
+            f"**Issues found:**\n" + "\n".join(f"- {i}" for i in issues) + "\n\n"
+            f"**Current HTML:**\n```html\n{html_str[:6000]}\n```\n\n"
+            "Fix ONLY the listed issues. Return the corrected HTML only — no JSON wrapper, no explanation."
+        )
+        try:
+            raw, _usage = self.html_client.chat(
+                messages=[
+                    {"role": "system", "content": "You are an HTML/CSS repair assistant. Fix the issues and return corrected HTML only."},
+                    {"role": "user", "content": repair_prompt},
+                ],
+                temperature=0.3,
+                max_tokens=8000,
+            )
+            repaired = raw.strip()
+            # Strip markdown code fences if present
+            if repaired.startswith("```"):
+                repaired = re.sub(r"^```(?:html)?\n?", "", repaired)
+                repaired = re.sub(r"\n?```$", "", repaired)
+            if len(repaired) > 50:
+                print("    ✅ HTML repair successful.")
+                return repaired
+        except Exception as e:
+            print(f"    ⚠️ HTML repair failed: {e}")
+        return html_str
 
     # --- Google TTS bridge -------------------------------------------------
     # --- Edge TTS bridge (Free, Timed) -------------------------------------------------
@@ -1661,16 +1925,40 @@ class VideoGenerationPipeline:
                     _tmp_audio = _tmpmod.NamedTemporaryFile(suffix=".mp3", delete=False)
                     _tmp_audio.write(audio_data)
                     _tmp_audio.close()
+                    _whisper_ok = False
                     try:
                         _whisper_words = _whisper_align(Path(_tmp_audio.name), language)
                         if _whisper_words and len(_whisper_words) > len(word_entries):
                             word_entries = _whisper_words
+                            _whisper_ok = True
                             print(f"    ✅ Replaced EdgeTTS words with {len(word_entries)} Whisper words")
                         else:
                             print(f"    ℹ️  Whisper returned {len(_whisper_words) if _whisper_words else 0} words "
-                                  f"(EdgeTTS had {len(word_entries)}), keeping EdgeTTS data")
+                                  f"(EdgeTTS had {len(word_entries)})")
                     finally:
                         os.unlink(_tmp_audio.name)
+
+                    # If Whisper failed or returned wrong language, use linear
+                    # interpolation based on script text + estimated audio duration
+                    if not _whisper_ok:
+                        print(f"    🔄 Using linear interpolation on script text "
+                              f"(~{_est_dur:.0f}s estimated audio)...")
+                        import re as _lre
+                        _words_list = _lre.findall(r'\S+', script_text)
+                        if _words_list and _est_dur > 0:
+                            # Distribute words evenly across the audio duration
+                            _per_word = _est_dur / len(_words_list)
+                            _lin_entries = []
+                            for _wi, _wt in enumerate(_words_list):
+                                _ws = _wi * _per_word
+                                _we_t = _ws + _per_word * 0.85  # small gap between words
+                                _lin_entries.append({
+                                    "word": _wt,
+                                    "start": round(_ws, 3),
+                                    "end": round(_we_t, 3),
+                                })
+                            word_entries = _lin_entries
+                            print(f"    ✅ Generated {len(word_entries)} linear word timestamps")
 
                 for w in word_entries:
                     word_str = w["word"]
@@ -1951,10 +2239,15 @@ class VideoGenerationPipeline:
         return json.loads(words_path.read_text())
 
     @staticmethod
-    def _segment_words(words: List[Dict[str, Any]], window: float = 40.0) -> List[Dict[str, Any]]:
+    def _segment_words(words: List[Dict[str, Any]], window: float = 40.0, audio_duration: float = 0.0) -> List[Dict[str, Any]]:
         if not words:
             return []
-        total_duration = float(words[-1]["end"])
+        # Use max of all word end-times (array may not be sorted) and
+        # actual audio duration (words may not cover the full audio).
+        total_duration = max(
+            max(float(w["end"]) for w in words),
+            audio_duration,
+        )
         segments: List[Dict[str, Any]] = []
         idx = 0
         start_time = 0.0
@@ -1981,19 +2274,25 @@ class VideoGenerationPipeline:
         return segments
 
     def _segment_words_by_beats(
-        self, words: List[Dict[str, Any]], beat_outline: List[Dict[str, Any]], max_segments: int = 8
+        self, words: List[Dict[str, Any]], beat_outline: List[Dict[str, Any]],
+        max_segments: int = 8, audio_duration: float = 0.0,
     ) -> List[Dict[str, Any]]:
         """
         Concept-aligned segmentation: uses the beat_outline labels to find natural
         topic transitions in the narration text, then splits words at those boundaries.
-        
+
         Falls back to fixed-window if beat matching fails.
         max_segments caps total segments to control LLM cost.
         """
         if not words or not beat_outline:
-            return self._segment_words(words)
-        
-        total_duration = float(words[-1]["end"])
+            return self._segment_words(words, audio_duration=audio_duration)
+
+        # Use max of all word end-times (array may not be sorted) and
+        # actual audio duration (words may not cover the full audio).
+        total_duration = max(
+            max(float(w["end"]) for w in words),
+            audio_duration,
+        )
         full_text = " ".join(str(w.get("word", "")) for w in words).lower()
         
         # Try to find approximate word positions for each beat label
@@ -2047,7 +2346,7 @@ class VideoGenerationPipeline:
         # If we only got start+end (no useful beat boundaries), fall back
         if len(beat_boundaries) <= 2:
             print("   ⚠️ Beat matching found no useful boundaries, using fixed-window fallback")
-            return self._segment_words(words)
+            return self._segment_words(words, audio_duration=audio_duration)
         
         # Build segments from boundaries
         segments: List[Dict[str, Any]] = []
@@ -2287,6 +2586,19 @@ class VideoGenerationPipeline:
         _layout_theme_id = style_guide.get("layout_theme", "")
         _template = _get_template_by_id(_layout_theme_id) if _layout_theme_id else None
 
+        # Pre-compute segment context for continuity (Standard+ tiers)
+        _seg_summaries: list[str] = []
+        if self._tier_config.get("segment_context"):
+            for s in segments:
+                text = str(s.get("text", ""))
+                _seg_summaries.append(text[:120].rsplit(" ", 1)[0] if len(text) > 120 else text)
+
+        # Pre-compute beat visual type assignments for diversity enforcement
+        _beat_visual_types: list[str] = []
+        if self._tier_config.get("shot_diversity_enforcement") and script_plan:
+            for beat in (script_plan.get("beat_outline") or []):
+                _beat_visual_types.append(beat.get("visual_type", ""))
+
         def task(seg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
             # Flatten style guide for prompt
             palette = style_guide.get("palette", {})
@@ -2464,6 +2776,33 @@ class VideoGenerationPipeline:
                 primary_color=palette.get('primary', '#2563eb'),
             ).strip()
 
+            # Append segment continuity context (Standard+ tiers)
+            if self._tier_config.get("segment_context") and _seg_summaries:
+                seg_idx = seg.get("index", 1) - 1  # 0-based
+                total = len(_seg_summaries)
+                prev_ctx = (
+                    f"- Previous segment narration: \"{_seg_summaries[seg_idx - 1]}...\""
+                    if seg_idx > 0 else "- This is the FIRST segment (strong opening visual needed)."
+                )
+                next_ctx = (
+                    f"- Next segment narration: \"{_seg_summaries[seg_idx + 1]}...\""
+                    if seg_idx < total - 1 else "- This is the LAST segment (use a conclusive visual)."
+                )
+                # Diversity hint: list beat visual types so LLM avoids repetition
+                diversity_ctx = ""
+                if self._tier_config.get("shot_diversity_enforcement") and _beat_visual_types:
+                    diversity_ctx = (
+                        f"- Beat visual types planned across all segments: {', '.join(_beat_visual_types)}. "
+                        f"Use a DIFFERENT shot type from adjacent segments where possible."
+                    )
+                user_prompt += "\n\n" + SEGMENT_CONTEXT_ADDON.format(
+                    seg_index=seg_idx + 1,
+                    total_segments=total,
+                    prev_context=prev_ctx,
+                    next_context=next_ctx,
+                    diversity_context=diversity_ctx,
+                )
+
             # Retry logic: distinguishes server overload (500), rate-limit (429),
             # and JSON parse failures so each gets an appropriate delay.
             import time
@@ -2473,10 +2812,21 @@ class VideoGenerationPipeline:
                 try:
                     raw, usage = self.html_client.chat(
                         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                        temperature=0.7,
-                        max_tokens=24000,
+                        temperature=self._tier_config.get("html_temperature", 0.7),
+                        max_tokens=self._tier_config.get("html_max_tokens", 24000),
                     )
                     data = self._parse_html_response(raw, seg, run_dir)
+
+                    # HTML validation & self-repair (Standard+ tiers)
+                    if self._tier_config.get("html_validation"):
+                        for shot in (data.get("shots") or [data] if isinstance(data, dict) else []):
+                            shot_html = shot.get("html", "")
+                            shot_type = seg.get("visual_type", "")
+                            is_valid, html_issues = self._validate_html_segment(shot_html, shot_type)
+                            if not is_valid and html_issues:
+                                repaired = self._repair_html_segment(shot_html, html_issues, user_prompt)
+                                shot["html"] = repaired
+
                     shot_entries = self._expand_shots(seg, data)
                     if not shot_entries:
                         raise RuntimeError(f"HTML model did not return any usable shots for segment {seg.get('index')}.")
@@ -3447,6 +3797,43 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "usage":       usage_meta,
         }
 
+    def _enhance_image_prompt(self, raw_prompt: str) -> str:
+        """Enhance an image generation prompt with cinematic details (Premium+ tiers).
+
+        Uses a quick LLM call to add lighting, camera angle, color palette, mood,
+        and composition details while keeping the prompt under 200 words.
+        """
+        if not self._tier_config.get("image_prompt_enhancement"):
+            return raw_prompt
+
+        visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
+        topic = getattr(self, '_current_topic', '')
+
+        enhance_prompt = (
+            f"Enhance this image generation prompt for a {visual_style} educational video"
+            f"{' about ' + topic if topic else ''}.\n\n"
+            f"Original prompt: \"{raw_prompt}\"\n\n"
+            "Add: lighting direction, camera angle, color palette, mood, and "
+            "specific compositional details. Keep under 200 words total. "
+            "The image must be 16:9 aspect ratio, no text overlays, no faces. "
+            "Return the enhanced prompt text ONLY — no quotes, no explanation."
+        )
+        try:
+            enhanced, _usage = self.html_client.chat(
+                messages=[
+                    {"role": "system", "content": "You enhance image generation prompts with cinematic details. Return enhanced prompt only."},
+                    {"role": "user", "content": enhance_prompt},
+                ],
+                temperature=0.6,
+                max_tokens=500,
+            )
+            enhanced = enhanced.strip().strip('"').strip("'")
+            if len(enhanced) > 30:
+                return enhanced
+        except Exception as e:
+            print(f"    ⚠️ Image prompt enhancement failed: {e}")
+        return raw_prompt
+
     def _process_generated_images(self, html_segments: List[Dict[str, Any]], run_dir: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Scan generated HTML for <img data-img-prompt="..."> tags, generate images via Gemini,
@@ -3518,6 +3905,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             """
             prompt = task["prompt"]
             idx    = task["seg_idx"]
+
+            # Enhance image prompt with cinematic details (Premium+ tiers)
+            prompt = self._enhance_image_prompt(prompt)
 
             visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
             if visual_style.lower() not in prompt.lower():
@@ -3956,6 +4346,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         glossary: Optional[List[Dict[str, Any]]] = None,
         questions: Optional[List[Dict[str, Any]]] = None,
         language: str = "English",
+        audio_path: Optional[Path] = None,
     ) -> Path:
         """
         Write timeline JSON with branding support.
@@ -4087,15 +4478,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # Standard Time-Driven Logic (Video)
             for entry in html_segments:
                 start = int(entry.get("index", len(timeline_entries) + 1))
-                
+
                 # Original times from the content
                 original_in_time = float(entry.get("start", 0))
                 original_exit_time = float(entry.get("end", 0))
-                
+
+                # Sanitize: exitTime must be > inTime
+                if original_exit_time <= original_in_time:
+                    original_exit_time = original_in_time + 1.0
+
                 # Offset times by intro duration (audio starts after intro)
                 adjusted_in_time = original_in_time + content_starts_at
                 adjusted_exit_time = original_exit_time + content_starts_at
-                
+
                 timeline_entry = {
                     "inTime": adjusted_in_time,
                     "exitTime": adjusted_exit_time,
@@ -4122,7 +4517,32 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # If no content entries, use a minimal duration
         if content_max_end <= content_starts_at:
             content_max_end = content_starts_at + 1.0
-        
+
+        # Ensure timeline covers the full audio duration.
+        # Without this, visuals can end before audio finishes.
+        if audio_path and Path(audio_path).exists() and navigation == "time_driven":
+            try:
+                _probe = subprocess.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                _actual_audio_dur = float(_probe.stdout.strip())
+                # Audio starts at content_starts_at, so content should end at
+                # content_starts_at + audio_duration
+                _audio_end = content_starts_at + _actual_audio_dur
+                if _audio_end > content_max_end + 1.0:
+                    print(f"   ⚠️ Audio ({_actual_audio_dur:.1f}s) extends beyond last visual "
+                          f"({content_max_end:.1f}s). Extending last segment to match.")
+                    # Extend the last content entry's exitTime to cover the audio
+                    for _te in reversed(timeline_entries):
+                        if _te.get("id", "").startswith("segment-"):
+                            _te["exitTime"] = _audio_end
+                            break
+                    content_max_end = _audio_end
+            except Exception as _e:
+                print(f"   ℹ️ Could not probe audio duration: {_e}")
+
         # 3. Add WATERMARK entry if enabled (spans entire content duration, positioned in corner)
         if watermark_enabled and watermark_config.get("html"):
             position = watermark_config.get("position", "top-right")

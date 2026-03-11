@@ -1,6 +1,72 @@
 import React, { useEffect, useState } from 'react';
 import { MermaidDiagram } from './MermaidDiagram';
 import { EnhancedCodeBlock } from './EnhancedCodeBlock';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+
+/** Interactive quiz component for learner side */
+function InlineQuiz({ quizJson }: { quizJson: string }) {
+    const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+    const [showResult, setShowResult] = useState(false);
+    const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+    let quizData: { question: string; options: { text: string; isCorrect: boolean }[]; explanation?: string } = {
+        question: '', options: [], explanation: '',
+    };
+    try {
+        quizData = JSON.parse(quizJson);
+    } catch { /* use empty */ }
+
+    if (!quizData.question) return null;
+
+    return (
+        <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', margin: '8px 0', background: '#fafafa' }}>
+            <div style={{ padding: '4px 8px', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '4px', display: 'inline-block', fontSize: '12px', fontWeight: 600, color: '#4338ca', marginBottom: '12px' }}>
+                QUIZ
+            </div>
+            <div style={{ fontSize: '16px', fontWeight: 600, color: '#333', marginBottom: '12px' }}>
+                {quizData.question}
+            </div>
+            {quizData.options.map((opt, i) => {
+                let bgColor = '#fff';
+                let borderColor = '#ddd';
+                let textColor = '#333';
+                if (selectedAnswer === i) { borderColor = '#4338ca'; bgColor = '#eef2ff'; }
+                if (showResult) {
+                    if (opt.isCorrect) { bgColor = '#d4edda'; borderColor = '#28a745'; textColor = '#155724'; }
+                    else if (selectedAnswer === i) { bgColor = '#f8d7da'; borderColor = '#dc3545'; textColor = '#721c24'; }
+                }
+                return (
+                    <div key={i} onClick={() => { if (!showResult) setSelectedAnswer(i); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: `2px solid ${borderColor}`, borderRadius: '6px', marginBottom: '6px', cursor: showResult ? 'default' : 'pointer', backgroundColor: bgColor, color: textColor, transition: 'all 0.2s' }}>
+                        <span style={{ width: '24px', height: '24px', borderRadius: '50%', border: `2px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 600, flexShrink: 0, backgroundColor: selectedAnswer === i ? borderColor : 'transparent', color: selectedAnswer === i ? 'white' : textColor }}>
+                            {showResult && opt.isCorrect ? '\u2713' : optionLabels[i]}
+                        </span>
+                        <span style={{ fontSize: '14px' }}>{opt.text}</span>
+                    </div>
+                );
+            })}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                {!showResult ? (
+                    <button onClick={() => setShowResult(true)} disabled={selectedAnswer === null}
+                        style={{ padding: '6px 16px', fontSize: '13px', border: 'none', borderRadius: '4px', backgroundColor: selectedAnswer !== null ? '#4338ca' : '#ccc', color: 'white', cursor: selectedAnswer !== null ? 'pointer' : 'default' }}>
+                        Check Answer
+                    </button>
+                ) : (
+                    <button onClick={() => { setSelectedAnswer(null); setShowResult(false); }}
+                        style={{ padding: '6px 16px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', color: '#666', cursor: 'pointer' }}>
+                        Try Again
+                    </button>
+                )}
+            </div>
+            {showResult && quizData.explanation && (
+                <div style={{ marginTop: '12px', padding: '10px 12px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '13px', color: '#856404' }}>
+                    <strong>Explanation:</strong> {quizData.explanation}
+                </div>
+            )}
+        </div>
+    );
+}
 
 interface DocumentWithMermaidProps {
     htmlContent: string;
@@ -11,7 +77,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
     htmlContent,
     className = '',
 }) => {
-    const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code'; content: string }>>([]);
+    const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code' | 'math' | 'quiz'; content: string; meta?: Record<string, string> }>>([]);
 
     useEffect(() => {
         if (!htmlContent) {
@@ -32,10 +98,62 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             // Also check raw HTML string for mermaid patterns
             const hasMermaidInHtml = /graph\s+TD|flowchart|sequenceDiagram|classDiagram|gantt|pie|erDiagram|journey/i.test(htmlContent);
 
-            const newSections: Array<{ type: 'html' | 'mermaid' | 'code'; content: string }> = [];
+            type SectionType = 'html' | 'mermaid' | 'code' | 'math' | 'quiz';
+            const newSections: Array<{ type: SectionType; content: string; meta?: Record<string, string> }> = [];
 
-            // Mark special blocks (mermaid or code) in DOM
-            const specialBlocks: Array<{ element: Element; code: string; type: 'mermaid' | 'code' }> = [];
+            // Mark special blocks in DOM
+            const specialBlocks: Array<{ element: Element; code: string; type: SectionType; meta?: Record<string, string> }> = [];
+
+            // Process audio blocks — mark them so they're not broken apart
+            const audioDivs = tempDiv.querySelectorAll('div[data-yoopta-type="audioPlayer"]');
+            audioDivs.forEach((div) => {
+                specialBlocks.push({
+                    element: div,
+                    code: div.outerHTML,
+                    type: 'html', // render as raw HTML — <audio> tag works natively
+                });
+            });
+
+            // Process quiz blocks — interactive on learner side
+            const quizDivs = tempDiv.querySelectorAll('div[data-yoopta-type="quizBlock"]');
+            quizDivs.forEach((div) => {
+                const quizJson = div.getAttribute('data-quiz') || '';
+                specialBlocks.push({
+                    element: div,
+                    code: quizJson,
+                    type: 'quiz',
+                });
+            });
+
+            // Process timeline blocks — render as HTML (visual fallback is sufficient)
+            const timelineDivs = tempDiv.querySelectorAll('div[data-yoopta-type="timeline"]');
+            timelineDivs.forEach((div) => {
+                specialBlocks.push({
+                    element: div,
+                    code: div.outerHTML,
+                    type: 'html',
+                });
+            });
+
+            // Process math blocks (div[data-yoopta-type="mathBlock"])
+            const mathDivs = tempDiv.querySelectorAll('div[data-yoopta-type="mathBlock"]');
+            mathDivs.forEach((div) => {
+                const htmlDiv = div as HTMLElement;
+                let latex = htmlDiv.textContent?.trim() || '';
+                // Strip $$ or $ delimiters
+                if (latex.startsWith('$$') && latex.endsWith('$$')) {
+                    latex = latex.slice(2, -2).trim();
+                } else if (latex.startsWith('$') && latex.endsWith('$')) {
+                    latex = latex.slice(1, -1).trim();
+                }
+                const displayMode = div.getAttribute('data-display-mode') !== 'false';
+                specialBlocks.push({
+                    element: div,
+                    code: latex,
+                    type: 'math',
+                    meta: { displayMode: String(displayMode) },
+                });
+            });
 
             // Process div.mermaid elements first (highest priority)
             mermaidDivs.forEach((div) => {
@@ -133,7 +251,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             if (uniqueBlocks.length > 0) {
                 // Use tempDiv.innerHTML instead of htmlContent to ensure outerHTML matches occur
                 let processedHtml = tempDiv.innerHTML;
-                const markers: Array<{ marker: string; code: string; type: 'mermaid' | 'code'; position: number }> = [];
+                const markers: Array<{ marker: string; code: string; type: SectionType; position: number; meta?: Record<string, string> }> = [];
 
                 uniqueBlocks.forEach((block, idx) => {
                     const marker = `__SPECIAL_BLOCK_${idx}__`;
@@ -157,7 +275,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         processedHtml = processedHtml.substring(0, position) +
                             marker +
                             processedHtml.substring(position + blockHtml.length);
-                        markers.push({ marker, code: block.code, type: block.type, position });
+                        markers.push({ marker, code: block.code, type: block.type, position, meta: block.meta });
                     } else {
                         // Fallback for when outerHTML doesn't match exactly (e.g. attributes order)
                         // Try finding by text content if it's unique? Risky.
@@ -183,7 +301,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         }
                     }
 
-                    newSections.push({ type: markerInfo.type, content: markerInfo.code });
+                    newSections.push({ type: markerInfo.type, content: markerInfo.code, meta: markerInfo.meta });
 
                     lastPos = markerPos + markerInfo.marker.length;
                 });
@@ -360,6 +478,33 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                             key={`mermaid-${index}-${section.content.substring(0, 20)}`}
                             code={section.content}
                             className="my-4"
+                        />
+                    );
+                } else if (section.type === 'math') {
+                    const displayMode = section.meta?.displayMode !== 'false';
+                    let mathHtml = '';
+                    try {
+                        mathHtml = katex.renderToString(section.content, {
+                            displayMode,
+                            throwOnError: false,
+                            output: 'html',
+                        });
+                    } catch {
+                        mathHtml = section.content;
+                    }
+                    return (
+                        <div
+                            key={`math-${index}`}
+                            className="my-4"
+                            style={{ textAlign: displayMode ? 'center' : 'left', padding: '16px 0' }}
+                            dangerouslySetInnerHTML={{ __html: mathHtml }}
+                        />
+                    );
+                } else if (section.type === 'quiz') {
+                    return (
+                        <InlineQuiz
+                            key={`quiz-${index}`}
+                            quizJson={section.content}
                         />
                     );
                 } else if (section.type === 'code') {

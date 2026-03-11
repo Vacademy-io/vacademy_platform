@@ -252,10 +252,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
 
 
-    // Check if logo from JSON should be used (when courseCatalogeType.enabled is true and layout.header.props.logo exists)
-    const jsonLogoUrl = isCourseCatalogeTypeEnabled && catalogueData?.globalSettings?.layout?.header?.props?.logo
-      ? catalogueData.globalSettings.layout.header.props.logo
-      : null;
+    // Use JSON logo and title from the page builder if configured
+    const jsonLogoUrl = catalogueData?.globalSettings?.layout?.header?.props?.logo || null;
+    const jsonTitle = catalogueData?.globalSettings?.layout?.header?.props?.title || null;
 
     // Check if we should hide search and cart icons
     const shouldHideSearchAndCart = () => {
@@ -354,18 +353,25 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
             {/* Logo and Brand */}
             <div className={`flex items-center gap-3 ${isCourseCatalogeTypeEnabled ? 'flex-1 md:flex-none justify-center md:justify-start' : ''}`}>
-              {/* JSON logo (rectangular) when courseCatalogeType is enabled */}
+              {/* JSON logo (from page builder) */}
               {jsonLogoUrl ? (
-                <img
-                  src={jsonLogoUrl}
-                  alt="Logo"
-                  onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                  className={`max-h-12 md:max-h-16 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
-                    }`}
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
+                <>
+                  <img
+                    src={jsonLogoUrl}
+                    alt="Logo"
+                    onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
+                    className={`max-h-12 md:max-h-16 w-auto object-contain rounded-md transition-opacity duration-200 hover:opacity-90 ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                      }`}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                  {jsonTitle && (
+                    <span className="text-base md:text-lg font-semibold text-[hsl(var(--catalogue-text-primary))] truncate max-w-[200px] md:max-w-none">
+                      {jsonTitle}
+                    </span>
+                  )}
+                </>
               ) : (
                 <>
                   {/* Institute circular logo */}
@@ -381,9 +387,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       }}
                     />
                   )}
-                  {/* Institute name */}
+                  {/* Title: use JSON title if set, else institute name */}
                   <span className="text-base md:text-lg font-semibold text-[hsl(var(--catalogue-text-primary))] truncate max-w-[200px] md:max-w-none">
-                    {domainRouting.instituteName || "Learning Platform"}
+                    {jsonTitle || domainRouting.instituteName || ""}
                   </span>
                 </>
               )}

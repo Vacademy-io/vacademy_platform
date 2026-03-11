@@ -158,7 +158,7 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
     }, [instituteDetails]);
 
     // Custom fields array management
-    const { fields: customFieldsArray, move: moveCustomField } = useFieldArray({
+    const { fields: customFieldsArray } = useFieldArray({
         control,
         name: 'custom_fields',
     });
@@ -341,6 +341,7 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
             campaign_type: data.campaign_type.trim(),
             description: data.description?.trim() || '',
             campaign_objective: data.campaign_objective?.trim() || '',
+            session_id: data.session_id,
             to_notify: emails.join(', '),
             send_respondent_email: Boolean(data.send_respondent_email),
             json_web_metadata: settingsJson,

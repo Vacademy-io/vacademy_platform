@@ -19,6 +19,7 @@ import { StudentDetailsSection } from './sections/StudentDetailsSection';
 import { AcademicInfoSection } from './sections/AcademicInfoSection';
 import { ParentGuardianSection } from './sections/ParentGuardianSection';
 import { AddressSection } from './sections/AddressSection';
+import { PaymentSection } from './sections/PaymentSection';
 import type { Registration } from '../../-types/registration-types';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import {
@@ -31,6 +32,7 @@ import {
 } from '../../-services/applicant-services';
 import { getCustomFieldSettings } from '@/services/custom-field-settings';
 import { Copy } from 'phosphor-react';
+import { toast } from 'sonner';
 
 interface FormSection {
     id: string;
@@ -431,13 +433,20 @@ export function RegistrationFormPage() {
         setIsSaving(true);
         try {
             if (!formData.applyingForClass) {
-                alert('Please select a class/grade from the Academic Info section');
+                toast.warning('Please select a class/grade from the Academic Info section');
                 setIsSaving(false);
                 return;
             }
 
             if (!sessionId) {
-                alert('Session ID is missing. Please select a session from the registration list');
+                toast.warning('Session ID is missing. Please select a session from the registration list');
+                setIsSaving(false);
+                return;
+            }
+
+            // Confirmation dialog before submission
+            const confirmed = window.confirm('Are you sure you want to submit this application? Please review all details before proceeding.');
+            if (!confirmed) {
                 setIsSaving(false);
                 return;
             }
@@ -531,7 +540,7 @@ export function RegistrationFormPage() {
             setActiveSection(4);
         } catch (error) {
             console.error('Failed to submit registration:', error);
-            alert('Failed to submit registration. Please try again.');
+            toast.error('Failed to submit application. Please try again.');
         } finally {
             setIsSaving(false);
         }
@@ -557,59 +566,12 @@ export function RegistrationFormPage() {
                 return <AddressSection formData={formData} updateFormData={updateFormData} />;
             case 4:
                 return (
-                    <div className="space-y-6">
-                        <div className="rounded-lg border border-neutral-200 bg-white p-6">
-                            <h3 className="mb-4 text-lg font-semibold text-neutral-900">
-                                Payment Information
-                            </h3>
-
-                            <div className="space-y-4">
-                                {paymentLink ? (
-                                    <div className="rounded-lg border  p-4">
-                                        <h4 className="mb-2 font-medium ">Complete Your Payment</h4>
-                                        <p className="mb-3 text-sm ">
-                                            Please click the button below to proceed with the fee
-                                            payment:
-                                        </p>
-                                        <a
-                                            href={paymentLink}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-2 rounded-lg bg-primary-400 px-4 py-2 text-sm font-medium text-white hover:bg-primary-500"
-                                        >
-                                            <CreditCard className="size-4" />
-                                            Open Payment Page
-                                        </a>
-                                        <MyButton
-                                            buttonType="secondary"
-                                            size="sm"
-                                            onClick={() => {
-                                                navigator.clipboard.writeText(paymentLink);
-                                            }}
-                                            className="my-auto ml-3"
-                                        >
-                                            <Copy size={16} />
-                                        </MyButton>
-                                    </div>
-                                ) : (
-                                    <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-                                        <div className="flex items-start gap-3">
-                                            <Warning className="mt-0.5 size-5 text-yellow-600" />
-                                            <div>
-                                                <p className="font-medium text-yellow-900">
-                                                    Payment Link Not Available
-                                                </p>
-                                                <p className="mt-1 text-sm text-yellow-700">
-                                                    Please contact the administration office for
-                                                    payment details.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    <PaymentSection
+                        formData={formData}
+                        updateFormData={updateFormData}
+                        paymentLink={paymentLink}
+                        applicantId={applicantId}
+                    />
                 );
             default:
                 return null;
@@ -622,7 +584,7 @@ export function RegistrationFormPage() {
                 {/* Header */}
                 <div className="mb-6 flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h1 className="text-xl font-bold text-neutral-900">Application Form</h1>
+                        <h1 className="text-xl font-bold text-neutral-900">New Application</h1>
                     </div>
                     <div className="flex items-center gap-3">
                         {/* Progress */}

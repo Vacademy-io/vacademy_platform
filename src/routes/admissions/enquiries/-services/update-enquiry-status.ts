@@ -2,7 +2,15 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import { UPDATE_ENQUIRY_STATUS } from '@/constants/urls';
 
-export type EnquiryStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'NOT_ELIGIBLE';
+export type EnquiryStatus =
+    | 'NEW'
+    | 'CONTACTED'
+    | 'QUALIFIED'
+    | 'NOT_ELIGIBLE'
+    | 'FOLLOW_UP'
+    | 'CLOSED'
+    | 'CONVERTED'
+    | 'ADMITTED';
 
 export type ConversionStatus = 'HOT' | 'COLD';
 
@@ -11,6 +19,10 @@ export const ENQUIRY_STATUS_OPTIONS: { value: EnquiryStatus; label: string }[] =
     { value: 'CONTACTED', label: 'Contacted' },
     { value: 'QUALIFIED', label: 'Qualified' },
     { value: 'NOT_ELIGIBLE', label: 'Not Eligible' },
+    { value: 'FOLLOW_UP', label: 'Follow up' },
+    { value: 'CLOSED', label: 'Closed' },
+    { value: 'CONVERTED', label: 'Converted' },
+    { value: 'ADMITTED', label: 'Admitted' },
 ];
 
 export const CONVERSION_STATUS_OPTIONS: { value: ConversionStatus; label: string }[] = [

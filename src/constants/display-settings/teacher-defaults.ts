@@ -25,6 +25,7 @@ function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[]
                 item.id !== 'membership-stats' &&
                 item.id !== 'manage-contacts' &&
                 item.id !== 'admissions' &&
+                item.id !== 'fee-management' &&
                 item.id !== 'membership-management' &&
                 item.id !== 'automations' &&
                 item.id !== 'manage-contacts'
@@ -133,6 +134,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         reportsTab: false,
         enrollDerollTab: false,
         enquiryTab: false,
+        applicationTab: false,
     },
     learnerManagement: {
         allowPortalAccess: true,

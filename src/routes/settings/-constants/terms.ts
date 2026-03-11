@@ -99,7 +99,6 @@ export const enum SettingsTabs {
     Certificates = 'certificates',
     Templates = 'templates',
     AiSettings = 'aiSettings',
-    FeeManagement = 'feeManagement',
     SchoolSettings = 'schoolSettings',
     WhiteLabel = 'whiteLabel',
 }

@@ -12,7 +12,6 @@ import CertificatesSettings from '../-components/Certificates/CertificatesSettin
 import { TemplateSettings } from '@/components/templates';
 import AiSettings from '../-components/AiSettings';
 import SchoolSettings from '../-components/School/SchoolSettings';
-import FeeManagementMain from '../fee-management/-components/FeeManagementMain';
 import WhiteLabelSettings from '../-components/WhiteLabelSettings';
 
 export const getAvailableSettingsTabs = () => {
@@ -81,11 +80,6 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.SchoolSettings,
             value: 'School Settings',
             component: SchoolSettings,
-        },
-        {
-            tab: SettingsTabs.FeeManagement,
-            value: 'Fee Management',
-            component: FeeManagementMain,
         },
         {
             tab: SettingsTabs.WhiteLabel,

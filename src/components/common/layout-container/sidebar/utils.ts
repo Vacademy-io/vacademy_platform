@@ -182,6 +182,19 @@ export const SidebarItemsData: SidebarItemsType[] = [
     },
     {
         icon: CreditCard,
+        title: 'Fee Management',
+        id: 'fee-management',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'Create Fee Plan',
+                subItemLink: '/financial-management/fee-plans',
+                subItemId: 'create-fee-plan',
+            },
+        ],
+    },
+    {
+        icon: CreditCard,
         title: 'Membership',
         id: 'membership-management',
         category: 'CRM',

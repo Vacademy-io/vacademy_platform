@@ -43,7 +43,10 @@ export const CounsellorNameCell = ({ counsellorId, enquiryId }: CounsellorNameCe
                     <MyButton
                         buttonType="secondary"
                         size="sm"
-                        onClick={() => setIsDialogOpen(true)}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsDialogOpen(true);
+                        }}
                     >
                         Assign
                     </MyButton>

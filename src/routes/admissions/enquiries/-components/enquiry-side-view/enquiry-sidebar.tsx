@@ -3,7 +3,7 @@ import { EnquiryDetails } from './enquiry-details';
 import { useEnquirySidebar } from '../../-context/selected-enquiry-sidebar-context';
 
 export const EnquirySidebar = () => {
-    const { isOpen, closeSidebar } = useEnquirySidebar();
+    const { isOpen, closeSidebar, selectedEnquiryId } = useEnquirySidebar();
 
     if (!isOpen) return null;
 
@@ -43,7 +43,7 @@ export const EnquirySidebar = () => {
 
                 {/* Scrollable content */}
                 <div className="flex-1 overflow-y-auto p-4">
-                    <EnquiryDetails />
+                    <EnquiryDetails enquiryId={selectedEnquiryId} />
                 </div>
             </div>
         </>

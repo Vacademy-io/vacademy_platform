@@ -55,7 +55,7 @@ export interface ReferralOptionResponse {
     referrer_discount_json: string;
     referee_discount_json: string;
     referrer_vesting_days: number;
-    allowCombineOffers:boolean;
+    allow_combine_offers:boolean;
     tag: string | null;
     description: string;
     created_at?: string;
@@ -659,7 +659,7 @@ export const convertFromApiFormat = (
             label: apiResponse.name,
             isDefault: apiResponse.tag === 'DEFAULT',
             payoutVestingDays: apiResponse.referrer_vesting_days,
-            allowCombineOffers: apiResponse.allowCombineOffers,
+            allowCombineOffers: apiResponse.allow_combine_offers,
             refereeReward,
             referrerRewards,
         };

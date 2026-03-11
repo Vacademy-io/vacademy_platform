@@ -2,15 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { Helmet } from 'react-helmet';
 import { MyButton } from '@/components/design-system/button';
-import {
-    MagnifyingGlass,
-    Plus,
-    CaretRight,
-    X,
-    FileText,
-    UserPlus,
-    CreditCard,
-} from '@phosphor-icons/react';
+import { MagnifyingGlass, Plus, CaretRight, X, FileText, UserPlus } from '@phosphor-icons/react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import {
     Select,
@@ -24,16 +16,69 @@ import { MyFilterOption } from '@/types/assessments/my-filter';
 import {
     fetchApplicantList,
     fetchEnquiryDetails,
-    fetchApplicationStages,
-    generatePaymentLink,
     type Applicant,
 } from '../../-services/applicant-services';
 import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CopySimple } from 'phosphor-react';
+import { toast } from 'sonner';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
+import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
+import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
+import type { StudentTable } from '@/types/student-table-types';
 
-export function RegistrationListPage() {
+// Map an Applicant to a minimal StudentTable shape for the sidebar profile header
+const mapApplicantToStudent = (applicant: Applicant): StudentTable =>
+    ({
+        id: applicant.applicant_id,
+        user_id: applicant.applicant_id,
+        username: null,
+        email: applicant.parent_data?.email || '',
+        full_name: applicant.student_data?.full_name || '',
+        address_line: '',
+        attendance_percent: 0,
+        referral_count: 0,
+        region: null,
+        city: '',
+        pin_code: '',
+        mobile_number: applicant.parent_data?.mobile_number || '',
+        date_of_birth: applicant.student_data?.date_of_birth || '',
+        gender: applicant.student_data?.gender || '',
+        fathers_name: applicant.parent_data?.full_name || '',
+        mothers_name: '',
+        father_mobile_number: applicant.parent_data?.mobile_number || '',
+        father_email: applicant.parent_data?.email || '',
+        mother_mobile_number: '',
+        mother_email: '',
+        linked_institute_name: null,
+        created_at: applicant.created_at || '',
+        updated_at: applicant.updated_at || '',
+        package_session_id: applicant.package_session?.package_session_id || '',
+        institute_enrollment_id: '',
+        status: 'ACTIVE',
+        session_expiry_days: 0,
+        institute_id: '',
+        expiry_date: 0,
+        face_file_id: null,
+        parents_email: applicant.parent_data?.email || '',
+        parents_mobile_number: applicant.parent_data?.mobile_number || '',
+        parents_to_mother_email: '',
+        parents_to_mother_mobile_number: '',
+        destination_package_session_id: '',
+        enroll_invite_id: '',
+        payment_status: '',
+        custom_fields: {},
+    }) as StudentTable;
+
+function RegistrationListPageInner({
+    setIsSidebarOpen,
+    setSelectedApplicantId,
+}: {
+    setIsSidebarOpen: (open: boolean) => void;
+    setSelectedApplicantId: (id: string | null) => void;
+}) {
+    const { setSelectedStudent } = useStudentSidebar();
     const { setNavHeading } = useNavHeadingStore();
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -53,12 +98,6 @@ export function RegistrationListPage() {
     const [enquiryTrackingId, setEnquiryTrackingId] = useState('');
     const [enquiryPhone, setEnquiryPhone] = useState('');
     const [isLoadingEnquiry, setIsLoadingEnquiry] = useState(false);
-
-    // Detail sheet states
-    const [showDetailSheet, setShowDetailSheet] = useState(false);
-    const [selectedApplicant, setSelectedApplicant] = useState<Applicant | null>(null);
-    const [paymentLink, setPaymentLink] = useState<string>('');
-    const [isLoadingPayment, setIsLoadingPayment] = useState(false);
 
     // Debounce search query
     useEffect(() => {
@@ -150,7 +189,7 @@ export function RegistrationListPage() {
 
     const handleFetchEnquiry = async () => {
         if (!enquiryTrackingId.trim() && !enquiryPhone.trim()) {
-            alert('Please enter either enquiry tracking ID or phone number');
+            toast.warning('Please enter either enquiry tracking ID or phone number');
             return;
         }
 
@@ -162,7 +201,7 @@ export function RegistrationListPage() {
 
             // Check if already applied
             if (enquiryData.already_applied) {
-                alert('This enquiry has already been converted to an application.');
+                toast.warning('This enquiry has already been converted to an application.');
                 setIsLoadingEnquiry(false);
                 return;
             }
@@ -176,47 +215,21 @@ export function RegistrationListPage() {
             }
         } catch (error) {
             console.error('Error fetching enquiry:', error);
-            alert('Failed to fetch enquiry details. Please check the tracking ID.');
+            toast.error('Failed to fetch enquiry details. Please check the tracking ID.');
             setIsLoadingEnquiry(false);
         }
     };
 
-    const handleViewDetails = async (applicant: Applicant) => {
-        setSelectedApplicant(applicant);
-        setShowDetailSheet(true);
-        setPaymentLink('');
-
-        // Automatically generate payment link
-        setIsLoadingPayment(true);
-        try {
-            const stages = await fetchApplicationStages(
-                instituteId,
-                'INSTITUTE',
-                instituteId.toString()
-            );
-
-            const paymentStage = stages.find((stage) => stage.type === 'PAYMENT');
-            if (paymentStage) {
-                const paymentConfig = JSON.parse(paymentStage.config_json);
-                const paymentOptionId = paymentConfig.payment_option_id;
-                const link = generatePaymentLink(
-                    instituteId,
-                    applicant.applicant_id,
-                    paymentOptionId
-                );
-                setPaymentLink(link);
-            }
-        } catch (error) {
-            console.error('Error generating payment link:', error);
-        } finally {
-            setIsLoadingPayment(false);
-        }
+    const handleViewDetails = (applicant: Applicant) => {
+        setSelectedStudent(mapApplicantToStudent(applicant));
+        setSelectedApplicantId(applicant.applicant_id);
+        setIsSidebarOpen(true);
     };
 
     return (
         <div className="flex h-full flex-col">
             <Helmet>
-                <title>Registrations - Admissions</title>
+                <title>Applications - Admissions</title>
             </Helmet>
 
             <div className="mb-6 flex items-center justify-between">
@@ -271,7 +284,7 @@ export function RegistrationListPage() {
                         disabled={!selectedSessionId}
                     >
                         <Plus className="mr-2 size-4" />
-                        Add New
+                        New Application
                     </MyButton>
                 </div>
             </div>
@@ -523,209 +536,29 @@ export function RegistrationListPage() {
                 </div>
             )}
 
-            {/* Applicant Detail Sheet */}
-            {showDetailSheet && selectedApplicant && (
-                <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/50">
-                    <div className="size-full max-w-xl overflow-y-auto bg-white shadow-xl">
-                        {/* Header */}
-                        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-4">
-                            <div>
-                                <h2 className="text-lg font-semibold text-neutral-900">
-                                    Application Details
-                                </h2>
-                                <p className="text-sm text-neutral-600">
-                                    Tracking ID: {selectedApplicant.tracking_id}
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    setShowDetailSheet(false);
-                                    setSelectedApplicant(null);
-                                    setPaymentLink('');
-                                }}
-                                className="text-neutral-400 hover:text-neutral-600"
-                            >
-                                <X className="size-6" />
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        <div className="space-y-6 p-6">
-                            {/* Status Badge */}
-                            <div className="flex items-center gap-3">
-                                Overall Status:
-                                <span
-                                    className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium
-                                    ${
-                                        selectedApplicant.overall_status === 'SUBMITTED'
-                                            ? 'bg-blue-100 text-blue-800'
-                                            : selectedApplicant.overall_status === 'ADMITTED' ||
-                                                selectedApplicant.overall_status === 'APPROVED'
-                                              ? 'bg-green-100 text-green-800'
-                                              : selectedApplicant.overall_status === 'PENDING'
-                                                ? 'bg-orange-100 text-orange-800'
-                                                : selectedApplicant.overall_status === 'REJECTED'
-                                                  ? 'bg-red-100 text-red-800'
-                                                  : 'bg-neutral-100 text-neutral-800'
-                                    }`}
-                                >
-                                    {selectedApplicant.overall_status}
-                                </span>
-                            </div>
-
-                            {/* Student Information */}
-                            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-                                <h3 className="mb-3 font-semibold text-neutral-900">
-                                    Student Information
-                                </h3>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                    <div>
-                                        <p className="text-neutral-500">Full Name</p>
-                                        <p className="font-medium text-neutral-900">
-                                            {selectedApplicant.student_data?.full_name || 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-neutral-500">Date of Birth</p>
-                                        <p className="font-medium text-neutral-900">
-                                            {selectedApplicant.student_data?.date_of_birth
-                                                ? new Date(
-                                                      selectedApplicant.student_data.date_of_birth
-                                                  ).toLocaleDateString()
-                                                : 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-neutral-500">Gender</p>
-                                        <p className="font-medium text-neutral-900">
-                                            {selectedApplicant.student_data?.gender || 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-neutral-500">Class Applied For</p>
-                                        <p className="font-medium text-neutral-900">
-                                            {selectedApplicant.package_session?.level_name || 'N/A'}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Parent Information */}
-                            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-                                <h3 className="mb-3 font-semibold text-neutral-900">
-                                    Parent Information
-                                </h3>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                    <div>
-                                        <p className="text-neutral-500">Full Name</p>
-                                        <p className="font-medium text-neutral-900">
-                                            {selectedApplicant.parent_data?.full_name || 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-neutral-500">Mobile Number</p>
-                                        <p className="font-medium text-neutral-900">
-                                            {selectedApplicant.parent_data?.mobile_number || 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-neutral-500">Email</p>
-                                        <p className="font-medium text-neutral-900">
-                                            {selectedApplicant.parent_data?.email || 'N/A'}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Application Stage & Timeline */}
-                            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-                                <h3 className="mb-3 font-semibold text-neutral-900">
-                                    Application Stage & Timeline
-                                </h3>
-                                <div className="space-y-3 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-neutral-500">Current Stage</span>
-                                        <span className="font-medium text-neutral-900">
-                                            {selectedApplicant.application_stage?.stage_name ||
-                                                'N/A'}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-neutral-500">Stage Status</span>
-                                        <span
-                                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
-                                            ${
-                                                selectedApplicant.application_stage_status ===
-                                                'COMPLETED'
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : selectedApplicant.application_stage_status ===
-                                                        'INITIATED'
-                                                      ? 'bg-blue-100 text-blue-800'
-                                                      : selectedApplicant.application_stage_status ===
-                                                          'IN_PROGRESS'
-                                                        ? 'bg-yellow-100 text-yellow-800'
-                                                        : 'bg-neutral-100 text-neutral-800'
-                                            }`}
-                                        >
-                                            {selectedApplicant.application_stage_status || 'N/A'}
-                                        </span>
-                                    </div>
-                                    <div className="h-px bg-neutral-200"></div>
-                                    <div className="flex justify-between">
-                                        <span className="text-neutral-500">Created At</span>
-                                        <span className="font-medium text-neutral-900">
-                                            {new Date(
-                                                selectedApplicant.created_at
-                                            ).toLocaleString()}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-neutral-500">Last Updated</span>
-                                        <span className="font-medium text-neutral-900">
-                                            {new Date(
-                                                selectedApplicant.updated_at
-                                            ).toLocaleString()}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Payment Section */}
-                            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-                                <h3 className="mb-3 font-semibold text-neutral-900">
-                                    Payment Information
-                                </h3>
-
-                                {isLoadingPayment ? (
-                                    <div className="flex items-center gap-2 text-sm text-neutral-600">
-                                        <div className="size-4 animate-spin rounded-full border-2 border-primary-600 border-t-transparent"></div>
-                                        <span>Generating payment link...</span>
-                                    </div>
-                                ) : paymentLink ? (
-                                    <div className="space-y-3">
-                                        <div className="rounded-lg  p-3">
-                                            <MyButton
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText(paymentLink);
-                                                }}
-                                            >
-                                                <CopySimple className="size-4" />
-                                                Copy Link
-                                            </MyButton>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3">
-                                        <p className="text-sm text-yellow-800">
-                                            Payment configuration not available
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Applicant details now shown in the StudentSidebar on the right */}
         </div>
+    );
+}
+
+export function RegistrationListPage() {
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [selectedApplicantId, setSelectedApplicantId] = useState<string | null>(null);
+
+    return (
+        <StudentSidebarProvider>
+            <SidebarProvider
+                style={{ ['--sidebar-width' as string]: '565px' }}
+                defaultOpen={false}
+                open={isSidebarOpen}
+                onOpenChange={setIsSidebarOpen}
+            >
+                <RegistrationListPageInner
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    setSelectedApplicantId={setSelectedApplicantId}
+                />
+                <StudentSidebar applicantId={selectedApplicantId ?? undefined} className="z-[60]" />
+            </SidebarProvider>
+        </StudentSidebarProvider>
     );
 }

@@ -116,6 +116,7 @@ export interface StudentSideViewSettings {
     reportsTab: boolean;
     enrollDerollTab: boolean;
     enquiryTab: boolean;
+    applicationTab: boolean;
 }
 
 export interface LearnerManagementSettings {

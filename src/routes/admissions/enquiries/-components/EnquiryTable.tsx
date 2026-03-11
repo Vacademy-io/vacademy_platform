@@ -17,7 +17,12 @@ import { handleFetchEnquiries } from '../-services/get-enquiries';
 import { format } from 'date-fns';
 import { useNavigate } from '@tanstack/react-router';
 import { MyButton } from '@/components/design-system/button';
-import { useEnquirySidebar } from '../-context/selected-enquiry-sidebar-context';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
+import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
+import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
+import type { StudentTable } from '@/types/student-table-types';
+import type { EnquiryItem } from '../-services/get-enquiries';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     updateEnquiryStatus,
@@ -33,6 +38,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { ActivityLogDialog } from './enquiry-side-view/activity-log-dialog';
 
 // Helper function to generate key from name
 const generateKeyFromName = (name: string): string =>
@@ -52,7 +58,55 @@ interface EnquiryTableProps {
     searchFilter?: string;
 }
 
-export const EnquiryTable = ({
+interface EnquiryTableInnerProps extends EnquiryTableProps {
+    setIsSidebarOpen: (open: boolean) => void;
+    setSelectedEnquiryId: (id: string | null) => void;
+}
+
+// Map an EnquiryItem to a minimal StudentTable shape for the sidebar profile header
+const mapEnquiryToStudent = (enquiry: EnquiryItem): StudentTable =>
+    ({
+        id: enquiry.child_user?.id || enquiry.audience_response_id,
+        user_id: enquiry.child_user?.id || enquiry.audience_response_id,
+        username: enquiry.child_user?.username || null,
+        full_name: enquiry.child_user?.full_name || enquiry.parent_name || '',
+        email: enquiry.child_user?.email || enquiry.parent_email || '',
+        mobile_number: enquiry.child_user?.mobile_number || enquiry.parent_mobile || '',
+        date_of_birth: enquiry.child_user?.date_of_birth || '',
+        gender: enquiry.child_user?.gender || '',
+        face_file_id: enquiry.child_user?.profile_pic_file_id || null,
+        status: 'ACTIVE',
+        address_line: '',
+        attendance_percent: 0,
+        referral_count: 0,
+        region: null,
+        city: '',
+        pin_code: '',
+        fathers_name: '',
+        mothers_name: '',
+        father_mobile_number: '',
+        father_email: '',
+        mother_mobile_number: '',
+        mother_email: '',
+        linked_institute_name: null,
+        created_at: enquiry.enquiry_created_at || '',
+        updated_at: '',
+        package_session_id: '',
+        institute_enrollment_id: '',
+        institute_id: '',
+        expiry_date: 0,
+        parents_email: enquiry.parent_user?.email || enquiry.parent_email || '',
+        parents_mobile_number: enquiry.parent_user?.mobile_number || enquiry.parent_mobile || '',
+        parents_to_mother_email: '',
+        parents_to_mother_mobile_number: '',
+        destination_package_session_id: enquiry.destination_package_session_id || '',
+        enroll_invite_id: '',
+        payment_status: '',
+        custom_fields: enquiry.custom_fields || {},
+        session_expiry_days: 0,
+    }) as StudentTable;
+
+const EnquiryTableInner = ({
     enquiryId,
     enquiryName,
     customFieldsJson,
@@ -61,7 +115,9 @@ export const EnquiryTable = ({
     packageSessionFilter,
     dateRangeFilter,
     searchFilter,
-}: EnquiryTableProps) => {
+    setIsSidebarOpen,
+    setSelectedEnquiryId,
+}: EnquiryTableInnerProps) => {
     const [page, setPage] = useState(0);
     const pageSize = 10;
     const { instituteDetails, getDetailsFromPackageSessionId } = useInstituteDetailsStore();
@@ -69,16 +125,17 @@ export const EnquiryTable = ({
     const [isDownloading, setIsDownloading] = useState(false);
     const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
     const navigate = useNavigate();
-    const { openSidebar } = useEnquirySidebar();
+    const { setSelectedStudent } = useStudentSidebar();
     const queryClient = useQueryClient();
     const [bulkEnquiryStatus, setBulkEnquiryStatus] = useState<EnquiryStatus | ''>('');
+    const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
+    const [selectedActivityEnquiryId, setSelectedActivityEnquiryId] = useState<string | null>(null);
     const [bulkConversionStatus, setBulkConversionStatus] = useState<ConversionStatus | ''>('');
 
     // Reset page and selected rows when enquiry or filters change
     useEffect(() => {
         setPage(0);
         setSelectedRows(new Set());
-        console.log('🔄 [EnquiryTable] Enquiry or filters changed, resetting page and selection');
     }, [
         enquiryId,
         statusFilter,
@@ -194,6 +251,17 @@ export const EnquiryTable = ({
         error,
     } = useSuspenseQuery(handleFetchEnquiries(enquiriesPayload));
 
+    const handleOpenSidebar = (enquiryItemId: string) => {
+        const item = enquiriesResponse?.content.find(
+            (e) => (e.enquiry_id || e.audience_response_id) === enquiryItemId
+        );
+        if (item) {
+            setSelectedStudent(mapEnquiryToStudent(item));
+        }
+        setSelectedEnquiryId(enquiryItemId);
+        setIsSidebarOpen(true);
+    };
+
     const allFieldIdsFromAllEnquiries = useMemo(() => {
         const allFieldIds = new Set<string>();
 
@@ -259,9 +327,19 @@ export const EnquiryTable = ({
             selectedRows,
             handleRowSelectionChange,
             handleSelectAll,
-            openSidebar
+            handleOpenSidebar,
+            (enquiryId) => {
+                setSelectedActivityEnquiryId(enquiryId);
+                setIsActivityLogOpen(true);
+            }
         );
-    }, [customFields, allFieldIdsFromAllEnquiries, customFieldMap, selectedRows, openSidebar]);
+    }, [
+        customFields,
+        allFieldIdsFromAllEnquiries,
+        customFieldMap,
+        selectedRows,
+        handleOpenSidebar,
+    ]);
 
     const tableKey = useMemo(() => {
         const fieldIdsKey =
@@ -504,7 +582,7 @@ export const EnquiryTable = ({
                     buttonType="secondary"
                     onClick={() => navigate({ to: `/admissions/new-enquiry/${enquiryId}` })}
                 >
-                    Add Response
+                    Add New Enquiry Response
                 </MyButton>
             </div>
         );
@@ -532,7 +610,7 @@ export const EnquiryTable = ({
                         onClick={() => navigate({ to: `/admissions/new-enquiry/${enquiryId}` })}
                     >
                         <UserPlus className="mr-2 size-4" />
-                        Add Response
+                        Add New Enquiry Response
                     </Button>
                     <Button
                         variant="outline"
@@ -555,6 +633,12 @@ export const EnquiryTable = ({
                     error={error || customFieldsError}
                     currentPage={page}
                     tableState={{ columnVisibility: {} }}
+                    onCellClick={(row, colDef) => {
+                        const colId = colDef.id || (colDef as any).accessorKey;
+                        if (colId !== 'select' && colId !== 'actions') {
+                            handleOpenSidebar(row.id);
+                        }
+                    }}
                 />
             </div>
 
@@ -688,6 +772,38 @@ export const EnquiryTable = ({
                     </div>
                 </div>
             )}
+
+            {/* Activity Log Dialog */}
+            {selectedActivityEnquiryId && (
+                <ActivityLogDialog
+                    isOpen={isActivityLogOpen}
+                    onOpenChange={setIsActivityLogOpen}
+                    enquiryId={selectedActivityEnquiryId}
+                />
+            )}
         </div>
+    );
+};
+
+export const EnquiryTable = (props: EnquiryTableProps) => {
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [selectedEnquiryId, setSelectedEnquiryId] = useState<string | null>(null);
+
+    return (
+        <StudentSidebarProvider>
+            <SidebarProvider
+                style={{ ['--sidebar-width' as string]: '565px' }}
+                defaultOpen={false}
+                open={isSidebarOpen}
+                onOpenChange={setIsSidebarOpen}
+            >
+                <EnquiryTableInner
+                    {...props}
+                    setIsSidebarOpen={setIsSidebarOpen}
+                    setSelectedEnquiryId={setSelectedEnquiryId}
+                />
+                <StudentSidebar enquiryId={selectedEnquiryId ?? undefined} className="z-[60]" />
+            </SidebarProvider>
+        </StudentSidebarProvider>
     );
 };

@@ -37,6 +37,7 @@ import { Route as DashboardIndexRouteImport } from "./routes/dashboard/index"
 import { Route as CommunityIndexRouteImport } from "./routes/community/index"
 import { Route as ChallengeAnalyticsIndexRouteImport } from "./routes/challenge-analytics/index"
 import { Route as AuthTransferIndexRouteImport } from "./routes/auth-transfer/index"
+import { Route as AiVideoStudioIndexRouteImport } from "./routes/ai-video-studio/index"
 import { Route as AiCenterIndexRouteImport } from "./routes/ai-center/index"
 import { Route as AdmissionsIndexRouteImport } from "./routes/admissions/index"
 import { Route as AdminPackageManagementIndexRouteImport } from "./routes/admin-package-management/index"
@@ -67,7 +68,6 @@ import { Route as ManageInstituteBatchesIndexRouteImport } from "./routes/manage
 import { Route as LoginForgotPasswordIndexRouteImport } from "./routes/login/forgot-password/index"
 import { Route as LoginKeyIndexRouteImport } from "./routes/login/$key/index"
 import { Route as HomeworkCreationAssessmentListIndexRouteImport } from "./routes/homework-creation/assessment-list/index"
-import { Route as FinancialManagementFeePlansIndexRouteImport } from "./routes/financial-management/fee-plans/index"
 import { Route as EvaluatorAiStudentsIndexRouteImport } from "./routes/evaluator-ai/students/index"
 import { Route as EvaluatorAiEvaluationIndexRouteImport } from "./routes/evaluator-ai/evaluation/index"
 import { Route as EvaluatorAiAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/index"
@@ -343,6 +343,13 @@ const AuthTransferIndexRoute = AuthTransferIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/auth-transfer/index.lazy").then((d) => d.Route),
 )
+const AiVideoStudioIndexRoute = AiVideoStudioIndexRouteImport.update({
+  id: "/ai-video-studio/",
+  path: "/ai-video-studio/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/ai-video-studio/index.lazy").then((d) => d.Route),
+)
 const AiCenterIndexRoute = AiCenterIndexRouteImport.update({
   id: "/ai-center/",
   path: "/ai-center/",
@@ -579,16 +586,6 @@ const HomeworkCreationAssessmentListIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/homework-creation/assessment-list/index.lazy").then(
-      (d) => d.Route,
-    ),
-  )
-const FinancialManagementFeePlansIndexRoute =
-  FinancialManagementFeePlansIndexRouteImport.update({
-    id: "/financial-management/fee-plans/",
-    path: "/financial-management/fee-plans/",
-    getParentRoute: () => rootRouteImport,
-  } as any).lazy(() =>
-    import("./routes/financial-management/fee-plans/index.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -1180,6 +1177,7 @@ export interface FileRoutesByFullPath {
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
   "/ai-center/": typeof AiCenterIndexRoute
+  "/ai-video-studio/": typeof AiVideoStudioIndexRoute
   "/auth-transfer/": typeof AuthTransferIndexRoute
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
@@ -1234,7 +1232,6 @@ export interface FileRoutesByFullPath {
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
   "/evaluator-ai/evaluation/": typeof EvaluatorAiEvaluationIndexRoute
   "/evaluator-ai/students/": typeof EvaluatorAiStudentsIndexRoute
-  "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
   "/homework-creation/assessment-list/": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key/": typeof LoginKeyIndexRoute
   "/login/forgot-password/": typeof LoginForgotPasswordIndexRoute
@@ -1312,6 +1309,7 @@ export interface FileRoutesByTo {
   "/admin-package-management": typeof AdminPackageManagementIndexRoute
   "/admissions": typeof AdmissionsIndexRoute
   "/ai-center": typeof AiCenterIndexRoute
+  "/ai-video-studio": typeof AiVideoStudioIndexRoute
   "/auth-transfer": typeof AuthTransferIndexRoute
   "/challenge-analytics": typeof ChallengeAnalyticsIndexRoute
   "/community": typeof CommunityIndexRoute
@@ -1366,7 +1364,6 @@ export interface FileRoutesByTo {
   "/evaluator-ai/assessment": typeof EvaluatorAiAssessmentIndexRoute
   "/evaluator-ai/evaluation": typeof EvaluatorAiEvaluationIndexRoute
   "/evaluator-ai/students": typeof EvaluatorAiStudentsIndexRoute
-  "/financial-management/fee-plans": typeof FinancialManagementFeePlansIndexRoute
   "/homework-creation/assessment-list": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key": typeof LoginKeyIndexRoute
   "/login/forgot-password": typeof LoginForgotPasswordIndexRoute
@@ -1446,6 +1443,7 @@ export interface FileRoutesById {
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
   "/ai-center/": typeof AiCenterIndexRoute
+  "/ai-video-studio/": typeof AiVideoStudioIndexRoute
   "/auth-transfer/": typeof AuthTransferIndexRoute
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
@@ -1500,7 +1498,6 @@ export interface FileRoutesById {
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
   "/evaluator-ai/evaluation/": typeof EvaluatorAiEvaluationIndexRoute
   "/evaluator-ai/students/": typeof EvaluatorAiStudentsIndexRoute
-  "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
   "/homework-creation/assessment-list/": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key/": typeof LoginKeyIndexRoute
   "/login/forgot-password/": typeof LoginForgotPasswordIndexRoute
@@ -1581,6 +1578,7 @@ export interface FileRouteTypes {
     | "/admin-package-management/"
     | "/admissions/"
     | "/ai-center/"
+    | "/ai-video-studio/"
     | "/auth-transfer/"
     | "/challenge-analytics/"
     | "/community/"
@@ -1635,7 +1633,6 @@ export interface FileRouteTypes {
     | "/evaluator-ai/assessment/"
     | "/evaluator-ai/evaluation/"
     | "/evaluator-ai/students/"
-    | "/financial-management/fee-plans/"
     | "/homework-creation/assessment-list/"
     | "/login/$key/"
     | "/login/forgot-password/"
@@ -1713,6 +1710,7 @@ export interface FileRouteTypes {
     | "/admin-package-management"
     | "/admissions"
     | "/ai-center"
+    | "/ai-video-studio"
     | "/auth-transfer"
     | "/challenge-analytics"
     | "/community"
@@ -1767,7 +1765,6 @@ export interface FileRouteTypes {
     | "/evaluator-ai/assessment"
     | "/evaluator-ai/evaluation"
     | "/evaluator-ai/students"
-    | "/financial-management/fee-plans"
     | "/homework-creation/assessment-list"
     | "/login/$key"
     | "/login/forgot-password"
@@ -1846,6 +1843,7 @@ export interface FileRouteTypes {
     | "/admin-package-management/"
     | "/admissions/"
     | "/ai-center/"
+    | "/ai-video-studio/"
     | "/auth-transfer/"
     | "/challenge-analytics/"
     | "/community/"
@@ -1900,7 +1898,6 @@ export interface FileRouteTypes {
     | "/evaluator-ai/assessment/"
     | "/evaluator-ai/evaluation/"
     | "/evaluator-ai/students/"
-    | "/financial-management/fee-plans/"
     | "/homework-creation/assessment-list/"
     | "/login/$key/"
     | "/login/forgot-password/"
@@ -1980,6 +1977,7 @@ export interface RootRouteChildren {
   AdminPackageManagementIndexRoute: typeof AdminPackageManagementIndexRoute
   AdmissionsIndexRoute: typeof AdmissionsIndexRoute
   AiCenterIndexRoute: typeof AiCenterIndexRoute
+  AiVideoStudioIndexRoute: typeof AiVideoStudioIndexRoute
   AuthTransferIndexRoute: typeof AuthTransferIndexRoute
   ChallengeAnalyticsIndexRoute: typeof ChallengeAnalyticsIndexRoute
   CommunityIndexRoute: typeof CommunityIndexRoute
@@ -2033,7 +2031,6 @@ export interface RootRouteChildren {
   EvaluatorAiAssessmentIndexRoute: typeof EvaluatorAiAssessmentIndexRoute
   EvaluatorAiEvaluationIndexRoute: typeof EvaluatorAiEvaluationIndexRoute
   EvaluatorAiStudentsIndexRoute: typeof EvaluatorAiStudentsIndexRoute
-  FinancialManagementFeePlansIndexRoute: typeof FinancialManagementFeePlansIndexRoute
   HomeworkCreationAssessmentListIndexRoute: typeof HomeworkCreationAssessmentListIndexRoute
   LoginKeyIndexRoute: typeof LoginKeyIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
@@ -2322,6 +2319,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AuthTransferIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/ai-video-studio/": {
+      id: "/ai-video-studio/"
+      path: "/ai-video-studio"
+      fullPath: "/ai-video-studio/"
+      preLoaderRoute: typeof AiVideoStudioIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/ai-center/": {
       id: "/ai-center/"
       path: "/ai-center"
@@ -2530,13 +2534,6 @@ declare module "@tanstack/react-router" {
       path: "/homework-creation/assessment-list"
       fullPath: "/homework-creation/assessment-list/"
       preLoaderRoute: typeof HomeworkCreationAssessmentListIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/financial-management/fee-plans/": {
-      id: "/financial-management/fee-plans/"
-      path: "/financial-management/fee-plans"
-      fullPath: "/financial-management/fee-plans/"
-      preLoaderRoute: typeof FinancialManagementFeePlansIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/evaluator-ai/students/": {
@@ -3046,6 +3043,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminPackageManagementIndexRoute: AdminPackageManagementIndexRoute,
   AdmissionsIndexRoute: AdmissionsIndexRoute,
   AiCenterIndexRoute: AiCenterIndexRoute,
+  AiVideoStudioIndexRoute: AiVideoStudioIndexRoute,
   AuthTransferIndexRoute: AuthTransferIndexRoute,
   ChallengeAnalyticsIndexRoute: ChallengeAnalyticsIndexRoute,
   CommunityIndexRoute: CommunityIndexRoute,
@@ -3102,7 +3100,6 @@ const rootRouteChildren: RootRouteChildren = {
   EvaluatorAiAssessmentIndexRoute: EvaluatorAiAssessmentIndexRoute,
   EvaluatorAiEvaluationIndexRoute: EvaluatorAiEvaluationIndexRoute,
   EvaluatorAiStudentsIndexRoute: EvaluatorAiStudentsIndexRoute,
-  FinancialManagementFeePlansIndexRoute: FinancialManagementFeePlansIndexRoute,
   HomeworkCreationAssessmentListIndexRoute:
     HomeworkCreationAssessmentListIndexRoute,
   LoginKeyIndexRoute: LoginKeyIndexRoute,

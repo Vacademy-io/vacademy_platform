@@ -26,6 +26,7 @@ public class LearnerChapterDetailsDTO {
     private Integer unknownCount;
     private List<LearnerSlidesDetailDTO> learnerSlidesDetails;
     private Object dripCondition;
+    private Integer chapterOrder;
     private Boolean isLocked;
     private Boolean isHidden;
 }

@@ -29,7 +29,9 @@ import java.io.IOException;
 @Slf4j
 public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
 
-    private static final String[] AUTH_BY_ASSESS_DB_URLS = {"/assessment-service/assessment/learner/status/update", "/assessment-service/assessment/learner/status/submit", "/assessment-service/assessment/learner/status/restart"};
+    private static final String[] AUTH_BY_ASSESS_DB_URLS = { "/assessment-service/assessment/learner/status/update",
+            "/assessment-service/assessment/learner/status/submit",
+            "/assessment-service/assessment/learner/status/restart" };
     @Autowired
     UserDetailsService userDetailsService;
     @Autowired
@@ -38,10 +40,10 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
     private UserActivityRepository userActivityRepository;
     @Autowired
     private JwtService jwtService; // Inject JwtService dependency
-    
+
     @Autowired(required = false)
     private UserActivityTrackingService userActivityTrackingService;
-    
+
     @Value("${spring.application.name:assessment-service}")
     private String serviceName;
 
@@ -55,7 +57,8 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         // Retrieve Authorization header from the request
 
         final String authHeader = request.getHeader("Authorization");
@@ -70,10 +73,10 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
         try {
             // Extract JWT token from the header (remove "Bearer ")
             final String jwt = authHeader.substring(7);
-            
+
             // Generate session token from JWT for activity tracking
             String sessionToken = generateSessionIdFromJwt(jwt);
-            
+
             // Set request attributes for UserDetailsService to use
             request.setAttribute("serviceName", serviceName);
             request.setAttribute("sessionToken", sessionToken);
@@ -88,17 +91,19 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
             if (usernameWithInstituteId != null && authentication == null) {
 
                 boolean isTokenExpired = jwtService.isTokenExpired(jwt);
-                if (isTokenExpired) throw new ExpiredTokenException("Expired Token");
+                if (isTokenExpired)
+                    throw new ExpiredTokenException("Expired Token");
 
                 // Track authentication attempt
                 long startTime = System.currentTimeMillis();
-                
+
                 String requestUri = request.getRequestURI();
 
                 CustomUserDetails userDetails = null;
 
                 if (startWithAssessAuth(requestUri)) {
-                    userDetails = (CustomUserDetails) (assessmentInternalUserDetailsService.loadUserByUsername(usernameWithInstituteId));
+                    userDetails = (CustomUserDetails) (assessmentInternalUserDetailsService
+                            .loadUserByUsername(usernameWithInstituteId));
                 } else {
                     // Load user details using user email
                     userDetails = (CustomUserDetails) userDetailsService.loadUserByUsername(usernameWithInstituteId);
@@ -112,7 +117,8 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
 
                     // todo use loadUserByUsername from assessmentInternalUserDetailsService
 
-                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails, null, // As JWT based, no password needed
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails,
+                            null, // As JWT based, no password needed
                             userDetails.getAuthorities());
 
                     // Set request details on the token
@@ -120,7 +126,7 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
 
                     // Set the authentication object in SecurityContextHolder
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    
+
                     // Track successful JWT authentication activity
                     if (userActivityTrackingService != null) {
                         try {
@@ -128,29 +134,27 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
                             String ipAddress = getClientIpAddress(request);
                             String userAgent = request.getHeader("User-Agent");
                             String endpoint = request.getRequestURI();
-                            
+
                             userActivityTrackingService.logUserActivity(
-                                userDetails.getUserId(),
-                                instituteId,
-                                serviceName,
-                                endpoint,
-                                "JWT_AUTHENTICATION",
-                                sessionToken,
-                                ipAddress,
-                                userAgent,
-                                200,
-                                responseTime
-                            );
-                            
+                                    userDetails.getUserId(),
+                                    instituteId,
+                                    serviceName,
+                                    endpoint,
+                                    "JWT_AUTHENTICATION",
+                                    sessionToken,
+                                    ipAddress,
+                                    userAgent,
+                                    200,
+                                    responseTime);
+
                             // Create or update session
                             userActivityTrackingService.createOrUpdateSession(
-                                userDetails.getUserId(),
-                                instituteId,
-                                sessionToken,
-                                ipAddress,
-                                userAgent
-                            );
-                            
+                                    userDetails.getUserId(),
+                                    instituteId,
+                                    sessionToken,
+                                    ipAddress,
+                                    userAgent);
+
                         } catch (Exception e) {
                             log.debug("Error tracking JWT authentication activity: {}", e.getMessage());
                         }
@@ -197,14 +201,13 @@ public class AssessmentJwtAuthFilter extends OncePerRequestFilter {
         if (xForwardedForHeader != null && !xForwardedForHeader.isEmpty()) {
             return xForwardedForHeader.split(",")[0].trim();
         }
-        
+
         String xRealIpHeader = request.getHeader("X-Real-IP");
         if (xRealIpHeader != null && !xRealIpHeader.isEmpty()) {
             return xRealIpHeader;
         }
-        
+
         return request.getRemoteAddr();
     }
 
 }
-

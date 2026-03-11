@@ -1,36 +1,31 @@
-import { useState, useEffect } from 'react';
-import { YooptaPlugin } from '@yoopta/editor';
+import { useState, useEffect, useRef } from 'react';
+import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
 
-interface ScratchEditorProps {
-    element: any;
-    attributes: any;
-    children: React.ReactNode;
-    updateElementProps?: (props: any) => void;
-}
-
-export function ScratchEditor({
-    element,
-    attributes,
-    children,
-    updateElementProps,
-}: ScratchEditorProps) {
+export function ScratchEditor({ element, attributes, children, blockId }: PluginElementRenderProps) {
+    const editor = useYooptaEditor();
     const [scratchId, setScratchId] = useState(element?.props?.scratchId || '');
     const [activeTab, setActiveTab] = useState<'preview' | 'settings'>(
         element?.props?.activeTab || 'settings'
     );
+    const isFirstRender = useRef(true);
 
-    // Sync with Yoopta block state - save complete editor state
+    // Persist state to Yoopta/Slate store
+    // NOTE: Do NOT include Date.now() — it causes infinite re-render loops.
     useEffect(() => {
-        if (updateElementProps) {
-            updateElementProps({
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
+        Elements.updateElement(editor, blockId, {
+            type: 'scratchProject',
+            props: {
+                ...element.props,
                 scratchId,
                 activeTab,
-                // Add metadata to identify this as a full scratch editor
                 editorType: 'scratchEditor',
-                timestamp: Date.now(),
-            });
-        }
-    }, [scratchId, activeTab, updateElementProps]);
+            },
+        });
+    }, [scratchId, activeTab]);
 
     // Handle backspace prevention for input fields
     const handleInputKeyDown = (e: React.KeyboardEvent) => {
@@ -299,7 +294,20 @@ export const ScratchPlugin = new YooptaPlugin<{ scratchProject: any }>({
     parsers: {
         html: {
             deserialize: {
-                nodeNames: ['SCRATCH_PROJECT'],
+                nodeNames: ['DIV'],
+                parse: (element) => {
+                    if (element.getAttribute?.('data-yoopta-type') !== 'scratchProject') {
+                        return undefined;
+                    }
+                    const scratchId = element.getAttribute('data-scratch-id') || '';
+                    const activeTab = element.getAttribute('data-active-tab') || 'settings';
+                    return {
+                        id: `scratch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        type: 'scratchProject',
+                        props: { scratchId, activeTab, editorType: 'scratchEditor' },
+                        children: [{ text: '' }],
+                    };
+                },
             },
             serialize: (element, children) => {
                 const props = element.props || {};

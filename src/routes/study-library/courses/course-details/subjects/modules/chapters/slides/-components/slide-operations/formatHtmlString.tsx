@@ -12,14 +12,22 @@ export const stripAwsQueryParamsFromUrls = (htmlString: string): string => {
 };
 
 export const formatHTMLString = (htmlString: string) => {
-    // Remove the body tag and its attributes
-    let cleanedHtml = htmlString.replace(/<body[^>]*>|<\/body>/g, '');
+    // Strip any existing html/head/body wrappers first to make this idempotent.
+    // This prevents double-wrapping on repeated save cycles.
+    let cleanedHtml = htmlString
+        .replace(/<!DOCTYPE[^>]*>/gi, '')
+        .replace(/<\/?html[^>]*>/gi, '')
+        .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+        .replace(/<\/?body[^>]*>/gi, '');
 
     // Remove data-meta attributes and style from paragraphs
     cleanedHtml = cleanedHtml.replace(/<p[^>]*data-meta[^>]*style="[^"]*"[^>]*>/g, '<p>');
 
     // Strip expired query params from public S3 URLs
     cleanedHtml = stripAwsQueryParamsFromUrls(cleanedHtml);
+
+    // Trim whitespace from stripping
+    cleanedHtml = cleanedHtml.trim();
 
     // Add proper HTML structure
     const formattedHtml = `<html>

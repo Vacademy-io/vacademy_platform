@@ -345,23 +345,51 @@ export const ActualPresentationDisplay: React.FC<ActualPresentationDisplayProps>
 
     const toggleFullscreen = () => {
         if (!presentationContainerRef.current) return;
-        if (!document.fullscreenElement) {
-            presentationContainerRef.current.requestFullscreen().catch(err => {
-                alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-            });
+        const doc = document as any;
+        const container = presentationContainerRef.current as any;
+
+        if (!isFullscreen) {
+            const requestFS = container.requestFullscreen || container.webkitRequestFullscreen || container.mozRequestFullScreen || container.msRequestFullscreen;
+            if (requestFS) {
+                const promise = requestFS.call(container);
+                if (promise && promise.then) {
+                    promise.catch((err: any) => {
+                        console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                    });
+                }
+            }
             setIsFullscreen(true);
         } else {
-            document.exitFullscreen();
+            const exitFS = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
+            const isNativeFullscreen = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
+
+            if (exitFS && isNativeFullscreen) {
+                exitFS.call(doc);
+            }
             setIsFullscreen(false);
         }
     };
 
     useEffect(() => {
         const handleFullscreenChange = () => {
-            setIsFullscreen(!!document.fullscreenElement);
+            const doc = document as any;
+            const isNativeFullscreen = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
+            if (!isNativeFullscreen) {
+                setIsFullscreen(false);
+            } else {
+                setIsFullscreen(true);
+            }
         };
         document.addEventListener('fullscreenchange', handleFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+        return () => {
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
+            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+        };
     }, []);
 
 

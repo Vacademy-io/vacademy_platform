@@ -29,7 +29,6 @@ import { AlertCircle } from 'lucide-react';
 import {
     converDataToAssignmentFormat,
     converDataToVideoFormat,
-    convertHtmlToPdf,
     convertToQuestionBackendSlideFormat,
 } from '../-helper/helper';
 import { StudyLibraryQuestionsPreview } from './questions-preview';
@@ -65,6 +64,43 @@ import {
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { processHtmlImages, containsBase64Images, getBase64ImagesSize } from '@/utils/image-processing';
+
+/** Check if HTML content is effectively empty (shared across editor components). */
+function checkIsHtmlEmpty(data: string | null): boolean {
+    if (!data) return true;
+    const textContent = data
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (textContent === '' || textContent.length === 0) return true;
+    const trimmed = data.trim();
+    return (
+        trimmed === '<html><head></head><body><div></div></body></html>' ||
+        trimmed === '<div></div>' ||
+        trimmed === '<p></p>' ||
+        trimmed === '<br>' ||
+        trimmed === '<br/>' ||
+        /^<p><br><\/p>$/.test(trimmed) ||
+        /^<div><br><\/div>$/.test(trimmed)
+    );
+}
+
+/** Lightweight page count estimation from HTML (replaces expensive jspdf+html2canvas render). */
+function estimatePageCount(htmlString: string): number {
+    try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = htmlString;
+        tmp.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:210mm;padding:10mm;visibility:hidden;';
+        document.body.appendChild(tmp);
+        const h = tmp.scrollHeight;
+        document.body.removeChild(tmp);
+        // A4 at ~96dpi ≈ 1123px; use 1050 to account for margins
+        return Math.max(1, Math.ceil(h / 1050));
+    } catch {
+        return 1;
+    }
+}
 import ScormSlidePreview from './scorm-slide-preview';
 
 
@@ -187,36 +223,36 @@ export const SlideMaterial = ({
     // Component to manage editor with placeholder
     const EditorWithPlaceholder = ({ initialIsEmpty }: { initialIsEmpty: boolean }) => {
         const [showPlaceholder, setShowPlaceholder] = useState(initialIsEmpty);
-        const deferredUpdateTimerRef = useRef<number | null>(null);
+        const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
         useEffect(() => {
             setShowPlaceholder(initialIsEmpty);
         }, [initialIsEmpty]);
 
-        // Function to check if content is empty with better detection
-        const checkIsEmpty = (data: string | null) => {
-            if (!data) return true;
-
-            // Remove HTML tags and normalize whitespace
-            const textContent = data
-                .replace(/<[^>]*>/g, '') // Remove all HTML tags
-                .replace(/&nbsp;/g, ' ') // Replace non-breaking spaces
-                .replace(/\s+/g, ' ') // Normalize whitespace
-                .trim();
-
-            // Also check for common empty content patterns
-            const isEmpty =
-                textContent === '' ||
-                textContent.length === 0 ||
-                data.trim() === '<html><head></head><body><div></div></body></html>' ||
-                data.trim() === '<div></div>' ||
-                data.trim() === '<p></p>' ||
-                data.trim() === '<br>' ||
-                data.trim() === '<br/>' ||
-                /^<p><br><\/p>$/.test(data.trim()) ||
-                /^<div><br><\/div>$/.test(data.trim());
-
-            return isEmpty;
+        // Check emptiness from Yoopta JSON structure (no serialization needed)
+        const checkIsEmptyFromEditor = (): boolean => {
+            try {
+                const children = editor.children;
+                if (!children || typeof children !== 'object') return true;
+                const blocks = Object.values(children);
+                if (blocks.length === 0) return true;
+                // A single paragraph block with only empty text is "empty"
+                if (blocks.length === 1) {
+                    const block = blocks[0] as any;
+                    const vals = block?.value;
+                    if (Array.isArray(vals) && vals.length === 1) {
+                        const child = vals[0];
+                        const textChildren = child?.children;
+                        if (Array.isArray(textChildren) && textChildren.length === 1) {
+                            const text = textChildren[0]?.text;
+                            return !text || text.trim() === '';
+                        }
+                    }
+                }
+                return false;
+            } catch {
+                return false;
+            }
         };
 
         return (
@@ -245,20 +281,19 @@ export const SlideMaterial = ({
                         selectionBoxRoot={selectionRef}
                         autoFocus={true}
                         onChange={() => {
-                            // Get current editor content and check if it's empty
-                            let currentContent = '';
-                            try {
-                                currentContent = html.serialize(editor, editor.children);
-                            } catch (error) {
-                                console.error('Error serializing content in onChange:', error);
-                                // Fallback to empty string or keep previous content if possible, but here we just log
-                            }
-                            const currentIsEmpty = checkIsEmpty(currentContent);
+                            // Check emptiness from JSON structure (instant, no serialization)
+                            setShowPlaceholder(checkIsEmptyFromEditor());
 
-                            // Update placeholder state
-                            setShowPlaceholder(currentIsEmpty);
-                            // Track current DOC HTML for unsaved-change detection (no store mutation)
-                            currentDocHtmlRef.current = formatHTMLString(currentContent || '');
+                            // Debounce the expensive html.serialize for unsaved-change tracking
+                            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                            debounceTimerRef.current = setTimeout(() => {
+                                try {
+                                    const currentContent = html.serialize(editor, editor.children);
+                                    currentDocHtmlRef.current = formatHTMLString(currentContent || '');
+                                } catch (error) {
+                                    console.error('Error serializing content in onChange:', error);
+                                }
+                            }, 500);
                         }}
                         className="size-full"
                         style={{ width: '100%', height: '100%', minHeight: '200px' }}
@@ -438,37 +473,55 @@ export const SlideMaterial = ({
 
         const editorContent = sanitizeNodes(rawEditorContent);
 
+        // Fix Embed provider.type & provider.id after deserialization.
+        // The @yoopta/embed deserializer sets provider.type to the hostname
+        // (e.g. "www.youtube.com") and provider.id to the full URL, but the
+        // render component looks up by short name ("youtube", "vimeo", …).
+        if (editorContent && typeof editorContent === 'object') {
+            Object.values(editorContent).forEach((block: any) => {
+                if (block?.type !== 'Embed') return;
+                const el = block?.value?.[0];
+                const prov = el?.props?.provider;
+                if (!prov?.url) return;
+                const url = prov.url;
+                const detect: [string, RegExp][] = [
+                    ['youtube', /(?:youtube\.com\/(?:embed\/|watch\?v=)|youtu\.be\/)([^?&#]+)/],
+                    ['vimeo', /vimeo\.com(?:\/video)?\/(\d+)/],
+                    ['dailymotion', /dailymotion\.com\/(?:embed\/)?video\/([^_?&#]+)/],
+                    ['loom', /loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/],
+                    ['wistia', /wistia\.(?:com|net)\/(?:embed\/iframe|medias)\/([a-zA-Z0-9]+)/],
+                    ['figma', /figma\.com/],
+                    ['twitter', /(?:twitter\.com|x\.com)\/.*\/status\/(\d+)/],
+                    ['instagram', /instagram\.com\/(?:p|reel|tv)\/([^\/?#&]+)/],
+                ];
+                for (const [name, re] of detect) {
+                    const m = url.match(re);
+                    if (m) {
+                        prov.type = name;
+                        prov.id = m[1] || url;
+                        break;
+                    }
+                }
+            });
+        }
+
         editor.setEditorValue(editorContent);
 
-        // Function to check if content is empty with better detection
-        const checkIsEmpty = (data: string | null) => {
-            if (!data) return true;
-
-            // Remove HTML tags and normalize whitespace
-            const textContent = data
-                .replace(/<[^>]*>/g, '') // Remove all HTML tags
-                .replace(/&nbsp;/g, ' ') // Replace non-breaking spaces
-                .replace(/\s+/g, ' ') // Normalize whitespace
-                .trim();
-
-            // Also check for common empty content patterns
-            const isEmpty =
-                textContent === '' ||
-                textContent.length === 0 ||
-                data.trim() === '<html><head></head><body><div></div></body></html>' ||
-                data.trim() === '<div></div>' ||
-                data.trim() === '<p></p>' ||
-                data.trim() === '<br>' ||
-                data.trim() === '<br/>';
-
-            return isEmpty;
-        };
-
-        // Check if content is empty - handle HTML structure
-        const isEmpty = checkIsEmpty(sanitizedDocData);
+        // Check if content is empty - use shared utility
+        const isEmpty = checkIsHtmlEmpty(sanitizedDocData);
 
         setContent(<EditorWithPlaceholder initialIsEmpty={isEmpty} />);
-        editor.focus();
+        // Delay focus until after React re-renders the DOM with the new editor state.
+        // Calling editor.focus() synchronously after setEditorValue causes
+        // "Cannot resolve a DOM node from Slate node" because the DOM hasn't updated yet.
+        setTimeout(() => {
+            try {
+                editor.focus();
+            } catch (e) {
+                // Suppress focus errors — editor will still be functional
+                console.warn('Editor focus failed (DOM not ready):', e);
+            }
+        }, 100);
 
         // Capture initial HTML for DOC slides to detect unsaved changes later.
         // IMPORTANT: We must capture AFTER Yoopta has loaded the content, because
@@ -758,7 +811,7 @@ export const SlideMaterial = ({
                 }
             }
 
-            const { totalPages } = await convertHtmlToPdf(processedHtmlString);
+            const totalPages = estimatePageCount(processedHtmlString);
 
             // Determine status and published_data based on role
             let newStatus = slide.status;
@@ -1133,69 +1186,9 @@ export const SlideMaterial = ({
                                         toast.success('Slide auto-published for review');
                                     }
 
-                                    // Re-render with updated data
-                                    setContent(
-                                        <JupyterNotebookSlide
-                                            notebookData={updatedNotebookData}
-                                            // Allow editing even in PUBLISHED for non-learner
-                                            isEditable={!isLearnerView}
-                                            onDataChange={(newNotebookData) => {
-                                                // Handle further updates recursively
-                                                const recursiveUpdate = async () => {
-                                                    const nestedNextStatus = 'PUBLISHED';
-                                                    await addUpdateDocumentSlide({
-                                                        id: activeItem.id,
-                                                        title:
-                                                            newNotebookData.projectName ||
-                                                            activeItem.title ||
-                                                            '',
-                                                        image_file_id: '',
-                                                        description: activeItem.description || '',
-                                                        slide_order: null,
-                                                        document_slide: {
-                                                            id: activeItem.document_slide?.id || '',
-                                                            type: 'JUPYTER',
-                                                            data: JSON.stringify(newNotebookData),
-                                                            title:
-                                                                newNotebookData.projectName ||
-                                                                activeItem.document_slide?.title ||
-                                                                '',
-                                                            cover_file_id: '',
-                                                            total_pages: 1,
-                                                            published_data:
-                                                                JSON.stringify(newNotebookData),
-                                                            published_document_total_pages: 1,
-                                                        },
-                                                        status: nestedNextStatus,
-                                                        new_slide: false,
-                                                        notify: false,
-                                                    });
-
-                                                    // Update activeItem again
-                                                    setActiveItem({
-                                                        ...activeItem,
-                                                        status: nestedNextStatus,
-                                                        title:
-                                                            newNotebookData.projectName ||
-                                                            activeItem.title,
-                                                        document_slide: activeItem.document_slide
-                                                            ? {
-                                                                ...activeItem.document_slide,
-                                                                title:
-                                                                    newNotebookData.projectName ||
-                                                                    activeItem.document_slide
-                                                                        .title,
-                                                                data: JSON.stringify(
-                                                                    newNotebookData
-                                                                ),
-                                                            }
-                                                            : undefined,
-                                                    });
-                                                };
-                                                recursiveUpdate();
-                                            }}
-                                        />
-                                    );
+                                    // Re-render by reloading content with fresh store data
+                                    // (avoids recursive callback nesting that closes over stale activeItem)
+                                    loadContent();
                                 } catch (error) {
                                     console.error('Error saving Jupyter notebook data:', error);
                                     toast.error('Failed to save notebook changes');
@@ -1286,70 +1279,9 @@ export const SlideMaterial = ({
                                         toast.success('Slide auto-published for review');
                                     }
 
-                                    // Re-render with updated data
-                                    setContent(
-                                        <ScratchProjectSlide
-                                            scratchData={updatedScratchData}
-                                            slideId={activeItem.id}
-                                            // Allow editing even in PUBLISHED for non-learner
-                                            isEditable={!isLearnerView}
-                                            onDataChange={(newScratchData) => {
-                                                // Handle further updates recursively
-                                                const recursiveUpdate = async () => {
-                                                    const nestedNextStatus = 'PUBLISHED';
-                                                    await addUpdateDocumentSlide({
-                                                        id: activeItem.id,
-                                                        title:
-                                                            newScratchData.projectName ||
-                                                            activeItem.title ||
-                                                            '',
-                                                        image_file_id: '',
-                                                        description: activeItem.description || '',
-                                                        slide_order: null,
-                                                        document_slide: {
-                                                            id: activeItem.document_slide?.id || '',
-                                                            type: 'SCRATCH',
-                                                            data: JSON.stringify(newScratchData),
-                                                            title:
-                                                                newScratchData.projectName ||
-                                                                activeItem.document_slide?.title ||
-                                                                '',
-                                                            cover_file_id: '',
-                                                            total_pages: 1,
-                                                            published_data:
-                                                                JSON.stringify(newScratchData),
-                                                            published_document_total_pages: 1,
-                                                        },
-                                                        status: nestedNextStatus,
-                                                        new_slide: false,
-                                                        notify: false,
-                                                    });
-
-                                                    // Update activeItem again
-                                                    setActiveItem({
-                                                        ...activeItem,
-                                                        status: nestedNextStatus,
-                                                        title:
-                                                            newScratchData.projectName ||
-                                                            activeItem.title,
-                                                        document_slide: activeItem.document_slide
-                                                            ? {
-                                                                ...activeItem.document_slide,
-                                                                title:
-                                                                    newScratchData.projectName ||
-                                                                    activeItem.document_slide
-                                                                        .title,
-                                                                data: JSON.stringify(
-                                                                    newScratchData
-                                                                ),
-                                                            }
-                                                            : undefined,
-                                                    });
-                                                };
-                                                recursiveUpdate();
-                                            }}
-                                        />
-                                    );
+                                    // Re-render by reloading content with fresh store data
+                                    // (avoids recursive callback nesting that closes over stale activeItem)
+                                    loadContent();
                                 } catch (error) {
                                     console.error('Error saving Scratch project data:', error);
                                     toast.error('Failed to save Scratch project changes');
@@ -1547,11 +1479,7 @@ export const SlideMaterial = ({
             // 🔁 Then handle DOC
             if (documentType === 'DOC') {
                 try {
-                    // Call setEditorContent twice - once immediately, once after delay
-                    // The delayed call ensures editor is mounted and ready
-                    setTimeout(() => {
-                        setEditorContent();
-                    }, 300);
+                    // Single call — the focus() inside is already deferred via setTimeout
                     setEditorContent();
                 } catch (error) {
                     console.error('Error preparing document content:', error);
@@ -1981,7 +1909,7 @@ export const SlideMaterial = ({
                 }
             }
 
-            const { totalPages } = await convertHtmlToPdf(processedHtmlString);
+            const totalPages = estimatePageCount(processedHtmlString);
 
             try {
                 await addUpdateDocumentSlide({
@@ -2232,16 +2160,18 @@ export const SlideMaterial = ({
 
     useEffect(() => {
         setHeading(activeItem?.title || '');
-        // Only reload content if the slide ID, source type, or document type changes
-        // Ignore changes to data field to prevent infinite loops from auto-save
+        // Only reload content if the slide identity or shape changes.
+        // IMPORTANT: `items` was intentionally removed from deps because
+        // query refetches (triggered by auto-save) would re-run loadContent,
+        // which reads from the stale `activeItem` object and overwrites
+        // in-memory editor changes (e.g. newly-inserted YouTube embeds).
         loadContent();
     }, [
         activeItem?.id,
         activeItem?.source_type,
         activeItem?.document_slide?.type,
         activeItem?.status,
-        items,
-    ]); // Prevent reload on auto-save data changes
+    ]);
 
     // Update the refs whenever these functions change
     useEffect(() => {

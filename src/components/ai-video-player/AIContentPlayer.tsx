@@ -745,23 +745,47 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const handleFullscreenToggle = useCallback(() => {
         if (!playerRef.current) return;
 
-        if (!document.fullscreenElement) {
-            playerRef.current.requestFullscreen().then(() => {
+        const doc = document as any;
+        const player = playerRef.current as any;
+
+        if (!isFullscreen) {
+            const requestFS = player.requestFullscreen || player.webkitRequestFullscreen || player.mozRequestFullScreen || player.msRequestFullscreen;
+
+            if (requestFS) {
+                const promise = requestFS.call(player);
+                if (promise && promise.then) {
+                    promise.then(() => {
+                        setIsFullscreen(true);
+                        try { (screen.orientation as any)?.lock?.('landscape').catch(() => {}); } catch {}
+                    }).catch(console.error);
+                } else {
+                    setIsFullscreen(true);
+                    try { (screen.orientation as any)?.lock?.('landscape').catch(() => {}); } catch {}
+                }
+            } else {
+                // Fallback for browsers that don't support fullscreen API on divs (like iOS Safari)
                 setIsFullscreen(true);
-                // Try to lock landscape on mobile for better video viewing
-                try {
-                    screen.orientation?.lock?.('landscape').catch(() => {});
-                } catch {}
-            });
+            }
         } else {
-            document.exitFullscreen().then(() => {
+            const exitFS = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
+            const isNativeFullscreen = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
+
+            if (exitFS && isNativeFullscreen) {
+                const promise = exitFS.call(doc);
+                if (promise && promise.then) {
+                    promise.then(() => {
+                        setIsFullscreen(false);
+                        try { (screen.orientation as any)?.unlock?.(); } catch {}
+                    }).catch(console.error);
+                } else {
+                    setIsFullscreen(false);
+                    try { (screen.orientation as any)?.unlock?.(); } catch {}
+                }
+            } else {
                 setIsFullscreen(false);
-                try {
-                    screen.orientation?.unlock?.();
-                } catch {}
-            });
+            }
         }
-    }, []);
+    }, [isFullscreen]);
 
     // Print handler for WORKSHEET — prints only the content iframe, not the whole page
     const handlePrint = useCallback(() => {
@@ -807,12 +831,24 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     // Fullscreen change listener
     useEffect(() => {
         const handleFullscreenChange = () => {
-            setIsFullscreen(!!document.fullscreenElement);
+            const doc = document as any;
+            const isNativeFullscreen = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
+            if (!isNativeFullscreen) {
+                setIsFullscreen(false);
+            } else {
+                setIsFullscreen(true);
+            }
         };
 
         document.addEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
         return () => {
             document.removeEventListener('fullscreenchange', handleFullscreenChange);
+            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
         };
     }, []);
 

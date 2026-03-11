@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { YooptaPlugin } from '@yoopta/editor';
+import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
 import { useState, useEffect, useRef } from 'react';
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'));
@@ -18,19 +18,13 @@ const DEFAULT_CODE = {
     css: `body {\n  background: #f0f0f0;\n  color: #333;\n}`,
 };
 
-interface MultiLangCodeBlockProps {
-    element: any;
-    attributes: any;
-    children: React.ReactNode;
-    updateElementProps?: (props: any) => void;
-}
-
 export function MultiLangCodeBlock({
     element,
     attributes,
     children,
-    updateElementProps,
-}: MultiLangCodeBlockProps) {
+    blockId,
+}: PluginElementRenderProps) {
+    const editor = useYooptaEditor();
     const initialLanguage = element?.props?.language || 'python';
     const initialCode =
         element?.props?.code || DEFAULT_CODE[initialLanguage as keyof typeof DEFAULT_CODE];
@@ -48,21 +42,29 @@ export function MultiLangCodeBlock({
     const [editorError, setEditorError] = useState<string | null>(null);
     const editorRef = useRef<any>(null);
 
+    const isFirstRender = useRef(true);
+
     // Sync with Yoopta block state - save complete editor state
+    // NOTE: Do NOT include Date.now() or other non-stable values here — it would
+    // trigger Elements.updateElement → Yoopta onChange → re-render → useEffect → infinite loop.
     useEffect(() => {
-        if (updateElementProps) {
-            updateElementProps({
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
+        Elements.updateElement(editor, blockId, {
+            type: 'codeBlock',
+            props: {
+                ...element.props,
                 language,
                 code,
                 mode,
                 output,
                 hasRun,
-                // Add metadata to identify this as a full code editor
                 editorType: 'multiLangCodeEditor',
-                timestamp: Date.now(),
-            });
-        }
-    }, [language, code, mode, output, hasRun, updateElementProps]);
+            },
+        });
+    }, [language, code, mode, output, hasRun]);
 
     // Handle backspace prevention
     const handleEditorKeyDown = (e: any) => {
@@ -395,5 +397,45 @@ export const MultiLangCodePlugin = new YooptaPlugin<{ codeBlock: any }>({
             icon: <CodeIcon />,
         },
         shortcuts: ['code', 'python', 'js', 'html', 'css'],
+    },
+    parsers: {
+        html: {
+            deserialize: {
+                nodeNames: ['DIV'],
+                parse: (element) => {
+                    if (element.getAttribute?.('data-yoopta-type') !== 'codeBlock') {
+                        return undefined;
+                    }
+                    const language = element.getAttribute('data-language') || 'python';
+                    const mode = element.getAttribute('data-mode') || 'edit';
+                    const output = element.getAttribute('data-output') || '';
+                    const hasRun = element.getAttribute('data-has-run') === 'true';
+                    // Extract code from <pre><code> child or textContent
+                    const codeEl = element.querySelector?.('pre code') || element.querySelector?.('pre');
+                    const code = codeEl?.textContent || element.textContent?.trim() || '';
+                    return {
+                        id: `code-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        type: 'codeBlock',
+                        props: { language, code, mode, output, hasRun, editorType: 'multiLangCodeEditor' },
+                        children: [{ text: '' }],
+                    };
+                },
+            },
+            serialize: (element, _children) => {
+                const props = element.props || {};
+                const language = props.language || 'python';
+                const code = props.code || '';
+                const mode = props.mode || 'edit';
+                const output = props.output || '';
+                const hasRun = props.hasRun ? 'true' : 'false';
+                // Escape HTML entities in code for safe embedding
+                const escapedCode = code
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+                return `<div data-yoopta-type="codeBlock" data-editor-type="multiLangCodeEditor" data-language="${language}" data-mode="${mode}" data-output="${output.replace(/"/g, '&quot;')}" data-has-run="${hasRun}" style="border: 1px solid #eee; border-radius: 8px; padding: 16px; margin: 8px 0; background: #fafafa;"><div style="margin-bottom: 8px; font-size: 12px; color: #666; font-weight: 600;">${language.toUpperCase()} Code Editor</div><pre style="background: #f6f8fa; padding: 12px; border-radius: 4px; font-size: 13px; overflow-x: auto;"><code>${escapedCode}</code></pre>${output ? `<div style="margin-top: 8px; font-size: 12px; color: #666;">Output: <pre style="background: #f6f8fa; padding: 8px; border-radius: 4px; font-size: 12px;">${output.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre></div>` : ''}</div>`;
+            },
+        },
     },
 });

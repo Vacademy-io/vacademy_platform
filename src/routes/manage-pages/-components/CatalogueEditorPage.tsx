@@ -20,7 +20,7 @@ import { CatalogueConfig } from '../-types/editor-types';
 import { useCataloguePermissions } from '../-hooks/use-catalogue-permissions';
 import { useCallback } from 'react';
 import {
-    DndContext, DragEndEvent, DragOverlay,
+    DndContext, DragEndEvent, DragStartEvent, DragOverlay,
     useSensor, useSensors, PointerSensor,
 } from '@dnd-kit/core';
 import { getComponentTemplate } from '../-utils/component-templates';
@@ -48,8 +48,15 @@ export const CatalogueEditorPage = () => {
 
     // Drag-from-library: pointer sensor with a small activation distance to allow clicks
     const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+        useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
     );
+
+    const [activeDragLabel, setActiveDragLabel] = useState<string | null>(null);
+
+    const handleDragStart = useCallback((event: DragStartEvent) => {
+        const type = event.active.data.current?.type as string | undefined;
+        setActiveDragLabel(type ? type.replace(/([A-Z])/g, ' $1').trim() : 'Component');
+    }, []);
 
     const handleDragEnd = useCallback(
         (event: DragEndEvent) => {
@@ -61,8 +68,6 @@ export const CatalogueEditorPage = () => {
             const overId = over.id.toString();
 
             if (overId.startsWith('slot::')) {
-                // Format: slot::{layoutId}::{slotIndex}
-                // '::' is used as separator since component IDs only contain [a-z0-9-]
                 const parts = overId.split('::');
                 const layoutId = parts[1];
                 const slotIndex = parseInt(parts[2] ?? '', 10);
@@ -72,6 +77,8 @@ export const CatalogueEditorPage = () => {
             } else if (overId === 'canvas-drop-zone') {
                 addComponent(selectedPageId, component);
             }
+
+            setActiveDragLabel(null);
         },
         [selectedPageId, addComponent, addToSlot]
     );
@@ -276,7 +283,7 @@ export const CatalogueEditorPage = () => {
                 </div>
             ) : (
                 /* Visual Editor Mode — direct-DOM canvas */
-                <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+                <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                     <div className="flex flex-1 overflow-hidden">
                         {/* Left Sidebar */}
                         <div className="flex w-64 flex-col border-r bg-white">
@@ -347,10 +354,12 @@ export const CatalogueEditorPage = () => {
                     </div>
 
                     {/* Floating drag ghost */}
-                    <DragOverlay>
-                        <div className="rounded border border-blue-400 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 shadow-lg">
-                            Drop to add component
-                        </div>
+                    <DragOverlay dropAnimation={null}>
+                        {activeDragLabel && (
+                            <div className="pointer-events-none z-[9999] rounded-lg border-2 border-blue-400 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-xl">
+                                + {activeDragLabel}
+                            </div>
+                        )}
                     </DragOverlay>
                 </DndContext>
             )}

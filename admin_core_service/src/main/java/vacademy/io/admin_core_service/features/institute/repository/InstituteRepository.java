@@ -80,4 +80,142 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
             """, nativeQuery = true)
     Optional<Institute> findInstitutesByUserIdAndPackageSessionId(@Param("userId") String userId,
             @Param("sessionId") String packageSessionId);
+
+    // ==================== Super Admin Queries ====================
+
+    @Query(value = """
+            SELECT i.id, i.name, i.email, i.city, i.state, i.type, i.logo_file_id, i.subdomain, i.created_at,
+                COALESCE(sc.cnt, 0) AS student_count,
+                COALESCE(cc.cnt, 0) AS course_count,
+                COALESCE(bc.cnt, 0) AS batch_count
+            FROM institutes i
+            LEFT JOIN LATERAL (
+                SELECT COUNT(DISTINCT ssigm.user_id) AS cnt
+                FROM student_session_institute_group_mapping ssigm
+                JOIN package_session ps ON ssigm.package_session_id = ps.id
+                WHERE ssigm.institute_id = i.id
+                  AND ssigm.status NOT IN ('DELETED','INACTIVE','TERMINATED')
+                  AND ps.status IN ('ACTIVE','HIDDEN')
+            ) sc ON true
+            LEFT JOIN LATERAL (
+                SELECT COUNT(DISTINCT pi.package_id) AS cnt
+                FROM package_institute pi
+                JOIN package p ON pi.package_id = p.id
+                WHERE pi.institute_id = i.id AND p.status != 'DELETED'
+            ) cc ON true
+            LEFT JOIN LATERAL (
+                SELECT COUNT(ps.id) AS cnt
+                FROM package_session ps
+                JOIN package p ON ps.package_id = p.id
+                JOIN package_institute pi ON p.id = pi.package_id
+                WHERE pi.institute_id = i.id AND ps.status IN ('ACTIVE','HIDDEN')
+            ) bc ON true
+            WHERE (:search IS NULL OR :search = ''
+                   OR LOWER(i.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(i.city) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(i.email) LIKE LOWER(CONCAT('%', :search, '%')))
+            ORDER BY i.created_at DESC
+            LIMIT :size OFFSET :offset
+            """, nativeQuery = true)
+    List<Object[]> findAllInstitutesWithCounts(@Param("search") String search,
+            @Param("size") int size, @Param("offset") int offset);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM institutes i
+            WHERE (:search IS NULL OR :search = ''
+                   OR LOWER(i.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(i.city) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(i.email) LIKE LOWER(CONCAT('%', :search, '%')))
+            """, nativeQuery = true)
+    Long countAllInstitutes(@Param("search") String search);
+
+    @Query(value = "SELECT COUNT(*) FROM institutes", nativeQuery = true)
+    Long countTotalInstitutes();
+
+    @Query(value = """
+            SELECT COUNT(DISTINCT ssigm.user_id)
+            FROM student_session_institute_group_mapping ssigm
+            JOIN package_session ps ON ssigm.package_session_id = ps.id
+            WHERE ssigm.status NOT IN ('DELETED','INACTIVE','TERMINATED')
+              AND ps.status IN ('ACTIVE','HIDDEN')
+            """, nativeQuery = true)
+    Long countTotalStudents();
+
+    @Query(value = """
+            SELECT COUNT(DISTINCT p.id)
+            FROM package p
+            JOIN package_institute pi ON p.id = pi.package_id
+            WHERE p.status != 'DELETED'
+            """, nativeQuery = true)
+    Long countTotalCourses();
+
+    @Query(value = """
+            SELECT COUNT(ps.id)
+            FROM package_session ps
+            JOIN package p ON ps.package_id = p.id
+            JOIN package_institute pi ON p.id = pi.package_id
+            WHERE ps.status IN ('ACTIVE','HIDDEN')
+            """, nativeQuery = true)
+    Long countTotalBatches();
+
+    @Query(value = """
+            SELECT COUNT(*) FROM institutes
+            WHERE created_at >= DATE_TRUNC('month', CURRENT_TIMESTAMP)
+            """, nativeQuery = true)
+    Long countInstitutesCreatedThisMonth();
+
+    @Query(value = """
+            SELECT COUNT(DISTINCT ssigm.user_id)
+            FROM student_session_institute_group_mapping ssigm
+            WHERE ssigm.status NOT IN ('DELETED','INACTIVE','TERMINATED')
+              AND ssigm.created_at >= DATE_TRUNC('month', CURRENT_TIMESTAMP)
+            """, nativeQuery = true)
+    Long countStudentsEnrolledThisMonth();
+
+    @Query(value = """
+            SELECT p.id, p.package_name, p.status, p.thumbnail_file_id, p.created_at,
+                COALESCE(ch.cnt, 0) AS chapter_count,
+                COALESCE(st.cnt, 0) AS student_count,
+                COALESCE(bt.cnt, 0) AS batch_count
+            FROM package p
+            JOIN package_institute pi ON p.id = pi.package_id
+            LEFT JOIN LATERAL (
+                SELECT COUNT(DISTINCT cpsm.chapter_id) AS cnt
+                FROM chapter_package_session_mapping cpsm
+                JOIN package_session ps ON cpsm.package_session_id = ps.id
+                WHERE ps.package_id = p.id AND cpsm.status != 'DELETED'
+            ) ch ON true
+            LEFT JOIN LATERAL (
+                SELECT COUNT(DISTINCT ssigm.user_id) AS cnt
+                FROM student_session_institute_group_mapping ssigm
+                JOIN package_session ps ON ssigm.package_session_id = ps.id
+                WHERE ps.package_id = p.id
+                  AND ssigm.institute_id = :instituteId
+                  AND ssigm.status NOT IN ('DELETED','INACTIVE','TERMINATED')
+            ) st ON true
+            LEFT JOIN LATERAL (
+                SELECT COUNT(ps.id) AS cnt
+                FROM package_session ps
+                WHERE ps.package_id = p.id AND ps.status IN ('ACTIVE','HIDDEN')
+            ) bt ON true
+            WHERE pi.institute_id = :instituteId
+              AND p.status != 'DELETED'
+              AND (:search IS NULL OR :search = ''
+                   OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :search, '%')))
+            ORDER BY p.created_at DESC
+            LIMIT :size OFFSET :offset
+            """, nativeQuery = true)
+    List<Object[]> findCoursesByInstituteWithCounts(@Param("instituteId") String instituteId,
+            @Param("search") String search, @Param("size") int size, @Param("offset") int offset);
+
+    @Query(value = """
+            SELECT COUNT(DISTINCT p.id)
+            FROM package p
+            JOIN package_institute pi ON p.id = pi.package_id
+            WHERE pi.institute_id = :instituteId
+              AND p.status != 'DELETED'
+              AND (:search IS NULL OR :search = ''
+                   OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :search, '%')))
+            """, nativeQuery = true)
+    Long countCoursesByInstitute(@Param("instituteId") String instituteId, @Param("search") String search);
 }

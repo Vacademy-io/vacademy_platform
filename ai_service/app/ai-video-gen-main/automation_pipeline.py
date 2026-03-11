@@ -4704,24 +4704,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         
         # Get audio delay from branding config (intro duration)
         audio_delay = 0.0
-        
-        # First try to get from stored branding config (works within same pipeline run)
-        if hasattr(self, '_current_branding') and self._current_branding:
+
+        # Primary: check branding_meta.json (ground truth — written during _write_timeline)
+        branding_meta_path = run_dir / "branding_meta.json"
+        if branding_meta_path.exists():
+            try:
+                branding_meta = json.loads(branding_meta_path.read_text())
+                audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
+                print(f"   🎵 Audio will start at {audio_delay}s (from branding_meta.json)")
+            except Exception as e:
+                print(f"   ⚠️ Could not load branding metadata: {e}")
+
+        # Fallback: use in-memory branding config (for first-run before _write_timeline)
+        if audio_delay == 0.0 and hasattr(self, '_current_branding') and self._current_branding:
             intro_config = self._current_branding.get("intro", {})
             if intro_config.get("enabled", False):
                 audio_delay = float(intro_config.get("duration_seconds", 0.0))
                 print(f"   🎵 Audio will start at {audio_delay}s (from branding config)")
-        
-        # Fallback: check branding_meta.json file (for resumed runs)
-        if audio_delay == 0.0:
-            branding_meta_path = run_dir / "branding_meta.json"
-            if branding_meta_path.exists():
-                try:
-                    branding_meta = json.loads(branding_meta_path.read_text())
-                    audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
-                    print(f"   🎵 Audio will start at {audio_delay}s (from branding_meta.json)")
-                except Exception as e:
-                    print(f"   ⚠️ Could not load branding metadata: {e}")
         
         cmd = [
             sys.executable,

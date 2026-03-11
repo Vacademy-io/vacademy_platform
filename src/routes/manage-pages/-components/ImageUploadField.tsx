@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Upload, Loader2, Image as ImageIcon } from 'lucide-react';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import { getPublicUrl } from '@/services/upload_file';
 import { getUserId } from '@/utils/userDetails';
 
 interface ImageUploadFieldProps {
@@ -30,7 +31,7 @@ export const ImageUploadField = ({ label, value, onChange, placeholder }: ImageU
 
         try {
             setIsUploading(true);
-            const publicUrl = await uploadFile({
+            const fileId = await uploadFile({
                 file,
                 setIsUploading,
                 userId,
@@ -38,8 +39,10 @@ export const ImageUploadField = ({ label, value, onChange, placeholder }: ImageU
                 sourceId: 'ADMIN',
                 publicUrl: true,
             });
-            if (publicUrl) {
-                onChange(publicUrl);
+            if (fileId) {
+                // uploadFile returns a file ID, not a URL — resolve it
+                const resolvedUrl = await getPublicUrl(fileId);
+                onChange(resolvedUrl || fileId);
             }
         } catch (err) {
             console.error('[ImageUploadField] Upload failed:', err);

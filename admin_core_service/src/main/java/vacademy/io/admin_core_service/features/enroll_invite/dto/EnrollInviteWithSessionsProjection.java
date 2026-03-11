@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.enroll_invite.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,9 +29,12 @@ public interface EnrollInviteWithSessionsProjection {
     String getWebPageMetaDataJson();
     Timestamp getCreatedAt();
     Timestamp getUpdatedAt();
+
+    @JsonIgnore
     String getShortUrl();
 
     @Value("#{@shortUrlManagementService.getAbsoluteShortUrl(target.instituteId, target.shortUrl)}")
+    @JsonProperty("short_url")
     String getAbsoluteShortUrl();
 
     // This getter receives the raw comma-separated string from the query.

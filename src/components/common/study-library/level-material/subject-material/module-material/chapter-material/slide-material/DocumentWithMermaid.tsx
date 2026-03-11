@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { MermaidDiagram } from './MermaidDiagram';
 import { EnhancedCodeBlock } from './EnhancedCodeBlock';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+
+// Pattern: {blank:answer}
+const BLANK_REGEX = /\{blank:([^}]+)\}/g;
 
 /** Interactive quiz component for learner side */
 function InlineQuiz({ quizJson }: { quizJson: string }) {
@@ -68,6 +71,201 @@ function InlineQuiz({ quizJson }: { quizJson: string }) {
     );
 }
 
+/** Interactive flashcard component for learner side */
+function InteractiveFlashcard({ front, back }: { front: string; back: string }) {
+    const [isFlipped, setIsFlipped] = useState(false);
+
+    return (
+        <div
+            style={{ perspective: '1000px', cursor: 'pointer', margin: '8px 0' }}
+            onClick={() => setIsFlipped(!isFlipped)}
+        >
+            <div
+                style={{
+                    position: 'relative',
+                    width: '100%',
+                    minHeight: '150px',
+                    transition: 'transform 0.6s',
+                    transformStyle: 'preserve-3d',
+                    transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                }}
+            >
+                {/* Front */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        width: '100%',
+                        minHeight: '150px',
+                        backfaceVisibility: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '24px',
+                        backgroundColor: '#fff',
+                        borderRadius: '8px',
+                        border: '2px solid #007acc',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    }}
+                >
+                    <div style={{ fontSize: '10px', color: '#007acc', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>Front</div>
+                    <div style={{ fontSize: '16px', color: '#333', textAlign: 'center', whiteSpace: 'pre-wrap' }}>{front}</div>
+                    <div style={{ fontSize: '11px', color: '#999', position: 'absolute', bottom: '8px' }}>Click to flip</div>
+                </div>
+                {/* Back */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        width: '100%',
+                        minHeight: '150px',
+                        backfaceVisibility: 'hidden',
+                        transform: 'rotateY(180deg)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '24px',
+                        backgroundColor: '#007acc',
+                        borderRadius: '8px',
+                        border: '2px solid #007acc',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    }}
+                >
+                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>Back</div>
+                    <div style={{ fontSize: '16px', color: '#fff', textAlign: 'center', whiteSpace: 'pre-wrap' }}>{back}</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', position: 'absolute', bottom: '8px' }}>Click to flip back</div>
+                </div>
+            </div>
+            <div style={{ minHeight: '150px' }} />
+        </div>
+    );
+}
+
+/** Interactive fill-in-the-blanks component for learner side */
+function InteractiveFillBlanks({ sentence }: { sentence: string }) {
+    const [answers, setAnswers] = useState<Record<number, string>>({});
+    const [showResults, setShowResults] = useState(false);
+
+    const parts = useMemo(() => {
+        const result: Array<{ type: 'text' | 'blank'; value: string }> = [];
+        let lastIndex = 0;
+        let match: RegExpExecArray | null;
+        const regex = new RegExp(BLANK_REGEX.source, 'g');
+        while ((match = regex.exec(sentence)) !== null) {
+            if (match.index > lastIndex) {
+                result.push({ type: 'text', value: sentence.slice(lastIndex, match.index) });
+            }
+            result.push({ type: 'blank', value: match[1]! });
+            lastIndex = regex.lastIndex;
+        }
+        if (lastIndex < sentence.length) {
+            result.push({ type: 'text', value: sentence.slice(lastIndex) });
+        }
+        return result;
+    }, [sentence]);
+
+    const blanks = useMemo(() => parts.filter((p) => p.type === 'blank'), [parts]);
+
+    let blankIndex = 0;
+
+    return (
+        <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', margin: '8px 0', background: '#fafafa' }}>
+            <div style={{ padding: '4px 8px', background: '#e8f4fd', border: '1px solid #90caf9', borderRadius: '4px', display: 'inline-block', fontSize: '12px', fontWeight: 600, color: '#1565c0', marginBottom: '12px' }}>
+                FILL IN THE BLANKS
+            </div>
+            <div style={{ fontSize: '16px', lineHeight: 2.2, color: '#333', padding: '8px' }}>
+                {parts.map((part, i) => {
+                    if (part.type === 'text') return <span key={i}>{part.value}</span>;
+                    const idx = blankIndex++;
+                    const userAnswer = answers[idx] || '';
+                    const isCorrect = userAnswer.trim().toLowerCase() === part.value.trim().toLowerCase();
+                    return (
+                        <span key={i} style={{ display: 'inline-block', margin: '0 4px' }}>
+                            <input
+                                type="text"
+                                value={userAnswer}
+                                onChange={(e) => { setAnswers((prev) => ({ ...prev, [idx]: e.target.value })); setShowResults(false); }}
+                                placeholder={`blank ${idx + 1}`}
+                                style={{
+                                    width: `${Math.max(part.value.length * 10, 80)}px`,
+                                    padding: '4px 8px',
+                                    fontSize: '15px',
+                                    border: 'none',
+                                    borderBottom: showResults ? `2px solid ${isCorrect ? '#22c55e' : '#ef4444'}` : '2px solid #007acc',
+                                    backgroundColor: showResults ? (isCorrect ? '#f0fdf4' : '#fef2f2') : '#f8f9fa',
+                                    outline: 'none',
+                                    textAlign: 'center',
+                                    borderRadius: '2px 2px 0 0',
+                                }}
+                            />
+                            {showResults && !isCorrect && (
+                                <div style={{ fontSize: '11px', color: '#ef4444', textAlign: 'center' }}>{part.value}</div>
+                            )}
+                        </span>
+                    );
+                })}
+            </div>
+            {blanks.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'center' }}>
+                    <button onClick={() => setShowResults(true)}
+                        style={{ padding: '6px 16px', fontSize: '13px', border: 'none', borderRadius: '4px', backgroundColor: '#007acc', color: 'white', cursor: 'pointer' }}>
+                        Check Answers
+                    </button>
+                    <button onClick={() => { setAnswers({}); setShowResults(false); }}
+                        style={{ padding: '6px 16px', fontSize: '13px', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: 'white', color: '#666', cursor: 'pointer' }}>
+                        Reset
+                    </button>
+                    {showResults && (
+                        <span style={{ display: 'flex', alignItems: 'center', fontSize: '13px', fontWeight: 600, color: blanks.every((b, i) => (answers[i] || '').trim().toLowerCase() === b.value.trim().toLowerCase()) ? '#22c55e' : '#666' }}>
+                            {blanks.filter((b, i) => (answers[i] || '').trim().toLowerCase() === b.value.trim().toLowerCase()).length}/{blanks.length} correct
+                        </span>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** Interactive tabs component for learner side */
+function InteractiveTabs({ tabsJson }: { tabsJson: string }) {
+    const [activeTab, setActiveTab] = useState(0);
+
+    let tabs: Array<{ label: string; content: string }> = [];
+    try {
+        tabs = JSON.parse(tabsJson);
+    } catch { /* use empty */ }
+
+    if (tabs.length === 0) return null;
+
+    return (
+        <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', margin: '8px 0', overflow: 'hidden', background: '#fafafa' }}>
+            <div style={{ display: 'flex', borderBottom: '1px solid #e0e0e0', background: '#fff', overflowX: 'auto' }}>
+                {tabs.map((tab, i) => (
+                    <div
+                        key={i}
+                        onClick={() => setActiveTab(i)}
+                        style={{
+                            padding: '10px 20px',
+                            fontSize: '14px',
+                            fontWeight: activeTab === i ? 600 : 400,
+                            color: activeTab === i ? '#007acc' : '#666',
+                            borderBottom: `2px solid ${activeTab === i ? '#007acc' : 'transparent'}`,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            transition: 'color 0.15s, border-color 0.15s',
+                        }}
+                    >
+                        {tab.label}
+                    </div>
+                ))}
+            </div>
+            <div style={{ padding: '16px', fontSize: '14px', lineHeight: 1.6, color: '#333', whiteSpace: 'pre-wrap' }}>
+                {tabs[activeTab]?.content || ''}
+            </div>
+        </div>
+    );
+}
+
 interface DocumentWithMermaidProps {
     htmlContent: string;
     className?: string;
@@ -77,7 +275,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
     htmlContent,
     className = '',
 }) => {
-    const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code' | 'math' | 'quiz'; content: string; meta?: Record<string, string> }>>([]);
+    const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs'; content: string; meta?: Record<string, string> }>>([]);
 
     useEffect(() => {
         if (!htmlContent) {
@@ -98,7 +296,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             // Also check raw HTML string for mermaid patterns
             const hasMermaidInHtml = /graph\s+TD|flowchart|sequenceDiagram|classDiagram|gantt|pie|erDiagram|journey/i.test(htmlContent);
 
-            type SectionType = 'html' | 'mermaid' | 'code' | 'math' | 'quiz';
+            type SectionType = 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs';
             const newSections: Array<{ type: SectionType; content: string; meta?: Record<string, string> }> = [];
 
             // Mark special blocks in DOM
@@ -132,6 +330,40 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     element: div,
                     code: div.outerHTML,
                     type: 'html',
+                });
+            });
+
+            // Process flashcard blocks — interactive on learner side
+            const flashcardDivs = tempDiv.querySelectorAll('div[data-yoopta-type="flashcard"]');
+            flashcardDivs.forEach((div) => {
+                const front = div.getAttribute('data-front') || '';
+                const back = div.getAttribute('data-back') || '';
+                specialBlocks.push({
+                    element: div,
+                    code: JSON.stringify({ front, back }),
+                    type: 'flashcard' as SectionType,
+                });
+            });
+
+            // Process fill-in-the-blanks blocks — interactive on learner side
+            const fillBlanksDivs = tempDiv.querySelectorAll('div[data-yoopta-type="fillBlanks"]');
+            fillBlanksDivs.forEach((div) => {
+                const sentence = div.getAttribute('data-sentence') || '';
+                specialBlocks.push({
+                    element: div,
+                    code: sentence,
+                    type: 'fillBlanks' as SectionType,
+                });
+            });
+
+            // Process tabbed content blocks — interactive on learner side
+            const tabsDivs = tempDiv.querySelectorAll('div[data-yoopta-type="tabbedContent"]');
+            tabsDivs.forEach((div) => {
+                const tabsJson = div.getAttribute('data-tabs') || '[]';
+                specialBlocks.push({
+                    element: div,
+                    code: tabsJson,
+                    type: 'tabs' as SectionType,
                 });
             });
 
@@ -505,6 +737,30 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         <InlineQuiz
                             key={`quiz-${index}`}
                             quizJson={section.content}
+                        />
+                    );
+                } else if (section.type === 'flashcard') {
+                    let data = { front: '', back: '' };
+                    try { data = JSON.parse(section.content); } catch { /* use empty */ }
+                    return (
+                        <InteractiveFlashcard
+                            key={`flashcard-${index}`}
+                            front={data.front}
+                            back={data.back}
+                        />
+                    );
+                } else if (section.type === 'fillBlanks') {
+                    return (
+                        <InteractiveFillBlanks
+                            key={`fillblanks-${index}`}
+                            sentence={section.content}
+                        />
+                    );
+                } else if (section.type === 'tabs') {
+                    return (
+                        <InteractiveTabs
+                            key={`tabs-${index}`}
+                            tabsJson={section.content}
                         />
                     );
                 } else if (section.type === 'code') {

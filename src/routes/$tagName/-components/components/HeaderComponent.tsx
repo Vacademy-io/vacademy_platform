@@ -253,8 +253,25 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
 
     // Use JSON logo and title from the page builder if configured
-    const jsonLogoUrl = catalogueData?.globalSettings?.layout?.header?.props?.logo || null;
+    const jsonLogoRaw = catalogueData?.globalSettings?.layout?.header?.props?.logo || null;
     const jsonTitle = catalogueData?.globalSettings?.layout?.header?.props?.title || null;
+
+    // Resolve jsonLogoRaw — it may be a file ID or a full URL
+    const [jsonLogoUrl, setJsonLogoUrl] = useState<string | null>(null);
+    useEffect(() => {
+      if (!jsonLogoRaw) { setJsonLogoUrl(null); return; }
+      // Already a URL — use directly
+      if (jsonLogoRaw.startsWith('http://') || jsonLogoRaw.startsWith('https://')) {
+        setJsonLogoUrl(jsonLogoRaw);
+        return;
+      }
+      // Looks like a file ID — resolve it
+      let cancelled = false;
+      getPublicUrlWithoutLogin(jsonLogoRaw).then(url => {
+        if (!cancelled && url) setJsonLogoUrl(url);
+      }).catch(() => {});
+      return () => { cancelled = true; };
+    }, [jsonLogoRaw]);
 
     // Check if we should hide search and cart icons
     const shouldHideSearchAndCart = () => {

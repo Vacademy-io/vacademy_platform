@@ -9,7 +9,10 @@ import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerA
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/admin-core-service/v1/admin/student-fee")
@@ -21,11 +24,49 @@ public class FeeTrackingAdminController {
     @Autowired
     private FeeLedgerAllocationService feeLedgerAllocationService;
 
-    @GetMapping("/{userId}/dues")
+    @PostMapping("/{userId}/dues")
     public ResponseEntity<List<StudentFeePaymentDTO>> getStudentDues(
             @PathVariable("userId") String userId,
-            @RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(feeTrackingService.getStudentDues(userId, instituteId));
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody(required = false) DuesFilterRequest filter) {
+
+        List<StudentFeePaymentDTO> dues = feeTrackingService.getStudentDues(userId, instituteId);
+
+        if (filter != null) {
+            // Optional status filter (e.g., PENDING, PARTIAL_PAID, OVERDUE)
+            if (filter.getStatus() != null && !filter.getStatus().isBlank()) {
+                String statusFilter = filter.getStatus().trim().toUpperCase();
+                dues = dues.stream()
+                        .filter(d -> d.getStatus() != null
+                                && d.getStatus().toUpperCase().equals(statusFilter))
+                        .collect(Collectors.toList());
+            }
+
+            // Optional due date range filter
+            LocalDate start = filter.getStartDueDate();
+            LocalDate end = filter.getEndDueDate();
+            if (start != null || end != null) {
+                dues = dues.stream()
+                        .filter(d -> {
+                            if (d.getDueDate() == null) {
+                                return false;
+                            }
+                            LocalDate due = d.getDueDate().toInstant()
+                                    .atZone(ZoneId.systemDefault())
+                                    .toLocalDate();
+                            if (start != null && due.isBefore(start)) {
+                                return false;
+                            }
+                            if (end != null && due.isAfter(end)) {
+                                return false;
+                            }
+                            return true;
+                        })
+                        .collect(Collectors.toList());
+            }
+        }
+
+        return ResponseEntity.ok(dues);
     }
 
     @GetMapping("/{userId}/receipts")
@@ -55,6 +96,41 @@ public class FeeTrackingAdminController {
             @RequestAttribute("user") CustomUserDetails user) {
         feeLedgerAllocationService.allocatePaymentForUser(userId, amount);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Request body for filtering dues.
+     * - status: optional status filter (e.g. "PENDING", "PARTIAL_PAID").
+     * - startDueDate / endDueDate: optional due date range (yyyy-MM-dd).
+     */
+    public static class DuesFilterRequest {
+        private String status;
+        private LocalDate startDueDate;
+        private LocalDate endDueDate;
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public LocalDate getStartDueDate() {
+            return startDueDate;
+        }
+
+        public void setStartDueDate(LocalDate startDueDate) {
+            this.startDueDate = startDueDate;
+        }
+
+        public LocalDate getEndDueDate() {
+            return endDueDate;
+        }
+
+        public void setEndDueDate(LocalDate endDueDate) {
+            this.endDueDate = endDueDate;
+        }
     }
 
 }

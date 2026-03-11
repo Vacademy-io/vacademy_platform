@@ -12,6 +12,12 @@ public interface StudentFeePaymentRepository extends JpaRepository<StudentFeePay
     // Fetch all bills for a plan
     List<StudentFeePayment> findByUserPlanId(String userPlanId);
 
+    // Fetch all bills for a user (across plans)
+    List<StudentFeePayment> findByUserId(String userId);
+
+    // Fetch all bills for a list of plans
+    List<StudentFeePayment> findByUserPlanIdIn(List<String> userPlanIds);
+
     // Used for FIFO Ledger Allocation: Grab only unpaid/partial bills, ordered by
     // oldest due date
     List<StudentFeePayment> findByUserPlanIdAndStatusNotOrderByDueDateAsc(String userPlanId, String status);

@@ -191,6 +191,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemLink: '/financial-management/fee-plans',
                 subItemId: 'create-fee-plan',
             },
+            {
+                subItem: 'Manage Finances',
+                subItemLink: '/financial-management/manage-finances',
+                subItemId: 'manage-finances',
+            },
         ],
     },
     {

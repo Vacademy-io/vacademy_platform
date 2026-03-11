@@ -60,7 +60,7 @@ public class InternalShortLinkController {
         return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/base-url")
+    @GetMapping(value = "/base-url", produces = org.springframework.http.MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<String> getBaseUrl(@RequestParam(required = false) String instituteId) {
         String host = defaultShortLinkBaseUrl;
         if (instituteId != null && !instituteId.isBlank()) {

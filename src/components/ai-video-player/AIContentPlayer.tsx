@@ -878,14 +878,23 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
 
             active.sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
 
-            const processed = active.map((entry, index) => ({
+            // Separate branding entries (intro/outro/watermark) from content entries
+            const brandingEntries = active.filter(e => e.id?.startsWith('branding-'));
+            const contentEntries = active.filter(e => !e.id?.startsWith('branding-'));
+
+            // Content entries go through full HTML processing
+            const processedContent = contentEntries.map((entry, index) => ({
                 ...entry,
-                // First entry (index 0) is the main content with white background
-                // Subsequent entries are overlays with transparent background
                 processedHtml: processHtmlContent(entry.html, contentType, index > 0),
             }));
 
-            return processed;
+            // Branding entries already contain complete HTML — skip processHtmlContent
+            const processedBranding = brandingEntries.map(entry => ({
+                ...entry,
+                processedHtml: entry.html,
+            }));
+
+            return [...processedContent, ...processedBranding];
         } else if (navigationMode === 'user_driven') {
             // For QUIZ, STORYBOOK, etc.: show current entry
             const entry = entries[currentIndex];

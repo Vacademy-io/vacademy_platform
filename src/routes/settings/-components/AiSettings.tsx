@@ -354,8 +354,25 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     }, [instituteId]);
 
     // Save Video Branding
+    const HTML_SIZE_WARN_BYTES = 50 * 1024; // 50KB
+
     const handleSaveVideoBranding = async () => {
         if (!instituteId) return;
+
+        // Warn about large HTML that may cause render timeouts
+        const fields = [
+            { name: 'Intro', html: videoBranding.intro.html },
+            { name: 'Outro', html: videoBranding.outro.html },
+            { name: 'Watermark', html: videoBranding.watermark.html },
+        ];
+        for (const f of fields) {
+            if (f.html && new Blob([f.html]).size > HTML_SIZE_WARN_BYTES) {
+                toast.warning(
+                    `${f.name} HTML is large (>${Math.round(HTML_SIZE_WARN_BYTES / 1024)}KB). Consider using external URLs instead of embedded images to avoid render timeouts.`
+                );
+            }
+        }
+
         setIsSavingBranding(true);
         try {
             await authenticatedAxiosInstance.post(UPDATE_VIDEO_BRANDING(instituteId), {
@@ -1551,6 +1568,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                     placeholder="<div style='display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#fff;'><h1>Your Brand</h1></div>"
                                                     className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                                                 />
+                                                <p className={`text-[10px] ${videoBranding.intro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}>
+                                                    {(videoBranding.intro.html.length / 1024).toFixed(1)}KB
+                                                </p>
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className="text-xs font-medium text-gray-600">
@@ -1650,6 +1670,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                     placeholder="<div style='display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#fff;'><p>Thank you for watching</p></div>"
                                                     className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                                                 />
+                                                <p className={`text-[10px] ${videoBranding.outro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}>
+                                                    {(videoBranding.outro.html.length / 1024).toFixed(1)}KB
+                                                </p>
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className="text-xs font-medium text-gray-600">
@@ -1766,25 +1789,75 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                 </p>
                                             </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <Label className="text-xs font-medium text-gray-600">
-                                                Watermark HTML
-                                            </Label>
-                                            <textarea
-                                                value={videoBranding.watermark.html}
-                                                onChange={(e) =>
-                                                    setVideoBranding((b) => ({
-                                                        ...b,
-                                                        watermark: { ...b.watermark, html: e.target.value },
-                                                    }))
-                                                }
-                                                rows={3}
-                                                placeholder="<div style='font-family:sans-serif;color:rgba(0,0,0,0.3);font-size:14px;'>Your Brand</div>"
-                                                className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
-                                            />
-                                            <p className="text-[10px] text-gray-500">
-                                                Small HTML snippet rendered in the corner of every frame.
-                                            </p>
+                                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-medium text-gray-600">
+                                                    Watermark HTML
+                                                </Label>
+                                                <textarea
+                                                    value={videoBranding.watermark.html}
+                                                    onChange={(e) =>
+                                                        setVideoBranding((b) => ({
+                                                            ...b,
+                                                            watermark: { ...b.watermark, html: e.target.value },
+                                                        }))
+                                                    }
+                                                    rows={3}
+                                                    placeholder="<div style='font-family:sans-serif;color:rgba(0,0,0,0.3);font-size:14px;'>Your Brand</div>"
+                                                    className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
+                                                />
+                                                <p className={`text-[10px] ${videoBranding.watermark.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}>
+                                                    {(videoBranding.watermark.html.length / 1024).toFixed(1)}KB
+                                                </p>
+                                                <p className="text-[10px] text-gray-500">
+                                                    Small HTML snippet rendered in the corner of every frame.
+                                                </p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-medium text-gray-600">
+                                                    Live Preview
+                                                </Label>
+                                                <div
+                                                    style={{
+                                                        width: '200px',
+                                                        height: '120px',
+                                                        overflow: 'hidden',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid #e5e7eb',
+                                                        position: 'relative',
+                                                        background: '#f9fafb',
+                                                    }}
+                                                >
+                                                    <div
+                                                        style={{
+                                                            position: 'absolute',
+                                                            ...(videoBranding.watermark.position?.includes('top')
+                                                                ? { top: '8px' }
+                                                                : { bottom: '8px' }),
+                                                            ...(videoBranding.watermark.position?.includes('left')
+                                                                ? { left: '8px' }
+                                                                : { right: '8px' }),
+                                                            opacity: videoBranding.watermark.opacity,
+                                                        }}
+                                                        dangerouslySetInnerHTML={{
+                                                            __html:
+                                                                videoBranding.watermark.html ||
+                                                                '<span style="color:#9ca3af;font-family:sans-serif;font-size:10px">Watermark preview</span>',
+                                                        }}
+                                                    />
+                                                    <span
+                                                        className="text-[8px] text-gray-300"
+                                                        style={{
+                                                            position: 'absolute',
+                                                            top: '50%',
+                                                            left: '50%',
+                                                            transform: 'translate(-50%, -50%)',
+                                                        }}
+                                                    >
+                                                        {videoBranding.watermark.position?.replace('-', ' ')}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -1826,7 +1899,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                         <div>
                             <CardTitle className="text-xl">Video Style</CardTitle>
                             <CardDescription>
-                                Brand colors, fonts, and layout theme used when generating video content
+                                Choose a template for the overall look. Customize colors and fonts to override template defaults.
                             </CardDescription>
                         </div>
                     </div>
@@ -1921,7 +1994,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                         }}
                                                     >
                                                         <iframe
-                                                            srcDoc={template.preview_html}
+                                                            srcDoc={`<style>:root{--primary-color:${videoStyle.primary_color};--accent-color:${videoStyle.primary_color}}</style>${template.preview_html}`}
                                                             style={{
                                                                 width: '1920px',
                                                                 height: '1080px',
@@ -1957,9 +2030,25 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
 
                             {/* ── Primary / Accent Color ───────────────── */}
                             <div className="space-y-2">
-                                <Label className="text-sm font-semibold">Primary / Accent Color</Label>
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-sm font-semibold">Primary / Accent Color</Label>
+                                    {videoStyle.layout_theme && (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setVideoStyle((s) => ({
+                                                    ...s,
+                                                    primary_color: DEFAULT_VIDEO_STYLE.primary_color,
+                                                }))
+                                            }
+                                            className="text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline"
+                                        >
+                                            Reset to default
+                                        </button>
+                                    )}
+                                </div>
                                 <p className="text-[10px] text-gray-500">
-                                    Used for headings, accents, chart colours, and annotations in generated slides.
+                                    Overrides the template&apos;s default color. Used for headings, accents, chart colours, and annotations.
                                 </p>
                                 <div className="flex items-center gap-3">
                                     <ColorPicker

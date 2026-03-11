@@ -1,15 +1,19 @@
 package vacademy.io.admin_core_service.features.fee_management.dto;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.ArrayList;
 
 @Data
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ComplexPaymentOptionDTO {
 
     private String id;
@@ -19,10 +23,24 @@ public class ComplexPaymentOptionDTO {
     private String status;
     private List<FeeTypeDTO> feeTypes;
 
+    @Builder.Default
+    private List<PackageSessionLinkDTO> packageSessionLinks = new ArrayList<>();
+
     @Data
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class PackageSessionLinkDTO {
+        private String enrollInviteId;
+        private String packageSessionId;
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class FeeTypeDTO {
         private String id;
         private String name;
@@ -36,6 +54,7 @@ public class ComplexPaymentOptionDTO {
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class AssignedFeeValueDTO {
         private String id;
         private BigDecimal amount;
@@ -52,6 +71,7 @@ public class ComplexPaymentOptionDTO {
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class AftInstallmentDTO {
         private String id;
         private Integer installmentNumber;

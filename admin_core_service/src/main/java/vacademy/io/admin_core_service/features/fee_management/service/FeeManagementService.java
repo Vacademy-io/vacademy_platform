@@ -6,7 +6,13 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.AssignCpoToPackageSessionDTO;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
+import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
 import vacademy.io.admin_core_service.features.fee_management.dto.ComplexPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment;
 import vacademy.io.admin_core_service.features.fee_management.entity.AssignedFeeValue;
@@ -40,6 +46,12 @@ public class FeeManagementService {
 
     @Autowired
     private PackageSessionLearnerInvitationToPaymentOptionRepository bridgeRepository;
+
+    @Autowired
+    private PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
+
+    @Autowired
+    private EnrollInviteRepository enrollInviteRepository;
 
     /**
      * API #1: Create a full CPO with nested fee types, assigned values, and
@@ -96,7 +108,39 @@ public class FeeManagementService {
             }
         }
 
-        return getFullCpo(savedCpo.getId());
+        ComplexPaymentOptionDTO result = getFullCpo(savedCpo.getId());
+
+        // Step 5: Link CPO to requested (enrollInviteId, packageSessionId) pairs
+        if (request.getPackageSessionLinks() != null && !request.getPackageSessionLinks().isEmpty()) {
+            for (ComplexPaymentOptionDTO.PackageSessionLinkDTO link : request.getPackageSessionLinks()) {
+                if (link.getPackageSessionId() == null || link.getPackageSessionId().isBlank()) {
+                    continue; // skip entries with no packageSessionId
+                }
+
+                // Resolve enrollInviteId: use provided value, or auto-find the DEFAULT invite
+                String resolvedEnrollInviteId = link.getEnrollInviteId();
+                if (!StringUtils.hasText(resolvedEnrollInviteId)) {
+                    resolvedEnrollInviteId = enrollInviteRepository
+                            .findLatestForPackageSessionWithFilters(
+                                    link.getPackageSessionId(),
+                                    List.of("ACTIVE"),
+                                    List.of(EnrollInviteTag.DEFAULT.name()),
+                                    List.of("ACTIVE"))
+                            .map(EnrollInvite::getId)
+                            .orElseThrow(() -> new VacademyException(
+                                    "No default EnrollInvite found for package session: "
+                                            + link.getPackageSessionId()
+                                            + ". Please create a default invite first, or pass enrollInviteId explicitly."));
+                }
+
+                AssignCpoToPackageSessionDTO dto = new AssignCpoToPackageSessionDTO(
+                        savedCpo.getId(), link.getPackageSessionId());
+                packageSessionEnrollInviteToPaymentOptionService
+                        .assignCpoToPackageSession(resolvedEnrollInviteId, dto);
+            }
+        }
+
+        return result;
     }
 
     /**
@@ -126,7 +170,8 @@ public class FeeManagementService {
         return getFullCpo(cpoId, 0, Integer.MAX_VALUE, 0, Integer.MAX_VALUE);
     }
 
-    public ComplexPaymentOptionDTO getFullCpo(String cpoId, int feeTypePage, int feeTypeSize, int installmentPage, int installmentSize) {
+    public ComplexPaymentOptionDTO getFullCpo(String cpoId, int feeTypePage, int feeTypeSize, int installmentPage,
+            int installmentSize) {
         ComplexPaymentOption cpo = cpoRepository.findByIdAndStatusNot(cpoId, "DELETED")
                 .orElseThrow(() -> new VacademyException("Complex Payment Option not found or deleted: " + cpoId));
 
@@ -139,7 +184,8 @@ public class FeeManagementService {
         List<ComplexPaymentOptionDTO.FeeTypeDTO> feeTypeDTOs = new ArrayList<>();
         for (FeeType ft : feeTypes) {
             // Fetch assigned fee values by feeTypeId
-            List<AssignedFeeValue> afvList = assignedFeeValueRepository.findByFeeTypeIdAndStatusNot(ft.getId(), "DELETED");
+            List<AssignedFeeValue> afvList = assignedFeeValueRepository.findByFeeTypeIdAndStatusNot(ft.getId(),
+                    "DELETED");
 
             ComplexPaymentOptionDTO.AssignedFeeValueDTO afvDTO = null;
             if (!afvList.isEmpty()) {
@@ -147,7 +193,8 @@ public class FeeManagementService {
                 // Fetch installments by assignedFeeValueId
                 Pageable installmentPageable = PageRequest.of(installmentPage, installmentSize);
                 List<AftInstallment> installments = aftInstallmentRepository
-                        .findByAssignedFeeValueIdAndStatusNotOrderByInstallmentNumberAsc(afv.getId(), "DELETED", installmentPageable)
+                        .findByAssignedFeeValueIdAndStatusNotOrderByInstallmentNumberAsc(afv.getId(), "DELETED",
+                                installmentPageable)
                         .getContent();
 
                 List<ComplexPaymentOptionDTO.AftInstallmentDTO> instDTOs = installments.stream()
@@ -344,7 +391,7 @@ public class FeeManagementService {
     public List<ComplexPaymentOptionDTO> getCpoOptionsForPackageSession(String packageSessionId) {
         // Step 1: Query bridge table for distinct CPO IDs
         List<String> cpoIds = bridgeRepository.findDistinctCpoIdsByPackageSessionId(packageSessionId);
-        
+
         if (cpoIds.isEmpty()) {
             return new ArrayList<>();
         }
@@ -354,15 +401,15 @@ public class FeeManagementService {
         for (String cpoId : cpoIds) {
             try {
                 ComplexPaymentOptionDTO cpoDTO = getFullCpo(cpoId);
-                
+
                 // Step 3: Calculate total amount from all installments
                 BigDecimal totalAmount = BigDecimal.ZERO;
                 if (cpoDTO.getFeeTypes() != null) {
                     for (ComplexPaymentOptionDTO.FeeTypeDTO feeType : cpoDTO.getFeeTypes()) {
-                        if (feeType.getAssignedFeeValue() != null && 
-                            feeType.getAssignedFeeValue().getInstallments() != null) {
-                            for (ComplexPaymentOptionDTO.AftInstallmentDTO installment : 
-                                 feeType.getAssignedFeeValue().getInstallments()) {
+                        if (feeType.getAssignedFeeValue() != null &&
+                                feeType.getAssignedFeeValue().getInstallments() != null) {
+                            for (ComplexPaymentOptionDTO.AftInstallmentDTO installment : feeType.getAssignedFeeValue()
+                                    .getInstallments()) {
                                 if (installment.getAmount() != null) {
                                     totalAmount = totalAmount.add(installment.getAmount());
                                 }
@@ -370,14 +417,14 @@ public class FeeManagementService {
                         }
                     }
                 }
-                
+
                 cpoOptions.add(cpoDTO);
             } catch (Exception e) {
                 // Skip invalid CPOs and continue
                 continue;
             }
         }
-        
+
         return cpoOptions;
     }
 }

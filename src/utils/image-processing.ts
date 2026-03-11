@@ -136,30 +136,41 @@ export async function processHtmlImages(html: string): Promise<{
     let uploadedImages = 0;
     let failedUploads = 0;
 
-    // Process each image
-    for (const image of base64Images) {
-        try {
-            const publicUrl = await uploadBase64ImageToS3(
-                image.base64Data,
-                image.mimeType,
-                userId,
-                instituteId
-            );
+    // Upload images in parallel (max 5 concurrent) for better performance
+    const CONCURRENCY = 5;
+    const results: { originalSrc: string; publicUrl: string | null }[] = [];
 
-            if (publicUrl) {
-                // Replace the base64 data URL with the public URL
-                processedHtml = processedHtml.replace(image.originalSrc, publicUrl);
-                uploadedImages++;
-                console.log(
-                    `Successfully uploaded and replaced image: ${image.originalSrc.substring(0, 50)}...`
+    for (let i = 0; i < base64Images.length; i += CONCURRENCY) {
+        const batch = base64Images.slice(i, i + CONCURRENCY);
+        const batchResults = await Promise.allSettled(
+            batch.map(async (image) => {
+                const publicUrl = await uploadBase64ImageToS3(
+                    image.base64Data,
+                    image.mimeType,
+                    userId,
+                    instituteId
                 );
+                return { originalSrc: image.originalSrc, publicUrl };
+            })
+        );
+
+        for (const result of batchResults) {
+            if (result.status === 'fulfilled') {
+                results.push(result.value);
             } else {
                 failedUploads++;
-                console.error(`Failed to upload image: ${image.originalSrc.substring(0, 50)}...`);
+                console.error('Error processing image:', result.reason);
             }
-        } catch (error) {
+        }
+    }
+
+    // Apply replacements
+    for (const { originalSrc, publicUrl } of results) {
+        if (publicUrl) {
+            processedHtml = processedHtml.replace(originalSrc, publicUrl);
+            uploadedImages++;
+        } else {
             failedUploads++;
-            console.error('Error processing image:', error);
         }
     }
 

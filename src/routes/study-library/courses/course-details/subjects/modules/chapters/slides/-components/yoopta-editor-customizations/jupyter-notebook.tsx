@@ -1,19 +1,13 @@
-import { useState, useEffect } from 'react';
-import { YooptaPlugin } from '@yoopta/editor';
-
-interface JupyterNotebookProps {
-    element: any;
-    attributes: any;
-    children: React.ReactNode;
-    updateElementProps?: (props: any) => void;
-}
+import { useState, useEffect, useRef } from 'react';
+import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
 
 export function JupyterNotebook({
     element,
     attributes,
     children,
-    updateElementProps,
-}: JupyterNotebookProps) {
+    blockId,
+}: PluginElementRenderProps) {
+    const editor = useYooptaEditor();
     const [projectName, setProjectName] = useState(element?.props?.projectName || '');
     const [contentUrl, setContentUrl] = useState(element?.props?.contentUrl || '');
     const [contentBranch, setContentBranch] = useState(element?.props?.contentBranch || 'main');
@@ -25,21 +19,28 @@ export function JupyterNotebook({
         element?.props?.activeTab || 'settings'
     );
 
+    const isFirstRender = useRef(true);
+
     // Sync with Yoopta block state - save complete editor state
+    // NOTE: Do NOT include Date.now() — it causes infinite re-render loops.
     useEffect(() => {
-        if (updateElementProps) {
-            updateElementProps({
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
+        Elements.updateElement(editor, blockId, {
+            type: 'jupyterNotebook',
+            props: {
+                ...element.props,
                 projectName,
                 contentUrl,
                 contentBranch,
                 notebookLocation,
                 activeTab,
-                // Add metadata to identify this as a full jupyter editor
                 editorType: 'jupyterEditor',
-                timestamp: Date.now(),
-            });
-        }
-    }, [projectName, contentUrl, contentBranch, notebookLocation, activeTab, updateElementProps]);
+            },
+        });
+    }, [projectName, contentUrl, contentBranch, notebookLocation, activeTab]);
 
     const handleDeploy = () => {
         if (!projectName || !contentUrl) {
@@ -430,7 +431,23 @@ export const JupyterNotebookPlugin = new YooptaPlugin<{ jupyterNotebook: any }>(
     parsers: {
         html: {
             deserialize: {
-                nodeNames: ['JUPYTER_NOTEBOOK'],
+                nodeNames: ['DIV'],
+                parse: (element) => {
+                    if (element.getAttribute?.('data-yoopta-type') !== 'jupyterNotebook') {
+                        return undefined;
+                    }
+                    const projectName = element.getAttribute('data-project-name') || '';
+                    const contentUrl = element.getAttribute('data-content-url') || '';
+                    const contentBranch = element.getAttribute('data-content-branch') || 'main';
+                    const notebookLocation = element.getAttribute('data-notebook-location') || 'root';
+                    const activeTab = element.getAttribute('data-active-tab') || 'settings';
+                    return {
+                        id: `jupyter-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        type: 'jupyterNotebook',
+                        props: { projectName, contentUrl, contentBranch, notebookLocation, activeTab, editorType: 'jupyterEditor' },
+                        children: [{ text: '' }],
+                    };
+                },
             },
             serialize: (element, children) => {
                 const props = element.props || {};

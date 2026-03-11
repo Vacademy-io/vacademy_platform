@@ -27,7 +27,7 @@ const HeaderPreview: React.FC<P> = ({ props }) => (
             {props.logo && (
                 <img src={props.logo} alt="logo" className="h-8 w-auto object-contain" />
             )}
-            <span className="font-semibold text-gray-900">{props.title || 'Platform'}</span>
+            <span className="font-semibold text-gray-900">{props.title || ''}</span>
         </div>
         <nav className="flex items-center gap-4">
             {(props.navigation || []).slice(0, 5).map((nav: any, i: number) => (

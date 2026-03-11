@@ -254,7 +254,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                     }}
                 >
                     {/* Global Header — appears on every page */}
-                    {config?.globalSettings?.layout?.header && (
+                    {config?.globalSettings?.layout?.header && config.globalSettings.layout.header.enabled !== false && (
                         <div
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -346,7 +346,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                     )}
 
                     {/* Global Footer — appears on every page */}
-                    {config?.globalSettings?.layout?.footer && (
+                    {config?.globalSettings?.layout?.footer && config.globalSettings.layout.footer.enabled !== false && (
                         <div
                             onClick={(e) => {
                                 e.stopPropagation();

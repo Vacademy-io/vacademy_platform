@@ -266,8 +266,10 @@ const GlobalLayoutEditor = ({
     const layoutData = config.globalSettings?.layout?.[section];
     const props = layoutData?.props || {};
 
+    const isEnabled = layoutData?.enabled !== false;
+
     // Wrap in a fake component shape for HeaderEditor / FooterEditor
-    const fakeComponent = { id: '__global__', type: section, enabled: true, props };
+    const fakeComponent = { id: '__global__', type: section, enabled: isEnabled, props };
     const fakeUpdateComponent = (_pageId: string, _id: string, patch: any) => {
         if (patch.props) {
             updateGlobalSettings({
@@ -279,17 +281,52 @@ const GlobalLayoutEditor = ({
         }
     };
 
+    const toggleEnabled = (enabled: boolean) => {
+        updateGlobalSettings({
+            layout: {
+                ...config.globalSettings.layout,
+                [section]: { ...layoutData, enabled },
+            },
+        });
+    };
+
+    const removeSection = () => {
+        const newLayout = { ...config.globalSettings.layout };
+        delete newLayout[section];
+        updateGlobalSettings({ layout: newLayout });
+    };
+
     return (
         <div className="flex flex-col gap-6 p-4">
             <div className="border-b pb-3">
-                <h3 className="text-base font-semibold capitalize">
-                    Global {section === 'header' ? 'Header' : 'Footer'}
-                </h3>
-                <p className="mt-0.5 text-xs text-purple-600">
-                    Appears on every page
-                </p>
+                <div className="flex items-start justify-between">
+                    <div>
+                        <h3 className="text-base font-semibold capitalize">
+                            Global {section === 'header' ? 'Header' : 'Footer'}
+                        </h3>
+                        <p className="mt-0.5 text-xs text-purple-600">
+                            Appears on every page
+                        </p>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="size-8 p-0 text-gray-400 hover:text-red-600"
+                        onClick={removeSection}
+                        title={`Remove global ${section}`}
+                    >
+                        <Trash2 className="size-4" />
+                    </Button>
+                </div>
             </div>
-            {section === 'header' ? (
+
+            {/* Enabled toggle */}
+            <div className="flex items-center justify-between">
+                <Label>Enabled</Label>
+                <Switch checked={isEnabled} onCheckedChange={toggleEnabled} />
+            </div>
+
+            {isEnabled && (section === 'header' ? (
                 <HeaderEditor
                     component={fakeComponent}
                     pageId="__global__"
@@ -301,7 +338,7 @@ const GlobalLayoutEditor = ({
                     pageId="__global__"
                     updateComponent={fakeUpdateComponent}
                 />
-            )}
+            ))}
         </div>
     );
 };

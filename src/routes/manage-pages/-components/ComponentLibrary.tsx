@@ -60,23 +60,19 @@ const DraggableComponentItem = ({
     return (
         <div
             ref={setNodeRef}
-            className={`flex items-center rounded border bg-white transition-opacity ${isDragging ? 'opacity-40' : 'opacity-100'}`}
+            {...listeners}
+            {...attributes}
+            className={`flex items-center rounded border bg-white transition-opacity cursor-grab touch-none active:cursor-grabbing ${isDragging ? 'opacity-40' : 'opacity-100'}`}
         >
-            {/* Drag handle */}
-            <button
-                {...listeners}
-                {...attributes}
-                className="cursor-grab touch-none px-2 py-3 text-gray-300 hover:text-gray-500 active:cursor-grabbing"
-                aria-label="Drag to insert"
-            >
+            {/* Drag handle icon */}
+            <div className="px-2 py-3 text-gray-300">
                 <GripVertical className="size-4" />
-            </button>
+            </div>
 
-            {/* Click to add button */}
-            <Button
-                variant="ghost"
-                className="flex-1 h-auto justify-start px-2 py-3 text-left gap-2"
-                onClick={() => onAdd(templateKey)}
+            {/* Click to add */}
+            <button
+                className="flex flex-1 items-start gap-2 px-2 py-3 text-left"
+                onClick={(e) => { e.stopPropagation(); onAdd(templateKey); }}
                 disabled={disabled}
             >
                 {icon}
@@ -86,11 +82,11 @@ const DraggableComponentItem = ({
                         {disabled ? 'Select a page first' : description}
                     </span>
                 </div>
-            </Button>
+            </button>
 
             {/* Quick-add button */}
             <button
-                onClick={() => onAdd(templateKey)}
+                onClick={(e) => { e.stopPropagation(); onAdd(templateKey); }}
                 disabled={disabled}
                 className="px-2 py-3 text-gray-400 hover:text-gray-600 disabled:opacity-40"
                 aria-label={`Add ${label}`}

@@ -58,8 +58,10 @@ public class ShortLinkIntegrationService {
         }
     }
 
+    private static final org.slf4j.Logger shortUrlLogger = org.slf4j.LoggerFactory.getLogger(ShortLinkIntegrationService.class);
+
     private final java.util.Map<String, String> baseUrlCache = new java.util.concurrent.ConcurrentHashMap<>();
-    private long lastCacheClearTime = System.currentTimeMillis();
+    private volatile long lastCacheClearTime = System.currentTimeMillis();
 
     public String buildAbsoluteUrl(String instituteId, String shortCode) {
         if (shortCode == null || shortCode.isBlank())
@@ -67,31 +69,25 @@ public class ShortLinkIntegrationService {
         if (shortCode.startsWith("http"))
             return shortCode; // For old existing absolute URLs
 
-        if (System.currentTimeMillis() - lastCacheClearTime > 600000) { // Clear cache every 10 mins
+        if (System.currentTimeMillis() - lastCacheClearTime > 60000) { // Clear cache every 1 min
             baseUrlCache.clear();
             lastCacheClearTime = System.currentTimeMillis();
         }
 
         String cacheKey = instituteId != null && !instituteId.isBlank() ? instituteId : "DEFAULT";
-        String host = baseUrlCache.computeIfAbsent(cacheKey, key -> {
-            String route = "/media-service/internal/v1/short-link/base-url"
-                    + (instituteId != null && !instituteId.isBlank() ? "?instituteId=" + instituteId : "");
-            try {
-                ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-                        clientName,
-                        HttpMethod.GET.name(),
-                        mediaServiceBaseUrl,
-                        route,
-                        null);
-                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null
-                        && !response.getBody().isBlank()) {
-                    return response.getBody();
-                }
-            } catch (Exception e) {
-                // Fallback gracefully
+
+        // Only serve from cache if the key is present (don't cache failures)
+        String cachedHost = baseUrlCache.get(cacheKey);
+        String host;
+        if (cachedHost != null) {
+            host = cachedHost;
+        } else {
+            host = fetchBaseUrlFromMediaService(instituteId);
+            if (!host.equals(shortLinkBaseUrl)) {
+                // Only cache custom domain hits — not fallbacks caused by failure
+                baseUrlCache.put(cacheKey, host);
             }
-            return shortLinkBaseUrl;
-        });
+        }
 
         // Ensure host doesn't end with slash
         if (host.endsWith("/")) {
@@ -99,6 +95,36 @@ public class ShortLinkIntegrationService {
         }
 
         return host + "/s/" + shortCode;
+    }
+
+    private String fetchBaseUrlFromMediaService(String instituteId) {
+        String route = "/media-service/internal/v1/short-link/base-url"
+                + (instituteId != null && !instituteId.isBlank() ? "?instituteId=" + instituteId : "");
+        try {
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    mediaServiceBaseUrl,
+                    route,
+                    null);
+            String responseBody = response.getBody();
+            if (response.getStatusCode().is2xxSuccessful() && responseBody != null && !responseBody.isBlank()) {
+                // Strip surrounding JSON quotes defensively (e.g. if server returned JSON string)
+                String body = responseBody.trim();
+                if (body.startsWith("\"") && body.endsWith("\"") && body.length() > 1) {
+                    body = body.substring(1, body.length() - 1);
+                }
+                shortUrlLogger.info("Fetched base URL for institute {}: {}", instituteId, body);
+                return body;
+            } else {
+                shortUrlLogger.warn("base-url endpoint returned non-2xx or empty body for institute {}. Status: {}, Body: {}",
+                        instituteId, response.getStatusCode(), responseBody);
+            }
+        } catch (Exception e) {
+            shortUrlLogger.error("Failed to fetch base URL from media service for institute {}: {}",
+                    instituteId, e.getMessage(), e);
+        }
+        return shortLinkBaseUrl;
     }
 
     public String generateRandomCode() {
@@ -117,9 +143,15 @@ public class ShortLinkIntegrationService {
     }
 
     public void updateShortLink(String source, String sourceId, String newDestinationUrl) {
+        String encodedUrl;
+        try {
+            encodedUrl = java.net.URLEncoder.encode(newDestinationUrl, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            encodedUrl = newDestinationUrl;
+        }
         String route = "/media-service/internal/v1/short-link/update?source=" + source
                 + "&sourceId=" + sourceId
-                + "&newDestinationUrl=" + newDestinationUrl;
+                + "&newDestinationUrl=" + encodedUrl;
 
         try {
             internalClientUtils.makeHmacRequest(

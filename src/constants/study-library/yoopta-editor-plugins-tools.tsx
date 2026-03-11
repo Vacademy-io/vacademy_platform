@@ -29,6 +29,10 @@ import { AudioPlugin } from '@/routes/study-library/courses/course-details/subje
 import { TimelinePlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/timeline-editor';
 import { QuizBlockPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/quiz-block-editor';
 import { ColumnsPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/columns-editor';
+import { TableOfContentsPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/table-of-contents';
+import { FlashcardPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/flashcard-editor';
+import { FillBlanksPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/fill-blanks-editor';
+import { TabsPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/tabs-editor';
 
 /** Extract userId from JWT token */
 function getUserIdFromToken(): string {
@@ -190,6 +194,10 @@ export const plugins: YooptaPlugin<Record<string, SlateElement>, Record<string, 
     TimelinePlugin as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
     QuizBlockPlugin as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
     ColumnsPlugin as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
+    TableOfContentsPlugin as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
+    FlashcardPlugin as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
+    FillBlanksPlugin as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
+    TabsPlugin as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
 ];
 
 export const TOOLS = {

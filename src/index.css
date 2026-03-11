@@ -1,5 +1,7 @@
 /* Compact Mode Styles - must be imported before @tailwind */
 @import './styles/compact-mode.css';
+/* Catalogue theme overrides for admin canvas preview */
+@import './styles/catalogue-themes.css';
 
 @tailwind base;
 @tailwind components;

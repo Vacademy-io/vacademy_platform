@@ -1,10 +1,13 @@
 package vacademy.io.admin_core_service.features.fee_management.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentRowDTO;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -55,6 +58,23 @@ public class FeeTrackingAdminController {
             @RequestAttribute("user") CustomUserDetails user) {
         feeLedgerAllocationService.allocatePaymentForUser(userId, amount);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Admin fee roster search — powers the "Manage Finances" table in the frontend.
+     *
+     * POST /admin-core-service/v1/admin/student-fee/search?instituteId={instituteId}
+     *
+     * Accepts a rich filter payload and returns a paginated list of student fee
+     * payment records enriched with student name/email and fee type context.
+     */
+    @PostMapping("/search")
+    public ResponseEntity<Page<StudentFeePaymentRowDTO>> searchStudentFeePayments(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody FeeSearchFilterDTO filter,
+            @RequestAttribute("user") CustomUserDetails user) {
+        Page<StudentFeePaymentRowDTO> results = feeTrackingService.searchFeePayments(instituteId, filter);
+        return ResponseEntity.ok(results);
     }
 
 }

@@ -324,12 +324,13 @@ export const SlideMaterial = ({
 
             // Get body element and its inner HTML
             if (doc.body) {
-                // Unwrap iframes from divs to ensure they are recognized by Yoopta deserializer
-                const iframes = doc.body.querySelectorAll('iframe');
-                iframes.forEach((iframe) => {
-                    const parent = iframe.parentElement;
+                // Unwrap media/semantic elements from wrapper divs so Yoopta
+                // deserializers can find them by nodeName (IFRAME, VIDEO, IMG, A).
+                // Each plugin serializes as <div style="..."><element/></div>
+                // but the deserializer looks for the bare element.
+                const unwrapFromDiv = (el: Element) => {
+                    const parent = el.parentElement;
                     if (parent && parent.tagName === 'DIV') {
-                        // Replace parent div with its children
                         const fragment = document.createDocumentFragment();
                         while (parent.firstChild) {
                             fragment.appendChild(parent.firstChild);
@@ -338,22 +339,12 @@ export const SlideMaterial = ({
                             parent.parentNode.replaceChild(fragment, parent);
                         }
                     }
-                });
+                };
 
-                // Unwrap anchors from divs to ensure they are recognized (especially for File blocks)
-                const anchors = doc.body.querySelectorAll('a');
-                anchors.forEach((anchor) => {
-                    const parent = anchor.parentElement;
-                    if (parent && parent.tagName === 'DIV') {
-                        const fragment = document.createDocumentFragment();
-                        while (parent.firstChild) {
-                            fragment.appendChild(parent.firstChild);
-                        }
-                        if (parent.parentNode) {
-                            parent.parentNode.replaceChild(fragment, parent);
-                        }
-                    }
-                });
+                doc.body.querySelectorAll('iframe').forEach(unwrapFromDiv);
+                doc.body.querySelectorAll('video').forEach(unwrapFromDiv);
+                doc.body.querySelectorAll('img').forEach(unwrapFromDiv);
+                doc.body.querySelectorAll('a[download]').forEach(unwrapFromDiv);
 
                 contentForDeserialization = doc.body.innerHTML.trim();
 
@@ -473,15 +464,24 @@ export const SlideMaterial = ({
 
         const editorContent = sanitizeNodes(rawEditorContent);
 
-        // Fix Embed provider.type & provider.id after deserialization.
+        // Fix Embed/Video provider.type & provider.id after deserialization.
         // The @yoopta/embed deserializer sets provider.type to the hostname
         // (e.g. "www.youtube.com") and provider.id to the full URL, but the
         // render component looks up by short name ("youtube", "vimeo", …).
+        // The @yoopta/video deserializer doesn't reconstruct provider at all,
+        // so we detect provider from the src URL and add it back.
         if (editorContent && typeof editorContent === 'object') {
             Object.values(editorContent).forEach((block: any) => {
-                if (block?.type !== 'Embed') return;
+                if (block?.type !== 'Embed' && block?.type !== 'Video') return;
                 const el = block?.value?.[0];
-                const prov = el?.props?.provider;
+                if (!el?.props) return;
+
+                // For Video blocks, reconstruct provider from src if missing
+                if (block.type === 'Video' && !el.props.provider?.url && el.props.src) {
+                    el.props.provider = { type: null, id: '', url: el.props.src };
+                }
+
+                const prov = el.props.provider;
                 if (!prov?.url) return;
                 const url = prov.url;
                 const detect: [string, RegExp][] = [

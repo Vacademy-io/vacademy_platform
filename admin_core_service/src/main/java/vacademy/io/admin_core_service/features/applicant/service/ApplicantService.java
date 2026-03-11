@@ -46,6 +46,16 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.ParentWithChildDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
+import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.payment.enums.PaymentType;
+import vacademy.io.admin_core_service.features.fee_management.service.ApplicationFeeReceiptService;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
@@ -135,6 +145,12 @@ public class ApplicantService {
 
         @Autowired
         private TimelineEventService timelineEventService;
+
+        @Autowired
+        private ApplicationFeeReceiptService applicationFeeReceiptService;
+
+        @Autowired
+        private PaymentLogService paymentLogService;
 
         // Correct Imports for Payment DTOs
         // using fully qualified names in method signature to avoid ambiguity if needed
@@ -1439,6 +1455,29 @@ public class ApplicantService {
                                         UserPlanStatusEnum.PENDING_FOR_PAYMENT.name());
                 }
 
+                // SECURE FLAG FOR WEBHOOK: If payment is for application fees, flag it for
+                // Razorpay Webhook
+                if (paymentOptionId != null && (paymentOptionId.contains("application_fee")
+                                || paymentOptionId.contains("admission_fee"))) { // Handle both admission/application
+                                                                                 // fee formats
+                        requestDTO.setPaymentType(vacademy.io.common.payment.enums.PaymentType.APPLICATION_FEE);
+                } else {
+                        // Keep previous default behavior for other payments
+                        requestDTO.setPaymentType(vacademy.io.common.payment.enums.PaymentType.INITIAL); // Fallback
+                                                                                                         // for
+                                                                                                         // normal
+                                                                                                         // payments
+                }
+
+                // Inject applicantId and optionId into Gateway Requests so PaymentService saves
+                // them
+                // in the Razorpay order notes -> which then flow to the webhook
+                if (requestDTO.getRazorpayRequest() == null) {
+                        requestDTO.setRazorpayRequest(new vacademy.io.common.payment.dto.RazorpayRequestDTO());
+                }
+                requestDTO.getRazorpayRequest().setApplicantId(applicantId);
+                requestDTO.getRazorpayRequest().setPaymentOptionId(paymentOptionId);
+
                 vacademy.io.common.payment.dto.PaymentResponseDTO response;
                 boolean isManualPayment = "MANUAL".equalsIgnoreCase(requestDTO.getVendor());
 
@@ -1472,7 +1511,7 @@ public class ApplicantService {
                         paymentLog.setPaymentStatus("PAID");
                         paymentLog.setCurrency(requestDTO.getCurrency() != null ? requestDTO.getCurrency() : "INR");
                         paymentLog.setDate(new java.util.Date());
-                        
+
                         // Store transaction reference and admin details in payment_specific_data
                         java.util.Map<String, Object> paymentData = new java.util.HashMap<>();
                         paymentData.put("transactionRef", transactionRef);
@@ -1481,19 +1520,63 @@ public class ApplicantService {
                                 paymentData.put("recordedByUserId", userDetails.getUserId());
                                 paymentData.put("recordedByUsername", userDetails.getUsername());
                         }
-                        if (requestDTO.getManualRequest() != null && requestDTO.getManualRequest().getFileId() != null) {
+                        if (requestDTO.getManualRequest() != null
+                                        && requestDTO.getManualRequest().getFileId() != null) {
                                 paymentData.put("fileId", requestDTO.getManualRequest().getFileId());
                         }
-                        
+
                         try {
                                 paymentLog.setPaymentSpecificData(objectMapper.writeValueAsString(paymentData));
                         } catch (Exception e) {
                                 logger.warn("Failed to serialize payment data for manual payment", e);
                                 paymentLog.setPaymentSpecificData("{}");
                         }
-                        
+
                         paymentLogRepository.save(paymentLog);
-                        logger.info("Created PaymentLog for manual payment: {}, user_plan: {}", paymentLog.getId(), userPlan.getId());
+                        logger.info("Created PaymentLog for manual payment: {}, user_plan: {}", paymentLog.getId(),
+                                        userPlan.getId());
+
+                        // ---- INJECT APPLICATION FEE INVOICE GENERATION FOR MANUAL PAYMENTS ----
+                        try {
+                                if (vacademy.io.common.payment.enums.PaymentType.APPLICATION_FEE
+                                                .equals(requestDTO.getPaymentType())) {
+
+                                        // RELIABILITY FIX: Extract genuine parent email from DB instead of
+                                        // AudienceResponse
+                                        String contactEmail = requestDTO.getEmail();
+                                        String contactName = "Applicant";
+
+                                        if (audienceResponse != null && audienceResponse.getUserId() != null) {
+                                                try {
+                                                        List<vacademy.io.common.auth.dto.UserDTO> parentUsers = authService
+                                                                        .getUsersFromAuthServiceByUserIds(List.of(
+                                                                                        audienceResponse.getUserId()));
+                                                        if (parentUsers != null && !parentUsers.isEmpty()) {
+                                                                vacademy.io.common.auth.dto.UserDTO realParent = parentUsers
+                                                                                .get(0);
+                                                                if (realParent.getEmail() != null)
+                                                                        contactEmail = realParent.getEmail();
+                                                                if (realParent.getFullName() != null)
+                                                                        contactName = realParent.getFullName();
+                                                        }
+                                                } catch (Exception authEx) {
+                                                        logger.warn("Failed to lookup real parent account info: {}",
+                                                                        authEx.getMessage());
+                                                }
+                                        }
+
+                                        applicationFeeReceiptService.generateAndSendInvoice(
+                                                        applicantId, paymentOptionId, paymentLog.getId(), instituteId,
+                                                        java.math.BigDecimal.valueOf(requestDTO.getAmount()),
+                                                        transactionRef,
+                                                        "OFFLINE",
+                                                        contactEmail,
+                                                        contactName);
+                                }
+                        } catch (Exception ex) {
+                                logger.error("Failed to generate manual application fee invoice for applicant: {}",
+                                                applicantId, ex);
+                        }
 
                         // 3. Build response (no gateway response to parse)
                         response = new vacademy.io.common.payment.dto.PaymentResponseDTO();
@@ -1633,67 +1716,71 @@ public class ApplicantService {
                                         .findById(UUID.fromString(currentStage.getStageId()))
                                         .orElseThrow(() -> new VacademyException("Stage definition not found"));
 
-                // Check if current stage is marked as last (explicit workflow end)
-                if (currentStageDef.getIsLast() != null && currentStageDef.getIsLast()) {
-                        logger.info("Workflow completed for applicant {}. Stage '{}' is marked as last.",
-                                        applicantId, currentStageDef.getStageName());
-                        return;
-                }
-
-                // Find next stage (Sequence + 1)
-                // Assuming sequence is numeric string
-                int currentSeq = 0;
-                try {
-                        currentSeq = Integer.parseInt(currentStageDef.getSequence());
-                } catch (NumberFormatException e) {
-                        logger.error("Invalid sequence format for stage {}", currentStageDef.getId());
-                        return;
-                }
-
-                String nextSeq = String.valueOf(currentSeq + 1);
-
-                // Safe workflow_type filtering: Only filter if workflow_type exists (backward compatible)
-                Optional<ApplicationStage> nextStageOpt;
-                if (currentStageDef.getWorkflowType() != null && !currentStageDef.getWorkflowType().isEmpty()) {
-                        // Filter by workflow_type (prevents cross-workflow jumps)
-                        nextStageOpt = applicationStageRepository
-                                        .findByInstituteIdAndSourceAndSourceIdAndSequenceAndWorkflowType(
-                                                        currentStageDef.getInstituteId(),
-                                                        currentStageDef.getSource(),
-                                                        currentStageDef.getSourceId(),
-                                                        nextSeq,
-                                                        currentStageDef.getWorkflowType());
-                        logger.debug("Searching for next stage with workflow_type: {}", currentStageDef.getWorkflowType());
-                } else {
-                        // Legacy path: No workflow_type filter for NULL/empty values (backward compatible)
-                        nextStageOpt = applicationStageRepository
-                                        .findByInstituteIdAndSourceAndSourceIdAndSequence(
-                                                        currentStageDef.getInstituteId(),
-                                                        currentStageDef.getSource(),
-                                                        currentStageDef.getSourceId(),
-                                                        nextSeq);
-                        logger.warn("Applicant {} current stage has NULL/empty workflow_type, using legacy query", applicantId);
-                }
-
-                // Check if next stage exists
-                if (nextStageOpt.isPresent()) {
-                        ApplicationStage nextStage = nextStageOpt.get();
-                        
-                        ApplicantStage newStage = ApplicantStage.builder()
-                                        .applicantId(applicantId)
-                                        .stageId(nextStage.getId().toString())
-                                        .stageStatus("PENDING")
-                                        .build();
-                        applicantStageRepository.save(newStage);
-
-                        // Trigger Email if Payment STAGE
-                        if (ApplicantStageType.PAYMENT.equals(nextStage.getType())) {
-                                sendApplicationPaymentEmail(applicantId, nextStage);
+                        // Check if current stage is marked as last (explicit workflow end)
+                        if (currentStageDef.getIsLast() != null && currentStageDef.getIsLast()) {
+                                logger.info("Workflow completed for applicant {}. Stage '{}' is marked as last.",
+                                                applicantId, currentStageDef.getStageName());
+                                return;
                         }
-                } else {
-                        logger.info("No next stage found for applicant {}. Application process completed.",
-                                        applicantId);
-                }
+
+                        // Find next stage (Sequence + 1)
+                        // Assuming sequence is numeric string
+                        int currentSeq = 0;
+                        try {
+                                currentSeq = Integer.parseInt(currentStageDef.getSequence());
+                        } catch (NumberFormatException e) {
+                                logger.error("Invalid sequence format for stage {}", currentStageDef.getId());
+                                return;
+                        }
+
+                        String nextSeq = String.valueOf(currentSeq + 1);
+
+                        // Safe workflow_type filtering: Only filter if workflow_type exists (backward
+                        // compatible)
+                        Optional<ApplicationStage> nextStageOpt;
+                        if (currentStageDef.getWorkflowType() != null && !currentStageDef.getWorkflowType().isEmpty()) {
+                                // Filter by workflow_type (prevents cross-workflow jumps)
+                                nextStageOpt = applicationStageRepository
+                                                .findByInstituteIdAndSourceAndSourceIdAndSequenceAndWorkflowType(
+                                                                currentStageDef.getInstituteId(),
+                                                                currentStageDef.getSource(),
+                                                                currentStageDef.getSourceId(),
+                                                                nextSeq,
+                                                                currentStageDef.getWorkflowType());
+                                logger.debug("Searching for next stage with workflow_type: {}",
+                                                currentStageDef.getWorkflowType());
+                        } else {
+                                // Legacy path: No workflow_type filter for NULL/empty values (backward
+                                // compatible)
+                                nextStageOpt = applicationStageRepository
+                                                .findByInstituteIdAndSourceAndSourceIdAndSequence(
+                                                                currentStageDef.getInstituteId(),
+                                                                currentStageDef.getSource(),
+                                                                currentStageDef.getSourceId(),
+                                                                nextSeq);
+                                logger.warn("Applicant {} current stage has NULL/empty workflow_type, using legacy query",
+                                                applicantId);
+                        }
+
+                        // Check if next stage exists
+                        if (nextStageOpt.isPresent()) {
+                                ApplicationStage nextStage = nextStageOpt.get();
+
+                                ApplicantStage newStage = ApplicantStage.builder()
+                                                .applicantId(applicantId)
+                                                .stageId(nextStage.getId().toString())
+                                                .stageStatus("PENDING")
+                                                .build();
+                                applicantStageRepository.save(newStage);
+
+                                // Trigger Email if Payment STAGE
+                                if (ApplicantStageType.PAYMENT.equals(nextStage.getType())) {
+                                        sendApplicationPaymentEmail(applicantId, nextStage);
+                                }
+                        } else {
+                                logger.info("No next stage found for applicant {}. Application process completed.",
+                                                applicantId);
+                        }
 
                 } catch (Exception e) {
                         logger.error("Error moving to next stage for applicant {}", applicantId, e);
@@ -1723,7 +1810,8 @@ public class ApplicantService {
                                                         + "' is marked as the last stage of this workflow.");
                 }
 
-                // Step 3: Resolve next stage (sequence + 1, same institute/source/sourceId/workflowType)
+                // Step 3: Resolve next stage (sequence + 1, same
+                // institute/source/sourceId/workflowType)
                 int currentSeq = 0;
                 try {
                         currentSeq = Integer.parseInt(currentStageDef.getSequence());
@@ -1733,7 +1821,8 @@ public class ApplicantService {
 
                 String nextSeq = String.valueOf(currentSeq + 1);
 
-                // Safe workflow_type filtering: Only filter if workflow_type exists (backward compatible)
+                // Safe workflow_type filtering: Only filter if workflow_type exists (backward
+                // compatible)
                 Optional<ApplicationStage> nextStageOpt;
                 if (currentStageDef.getWorkflowType() != null && !currentStageDef.getWorkflowType().isEmpty()) {
                         // Filter by workflow_type (prevents cross-workflow jumps)
@@ -1747,7 +1836,8 @@ public class ApplicantService {
                         logger.debug("Admin moving applicant {} with workflow_type filter: {}", applicantId,
                                         currentStageDef.getWorkflowType());
                 } else {
-                        // Legacy path: No workflow_type filter for NULL/empty values (backward compatible)
+                        // Legacy path: No workflow_type filter for NULL/empty values (backward
+                        // compatible)
                         nextStageOpt = applicationStageRepository
                                         .findByInstituteIdAndSourceAndSourceIdAndSequence(
                                                         currentStageDef.getInstituteId(),
@@ -2161,4 +2251,5 @@ public class ApplicantService {
                                 "</body>" +
                                 "</html>";
         }
+
 }

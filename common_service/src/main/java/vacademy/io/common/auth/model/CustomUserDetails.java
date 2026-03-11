@@ -50,6 +50,7 @@ public class CustomUserDetails extends User implements UserDetails {
         // Set the password securely from the User object
         this.password = user.getPassword();
         this.userId = user.getId();
+        this.setRootUser(user.isRootUser());
 
         // Create a list to store authorities strings
         List<String> auths = new ArrayList<>();
@@ -73,6 +74,7 @@ public class CustomUserDetails extends User implements UserDetails {
         this.setUsername(user.getUsername());
         this.password = "";
         this.userId = user.getUserId();
+        this.setRootUser(user.isRootUser());
 
         // Create a list to store authorities strings
         List<String> auths = new ArrayList<>();

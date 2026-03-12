@@ -33,6 +33,10 @@ def _require_super_admin(user: Optional[CustomUserDetails]):
     """Raise 403 if user is not a super admin."""
     if not user:
         raise HTTPException(status_code=403, detail="Super admin access required")
+    # Primary check: is_root_user boolean flag (matches Java User.isRootUser)
+    if user.is_root_user:
+        return
+    # Fallback: check roles list for ROOT_ADMIN or ADMIN
     roles = user.roles if hasattr(user, "roles") else []
     if isinstance(roles, str):
         roles = [r.strip() for r in roles.split(",")]
@@ -50,6 +54,7 @@ def get_all_credits(
     page_size: int = Query(20, ge=1, le=50),
     sort_by: str = Query("current_balance", enum=["current_balance", "total_credits", "used_credits"]),
     sort_direction: str = Query("ASC", enum=["ASC", "DESC"]),
+    search: Optional[str] = Query(None),
     db: Session = Depends(db_dependency),
     current_user: CustomUserDetails = Depends(get_current_user),
 ):
@@ -58,17 +63,24 @@ def get_all_credits(
 
         offset = (page - 1) * page_size
 
-        count_result = db.execute(text("SELECT COUNT(*) FROM institute_credits"))
+        where_clause = ""
+        params = {"limit": page_size, "offset": offset}
+        if search and search.strip():
+            where_clause = "WHERE CAST(institute_id AS TEXT) ILIKE :search"
+            params["search"] = f"%{search.strip()}%"
+
+        count_result = db.execute(text(f"SELECT COUNT(*) FROM institute_credits {where_clause}"), params)
         total = count_result.scalar() or 0
 
         query = text(f"""
             SELECT institute_id, total_credits, used_credits, current_balance,
                    low_balance_threshold, created_at, updated_at
             FROM institute_credits
+            {where_clause}
             ORDER BY {sort_by} {sort_direction}
             LIMIT :limit OFFSET :offset
         """)
-        rows = db.execute(query, {"limit": page_size, "offset": offset}).fetchall()
+        rows = db.execute(query, params).fetchall()
 
         items = []
         for row in rows:

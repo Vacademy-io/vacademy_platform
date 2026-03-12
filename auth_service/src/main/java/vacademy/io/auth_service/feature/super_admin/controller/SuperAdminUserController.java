@@ -10,6 +10,8 @@ import vacademy.io.auth_service.feature.super_admin.service.SuperAdminAnalyticsS
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.util.SuperAdminAuthUtil;
 
+import java.util.Map;
+
 @Slf4j
 @RestController
 @RequestMapping("/auth-service/super-admin/v1")
@@ -33,6 +35,22 @@ public class SuperAdminUserController {
                     instituteId, role, search, page, size));
         } catch (Exception e) {
             log.error("Error in getInstituteUsers: {}", e.getMessage());
+            throw e;
+        }
+    }
+
+    @PutMapping("/institutes/{instituteId}/users/{userId}/deactivate")
+    public ResponseEntity<Map<String, String>> deactivateUser(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String instituteId,
+            @PathVariable String userId) {
+        try {
+            SuperAdminAuthUtil.requireSuperAdmin(user);
+            superAdminAnalyticsService.deactivateUserFromInstitute(instituteId, userId);
+            return ResponseEntity.ok(Map.of("status", "success", "message",
+                    "User deactivated from institute"));
+        } catch (Exception e) {
+            log.error("Error deactivating user {} from institute {}: {}", userId, instituteId, e.getMessage());
             throw e;
         }
     }

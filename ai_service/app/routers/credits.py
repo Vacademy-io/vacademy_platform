@@ -53,12 +53,15 @@ def get_credit_service(db: Session = Depends(db_dependency)) -> CreditService:
     return CreditService(db)
 
 
-def check_root_admin(user: Optional[dict]) -> bool:
-    """Check if user is a ROOT_ADMIN."""
+def check_root_admin(user) -> bool:
+    """Check if user is a root admin (super admin)."""
     if not user:
         return False
-    roles = user.get("roles", [])
-    # Check both comma separated string and list formats
+    # Primary check: is_root_user boolean flag (matches Java User.isRootUser)
+    if hasattr(user, "is_root_user") and user.is_root_user:
+        return True
+    # Fallback: check roles list
+    roles = getattr(user, "roles", []) if not isinstance(user, dict) else user.get("roles", [])
     if isinstance(roles, str):
         roles = [r.strip() for r in roles.split(",")]
     return "ROOT_ADMIN" in roles
@@ -110,6 +113,33 @@ def grant_credits(
     
     user_id = current_user.get("user_id", "system") if current_user else "system"
     return service.grant_credits(institute_id, request, granted_by=user_id)
+
+
+# ============================================================================
+# Admin Credit Deduction Endpoint (ROOT_ADMIN only)
+# ============================================================================
+
+@router.post(
+    "/institutes/{institute_id}/deduct-admin",
+    response_model=CreditGrantResponse,
+    summary="Deduct credits from institute (ROOT_ADMIN only)",
+    description="Admin deduction of credits from an institute. Only ROOT_ADMIN can perform this action.",
+)
+def admin_deduct_credits(
+    institute_id: str,
+    request: CreditGrantRequest,
+    service: CreditService = Depends(get_credit_service),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """Deduct credits from an institute (admin action)."""
+    if not check_root_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only ROOT_ADMIN can deduct credits",
+        )
+
+    user_id = current_user.get("user_id", "system") if current_user else "system"
+    return service.admin_deduct_credits(institute_id, request, deducted_by=user_id)
 
 
 # ============================================================================

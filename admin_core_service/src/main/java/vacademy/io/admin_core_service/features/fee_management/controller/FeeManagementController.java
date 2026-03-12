@@ -26,7 +26,7 @@ public class FeeManagementController {
     public ResponseEntity<ComplexPaymentOptionDTO> createCpo(
             @RequestBody ComplexPaymentOptionDTO request,
             @RequestAttribute("user") CustomUserDetails userDetails) {
-        return ResponseEntity.ok(feeManagementService.createCpo(request));
+        return ResponseEntity.ok(feeManagementService.createCpo(request, userDetails));
     }
 
     /**
@@ -95,13 +95,28 @@ public class FeeManagementController {
 
     /**
      * API #7: Get all CPO options available for a package session (class).
-     * Returns full CPO details with fee breakdown for admin to select during admission.
-     * GET /admin-core-service/v1/fee-management/package-session/{packageSessionId}/cpo-options
+     * Returns full CPO details with fee breakdown for admin to select during
+     * admission.
+     * GET
+     * /admin-core-service/v1/fee-management/package-session/{packageSessionId}/cpo-options
      */
     @GetMapping("/package-session/{packageSessionId}/cpo-options")
     public ResponseEntity<List<ComplexPaymentOptionDTO>> getCpoOptionsForPackageSession(
             @PathVariable String packageSessionId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(feeManagementService.getCpoOptionsForPackageSession(packageSessionId));
+    }
+
+    /**
+     * API #8: Approve a PENDING_APPROVAL CPO.
+     * Only admins should call this. Moves CPO status from PENDING_APPROVAL →
+     * ACTIVE.
+     * POST /admin-core-service/v1/fee-management/cpo/{cpoId}/approve
+     */
+    @PostMapping("/cpo/{cpoId}/approve")
+    public ResponseEntity<ComplexPaymentOptionDTO> approveCpo(
+            @PathVariable String cpoId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(feeManagementService.approveCpo(cpoId, userDetails));
     }
 }

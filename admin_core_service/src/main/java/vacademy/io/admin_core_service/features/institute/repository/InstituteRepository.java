@@ -218,4 +218,73 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
                    OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :search, '%')))
             """, nativeQuery = true)
     Long countCoursesByInstitute(@Param("instituteId") String instituteId, @Param("search") String search);
+
+    // ==================== Lead Tag Queries ====================
+
+    @Transactional
+    @Modifying
+    @Query(value = "UPDATE institutes SET lead_tag = :leadTag, updated_at = CURRENT_TIMESTAMP WHERE id = :instituteId",
+            nativeQuery = true)
+    int updateLeadTag(@Param("instituteId") String instituteId, @Param("leadTag") String leadTag);
+
+    // ==================== Filtered + Sorted Institute List ====================
+
+    @Query(value = """
+            SELECT i.id, i.name, i.email, i.city, i.state, i.type, i.logo_file_id, i.subdomain, i.created_at,
+                COALESCE(sc.cnt, 0) AS student_count,
+                COALESCE(cc.cnt, 0) AS course_count,
+                COALESCE(bc.cnt, 0) AS batch_count,
+                i.lead_tag
+            FROM institutes i
+            LEFT JOIN LATERAL (
+                SELECT COUNT(DISTINCT ssigm.user_id) AS cnt
+                FROM student_session_institute_group_mapping ssigm
+                JOIN package_session ps ON ssigm.package_session_id = ps.id
+                WHERE ssigm.institute_id = i.id
+                  AND ssigm.status NOT IN ('DELETED','INACTIVE','TERMINATED')
+                  AND ps.status IN ('ACTIVE','HIDDEN')
+            ) sc ON true
+            LEFT JOIN LATERAL (
+                SELECT COUNT(DISTINCT pi.package_id) AS cnt
+                FROM package_institute pi
+                JOIN package p ON pi.package_id = p.id
+                WHERE pi.institute_id = i.id AND p.status != 'DELETED'
+            ) cc ON true
+            LEFT JOIN LATERAL (
+                SELECT COUNT(ps.id) AS cnt
+                FROM package_session ps
+                JOIN package p ON ps.package_id = p.id
+                JOIN package_institute pi ON p.id = pi.package_id
+                WHERE pi.institute_id = i.id AND ps.status IN ('ACTIVE','HIDDEN')
+            ) bc ON true
+            WHERE (:search IS NULL OR :search = ''
+                   OR LOWER(i.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(i.city) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(i.email) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:leadTag IS NULL OR :leadTag = '' OR i.lead_tag = :leadTag)
+            ORDER BY
+                CASE WHEN :sortBy = 'student_count' AND :sortDirection = 'ASC' THEN COALESCE(sc.cnt, 0) END ASC,
+                CASE WHEN :sortBy = 'student_count' AND :sortDirection = 'DESC' THEN COALESCE(sc.cnt, 0) END DESC,
+                CASE WHEN :sortBy = 'course_count' AND :sortDirection = 'ASC' THEN COALESCE(cc.cnt, 0) END ASC,
+                CASE WHEN :sortBy = 'course_count' AND :sortDirection = 'DESC' THEN COALESCE(cc.cnt, 0) END DESC,
+                CASE WHEN :sortBy = 'batch_count' AND :sortDirection = 'ASC' THEN COALESCE(bc.cnt, 0) END ASC,
+                CASE WHEN :sortBy = 'batch_count' AND :sortDirection = 'DESC' THEN COALESCE(bc.cnt, 0) END DESC,
+                i.created_at DESC
+            LIMIT :size OFFSET :offset
+            """, nativeQuery = true)
+    List<Object[]> findAllInstitutesFiltered(@Param("search") String search,
+            @Param("leadTag") String leadTag,
+            @Param("sortBy") String sortBy,
+            @Param("sortDirection") String sortDirection,
+            @Param("size") int size, @Param("offset") int offset);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM institutes i
+            WHERE (:search IS NULL OR :search = ''
+                   OR LOWER(i.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(i.city) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(i.email) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:leadTag IS NULL OR :leadTag = '' OR i.lead_tag = :leadTag)
+            """, nativeQuery = true)
+    Long countAllInstitutesFiltered(@Param("search") String search, @Param("leadTag") String leadTag);
 }

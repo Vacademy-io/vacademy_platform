@@ -13,11 +13,14 @@ import vacademy.io.admin_core_service.features.super_admin.dto.PlatformDashboard
 import vacademy.io.admin_core_service.features.super_admin.dto.SuperAdminPageResponse;
 import vacademy.io.common.institute.entity.Institute;
 
+import vacademy.io.common.exceptions.VacademyException;
+
 import java.sql.Timestamp;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -29,17 +32,22 @@ public class SuperAdminInstituteService {
     @Autowired
     private CreditClient creditClient;
 
+    private static final Set<String> VALID_LEAD_TAGS = Set.of("PROD", "LEAD", "TEST", "FREE_TRIAL");
+
     @Transactional(readOnly = true)
-    @Cacheable(value = "superAdminInstituteList",
-            key = "'list:' + #page + ':' + #size + ':' + (#search != null ? #search : '')")
-    public SuperAdminPageResponse<InstituteListItemDTO> listAllInstitutes(String search, int page, int size) {
+    public SuperAdminPageResponse<InstituteListItemDTO> listAllInstitutes(
+            String search, String leadTag, String sortBy, String sortDirection, int page, int size) {
         try {
             int offset = page * size;
-            List<Object[]> rows = instituteRepository.findAllInstitutesWithCounts(search, size, offset);
-            Long total = instituteRepository.countAllInstitutes(search);
+            String safeSortBy = sortBy != null ? sortBy : "created_at";
+            String safeSortDir = "ASC".equalsIgnoreCase(sortDirection) ? "ASC" : "DESC";
+
+            List<Object[]> rows = instituteRepository.findAllInstitutesFiltered(
+                    search, leadTag, safeSortBy, safeSortDir, size, offset);
+            Long total = instituteRepository.countAllInstitutesFiltered(search, leadTag);
 
             List<InstituteListItemDTO> content = rows.stream()
-                    .map(this::mapToInstituteListItem)
+                    .map(this::mapToInstituteListItemWithTag)
                     .toList();
 
             return SuperAdminPageResponse.<InstituteListItemDTO>builder()
@@ -117,6 +125,7 @@ public class SuperAdminInstituteService {
                     .batchCount(batchCount)
                     .profileCompletionPercentage(profileCompletion)
                     .creditBalance(creditBalance)
+                    .leadTag(inst.getLeadTag())
                     .build();
         } catch (Exception e) {
             log.error("Error getting institute detail for {}: {}", instituteId, e.getMessage(), e);
@@ -159,6 +168,17 @@ public class SuperAdminInstituteService {
         }
     }
 
+    @Transactional
+    public void updateLeadTag(String instituteId, String leadTag) {
+        if (!VALID_LEAD_TAGS.contains(leadTag)) {
+            throw new VacademyException("Invalid lead tag: " + leadTag + ". Must be one of: " + VALID_LEAD_TAGS);
+        }
+        int updated = instituteRepository.updateLeadTag(instituteId, leadTag);
+        if (updated == 0) {
+            throw new VacademyException("Institute not found: " + instituteId);
+        }
+    }
+
     private InstituteListItemDTO mapToInstituteListItem(Object[] row) {
         return InstituteListItemDTO.builder()
                 .id(toString(row[0]))
@@ -173,6 +193,24 @@ public class SuperAdminInstituteService {
                 .studentCount(toLong(row[9]))
                 .courseCount(toLong(row[10]))
                 .batchCount(toLong(row[11]))
+                .build();
+    }
+
+    private InstituteListItemDTO mapToInstituteListItemWithTag(Object[] row) {
+        return InstituteListItemDTO.builder()
+                .id(toString(row[0]))
+                .name(toString(row[1]))
+                .email(toString(row[2]))
+                .city(toString(row[3]))
+                .state(toString(row[4]))
+                .type(toString(row[5]))
+                .logoFileId(toString(row[6]))
+                .subdomain(toString(row[7]))
+                .createdAt(toDate(row[8]))
+                .studentCount(toLong(row[9]))
+                .courseCount(toLong(row[10]))
+                .batchCount(toLong(row[11]))
+                .leadTag(toString(row[12]))
                 .build();
     }
 

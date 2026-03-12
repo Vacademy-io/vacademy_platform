@@ -40,6 +40,15 @@ public class AssignedFeeValue {
     @Column(name = "penalty_percentage")
     private BigDecimal penaltyPercentage;
 
+    @Column(name = "original_amount")
+    private BigDecimal originalAmount;
+
+    @Column(name = "discount_type")
+    private String discountType; // PERCENTAGE, FLAT, or null
+
+    @Column(name = "discount_value")
+    private BigDecimal discountValue;
+
     @Column(name = "status")
     private String status;
 

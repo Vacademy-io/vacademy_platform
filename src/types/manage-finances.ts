@@ -21,7 +21,7 @@ export interface StudentFeePaymentRowDTO {
     studentId: string;
     studentName: string;
     studentEmail: string;
-    packageSessionName: string; // The course name
+    packageSessionIds: string[]; // Array of linked package session IDs (may be empty for no enrollment)
     feeTypeName: string; // e.g., "Tuition Fee"
     installmentNumber: number;
     amountExpected: number;

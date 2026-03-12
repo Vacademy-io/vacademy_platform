@@ -48,13 +48,14 @@ export function ManageFinancesTable({
 }: ManageFinancesTableProps) {
     const tableData: TableData<StudentFeePaymentRowDTO> | undefined = useMemo(() => {
         if (!data) return undefined;
+        const d = data as any;
         return {
-            content: data.content,
-            total_pages: data.totalPages,
-            page_no: data.number,
-            page_size: data.size,
-            total_elements: data.totalElements,
-            last: data.last,
+            content: d.content || [],
+            total_pages: d.totalPages ?? d.total_pages ?? 0,
+            page_no: d.number ?? d.page_no ?? d.page ?? 0,
+            page_size: d.size ?? d.page_size ?? 10,
+            total_elements: d.totalElements ?? d.total_elements ?? 0,
+            last: d.last ?? false,
         };
     }, [data]);
 
@@ -63,37 +64,50 @@ export function ManageFinancesTable({
             {
                 id: 'student',
                 header: 'Student',
-                accessorFn: (row) => row.studentName || '',
+                accessorFn: (row: any) => row.studentName || row.student_name || '',
                 cell: ({ row }) => {
+                    const data = row.original as any;
                     return (
                         <div className="space-y-1">
-                            <div className="font-medium text-gray-900">{row.original.studentName || '-'}</div>
-                            <div className="text-xs text-gray-500">{row.original.studentEmail || '-'}</div>
+                            <div className="font-medium text-gray-900">{data.studentName || data.student_name || '-'}</div>
+                            <div className="text-xs text-gray-500">{data.studentEmail || data.student_email || '-'}</div>
                         </div>
                     );
                 },
                 size: 200,
             },
             {
-                id: 'packageSessionName',
+                id: 'packageSessionIds',
                 header: 'Course/Package',
-                accessorFn: (row) => row.packageSessionName || '',
+                accessorFn: (row: any) => {
+                    const ids: string[] = row.packageSessionIds || row.package_session_ids || [];
+                    return ids?.length ? ids.join(', ') : '—';
+                },
                 cell: ({ row }) => {
+                    const data = row.original as any;
+                    const ids: string[] = data.packageSessionIds || data.package_session_ids || [];
+                    const display =
+                        !ids || ids.length === 0
+                            ? '—'
+                            : ids.join(', ');
                     return (
-                        <div className="text-sm text-gray-900">{row.original.packageSessionName || '-'}</div>
+                        <div className="text-sm text-gray-900 break-all" title={display}>
+                            {display}
+                        </div>
                     );
                 },
-                size: 180,
+                size: 220,
             },
             {
                 id: 'feeDetails',
                 header: 'Fee Details',
-                accessorFn: (row) => row.feeTypeName || '',
+                accessorFn: (row: any) => row.feeTypeName || row.fee_type_name || '',
                 cell: ({ row }) => {
+                    const data = row.original as any;
                     return (
                         <div className="space-y-1">
-                            <div className="font-medium text-gray-900">{row.original.feeTypeName || '-'}</div>
-                            <div className="text-xs text-gray-500">Inst. #{row.original.installmentNumber}</div>
+                            <div className="font-medium text-gray-900">{data.feeTypeName || data.fee_type_name || '-'}</div>
+                            <div className="text-xs text-gray-500">Inst. #{data.installmentNumber ?? data.installment_number}</div>
                         </div>
                     );
                 },
@@ -102,11 +116,12 @@ export function ManageFinancesTable({
             {
                 id: 'amountExpected',
                 header: 'Expected',
-                accessorFn: (row) => row.amountExpected || 0,
+                accessorFn: (row: any) => row.amountExpected ?? row.amount_expected ?? 0,
                 cell: ({ row }) => {
+                    const data = row.original as any;
                     return (
                         <div className="font-semibold text-gray-900">
-                            {formatCurrency(row.original.amountExpected)}
+                            {formatCurrency(data.amountExpected ?? data.amount_expected ?? 0)}
                         </div>
                     );
                 },
@@ -115,11 +130,12 @@ export function ManageFinancesTable({
             {
                 id: 'amountPaid',
                 header: 'Paid',
-                accessorFn: (row) => row.amountPaid || 0,
+                accessorFn: (row: any) => row.amountPaid ?? row.amount_paid ?? 0,
                 cell: ({ row }) => {
+                    const data = row.original as any;
                     return (
                         <div className="font-semibold text-gray-900">
-                            {formatCurrency(row.original.amountPaid)}
+                            {formatCurrency(data.amountPaid ?? data.amount_paid ?? 0)}
                         </div>
                     );
                 },
@@ -128,11 +144,12 @@ export function ManageFinancesTable({
             {
                 id: 'totalDue',
                 header: 'Due',
-                accessorFn: (row) => row.totalDue || 0,
+                accessorFn: (row: any) => row.totalDue ?? row.total_due ?? 0,
                 cell: ({ row }) => {
+                    const data = row.original as any;
                     return (
                         <div className="font-semibold text-gray-900">
-                            {formatCurrency(row.original.totalDue)}
+                            {formatCurrency(data.totalDue ?? data.total_due ?? 0)}
                         </div>
                     );
                 },
@@ -141,10 +158,11 @@ export function ManageFinancesTable({
             {
                 id: 'dueDate',
                 header: 'Due Date',
-                accessorFn: (row) => row.dueDate || '',
+                accessorFn: (row: any) => row.dueDate || row.due_date || '',
                 cell: ({ row }) => {
+                    const data = row.original as any;
                     return (
-                        <div className="text-sm text-gray-700">{row.original.dueDate || '-'}</div>
+                        <div className="text-sm text-gray-700">{data.dueDate || data.due_date || '-'}</div>
                     );
                 },
                 size: 140,
@@ -152,9 +170,10 @@ export function ManageFinancesTable({
             {
                 id: 'status',
                 header: 'Status',
-                accessorFn: (row) => row.status || '',
+                accessorFn: (row: any) => row.status || '',
                 cell: ({ row }) => {
-                    const status = row.original.status;
+                    const data = row.original as any;
+                    const status = data.status;
                     return (
                         <Badge variant={getStatusBadgeVariant(status)} className="font-medium">
                             {status?.replace(/_/g, ' ') || '-'}

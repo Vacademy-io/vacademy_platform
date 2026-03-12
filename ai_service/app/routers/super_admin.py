@@ -33,6 +33,10 @@ def _require_super_admin(user: Optional[CustomUserDetails]):
     """Raise 403 if user is not a super admin."""
     if not user:
         raise HTTPException(status_code=403, detail="Super admin access required")
+    # Primary check: is_root_user boolean flag (matches Java User.isRootUser)
+    if user.is_root_user:
+        return
+    # Fallback: check roles list for ROOT_ADMIN or ADMIN
     roles = user.roles if hasattr(user, "roles") else []
     if isinstance(roles, str):
         roles = [r.strip() for r in roles.split(",")]

@@ -144,11 +144,14 @@ async def _verify_and_fetch_user(auth_header: str, request: Request, settings: S
             
             if response.status_code == 200:
                 data = response.json()
+                # Java serializes isRootUser as "rootUser" (Jackson boolean convention)
+                is_root = data.get("rootUser", False) or data.get("isRootUser", False) or data.get("is_root_user", False)
                 return CustomUserDetails(
                     username=data.get("username", username),
                     user_id=data.get("userId"),
                     institute_id=client_id,
                     enabled=data.get("enabled", True),
+                    is_root_user=bool(is_root),
                     roles=data.get("roles", []),
                     authorities=data.get("authorities", [])
                 )
@@ -164,14 +167,17 @@ async def _verify_and_fetch_user(auth_header: str, request: Request, settings: S
 
 def _create_user_from_jwt_payload(payload: dict) -> CustomUserDetails:
     # Use 'user' claim for ID if present (from Java generateToken)
-    user_id = payload.get("user") 
+    user_id = payload.get("user")
     if not user_id:
-        # Generate or use sub?
         user_id = "unknown"
-        
+
+    # Extract is_root_user from JWT claims (Java puts "is_root_user": true/false)
+    is_root = payload.get("is_root_user", False)
+
     return CustomUserDetails(
         username=payload.get("sub"),
         user_id=str(user_id),
-        roles=[], 
+        is_root_user=bool(is_root),
+        roles=[],
         authorities=list(payload.get("authorities", {}).keys()) if isinstance(payload.get("authorities"), dict) else []
     )

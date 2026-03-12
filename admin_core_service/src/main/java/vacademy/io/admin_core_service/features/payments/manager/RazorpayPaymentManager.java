@@ -27,7 +27,7 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
 
     @Override
     public PaymentResponseDTO initiatePayment(UserDTO user, PaymentInitiationRequestDTO request,
-                                              Map<String, Object> paymentGatewaySpecificData) {
+            Map<String, Object> paymentGatewaySpecificData) {
 
         try {
             validateRequest(request);
@@ -46,7 +46,7 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
 
     @Override
     public Map<String, Object> createCustomer(UserDTO user, PaymentInitiationRequestDTO request,
-                                              Map<String, Object> paymentGatewaySpecificData) {
+            Map<String, Object> paymentGatewaySpecificData) {
 
         try {
             validateInput(user, request);
@@ -64,7 +64,7 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
 
     @Override
     public Map<String, Object> createCustomerForUnknownUser(String email, PaymentInitiationRequestDTO request,
-                                                            Map<String, Object> paymentGatewaySpecificData) {
+            Map<String, Object> paymentGatewaySpecificData) {
 
         try {
             validateInputForUnknownUser(email, request);
@@ -112,8 +112,8 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
     }
 
     private Order createRazorpayOrder(RazorpayClient razorpayClient,
-                                      PaymentInitiationRequestDTO request,
-                                      long amountInPaise) throws RazorpayException {
+            PaymentInitiationRequestDTO request,
+            long amountInPaise) throws RazorpayException {
 
         JSONObject orderRequest = new JSONObject();
         orderRequest.put("amount", amountInPaise);
@@ -123,11 +123,22 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
         JSONObject notes = new JSONObject();
         notes.put("orderId", request.getOrderId());
         notes.put("instituteId", request.getInstituteId());
-        notes.put("payment_type", request.getPaymentType() != null ?
-                request.getPaymentType().name() : PaymentType.INITIAL.name());
+        notes.put("payment_type",
+                request.getPaymentType() != null ? request.getPaymentType().name() : PaymentType.INITIAL.name());
 
         if (StringUtils.hasText(request.getDescription())) {
             notes.put("description", request.getDescription());
+        }
+
+        if (request.getRazorpayRequest() != null) {
+            String applicantId = request.getRazorpayRequest().getApplicantId();
+            if (StringUtils.hasText(applicantId)) {
+                notes.put("applicantId", applicantId);
+            }
+            String optionId = request.getRazorpayRequest().getPaymentOptionId();
+            if (StringUtils.hasText(optionId)) {
+                notes.put("paymentOptionId", optionId);
+            }
         }
 
         orderRequest.put("notes", notes);
@@ -136,7 +147,7 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
     }
 
     private PaymentResponseDTO buildPaymentResponseFromOrder(Order order, PaymentInitiationRequestDTO request,
-                                                             Map<String, Object> paymentGatewaySpecificData) {
+            Map<String, Object> paymentGatewaySpecificData) {
         Map<String, Object> responseData = new HashMap<>();
 
         try {
@@ -149,7 +160,8 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             responseData.put("receipt", order.has("receipt") ? order.get("receipt") : request.getOrderId());
             responseData.put("status", order.has("status") ? order.get("status") : "created");
             responseData.put("attempts", order.has("attempts") ? order.get("attempts") : 0);
-            responseData.put("createdAt", order.has("created_at") ? order.get("created_at") : System.currentTimeMillis() / 1000);
+            responseData.put("createdAt",
+                    order.has("created_at") ? order.get("created_at") : System.currentTimeMillis() / 1000);
 
             RazorpayRequestDTO razorpayRequest = request.getRazorpayRequest();
             if (razorpayRequest != null) {
@@ -163,7 +175,8 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             }
 
             String orderStatus = order.has("status") && order.get("status") != null
-                    ? order.get("status").toString() : "created";
+                    ? order.get("status").toString()
+                    : "created";
 
             PaymentStatusEnum paymentStatus = "created".equalsIgnoreCase(orderStatus)
                     ? PaymentStatusEnum.PAYMENT_PENDING
@@ -215,7 +228,7 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
     }
 
     private JSONObject buildRazorpayCustomerParamsForUnknownUser(String email,
-                                                                 PaymentInitiationRequestDTO request) {
+            PaymentInitiationRequestDTO request) {
         JSONObject params = new JSONObject();
         params.put("name", "Anonymous User");
         params.put("email", email);
@@ -240,13 +253,17 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             dto.setId(razorpayCustomer.has("id") ? razorpayCustomer.get("id").toString() : null);
             dto.setEntity(razorpayCustomer.has("entity") ? razorpayCustomer.get("entity").toString() : null);
             dto.setName(razorpayCustomer.has("name") && razorpayCustomer.get("name") != null
-                    ? razorpayCustomer.get("name").toString() : null);
+                    ? razorpayCustomer.get("name").toString()
+                    : null);
             dto.setEmail(razorpayCustomer.has("email") && razorpayCustomer.get("email") != null
-                    ? razorpayCustomer.get("email").toString() : null);
+                    ? razorpayCustomer.get("email").toString()
+                    : null);
             dto.setContact(razorpayCustomer.has("contact") && razorpayCustomer.get("contact") != null
-                    ? razorpayCustomer.get("contact").toString() : null);
+                    ? razorpayCustomer.get("contact").toString()
+                    : null);
             dto.setGstin(razorpayCustomer.has("gstin") && razorpayCustomer.get("gstin") != null
-                    ? razorpayCustomer.get("gstin").toString() : null);
+                    ? razorpayCustomer.get("gstin").toString()
+                    : null);
 
             if (razorpayCustomer.has("created_at") && razorpayCustomer.get("created_at") != null) {
                 try {

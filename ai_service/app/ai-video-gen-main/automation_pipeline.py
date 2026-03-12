@@ -41,32 +41,34 @@ except ImportError:
     rembg_new_session = None   # type: ignore[assignment]
     print("⚠️  rembg not installed — cutout background removal disabled. pip install rembg")
 
-# Singleton rembg session — loads u2net model (~176MB) ONCE, shared across threads.
-# Without this, each ThreadPoolExecutor worker loads its own copy → OOM.
+# Singleton rembg session — loads model ONCE, shared across threads.
+# Uses u2netp (4.7MB) instead of u2net (176MB) to reduce memory footprint.
+# A lock serializes inference calls so only one thread runs rembg at a time,
+# preventing ONNX Runtime from allocating concurrent inference buffers → OOM.
 _rembg_session = None
-_rembg_session_lock = None
+_rembg_lock = None
 try:
     import threading
-    _rembg_session_lock = threading.Lock()
+    _rembg_lock = threading.Lock()
 except Exception:
     pass
 
 def _get_rembg_session():
-    """Lazy-init singleton rembg session. Thread-safe."""
+    """Lazy-init singleton rembg session (u2netp). Thread-safe."""
     global _rembg_session
     if not REMBG_AVAILABLE:
         return None
     if _rembg_session is not None:
         return _rembg_session
-    if _rembg_session_lock:
-        with _rembg_session_lock:
+    # Double-checked locking
+    if _rembg_lock:
+        with _rembg_lock:
             if _rembg_session is not None:
                 return _rembg_session
-            print("    🧠 Loading rembg model (u2net) — one-time init...")
-            _rembg_session = rembg_new_session("u2net")
+            print("    🧠 Loading rembg model (u2netp, ~4.7MB) — one-time init...")
+            _rembg_session = rembg_new_session("u2netp")
             return _rembg_session
-    # No lock available — just init
-    _rembg_session = rembg_new_session("u2net")
+    _rembg_session = rembg_new_session("u2netp")
     return _rembg_session
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -3841,8 +3843,13 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
     @staticmethod
     def _remove_background(image_bytes: bytes) -> bytes:
         """Remove background from image bytes using rembg, returning transparent PNG.
-        Uses a singleton session to avoid loading the 176MB model per-thread.
-        Falls back to original bytes if rembg is unavailable or fails."""
+
+        Memory optimizations (pod limit ~3Gi):
+        - Singleton u2netp session (~4.7MB model, not 176MB u2net)
+        - Downscale to 1024px max before inference (reduces ONNX buffers)
+        - Serialized via _rembg_lock so only 1 thread runs inference at a time
+        - Mask is upscaled back to original resolution for crisp output
+        """
         if not REMBG_AVAILABLE:
             print("    ⚠️  rembg not available — skipping background removal")
             return image_bytes
@@ -3851,15 +3858,55 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             from PIL import Image
 
             session = _get_rembg_session()
-            result_bytes = rembg_remove(image_bytes, session=session)
+            original_img = Image.open(BytesIO(image_bytes))
+            orig_w, orig_h = original_img.size
 
-            # Validate output: ensure RGBA mode (transparent PNG) and re-export
-            img = Image.open(BytesIO(result_bytes))
-            if img.mode != "RGBA":
-                img = img.convert("RGBA")
+            # Downscale large images before rembg to save memory
+            MAX_DIM = 1024
+            if max(orig_w, orig_h) > MAX_DIM:
+                scale = MAX_DIM / max(orig_w, orig_h)
+                small_w, small_h = int(orig_w * scale), int(orig_h * scale)
+                small_img = original_img.resize((small_w, small_h), Image.LANCZOS)
                 buf = BytesIO()
-                img.save(buf, format="PNG")
-                result_bytes = buf.getvalue()
+                small_img.save(buf, format="PNG")
+                input_bytes = buf.getvalue()
+                del small_img, buf
+            else:
+                input_bytes = image_bytes
+
+            # Serialize rembg calls — only one thread runs inference at a time
+            # to prevent concurrent ONNX buffer allocation → OOM
+            lock = _rembg_lock
+            if lock:
+                lock.acquire()
+            try:
+                result_bytes = rembg_remove(input_bytes, session=session)
+            finally:
+                if lock:
+                    lock.release()
+
+            # If we downscaled, extract the alpha mask and apply to original resolution
+            result_img = Image.open(BytesIO(result_bytes))
+            if result_img.mode != "RGBA":
+                result_img = result_img.convert("RGBA")
+
+            if max(orig_w, orig_h) > MAX_DIM:
+                # Upscale the alpha mask to original resolution
+                alpha_mask = result_img.split()[3]  # extract alpha channel
+                alpha_mask = alpha_mask.resize((orig_w, orig_h), Image.LANCZOS)
+                # Apply mask to original full-res image
+                if original_img.mode != "RGBA":
+                    original_img = original_img.convert("RGBA")
+                original_img.putalpha(alpha_mask)
+                result_img = original_img
+
+            buf = BytesIO()
+            result_img.save(buf, format="PNG", optimize=True)
+            result_bytes = buf.getvalue()
+
+            # Free references
+            del original_img, result_img, buf
+
             print(f"    ✂️  Background removed ({len(image_bytes)} → {len(result_bytes)} bytes)")
             return result_bytes
         except Exception as e:

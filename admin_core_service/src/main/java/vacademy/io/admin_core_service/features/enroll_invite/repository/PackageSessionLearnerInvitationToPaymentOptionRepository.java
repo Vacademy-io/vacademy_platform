@@ -10,10 +10,21 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                 extends JpaRepository<PackageSessionLearnerInvitationToPaymentOption, String> {
+
+        @Query("SELECT psl FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.enrollInvite.id = :enrollInviteId " +
+                        "AND psl.packageSession.id = :packageSessionId " +
+                        "AND psl.status != 'DELETED' " +
+                        "ORDER BY psl.createdAt DESC")
+        Optional<PackageSessionLearnerInvitationToPaymentOption> findActiveByEnrollInviteIdAndPackageSessionId(
+                        @Param("enrollInviteId") String enrollInviteId,
+                        @Param("packageSessionId") String packageSessionId);
+
         List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteAndStatusIn(
                         EnrollInvite enrollInvite,
                         List<String> statusList);

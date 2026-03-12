@@ -1,5 +1,5 @@
 -- =======================================================================================
--- V151: Add unallocated_amount to payment_log (extra fee amount not applied to any bill)
+-- V155: Add unallocated_amount to payment_log (extra fee amount not applied to any bill)
 -- =======================================================================================
 -- When a user pays more than total dues, the excess is stored here per payment.
 -- Backward compatible: new nullable column with DEFAULT 0; existing rows get 0.

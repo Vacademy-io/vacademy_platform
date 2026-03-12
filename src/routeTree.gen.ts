@@ -88,6 +88,7 @@ import { Route as AiCenterMyResourcesIndexRouteImport } from "./routes/ai-center
 import { Route as AiCenterAiToolsIndexRouteImport } from "./routes/ai-center/ai-tools/index"
 import { Route as AdmissionsNewEnquiryIndexRouteImport } from "./routes/admissions/new-enquiry/index"
 import { Route as AdmissionsEnquiriesIndexRouteImport } from "./routes/admissions/enquiries/index"
+import { Route as AdmissionsConcessionApprovalsIndexRouteImport } from "./routes/admissions/concession-approvals/index"
 import { Route as AdmissionsApplicationIndexRouteImport } from "./routes/admissions/application/index"
 import { Route as AdmissionsAdmissionFormIndexRouteImport } from "./routes/admissions/admission-form/index"
 import { Route as AdminPackageManagementBulkCreateIndexRouteImport } from "./routes/admin-package-management/bulk-create/index"
@@ -755,6 +756,16 @@ const AdmissionsEnquiriesIndexRoute =
     path: "/admissions/enquiries/",
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdmissionsConcessionApprovalsIndexRoute =
+  AdmissionsConcessionApprovalsIndexRouteImport.update({
+    id: "/admissions/concession-approvals/",
+    path: "/admissions/concession-approvals/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/admissions/concession-approvals/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const AdmissionsApplicationIndexRoute =
   AdmissionsApplicationIndexRouteImport.update({
     id: "/admissions/application/",
@@ -1214,6 +1225,7 @@ export interface FileRoutesByFullPath {
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/application/": typeof AdmissionsApplicationIndexRoute
+  "/admissions/concession-approvals/": typeof AdmissionsConcessionApprovalsIndexRoute
   "/admissions/enquiries/": typeof AdmissionsEnquiriesIndexRoute
   "/admissions/new-enquiry/": typeof AdmissionsNewEnquiryIndexRoute
   "/ai-center/ai-tools/": typeof AiCenterAiToolsIndexRoute
@@ -1346,6 +1358,7 @@ export interface FileRoutesByTo {
   "/admin-package-management/bulk-create": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admissions/admission-form": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/application": typeof AdmissionsApplicationIndexRoute
+  "/admissions/concession-approvals": typeof AdmissionsConcessionApprovalsIndexRoute
   "/admissions/enquiries": typeof AdmissionsEnquiriesIndexRoute
   "/admissions/new-enquiry": typeof AdmissionsNewEnquiryIndexRoute
   "/ai-center/ai-tools": typeof AiCenterAiToolsIndexRoute
@@ -1480,6 +1493,7 @@ export interface FileRoutesById {
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/application/": typeof AdmissionsApplicationIndexRoute
+  "/admissions/concession-approvals/": typeof AdmissionsConcessionApprovalsIndexRoute
   "/admissions/enquiries/": typeof AdmissionsEnquiriesIndexRoute
   "/admissions/new-enquiry/": typeof AdmissionsNewEnquiryIndexRoute
   "/ai-center/ai-tools/": typeof AiCenterAiToolsIndexRoute
@@ -1615,6 +1629,7 @@ export interface FileRouteTypes {
     | "/admin-package-management/bulk-create/"
     | "/admissions/admission-form/"
     | "/admissions/application/"
+    | "/admissions/concession-approvals/"
     | "/admissions/enquiries/"
     | "/admissions/new-enquiry/"
     | "/ai-center/ai-tools/"
@@ -1747,6 +1762,7 @@ export interface FileRouteTypes {
     | "/admin-package-management/bulk-create"
     | "/admissions/admission-form"
     | "/admissions/application"
+    | "/admissions/concession-approvals"
     | "/admissions/enquiries"
     | "/admissions/new-enquiry"
     | "/ai-center/ai-tools"
@@ -1880,6 +1896,7 @@ export interface FileRouteTypes {
     | "/admin-package-management/bulk-create/"
     | "/admissions/admission-form/"
     | "/admissions/application/"
+    | "/admissions/concession-approvals/"
     | "/admissions/enquiries/"
     | "/admissions/new-enquiry/"
     | "/ai-center/ai-tools/"
@@ -2013,6 +2030,7 @@ export interface RootRouteChildren {
   AdminPackageManagementBulkCreateIndexRoute: typeof AdminPackageManagementBulkCreateIndexRoute
   AdmissionsAdmissionFormIndexRoute: typeof AdmissionsAdmissionFormIndexRoute
   AdmissionsApplicationIndexRoute: typeof AdmissionsApplicationIndexRoute
+  AdmissionsConcessionApprovalsIndexRoute: typeof AdmissionsConcessionApprovalsIndexRoute
   AdmissionsEnquiriesIndexRoute: typeof AdmissionsEnquiriesIndexRoute
   AdmissionsNewEnquiryIndexRoute: typeof AdmissionsNewEnquiryIndexRoute
   AiCenterAiToolsIndexRoute: typeof AiCenterAiToolsIndexRoute
@@ -2679,6 +2697,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdmissionsEnquiriesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admissions/concession-approvals/": {
+      id: "/admissions/concession-approvals/"
+      path: "/admissions/concession-approvals"
+      fullPath: "/admissions/concession-approvals/"
+      preLoaderRoute: typeof AdmissionsConcessionApprovalsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/admissions/application/": {
       id: "/admissions/application/"
       path: "/admissions/application"
@@ -3080,6 +3105,8 @@ const rootRouteChildren: RootRouteChildren = {
     AdminPackageManagementBulkCreateIndexRoute,
   AdmissionsAdmissionFormIndexRoute: AdmissionsAdmissionFormIndexRoute,
   AdmissionsApplicationIndexRoute: AdmissionsApplicationIndexRoute,
+  AdmissionsConcessionApprovalsIndexRoute:
+    AdmissionsConcessionApprovalsIndexRoute,
   AdmissionsEnquiriesIndexRoute: AdmissionsEnquiriesIndexRoute,
   AdmissionsNewEnquiryIndexRoute: AdmissionsNewEnquiryIndexRoute,
   AiCenterAiToolsIndexRoute: AiCenterAiToolsIndexRoute,

@@ -213,6 +213,13 @@ export const ADMIN_REJECT_COURSE = `${BASE_URL}/admin-core-service/admin/course-
 export const ADMIN_COURSE_HISTORY = `${BASE_URL}/admin-core-service/admin/course-approval/v1/course-history`;
 export const ADMIN_APPROVAL_SUMMARY = `${BASE_URL}/admin-core-service/admin/course-approval/v1/approval-summary`;
 
+// Fee Concession Approval Workflow URLs
+export const SUBMIT_FEE_CONCESSION = `${BASE_URL}/admin-core-service/admission/fee-concession/v1/submit`;
+export const GET_PENDING_CONCESSIONS = `${BASE_URL}/admin-core-service/admission/fee-concession/v1/pending`;
+export const APPROVE_CONCESSION = `${BASE_URL}/admin-core-service/admission/fee-concession/v1/approve`;
+export const REJECT_CONCESSION = `${BASE_URL}/admin-core-service/admission/fee-concession/v1/reject`;
+export const GET_CONCESSION_HISTORY = `${BASE_URL}/admin-core-service/admission/fee-concession/v1/history`;
+
 export const GET_SESSION_DETAILS = `${BASE_URL}/admin-core-service/sessions/v1/session-details`;
 export const ADD_SESSION = `${BASE_URL}/admin-core-service/sessions/v1/add`;
 export const EDIT_SESSION = `${BASE_URL}/admin-core-service/sessions/v1/edit`;
@@ -415,6 +422,13 @@ export const SAVE_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/v1/payment-op
 export const GET_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/v1/payment-option/get-payment-options`;
 export const MAKE_DEFAULT_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/v1/payment-option/make-default-payment-option`;
 export const DELETE_PAYMENT_OPTION_URL = SAVE_PAYMENT_OPTION;
+
+// Fee Management - CPO
+export const CREATE_CPO = `${BASE_URL}/admin-core-service/v1/fee-management/cpo`;
+export const GET_CPOS_BY_INSTITUTE = (instituteId: string) =>
+    `${CREATE_CPO}/institute/${instituteId}`;
+export const GET_CPO_FULL = (cpoId: string) => `${CREATE_CPO}/${cpoId}/full`;
+export const APPROVE_CPO = (cpoId: string) => `${CREATE_CPO}/${cpoId}/approve`;
 
 export const ANALYTICS_USER_ACTIVITY = `${BASE_URL}/auth-service/v1/analytics/user-activity`;
 export const ANALYTICS_ACTIVE_USERS_REALTIME = `${BASE_URL}/auth-service/v1/analytics/active-users/real-time`;

@@ -1,4 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { ConcessionDialog } from './ConcessionDialog';
+import { ConcessionBadge } from './ConcessionBadge';
+import {
+    ConcessionRequest,
+    ConcessionFormValues,
+    CONCESSION_CATEGORIES,
+} from '@/routes/admissions/-types/fee-concession-types';
+import { createCPO, getInstituteId } from '@/routes/financial-management/fee-plans/-services/cpo-services';
+import type { CreateCPORequest } from '@/routes/financial-management/fee-plans/-types/cpo-types';
+
+// Generate installments with valid due dates based on plan type
+function generateInstallmentsForFee(amount: number, plan: string) {
+    const planMap: Record<string, { count: number; months: number[] }> = {
+        Annual: { count: 1, months: [4] }, // April
+        'Half-Yearly': { count: 2, months: [4, 10] }, // Apr, Oct
+        Quarterly: { count: 4, months: [4, 7, 10, 1] }, // Apr, Jul, Oct, Jan
+        Monthly: { count: 12, months: [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3] },
+    };
+    const defaultConfig = { count: 1, months: [4] };
+    const config = planMap[plan] ?? defaultConfig;
+    const perInstallment = Math.floor(amount / config.count);
+    const remainder = amount - perInstallment * config.count;
+
+    return config.months.map((month, i) => {
+        const year = month >= 4 ? 2026 : 2027;
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-01`;
+        return {
+            installmentNumber: i + 1,
+            amount: i === 0 ? perInstallment + remainder : perInstallment,
+            dueDate: dateStr,
+        };
+    });
+}
 
 // Shared data with global schema
 interface AssignedFee {
@@ -25,6 +60,160 @@ export default function Step5AFeeAssignment({ formData, handleChange }: Props) {
     const [isChangePlanOpen, setChangePlanOpen] = useState(false);
     const [isAddFeeOpen, setAddFeeOpen] = useState(false);
     const [paymentStatus, setPaymentStatus] = useState('Paid');
+
+    // Concession state
+    const [concessionDialogOpen, setConcessionDialogOpen] = useState(false);
+    const [selectedFeeForConcession, setSelectedFeeForConcession] = useState<AssignedFee | null>(null);
+    const [concessions, setConcessions] = useState<Map<string, ConcessionRequest>>(new Map());
+
+    // Compute adjusted amounts
+    const getAdjustedAmount = useCallback((fee: AssignedFee) => {
+        const concession = concessions.get(fee.id);
+        if (!concession) return fee.amount;
+        return concession.adjustedAmount;
+    }, [concessions]);
+
+    const totalOriginal = useMemo(() => assignedFees.reduce((sum, f) => sum + f.amount, 0), [assignedFees]);
+    const totalConcessions = useMemo(() => {
+        let total = 0;
+        concessions.forEach((c) => { total += c.originalAmount - c.adjustedAmount; });
+        return total;
+    }, [concessions]);
+    const totalNet = totalOriginal - totalConcessions;
+
+    // Compute dynamic payment schedule
+    const firstPaymentDue = useMemo(() => {
+        let amount = 0;
+        assignedFees.forEach((fee) => {
+            const adjusted = getAdjustedAmount(fee);
+            if (fee.plan === 'Quarterly') {
+                amount += adjusted / 4;
+            } else {
+                amount += adjusted;
+            }
+        });
+        return Math.round(amount);
+    }, [assignedFees, getAdjustedAmount]);
+
+    const tuitionQuarterlyAmount = useMemo(() => {
+        const tuition = assignedFees.find((f) => f.id === 'f1');
+        if (!tuition) return 12500;
+        return Math.round(getAdjustedAmount(tuition) / 4);
+    }, [assignedFees, getAdjustedAmount]);
+
+    // CPO create mutation for concession submission
+    const concessionMutation = useMutation({
+        mutationFn: (payload: CreateCPORequest) => createCPO(payload),
+        onSuccess: (response, _variables) => {
+            // Update local concession state with CPO info
+            const fee = selectedFeeForConcession;
+            if (!fee) return;
+            const cpoStatus = response.status; // ACTIVE or PENDING_APPROVAL
+            const concessionStatus = cpoStatus === 'ACTIVE' ? 'APPROVED' : 'PENDING';
+
+            setConcessions((prev) => {
+                const next = new Map(prev);
+                const existing = next.get(fee.id);
+                if (existing) {
+                    next.set(fee.id, { ...existing, status: concessionStatus as any, cpoId: response.id, cpoStatus: cpoStatus });
+                }
+                return next;
+            });
+
+            toast.success(
+                cpoStatus === 'ACTIVE'
+                    ? `Concession approved for ${fee.name}`
+                    : `Concession submitted for ${fee.name}`,
+                {
+                    description: cpoStatus === 'ACTIVE'
+                        ? 'Discount applied immediately.'
+                        : 'Sent for admin approval.',
+                }
+            );
+        },
+        onError: (error: any) => {
+            toast.error(error?.message || 'Failed to submit concession');
+        },
+    });
+
+    const handleConcessionSubmit = (values: ConcessionFormValues) => {
+        if (!selectedFeeForConcession) return;
+
+        const fee = selectedFeeForConcession;
+        let adjustedAmount: number;
+        if (values.concessionType === 'PERCENTAGE') {
+            adjustedAmount = Math.max(fee.amount - (fee.amount * values.concessionValue) / 100, 0);
+        } else {
+            adjustedAmount = Math.max(fee.amount - values.concessionValue, 0);
+        }
+        adjustedAmount = Math.round(adjustedAmount);
+
+        const categoryLabel = CONCESSION_CATEGORIES.find((c) => c.value === values.category)?.label || values.category;
+
+        // Save concession locally first (as PENDING)
+        const newConcession: ConcessionRequest = {
+            id: `conc_${fee.id}_${Date.now()}`,
+            feeId: fee.id,
+            feeName: fee.name,
+            originalAmount: fee.amount,
+            concessionType: values.concessionType,
+            concessionValue: values.concessionValue,
+            adjustedAmount,
+            reason: values.reason,
+            category: values.category,
+            status: 'PENDING',
+            requestedBy: 'Current User',
+            requestedAt: new Date().toISOString(),
+        };
+
+        setConcessions((prev) => {
+            const next = new Map(prev);
+            next.set(fee.id, newConcession);
+            return next;
+        });
+
+        // Build CPO payload and submit to backend
+        const instituteId = getInstituteId();
+        if (!instituteId) {
+            toast.error('Institute ID not found');
+            return;
+        }
+
+        const installments = generateInstallmentsForFee(adjustedAmount, fee.plan);
+        const discountType = values.concessionType === 'PERCENTAGE' ? 'PERCENTAGE' : 'FLAT';
+
+        const cpoPayload: CreateCPORequest = {
+            name: `Concession - ${fee.name} - ${categoryLabel}`,
+            instituteId,
+            feeTypes: [{
+                name: fee.name,
+                code: `FEE_${fee.name.replace(/\s+/g, '_').toUpperCase()}_DISC`,
+                description: `${fee.name} with ${values.concessionType === 'PERCENTAGE' ? `${values.concessionValue}%` : `₹${values.concessionValue}`} discount. Reason: ${values.reason}`,
+                status: 'ACTIVE',
+                assignedFeeValue: {
+                    amount: adjustedAmount,
+                    original_amount: fee.amount,
+                    discount_type: discountType,
+                    discount_value: values.concessionValue,
+                    noOfInstallments: installments.length,
+                    hasInstallment: installments.length > 1,
+                    isRefundable: false,
+                    hasPenalty: false,
+                    status: 'ACTIVE',
+                    installments,
+                },
+            }],
+        };
+
+        concessionMutation.mutate(cpoPayload);
+    };
+
+    const getConcessionActionLabel = (feeId: string) => {
+        const concession = concessions.get(feeId);
+        if (!concession) return 'Apply Concession';
+        if (concession.status === 'PENDING') return 'Edit Concession';
+        return 'View Concession';
+    };
 
     return (
         <div className="space-y-8 animate-in fade-in duration-300">
@@ -67,38 +256,64 @@ export default function Step5AFeeAssignment({ formData, handleChange }: Props) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {assignedFees.map(fee => (
-                                <tr key={fee.id} className="hover:bg-gray-50">
-                                    <td className="px-5 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-green-500">✓</span>
-                                            <span className="font-medium text-gray-900">{fee.name}</span>
-                                        </div>
-                                        <span className="text-xs text-gray-500 block mt-0.5 pl-5">({fee.isMandatory ? 'Mandatory' : 'Selected'})</span>
-                                    </td>
-                                    <td className="px-5 py-4 font-semibold text-gray-800">
-                                        ₹ {fee.amount.toLocaleString()}
-                                    </td>
-                                    <td className="px-5 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded font-medium border border-blue-100">{fee.plan}</span>
-                                            <span className="text-yellow-500" title="Default">⭐</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-5 py-4 text-gray-600">
-                                        {fee.dueDetails} <br/>
-                                        <span className="text-xs text-gray-400">Due: Starts April</span>
-                                    </td>
-                                    <td className="px-5 py-4 text-right">
-                                        <button onClick={() => setChangePlanOpen(true)} className="text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition text-xs border border-transparent hover:border-blue-200">
-                                            Change Plan
-                                        </button>
-                                        {!fee.isMandatory && (
-                                            <button className="text-red-500 hover:text-red-700 font-medium px-2 py-1 ml-2 text-xs">Remove</button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
+                            {assignedFees.map(fee => {
+                                const concession = concessions.get(fee.id);
+                                return (
+                                    <tr key={fee.id} className="hover:bg-gray-50">
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-green-500">✓</span>
+                                                <span className="font-medium text-gray-900">{fee.name}</span>
+                                            </div>
+                                            <span className="text-xs text-gray-500 block mt-0.5 pl-5">({fee.isMandatory ? 'Mandatory' : 'Selected'})</span>
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            {concession ? (
+                                                <div>
+                                                    <span className="text-gray-400 line-through text-xs">
+                                                        ₹ {fee.amount.toLocaleString()}
+                                                    </span>
+                                                    <div className="font-semibold text-green-700">
+                                                        ₹ {concession.adjustedAmount.toLocaleString()}
+                                                    </div>
+                                                    <ConcessionBadge status={concession.status} />
+                                                </div>
+                                            ) : (
+                                                <span className="font-semibold text-gray-800">
+                                                    ₹ {fee.amount.toLocaleString()}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded font-medium border border-blue-100">{fee.plan}</span>
+                                                <span className="text-yellow-500" title="Default">⭐</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-4 text-gray-600">
+                                            {fee.dueDetails} <br/>
+                                            <span className="text-xs text-gray-400">Due: Starts April</span>
+                                        </td>
+                                        <td className="px-5 py-4 text-right">
+                                            <button onClick={() => setChangePlanOpen(true)} className="text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition text-xs border border-transparent hover:border-blue-200">
+                                                Change Plan
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedFeeForConcession(fee);
+                                                    setConcessionDialogOpen(true);
+                                                }}
+                                                className="text-purple-600 hover:text-purple-800 font-medium px-2 py-1 ml-1 rounded hover:bg-purple-50 transition text-xs border border-transparent hover:border-purple-200"
+                                            >
+                                                {getConcessionActionLabel(fee.id)}
+                                            </button>
+                                            {!fee.isMandatory && (
+                                                <button className="text-red-500 hover:text-red-700 font-medium px-2 py-1 ml-1 text-xs">Remove</button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                             <tr className="bg-gray-50 border-t">
                                 <td colSpan={5} className="px-5 py-3">
                                     <button onClick={() => setAddFeeOpen(true)} className="text-blue-600 font-medium flex items-center gap-1.5 hover:text-blue-800 text-sm">
@@ -108,6 +323,23 @@ export default function Step5AFeeAssignment({ formData, handleChange }: Props) {
                                 </td>
                             </tr>
                         </tbody>
+                        {/* Fee Totals Summary */}
+                        {totalConcessions > 0 && (
+                            <tfoot className="bg-purple-50/50 border-t-2 border-purple-100">
+                                <tr>
+                                    <td className="px-5 py-2 text-xs text-gray-600" colSpan={1}>Total Original:</td>
+                                    <td className="px-5 py-2 text-xs font-medium text-gray-700" colSpan={4}>₹ {totalOriginal.toLocaleString()}</td>
+                                </tr>
+                                <tr>
+                                    <td className="px-5 py-2 text-xs text-gray-600" colSpan={1}>Total Concessions:</td>
+                                    <td className="px-5 py-2 text-xs font-medium text-red-600" colSpan={4}>- ₹ {totalConcessions.toLocaleString()}</td>
+                                </tr>
+                                <tr className="border-t border-purple-200">
+                                    <td className="px-5 py-2 text-sm font-bold text-gray-800" colSpan={1}>Net Payable:</td>
+                                    <td className="px-5 py-2 text-sm font-bold text-green-700" colSpan={4}>₹ {totalNet.toLocaleString()}</td>
+                                </tr>
+                            </tfoot>
+                        )}
                     </table>
                 </div>
             </div>
@@ -129,28 +361,28 @@ export default function Step5AFeeAssignment({ formData, handleChange }: Props) {
                                 <tr>
                                     <td className="px-4 py-3 font-medium text-red-600">10 Apr 2025</td>
                                     <td className="px-4 py-3 text-gray-600">Tuition (Q1), Bus, Computer</td>
-                                    <td className="px-4 py-3 text-right font-bold text-gray-900 border-l">₹ 27,500</td>
+                                    <td className="px-4 py-3 text-right font-bold text-gray-900 border-l">₹ {firstPaymentDue.toLocaleString()}</td>
                                 </tr>
                                 <tr>
                                     <td className="px-4 py-3 text-gray-600">10 Jul 2025</td>
                                     <td className="px-4 py-3 text-gray-600">Tuition (Q2)</td>
-                                    <td className="px-4 py-3 text-right font-medium text-gray-700 border-l">₹ 12,500</td>
+                                    <td className="px-4 py-3 text-right font-medium text-gray-700 border-l">₹ {tuitionQuarterlyAmount.toLocaleString()}</td>
                                 </tr>
                                 <tr>
                                     <td className="px-4 py-3 text-gray-600">10 Oct 2025</td>
                                     <td className="px-4 py-3 text-gray-600">Tuition (Q3)</td>
-                                    <td className="px-4 py-3 text-right font-medium text-gray-700 border-l">₹ 12,500</td>
+                                    <td className="px-4 py-3 text-right font-medium text-gray-700 border-l">₹ {tuitionQuarterlyAmount.toLocaleString()}</td>
                                 </tr>
                                 <tr>
                                     <td className="px-4 py-3 text-gray-600">10 Jan 2026</td>
                                     <td className="px-4 py-3 text-gray-600">Tuition (Q4)</td>
-                                    <td className="px-4 py-3 text-right font-medium text-gray-700 border-l">₹ 12,500</td>
+                                    <td className="px-4 py-3 text-right font-medium text-gray-700 border-l">₹ {tuitionQuarterlyAmount.toLocaleString()}</td>
                                 </tr>
                             </tbody>
                             <tfoot className="bg-gray-100 border-t-2 border-gray-200">
                                 <tr>
                                     <td colSpan={2} className="px-4 py-3 font-bold text-gray-800 text-right">TOTAL FEES FOR YEAR:</td>
-                                    <td className="px-4 py-3 font-bold text-blue-700 text-right text-lg">₹ 65,000</td>
+                                    <td className="px-4 py-3 font-bold text-blue-700 text-right text-lg">₹ {totalNet.toLocaleString()}</td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -163,7 +395,7 @@ export default function Step5AFeeAssignment({ formData, handleChange }: Props) {
                     <div className="border-2 border-green-100 bg-green-50/30 rounded-lg p-5 shadow-sm space-y-5">
                         <div className="flex justify-between items-center bg-white p-3 rounded border shadow-sm">
                             <span className="font-semibold text-gray-700">Amount Due Today:</span>
-                            <span className="text-xl font-bold text-green-600">₹ 27,500</span>
+                            <span className="text-xl font-bold text-green-600">₹ {firstPaymentDue.toLocaleString()}</span>
                         </div>
 
                         <div>
@@ -191,7 +423,7 @@ export default function Step5AFeeAssignment({ formData, handleChange }: Props) {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Amount Paid (₹)</label>
-                                    <input type="text" readOnly value="27500" className="w-full border-gray-300 bg-gray-50 rounded px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" />
+                                    <input type="text" readOnly value={firstPaymentDue} className="w-full border-gray-300 bg-gray-50 rounded px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" />
                                 </div>
                                 <div className="col-span-2">
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">Transaction ID / Ref. No.</label>
@@ -221,6 +453,16 @@ export default function Step5AFeeAssignment({ formData, handleChange }: Props) {
                     </div>
                 </div>
             </div>
+
+            {/* Concession Dialog */}
+            {selectedFeeForConcession && (
+                <ConcessionDialog
+                    open={concessionDialogOpen}
+                    onOpenChange={setConcessionDialogOpen}
+                    fee={selectedFeeForConcession}
+                    onSubmit={handleConcessionSubmit}
+                />
+            )}
 
             {/* Change Installment Plan Modal (Mock) */}
             {isChangePlanOpen && (

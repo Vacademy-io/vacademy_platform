@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilte
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentRowDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardResponseDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardRequestDTO;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -77,4 +79,11 @@ public class FeeTrackingAdminController {
         return ResponseEntity.ok(results);
     }
 
+    @PostMapping("/dashboard/collection")
+    public ResponseEntity<CollectionDashboardResponseDTO> getCollectionDashboard(
+            @RequestBody CollectionDashboardRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(feeTrackingService.getCollectionDashboard(request));
+    }
 }
+

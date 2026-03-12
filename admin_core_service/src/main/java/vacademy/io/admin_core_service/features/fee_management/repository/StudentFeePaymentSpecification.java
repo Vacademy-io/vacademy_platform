@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.fee_management.repository;
 import jakarta.persistence.criteria.*;
 import org.springframework.data.jpa.domain.Specification;
 import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
+import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 
 import java.sql.Date;
@@ -27,10 +28,13 @@ public class StudentFeePaymentSpecification {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // --- 1. Institute filter: join CPO which has institute_id ---
-            // student_fee_payment.cpo_id -> complex_payment_option.institute_id
-            Join<Object, Object> cpoJoin = root.join("complexPaymentOption", JoinType.INNER);
-            predicates.add(cb.equal(cpoJoin.get("instituteId"), instituteId));
+            // --- 1. Institute filter: subquery for CPO IDs based on institute_id ---
+            // SELECT cpo.id FROM ComplexPaymentOption cpo WHERE cpo.instituteId = :instituteId
+            Subquery<String> cpoIdSubquery = query.subquery(String.class);
+            Root<ComplexPaymentOption> cpoSubRoot = cpoIdSubquery.from(ComplexPaymentOption.class);
+            cpoIdSubquery.select(cpoSubRoot.get("id"));
+            cpoIdSubquery.where(cb.equal(cpoSubRoot.get("instituteId"), instituteId));
+            predicates.add(root.get("cpoId").in(cpoIdSubquery));
 
             if (filters == null) {
                 return cb.and(predicates.toArray(new Predicate[0]));

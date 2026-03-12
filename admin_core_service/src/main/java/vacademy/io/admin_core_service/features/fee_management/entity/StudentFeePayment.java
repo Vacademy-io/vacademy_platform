@@ -44,7 +44,7 @@ public class StudentFeePayment {
     @Column(name = "asv_id", nullable = false)
     private String asvId;
 
-    @Column(name = "i_id", nullable = false)
+    @Column(name = "i_id", nullable =  false)
     private String iId;
 
     @Column(name = "amount_expected", nullable = false)

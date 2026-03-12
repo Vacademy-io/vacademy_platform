@@ -81,4 +81,13 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                         "AND psl.cpoId IS NOT NULL " +
                         "AND psl.status = 'ACTIVE'")
         List<String> findDistinctCpoIdsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
+        @Query(value = """
+                        SELECT DISTINCT sfp.user_plan_id, p.package_session_id
+                        FROM student_fee_payment sfp
+                        JOIN package_session_learner_invitation_to_payment_option p
+                            ON p.cpo_id = sfp.cpo_id
+                        WHERE sfp.user_plan_id IN :userPlanIds
+                          AND p.status != 'DELETED'
+                        """, nativeQuery = true)
+        List<Object[]> findPackageSessionIdsByUserPlanIds(@Param("userPlanIds") List<String> userPlanIds);
 }

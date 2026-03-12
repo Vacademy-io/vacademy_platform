@@ -11,11 +11,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardResponseDTO;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentRowDTO;
 import vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment;
+import vacademy.io.admin_core_service.features.fee_management.entity.AssignedFeeValue;
 import vacademy.io.admin_core_service.features.fee_management.entity.FeeType;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAllocationLedger;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
@@ -33,216 +39,510 @@ import java.util.stream.Collectors;
 @Slf4j
 public class FeeTrackingService {
 
-    @Autowired
-    private StudentFeePaymentRepository studentFeePaymentRepository;
+        @Autowired
+        private StudentFeePaymentRepository studentFeePaymentRepository;
 
-    @Autowired
-    private StudentFeeAllocationLedgerRepository studentFeeAllocationLedgerRepository;
+        @Autowired
+        private StudentFeeAllocationLedgerRepository studentFeeAllocationLedgerRepository;
 
-    @Autowired
-    private UserPlanRepository userPlanRepository;
+        @Autowired
+        private UserPlanRepository userPlanRepository;
 
-    @Autowired
-    private AftInstallmentRepository aftInstallmentRepository;
+        @Autowired
+        private AftInstallmentRepository aftInstallmentRepository;
 
-    @Autowired
-    private FeeTypeRepository feeTypeRepository;
+        @Autowired
+        private FeeTypeRepository feeTypeRepository;
 
-    @Autowired
-    private AuthService authService;
+        @Autowired
+        private AuthService authService;
 
-    @Transactional(readOnly = true)
-    public List<StudentFeePaymentDTO> getStudentDues(String userId, String instituteId) {
-        List<UserPlan> plans = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
-                userId, instituteId, List.of("ACTIVE", "PENDING", "PENDING_FOR_PAYMENT"), null).getContent();
+        @Autowired
+        private AssignedFeeValueRepository assignedFeeValueRepository;
 
-        if (plans.isEmpty()) {
-            return Collections.emptyList();
+        @Autowired
+        private PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionInviteRepo;
+
+        @PersistenceContext
+        private EntityManager entityManager;
+
+        @Transactional(readOnly = true)
+        public List<StudentFeePaymentDTO> getStudentDues(String userId, String instituteId) {
+                List<UserPlan> plans = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
+                                userId, instituteId, List.of("ACTIVE", "PENDING", "PENDING_FOR_PAYMENT"), null)
+                                .getContent();
+
+                if (plans.isEmpty()) {
+                        return Collections.emptyList();
+                }
+
+                List<StudentFeePayment> allBills = studentFeePaymentRepository.findByUserPlanId(plans.get(0).getId());
+
+                return allBills.stream()
+                                .filter(bill -> !"PAID".equals(bill.getStatus()))
+                                .map(this::mapToPaymentDTO)
+                                .collect(Collectors.toList());
         }
 
-        List<StudentFeePayment> allBills = studentFeePaymentRepository.findByUserPlanId(plans.get(0).getId());
+        @Transactional(readOnly = true)
+        public List<StudentFeeAllocationLedgerDTO> getStudentReceipts(String userId, String instituteId) {
+                List<UserPlan> plans = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
+                                userId, instituteId,
+                                List.of("ACTIVE", "PENDING", "PENDING_FOR_PAYMENT", "EXPIRED", "TERMINATED"), null)
+                                .getContent();
 
-        return allBills.stream()
-                .filter(bill -> !"PAID".equals(bill.getStatus()))
-                .map(this::mapToPaymentDTO)
-                .collect(Collectors.toList());
-    }
+                if (plans.isEmpty()) {
+                        return Collections.emptyList();
+                }
 
-    @Transactional(readOnly = true)
-    public List<StudentFeeAllocationLedgerDTO> getStudentReceipts(String userId, String instituteId) {
-        List<UserPlan> plans = userPlanRepository.findByUserIdAndInstituteIdWithFilters(
-                userId, instituteId, List.of("ACTIVE", "PENDING", "PENDING_FOR_PAYMENT", "EXPIRED", "TERMINATED"), null)
-                .getContent();
+                List<StudentFeePayment> allBills = studentFeePaymentRepository.findByUserPlanId(plans.get(0).getId());
 
-        if (plans.isEmpty()) {
-            return Collections.emptyList();
+                return allBills.stream()
+                                .flatMap(bill -> studentFeeAllocationLedgerRepository
+                                                .findByStudentFeePaymentId(bill.getId()).stream())
+                                .map(this::mapToLedgerDTO)
+                                .collect(Collectors.toList());
         }
 
-        List<StudentFeePayment> allBills = studentFeePaymentRepository.findByUserPlanId(plans.get(0).getId());
-
-        return allBills.stream()
-                .flatMap(bill -> studentFeeAllocationLedgerRepository.findByStudentFeePaymentId(bill.getId()).stream())
-                .map(this::mapToLedgerDTO)
-                .collect(Collectors.toList());
-    }
-
-    private StudentFeePaymentDTO mapToPaymentDTO(StudentFeePayment entity) {
-        return StudentFeePaymentDTO.builder()
-                .id(entity.getId())
-                .userPlanId(entity.getUserPlanId())
-                .cpoId(entity.getCpoId())
-                .amountExpected(entity.getAmountExpected())
-                .discountAmount(entity.getDiscountAmount())
-                .discountReason(entity.getDiscountReason())
-                .amountPaid(entity.getAmountPaid())
-                .dueDate(entity.getDueDate())
-                .status(entity.getStatus())
-                .build();
-    }
-
-    private StudentFeeAllocationLedgerDTO mapToLedgerDTO(StudentFeeAllocationLedger entity) {
-        return StudentFeeAllocationLedgerDTO.builder()
-                .id(entity.getId())
-                .paymentLogId(entity.getPaymentLogId())
-                .studentFeePaymentId(entity.getStudentFeePaymentId())
-                .amountAllocated(entity.getAmountAllocated())
-                .allocationType(entity.getAllocationType())
-                .remarks(entity.getRemarks())
-                .createdAt(entity.getCreatedAt())
-                .build();
-    }
-
-    /**
-     * Admin fee roster search — powers the Manage Finances table.
-     * <p>
-     * Flow:
-     * 1. If studentSearchQuery is provided, resolve matching userIds from auth-service.
-     * 2. Build a dynamic JPA Specification using the active filters.
-     * 3. Execute the paginated, sorted query against student_fee_payment.
-     * 4. Collect all unique userIds from the page result and batch-fetch user info.
-     * 5. Enrich each row DTO with studentName, studentEmail, feeTypeName, installmentNumber.
-     */
-    @Transactional(readOnly = true)
-    public Page<StudentFeePaymentRowDTO> searchFeePayments(String instituteId, FeeSearchFilterDTO request) {
-        FeeSearchFilterDTO.Filters filters = request.getFilters();
-
-        // Step 1: Resolve studentSearchQuery to userIds if provided
-        List<String> matchedUserIds = resolveStudentSearchQuery(filters);
-
-        // Step 2: Build the dynamic specification
-        Specification<StudentFeePayment> spec = StudentFeePaymentSpecification
-                .withFilters(instituteId, filters, matchedUserIds);
-
-        // Step 3: Build pageable with sort
-        Sort.Direction direction = "ASC".equalsIgnoreCase(request.getSortDirection())
-                ? Sort.Direction.ASC : Sort.Direction.DESC;
-        String sortField = StringUtils.hasText(request.getSortBy()) ? request.getSortBy() : "dueDate";
-        PageRequest pageable = PageRequest.of(request.getPage(), request.getSize(),
-                Sort.by(direction, sortField));
-
-        // Step 4: Execute the paginated DB query
-        Page<StudentFeePayment> paymentPage = studentFeePaymentRepository.findAll(spec, pageable);
-
-        // Step 5: Batch-fetch all student info from auth-service
-        List<String> userIds = paymentPage.getContent().stream()
-                .map(StudentFeePayment::getUserId)
-                .distinct()
-                .collect(Collectors.toList());
-        Map<String, UserDTO> userMap = fetchUserMap(userIds);
-
-        // Step 6: Batch-fetch FeeType names and AftInstallment numbers
-        List<String> feeTypeIds = paymentPage.getContent().stream()
-                .map(StudentFeePayment::getFeeTypeId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toList());
-        Map<String, String> feeTypeNameMap = fetchFeeTypeNameMap(feeTypeIds);
-
-        List<String> installmentIds = paymentPage.getContent().stream()
-                .map(StudentFeePayment::getIId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toList());
-        Map<String, Integer> installmentNumberMap = fetchInstallmentNumberMap(installmentIds);
-
-        // Step 7: Map to response DTOs
-        List<StudentFeePaymentRowDTO> rows = paymentPage.getContent().stream()
-                .map(sfp -> toRowDTO(sfp, userMap, feeTypeNameMap, installmentNumberMap))
-                .collect(Collectors.toList());
-
-        return new PageImpl<>(rows, pageable, paymentPage.getTotalElements());
-    }
-
-    /**
-     * TODO: When the auth-service exposes a search-by-name/email endpoint,
-     * implement this to return matching userIds and pass them as a filter
-     * to the DB query (so the DB never sees external user data).
-     *
-     * For now, the studentSearchQuery filter is gracefully skipped —
-     * all other filters (status, CPO, feeType, dates, packageSession) work fully.
-     */
-    private List<String> resolveStudentSearchQuery(FeeSearchFilterDTO.Filters filters) {
-        if (filters == null || !StringUtils.hasText(filters.getStudentSearchQuery())) {
-            return null; // No search query provided — no user filter applied
+        private StudentFeePaymentDTO mapToPaymentDTO(StudentFeePayment entity) {
+                return StudentFeePaymentDTO.builder()
+                                .id(entity.getId())
+                                .userPlanId(entity.getUserPlanId())
+                                .cpoId(entity.getCpoId())
+                                .amountExpected(entity.getAmountExpected())
+                                .discountAmount(entity.getDiscountAmount())
+                                .discountReason(entity.getDiscountReason())
+                                .amountPaid(entity.getAmountPaid())
+                                .dueDate(entity.getDueDate())
+                                .status(entity.getStatus())
+                                .build();
         }
-        // Auth-service does not yet have a search-by-name endpoint.
-        // Returning null here means this filter is silently ignored.
-        // Replace this with a real auth-service call when available.
-        log.warn("studentSearchQuery filter is not yet supported (auth-service search endpoint missing). " +
-                 "Ignoring filter value: '{}'", filters.getStudentSearchQuery());
-        return null;
-    }
 
-    private Map<String, UserDTO> fetchUserMap(List<String> userIds) {
-        if (userIds == null || userIds.isEmpty()) return Map.of();
-        try {
-            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(userIds);
-            return users.stream().collect(Collectors.toMap(UserDTO::getId, Function.identity(),
-                    (a, b) -> a));
-        } catch (Exception e) {
-            log.warn("Failed to fetch user details for fee roster enrichment: {}", e.getMessage());
-            return Map.of();
+        private StudentFeeAllocationLedgerDTO mapToLedgerDTO(StudentFeeAllocationLedger entity) {
+                return StudentFeeAllocationLedgerDTO.builder()
+                                .id(entity.getId())
+                                .paymentLogId(entity.getPaymentLogId())
+                                .studentFeePaymentId(entity.getStudentFeePaymentId())
+                                .amountAllocated(entity.getAmountAllocated())
+                                .allocationType(entity.getAllocationType())
+                                .remarks(entity.getRemarks())
+                                .createdAt(entity.getCreatedAt())
+                                .build();
         }
-    }
 
-    private Map<String, String> fetchFeeTypeNameMap(List<String> feeTypeIds) {
-        if (feeTypeIds.isEmpty()) return Map.of();
-        return feeTypeRepository.findAllById(feeTypeIds).stream()
-                .collect(Collectors.toMap(FeeType::getId, FeeType::getName, (a, b) -> a));
-    }
+        /**
+         * Admin fee roster search — powers the Manage Finances table.
+         * <p>
+         * Flow:
+         * 1. If studentSearchQuery is provided, resolve matching userIds from
+         * auth-service.
+         * 2. Build a dynamic JPA Specification using the active filters.
+         * 3. Execute the paginated, sorted query against student_fee_payment.
+         * 4. Collect all unique userIds from the page result and batch-fetch user info.
+         * 5. Enrich each row DTO with studentName, studentEmail, feeTypeName,
+         * installmentNumber.
+         */
+        @Transactional(readOnly = true)
+        public Page<StudentFeePaymentRowDTO> searchFeePayments(String instituteId, FeeSearchFilterDTO request) {
+                FeeSearchFilterDTO.Filters filters = request.getFilters();
 
-    private Map<String, Integer> fetchInstallmentNumberMap(List<String> installmentIds) {
-        if (installmentIds.isEmpty()) return Map.of();
-        return aftInstallmentRepository.findAllById(installmentIds).stream()
-                .collect(Collectors.toMap(AftInstallment::getId, AftInstallment::getInstallmentNumber,
+                // Step 1: Resolve studentSearchQuery to userIds if provided
+                List<String> matchedUserIds = resolveStudentSearchQuery(filters);
+
+                // Step 2: Build the dynamic specification
+                Specification<StudentFeePayment> spec = StudentFeePaymentSpecification
+                                .withFilters(instituteId, filters, matchedUserIds);
+
+                // Step 3: Build pageable with sort
+                Sort.Direction direction = "ASC".equalsIgnoreCase(request.getSortDirection())
+                                ? Sort.Direction.ASC
+                                : Sort.Direction.DESC;
+                String sortField = StringUtils.hasText(request.getSortBy()) ? request.getSortBy() : "dueDate";
+                PageRequest pageable = PageRequest.of(request.getPage(), request.getSize(),
+                                Sort.by(direction, sortField));
+
+                // Step 4: Execute the paginated DB query
+                Page<StudentFeePayment> paymentPage = studentFeePaymentRepository.findAll(spec, pageable);
+
+                // Step 5: Batch-fetch all student info from auth-service
+                List<String> userIds = paymentPage.getContent().stream()
+                                .map(StudentFeePayment::getUserId)
+                                .distinct()
+                                .collect(Collectors.toList());
+                Map<String, UserDTO> userMap = fetchUserMap(userIds);
+
+                // Step 6: Batch-fetch FeeType names and AftInstallment numbers
+                List<String> asvIds = paymentPage.getContent().stream()
+                                .map(StudentFeePayment::getAsvId)
+                                .filter(Objects::nonNull)
+                                .distinct()
+                                .collect(Collectors.toList());
+                Map<String, String> feeTypeNameMap = fetchFeeTypeNameMap(asvIds);
+
+                List<String> installmentIds = paymentPage.getContent().stream()
+                                .map(StudentFeePayment::getIId)
+                                .filter(Objects::nonNull)
+                                .distinct()
+                                .collect(Collectors.toList());
+                Map<String, Integer> installmentNumberMap = fetchInstallmentNumberMap(installmentIds);
+
+                // Step 7: Batch-fetch packageSession IDs for each payment via enroll_invite + cpo_id
+                List<String> userPlanIds = paymentPage.getContent().stream()
+                                .map(StudentFeePayment::getUserPlanId)
+                                .distinct()
+                                .collect(Collectors.toList());
+                Map<String, List<String>> packageSessionMap = fetchPackageSessionMap(userPlanIds);
+
+                // Step 8: Map to response DTOs
+                List<StudentFeePaymentRowDTO> rows = paymentPage.getContent().stream()
+                                .map(sfp -> toRowDTO(sfp, userMap, feeTypeNameMap, installmentNumberMap, packageSessionMap))
+                                .collect(Collectors.toList());
+
+                return new PageImpl<>(rows, pageable, paymentPage.getTotalElements());
+        }
+
+        /**
+         * TODO: When the auth-service exposes a search-by-name/email endpoint,
+         * implement this to return matching userIds and pass them as a filter
+         * to the DB query (so the DB never sees external user data).
+         *
+         * For now, the studentSearchQuery filter is gracefully skipped —
+         * all other filters (status, CPO, feeType, dates, packageSession) work fully.
+         */
+        private List<String> resolveStudentSearchQuery(FeeSearchFilterDTO.Filters filters) {
+                if (filters == null || !StringUtils.hasText(filters.getStudentSearchQuery())) {
+                        return null; // No search query provided — no user filter applied
+                }
+                // Auth-service does not yet have a search-by-name endpoint.
+                // Returning null here means this filter is silently ignored.
+                // Replace this with a real auth-service call when available.
+                log.warn("studentSearchQuery filter is not yet supported (auth-service search endpoint missing). " +
+                                "Ignoring filter value: '{}'", filters.getStudentSearchQuery());
+                return null;
+        }
+
+        private Map<String, UserDTO> fetchUserMap(List<String> userIds) {
+                if (userIds == null || userIds.isEmpty())
+                        return Map.of();
+                try {
+                        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(userIds);
+                        return users.stream().collect(Collectors.toMap(UserDTO::getId, Function.identity(),
+                                        (a, b) -> a));
+                } catch (Exception e) {
+                        log.warn("Failed to fetch user details for fee roster enrichment: {}", e.getMessage());
+                        return Map.of();
+                }
+        }
+
+        private Map<String, String> fetchFeeTypeNameMap(List<String> asvIds) {
+                if (asvIds.isEmpty())
+                        return Map.of();
+
+                List<AssignedFeeValue> afvs = assignedFeeValueRepository.findAllById(asvIds);
+                List<String> feeTypeIds = afvs.stream()
+                        .map(AssignedFeeValue::getFeeTypeId)
+                        .distinct()
+                        .collect(Collectors.toList());
+
+                Map<String, String> feeTypeNames = feeTypeRepository.findAllById(feeTypeIds).stream()
+                        .collect(Collectors.toMap(FeeType::getId, FeeType::getName, (a, b) -> a));
+
+                return afvs.stream().collect(Collectors.toMap(
+                        AssignedFeeValue::getId,
+                        afv -> feeTypeNames.getOrDefault(afv.getFeeTypeId(), "N/A"),
                         (a, b) -> a));
-    }
+        }
 
-    private StudentFeePaymentRowDTO toRowDTO(
-            StudentFeePayment sfp,
-            Map<String, UserDTO> userMap,
-            Map<String, String> feeTypeNameMap,
-            Map<String, Integer> installmentNumberMap) {
+        private Map<String, Integer> fetchInstallmentNumberMap(List<String> installmentIds) {
+                if (installmentIds.isEmpty())
+                        return Map.of();
+                return aftInstallmentRepository.findAllById(installmentIds).stream()
+                                .collect(Collectors.toMap(AftInstallment::getId, AftInstallment::getInstallmentNumber,
+                                                (a, b) -> a));
+        }
 
-        UserDTO user = userMap.get(sfp.getUserId());
-        BigDecimal expected = sfp.getAmountExpected() != null ? sfp.getAmountExpected() : BigDecimal.ZERO;
-        BigDecimal discount = sfp.getDiscountAmount() != null ? sfp.getDiscountAmount() : BigDecimal.ZERO;
-        BigDecimal paid = sfp.getAmountPaid() != null ? sfp.getAmountPaid() : BigDecimal.ZERO;
-        BigDecimal totalDue = expected.subtract(discount).subtract(paid);
+        /**
+         * Batch-fetches package session IDs for all user plans in the current page.
+         * Returns a map: userPlanId -> List<packageSessionId>
+         * Uses: student_fee_payment.user_plan_id -> user_plan.enroll_invite_id + cpo_id
+         *       -> package_session_learner_invitation_to_payment_option.package_session_id
+         */
+        private Map<String, List<String>> fetchPackageSessionMap(List<String> userPlanIds) {
+                if (userPlanIds == null || userPlanIds.isEmpty()) {
+                        log.info("[PKG-SESSION] userPlanIds is null/empty, skipping query");
+                        return Collections.emptyMap();
+                }
+                log.info("[PKG-SESSION] Querying for {} userPlanIds: {}", userPlanIds.size(), userPlanIds);
+                try {
+                        List<Object[]> rows = packageSessionInviteRepo.findPackageSessionIdsByUserPlanIds(userPlanIds);
+                        log.info("[PKG-SESSION] Query returned {} rows", rows.size());
+                        Map<String, List<String>> result = new HashMap<>();
+                        for (Object[] row : rows) {
+                                String userPlanId = (String) row[0];
+                                String packageSessionId = (String) row[1];
+                                log.info("[PKG-SESSION] userPlanId={} -> packageSessionId={}", userPlanId, packageSessionId);
+                                result.computeIfAbsent(userPlanId, k -> new ArrayList<>()).add(packageSessionId);
+                        }
+                        return result;
+                } catch (Exception e) {
+                        log.warn("[PKG-SESSION] Query FAILED: {}", e.getMessage(), e);
+                        return Collections.emptyMap();
+                }
+        }
 
-        return StudentFeePaymentRowDTO.builder()
-                .paymentId(sfp.getId())
-                .studentId(sfp.getUserId())
-                .studentName(user != null ? user.getFullName() : sfp.getUserId())
-                .studentEmail(user != null ? user.getEmail() : null)
-                .feeTypeName(sfp.getFeeTypeId() != null ? feeTypeNameMap.getOrDefault(sfp.getFeeTypeId(), "N/A") : "N/A")
-                .installmentNumber(sfp.getIId() != null ? installmentNumberMap.getOrDefault(sfp.getIId(), null) : null)
-                .amountExpected(expected)
-                .discountAmount(discount)
-                .amountPaid(paid)
-                .totalDue(totalDue)
-                .dueDate(sfp.getDueDate())
-                .status(sfp.getStatus())
-                .build();
-    }
+        private StudentFeePaymentRowDTO toRowDTO(
+                        StudentFeePayment sfp,
+                        Map<String, UserDTO> userMap,
+                        Map<String, String> feeTypeNameMap,
+                        Map<String, Integer> installmentNumberMap,
+                        Map<String, List<String>> packageSessionMap) {
+
+                UserDTO user = userMap.get(sfp.getUserId());
+                BigDecimal expected = sfp.getAmountExpected() != null ? sfp.getAmountExpected() : BigDecimal.ZERO;
+                BigDecimal discount = sfp.getDiscountAmount() != null ? sfp.getDiscountAmount() : BigDecimal.ZERO;
+                BigDecimal paid = sfp.getAmountPaid() != null ? sfp.getAmountPaid() : BigDecimal.ZERO;
+                BigDecimal totalDue = expected.subtract(discount).subtract(paid);
+
+                return StudentFeePaymentRowDTO.builder()
+                                .paymentId(sfp.getId())
+                                .userId(sfp.getUserId())
+                                .studentName(user != null ? user.getFullName() : sfp.getUserId())
+                                .studentEmail(user != null ? user.getEmail() : null)
+                                .packageSessionIds(packageSessionMap.getOrDefault(sfp.getUserPlanId(), Collections.emptyList()))
+                                .feeTypeName(sfp.getAsvId() != null
+                                                ? feeTypeNameMap.getOrDefault(sfp.getAsvId(), "N/A")
+                                                : "N/A")
+                                .installmentNumber(sfp.getIId() != null
+                                                ? installmentNumberMap.getOrDefault(sfp.getIId(), null)
+                                                : null)
+                                .amountExpected(expected)
+                                .discountAmount(discount)
+                                .amountPaid(paid)
+                                .totalDue(totalDue)
+                                .dueDate(sfp.getDueDate())
+                                .status(sfp.getStatus())
+                                .build();
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════════
+        // Collection Dashboard
+        // ══════════════════════════════════════════════════════════════════════════════
+
+        @Transactional(readOnly = true)
+        public CollectionDashboardResponseDTO getCollectionDashboard(CollectionDashboardRequestDTO request) {
+                String instituteId = request.getInstituteId();
+                boolean hasSession = StringUtils.hasText(request.getSessionId());
+                String sessionId   = hasSession ? request.getSessionId() : null;
+
+                List<String> feeTypes = (request.getFeeTypes() != null)
+                        ? request.getFeeTypes().stream().filter(StringUtils::hasText).collect(Collectors.toList())
+                        : Collections.emptyList();
+                boolean hasFeeTypes = !feeTypes.isEmpty();
+
+                // Shared SQL fragments
+                String sessionClause  = hasSession  ? buildSessionClause()        : "";
+                String feeTypeClause  = hasFeeTypes ? buildFeeTypeClause(feeTypes) : "";
+
+                // ── Query 1: Overall summary ──────────────────────────────────────────
+                String summarySql =
+                        "SELECT " +
+                        "  COALESCE(SUM(sfp.amount_expected - COALESCE(sfp.discount_amount,0)),0), " +
+                        "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
+                        "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) ELSE 0 END),0), " +
+                        "  COALESCE(SUM(sfp.amount_paid),0), " +
+                        "  COALESCE(SUM(CASE " +
+                        "    WHEN sfp.due_date <= CURRENT_DATE " +
+                        "      AND sfp.status NOT IN ('WAIVED') " +
+                        "      AND sfp.amount_paid < (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) " +
+                        "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) - sfp.amount_paid " +
+                        "    ELSE 0 END),0) " +
+                        "FROM student_fee_payment sfp " +
+                        "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
+                        "WHERE cpo.institute_id = :instituteId " +
+                        "  AND sfp.status NOT IN ('CANCELLED','DROPPED') " +
+                        sessionClause + feeTypeClause;
+
+                jakarta.persistence.Query summaryQ = entityManager.createNativeQuery(summarySql);
+                bindParams(summaryQ, instituteId, hasSession, sessionId, feeTypes);
+                Object[] sr = (Object[]) summaryQ.getSingleResult();
+
+                BigDecimal projectedRevenue  = toBD(sr[0]);
+                BigDecimal tillNowExpected   = toBD(sr[1]);
+                BigDecimal tillNowCollected  = toBD(sr[2]);
+                BigDecimal totalOverdue      = toBD(sr[3]);
+                BigDecimal totalDue          = projectedRevenue.subtract(tillNowCollected);
+                double collectionRate = calcRate(tillNowCollected, tillNowExpected);
+
+                CollectionDashboardResponseDTO.SummaryDTO summary = CollectionDashboardResponseDTO.SummaryDTO.builder()
+                        .projectedRevenue(projectedRevenue)
+                        .tillNowExpected(tillNowExpected)
+                        .tillNowCollected(tillNowCollected)
+                        .totalOverdue(totalOverdue)
+                        .totalDue(totalDue)
+                        .collectionRate(collectionRate)
+                        .build();
+
+                CollectionDashboardResponseDTO.PipelineDTO pipeline = CollectionDashboardResponseDTO.PipelineDTO.builder()
+                        .projectedRevenue(projectedRevenue)
+                        .expectedToDate(tillNowExpected)
+                        .collectedToDate(tillNowCollected)
+                        .totalOverdue(totalOverdue)
+                        .totalDue(totalDue)
+                        .build();
+
+                // ── Query 2: Class-wise breakdown ─────────────────────────────────────
+                String classWiseSql =
+                        "SELECT " +
+                        "  cpo.name, " +
+                        "  COALESCE(SUM(sfp.amount_expected - COALESCE(sfp.discount_amount,0)),0), " +
+                        "  COALESCE(SUM(CASE WHEN sfp.due_date <= CURRENT_DATE " +
+                        "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) ELSE 0 END),0), " +
+                        "  COALESCE(SUM(sfp.amount_paid),0), " +
+                        "  COALESCE(SUM(CASE " +
+                        "    WHEN sfp.due_date <= CURRENT_DATE " +
+                        "      AND sfp.status NOT IN ('WAIVED') " +
+                        "      AND sfp.amount_paid < (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) " +
+                        "    THEN (sfp.amount_expected - COALESCE(sfp.discount_amount,0)) - sfp.amount_paid " +
+                        "    ELSE 0 END),0) " +
+                        "FROM student_fee_payment sfp " +
+                        "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
+                        "WHERE cpo.institute_id = :instituteId " +
+                        "  AND sfp.status NOT IN ('CANCELLED','DROPPED') " +
+                        sessionClause + feeTypeClause +
+                        "GROUP BY cpo.id, cpo.name ORDER BY cpo.name";
+
+                jakarta.persistence.Query classQ = entityManager.createNativeQuery(classWiseSql);
+                bindParams(classQ, instituteId, hasSession, sessionId, feeTypes);
+                @SuppressWarnings("unchecked")
+                List<Object[]> classRows = classQ.getResultList();
+
+                List<CollectionDashboardResponseDTO.ClassWiseCollectionDTO> classWiseDetails = classRows.stream()
+                        .map(row -> {
+                                BigDecimal cProj      = toBD(row[1]);
+                                BigDecimal cExpDate   = toBD(row[2]);
+                                BigDecimal cCollected = toBD(row[3]);
+                                BigDecimal cOverdue   = toBD(row[4]);
+                                return CollectionDashboardResponseDTO.ClassWiseCollectionDTO.builder()
+                                        .className((String) row[0])
+                                        .projectedRevenue(cProj)
+                                        .expectedToDate(cExpDate)
+                                        .collectedToDate(cCollected)
+                                        .collectionRate(calcRate(cCollected, cExpDate))
+                                        .totalOverdue(cOverdue)
+                                        .build();
+                        }).collect(Collectors.toList());
+
+                // ── Query 3: Payment mode insights ────────────────────────────────────
+                String modeSql =
+                        "SELECT pl.vendor, COALESCE(SUM(sal.amount_allocated),0) " +
+                        "FROM student_fee_allocation_ledger sal " +
+                        "JOIN payment_log pl ON sal.payment_log_id = pl.id " +
+                        "JOIN student_fee_payment sfp ON sal.student_fee_payment_id = sfp.id " +
+                        "JOIN complex_payment_option cpo ON sfp.cpo_id = cpo.id " +
+                        "WHERE cpo.institute_id = :instituteId " +
+                        "  AND sal.transaction_type NOT IN ('REFUND','BOUNCE_REVERSAL') " +
+                        "  AND pl.payment_status = 'PAID' " +
+                        sessionClause + feeTypeClause +
+                        "GROUP BY pl.vendor";
+
+                jakarta.persistence.Query modeQ = entityManager.createNativeQuery(modeSql);
+                bindParams(modeQ, instituteId, hasSession, sessionId, feeTypes);
+                @SuppressWarnings("unchecked")
+                List<Object[]> modeRows = modeQ.getResultList();
+
+                // Aggregate by human-readable label (multiple vendors → same label)
+                Map<String, BigDecimal> labelTotals = new LinkedHashMap<>();
+                BigDecimal modeGrandTotal = BigDecimal.ZERO;
+                for (Object[] row : modeRows) {
+                        String vendor  = row[0] != null ? row[0].toString() : "UNKNOWN";
+                        BigDecimal amt = toBD(row[1]);
+                        String label   = vendorToLabel(vendor);
+                        labelTotals.merge(label, amt, BigDecimal::add);
+                        modeGrandTotal = modeGrandTotal.add(amt);
+                }
+                final BigDecimal totalMode = modeGrandTotal;
+                List<CollectionDashboardResponseDTO.PaymentModeInsightDTO> paymentModeInsights = labelTotals.entrySet().stream()
+                        .map(e -> {
+                                double pct = totalMode.compareTo(BigDecimal.ZERO) > 0
+                                        ? e.getValue().divide(totalMode, 4, java.math.RoundingMode.HALF_UP)
+                                                .multiply(new BigDecimal("100")).doubleValue()
+                                        : 0.0;
+                                return CollectionDashboardResponseDTO.PaymentModeInsightDTO.builder()
+                                        .mode(e.getKey())
+                                        .percentage(pct)
+                                        .color(labelToColor(e.getKey()))
+                                        .build();
+                        })
+                        .sorted((a, b) -> Double.compare(b.getPercentage(), a.getPercentage()))
+                        .collect(Collectors.toList());
+
+                return CollectionDashboardResponseDTO.builder()
+                        .summary(summary)
+                        .pipeline(pipeline)
+                        .classWiseDetails(classWiseDetails)
+                        .paymentModeInsights(paymentModeInsights)
+                        .build();
+        }
+
+        // ── Dashboard helpers ─────────────────────────────────────────────────────────
+
+        /** Safe conversion of any numeric type returned by native queries to BigDecimal. */
+        private BigDecimal toBD(Object val) {
+                if (val == null) return BigDecimal.ZERO;
+                if (val instanceof BigDecimal) return (BigDecimal) val;
+                return new BigDecimal(val.toString());
+        }
+
+        /** Collection rate capped floor at 0, expressed as a percentage (0-100+). */
+        private double calcRate(BigDecimal collected, BigDecimal expected) {
+                if (expected == null || expected.compareTo(BigDecimal.ZERO) == 0) return 0.0;
+                return collected.divide(expected, 4, java.math.RoundingMode.HALF_UP)
+                        .multiply(new BigDecimal("100")).doubleValue();
+        }
+
+        /** Subquery clause to scope results to a single package session via cpo_id. */
+        private String buildSessionClause() {
+                return "  AND sfp.cpo_id IN (" +
+                        "SELECT psl.cpo_id FROM package_session_learner_invitation_to_payment_option psl " +
+                        "WHERE psl.package_session_id = :sessionId) ";
+        }
+
+        /** Builds an IN clause for feeTypes using indexed named params (:ft0, :ft1, ...). */
+        private String buildFeeTypeClause(List<String> feeTypes) {
+                StringBuilder clause = new StringBuilder("  AND sfp.fee_type_id IN (");
+                for (int i = 0; i < feeTypes.size(); i++) {
+                        if (i > 0) clause.append(",");
+                        clause.append(":ft").append(i);
+                }
+                return clause.append(") ").toString();
+        }
+
+        /** Binds all common parameters to a native EntityManager query. */
+        private void bindParams(jakarta.persistence.Query q, String instituteId,
+                        boolean hasSession, String sessionId, List<String> feeTypes) {
+                q.setParameter("instituteId", instituteId);
+                if (hasSession) q.setParameter("sessionId", sessionId);
+                for (int i = 0; i < feeTypes.size(); i++) {
+                        q.setParameter("ft" + i, feeTypes.get(i));
+                }
+        }
+
+        private String vendorToLabel(String vendor) {
+                switch (vendor.toUpperCase()) {
+                        case "RAZORPAY": case "CASHFREE": case "STRIPE": return "Online Portal";
+                        case "OFFLINE":  case "MANUAL":                  return "Cash";
+                        case "EWAY":                                      return "Bank Transfer";
+                        default:                                          return "Other";
+                }
+        }
+
+        private String labelToColor(String label) {
+                switch (label) {
+                        case "Online Portal":  return "#10b981";
+                        case "Bank Transfer":  return "#f59e0b";
+                        case "Cash":           return "#6366f1";
+                        default:               return "#94a3b8";
+                }
+        }
 }
+

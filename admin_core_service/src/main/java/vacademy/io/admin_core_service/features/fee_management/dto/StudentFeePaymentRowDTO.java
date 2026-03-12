@@ -8,24 +8,28 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.List;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class StudentFeePaymentRowDTO {
 
     // Payment record identity
     private String paymentId;
 
     // Student context (enriched from auth-service)
-    private String studentId;
+    private String userId;
     private String studentName;
     private String studentEmail;
 
-    // Course/Package context
-    private String packageSessionName;
+    // Course/Package context — all package sessions this payment is linked to
+    private List<String> packageSessionIds;
 
     // Fee breakdown context
     private String feeTypeName;

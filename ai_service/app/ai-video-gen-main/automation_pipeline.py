@@ -32,6 +32,13 @@ import urllib.request
 import time
 import functools
 
+try:
+    from rembg import remove as rembg_remove
+    REMBG_AVAILABLE = True
+except ImportError:
+    REMBG_AVAILABLE = False
+    print("⚠️  rembg not installed — cutout background removal disabled. pip install rembg")
+
 REPO_ROOT = Path(__file__).resolve().parent
 LOCAL_DEPS_DIR = REPO_ROOT / ".deps"
 DEFAULT_RUNS_DIR = REPO_ROOT / "my_test_files" / "runs"
@@ -3779,10 +3786,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         entry    = task.get("entry")
         if not prompt:
             return None
-        print(f"    🎨 [pipeline] Generating image: {prompt[:60]}...")
+        is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
+        print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {prompt[:60]}...")
         image_bytes, usage_meta = self._call_image_generation_llm(prompt)
         if not image_bytes:
             return None
+        # Remove background for cutout assets
+        if is_cutout:
+            image_bytes = self._remove_background(image_bytes)
         filename = f"img_pipe_{seg_idx}_{abs(hash(prompt))}.png"
         try:
             (images_dir / filename).write_bytes(image_bytes)
@@ -3796,6 +3807,44 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "filename":    filename,
             "usage":       usage_meta,
         }
+
+    @staticmethod
+    def _remove_background(image_bytes: bytes) -> bytes:
+        """Remove background from image bytes using rembg, returning transparent PNG.
+        Uses alpha matting for smoother edges when available.
+        Falls back to original bytes if rembg is unavailable or fails."""
+        if not REMBG_AVAILABLE:
+            print("    ⚠️  rembg not available — skipping background removal")
+            return image_bytes
+        try:
+            from io import BytesIO
+            from PIL import Image
+
+            # Try with alpha matting first for smoother, higher-quality edges
+            try:
+                result_bytes = rembg_remove(
+                    image_bytes,
+                    alpha_matting=True,
+                    alpha_matting_foreground_threshold=240,
+                    alpha_matting_background_threshold=10,
+                    alpha_matting_erode_size=10,
+                )
+            except Exception:
+                # Alpha matting requires pymatting; fall back to standard removal
+                result_bytes = rembg_remove(image_bytes)
+
+            # Validate output: ensure RGBA mode (transparent PNG) and re-export
+            img = Image.open(BytesIO(result_bytes))
+            if img.mode != "RGBA":
+                img = img.convert("RGBA")
+                buf = BytesIO()
+                img.save(buf, format="PNG")
+                result_bytes = buf.getvalue()
+            print(f"    ✂️  Background removed ({len(image_bytes)} → {len(result_bytes)} bytes)")
+            return result_bytes
+        except Exception as e:
+            print(f"    ⚠️  Background removal failed (using original): {e}")
+            return image_bytes
 
     def _enhance_image_prompt(self, raw_prompt: str) -> str:
         """Enhance an image generation prompt with cinematic details (Premium+ tiers).
@@ -3876,11 +3925,13 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if _SVG_KW_RE.search(prompt):
                     print(f"    ⚠️  Skipping image gen (SVG candidate): {prompt[:70]}...")
                     continue
+                is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
                     "prompt": prompt,
                     "seg_idx": seg_idx,
+                    "is_cutout": is_cutout,
                     "timestamp": datetime.now().strftime("%f")  # basic uniqueness
                 })
 
@@ -3903,22 +3954,33 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             Raises _GeminiRateLimitError on 429 so the executor thread is freed
             immediately — the caller handles sleep + requeue in the main thread.
             """
-            prompt = task["prompt"]
-            idx    = task["seg_idx"]
+            prompt     = task["prompt"]
+            idx        = task["seg_idx"]
+            is_cutout  = task.get("is_cutout", False)
 
-            # Enhance image prompt with cinematic details (Premium+ tiers)
-            prompt = self._enhance_image_prompt(prompt)
+            if is_cutout:
+                # Cutout assets need clean isolated objects — skip cinematic style
+                # prefix and LLM enhancement which would add backgrounds/scenes
+                pass
+            else:
+                # Enhance image prompt with cinematic details (Premium+ tiers)
+                prompt = self._enhance_image_prompt(prompt)
 
-            visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
-            if visual_style.lower() not in prompt.lower():
-                prompt = f"{visual_style}, {prompt}"
+                visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
+                if visual_style.lower() not in prompt.lower():
+                    prompt = f"{visual_style}, {prompt}"
 
-            print(f"    🎨 Generating image seg={idx}: {prompt[:60]}...")
+            label = f"seg={idx}" + (" (cutout)" if is_cutout else "")
+            print(f"    🎨 Generating image {label}: {prompt[:60]}...")
             # May raise _GeminiRateLimitError — propagates to as_completed caller
             image_bytes, usage_meta = self._call_image_generation_llm(prompt)
             if not image_bytes:
                 print(f"    ❌ No image bytes for: {prompt[:50]}...")
                 return None
+
+            # Remove background for cutout assets
+            if is_cutout:
+                image_bytes = self._remove_background(image_bytes)
 
             # Save to disk for audit/debug (non-blocking write; bytes already in memory)
             filename = f"img_{idx}_{abs(hash(prompt))}.png"

@@ -196,6 +196,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemLink: '/financial-management/manage-finances',
                 subItemId: 'manage-finances',
             },
+            {
+                subItem: 'Collection Dashboard',
+                subItemLink: '/financial-management/collection-dashboard',
+                subItemId: 'collection-dashboard',
+            },
         ],
     },
     {

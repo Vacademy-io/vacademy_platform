@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { Badge } from '@/components/ui/badge';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { FinancalManagementPaginatedResponse, StudentFeePaymentRowDTO } from '@/types/manage-finances';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import dayjs from 'dayjs';
 
 interface ManageFinancesTableProps {
     data: FinancalManagementPaginatedResponse | undefined;
@@ -46,6 +48,27 @@ export function ManageFinancesTable({
     currentPage,
     onPageChange,
 }: ManageFinancesTableProps) {
+    const { instituteDetails,getDetailsFromPackageSessionId } = useInstituteDetailsStore();
+
+    const getPackageName = useCallback((id: string) => {
+        let details = getDetailsFromPackageSessionId({ packageSessionId: id });
+        console.log("this is details: ", details);
+        // Try fallback if not found directly
+        if (!details && instituteDetails?.batches_for_sessions) {
+            details = instituteDetails.batches_for_sessions.find(
+                (batch) => batch.package_dto?.id === id || batch.id === id
+            ) || null;
+        }
+
+        if (details) {
+            const pkgName = details.package_dto?.package_name || '';
+            const lvlName = details.level?.level_name || '';
+            if (pkgName && lvlName) return `${pkgName} - ${lvlName}`;
+            // if (pkgName) return pkgName;
+            // if (lvlName) return lvlName;
+        }
+        return id;
+    }, [getDetailsFromPackageSessionId, instituteDetails]);
     const tableData: TableData<StudentFeePaymentRowDTO> | undefined = useMemo(() => {
         if (!data) return undefined;
         const d = data as any;
@@ -81,15 +104,16 @@ export function ManageFinancesTable({
                 header: 'Course/Package',
                 accessorFn: (row: any) => {
                     const ids: string[] = row.packageSessionIds || row.package_session_ids || [];
-                    return ids?.length ? ids.join(', ') : '—';
+                    return ids?.length ? ids.map(id => getPackageName(id)).join(', ') : '—';
                 },
                 cell: ({ row }) => {
                     const data = row.original as any;
                     const ids: string[] = data.packageSessionIds || data.package_session_ids || [];
+                    const names = ids.map(id => getPackageName(id));
                     const display =
-                        !ids || ids.length === 0
+                        !names || names.length === 0
                             ? '—'
-                            : ids.join(', ');
+                            : names.join(', ');
                     return (
                         <div className="text-sm text-gray-900 break-all" title={display}>
                             {display}
@@ -161,8 +185,11 @@ export function ManageFinancesTable({
                 accessorFn: (row: any) => row.dueDate || row.due_date || '',
                 cell: ({ row }) => {
                     const data = row.original as any;
+                    const dateVal = data.dueDate || data.due_date;
                     return (
-                        <div className="text-sm text-gray-700">{data.dueDate || data.due_date || '-'}</div>
+                        <div className="text-sm text-gray-700">
+                            {dateVal ? dayjs(dateVal).format('D MMM YYYY, h:mm a') : '-'}
+                        </div>
                     );
                 },
                 size: 140,
@@ -183,7 +210,7 @@ export function ManageFinancesTable({
                 size: 140,
             },
         ],
-        []
+        [getPackageName]
     );
 
     if (isLoading) {

@@ -78,8 +78,11 @@ public class FeeLedgerAllocationService {
         if (remainingAmount.compareTo(BigDecimal.ZERO) > 0) {
             log.warn("Payment Log {} had excess amount {} after paying all bills for UserPlan {}", paymentLogId,
                     remainingAmount, userPlanId);
-            // Optionally: create a dummy ledger entry for "OVERPAYMENT" or hold it in user
-            // wallet.
+            final BigDecimal excessAmount = remainingAmount;
+            paymentLogRepository.findById(paymentLogId).ifPresent(pl -> {
+                pl.setUnallocatedAmount(excessAmount.doubleValue());
+                paymentLogRepository.save(pl);
+            });
         }
     }
 
@@ -180,6 +183,11 @@ public class FeeLedgerAllocationService {
         if (remainingAmount.compareTo(BigDecimal.ZERO) > 0) {
             log.warn("[NEW FLOW] Payment Log {} had excess amount {} after paying all bills for UserPlan {}",
                     paymentLogId, remainingAmount, userPlanId);
+            final BigDecimal excessAmount = remainingAmount;
+            paymentLogRepository.findById(paymentLogId).ifPresent(pl -> {
+                pl.setUnallocatedAmount(excessAmount.doubleValue());
+                paymentLogRepository.save(pl);
+            });
         }
     }
 
@@ -261,6 +269,8 @@ public class FeeLedgerAllocationService {
         if (remainingAmount.compareTo(BigDecimal.ZERO) > 0) {
             log.warn("[USER OFFLINE] Payment Log {} had excess amount {} after paying all bills for user {}",
                     paymentLog.getId(), remainingAmount, userId);
+            paymentLog.setUnallocatedAmount(remainingAmount.doubleValue());
+            paymentLogRepository.save(paymentLog);
         }
     }
 }

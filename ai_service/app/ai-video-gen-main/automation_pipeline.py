@@ -32,6 +32,45 @@ import urllib.request
 import time
 import functools
 
+try:
+    from rembg import remove as rembg_remove, new_session as rembg_new_session
+    REMBG_AVAILABLE = True
+except ImportError:
+    REMBG_AVAILABLE = False
+    rembg_remove = None       # type: ignore[assignment]
+    rembg_new_session = None   # type: ignore[assignment]
+    print("⚠️  rembg not installed — cutout background removal disabled. pip install rembg")
+
+# Singleton rembg session — loads model ONCE, shared across threads.
+# Uses u2netp (4.7MB) instead of u2net (176MB) to reduce memory footprint.
+# A lock serializes inference calls so only one thread runs rembg at a time,
+# preventing ONNX Runtime from allocating concurrent inference buffers → OOM.
+_rembg_session = None
+_rembg_lock = None
+try:
+    import threading
+    _rembg_lock = threading.Lock()
+except Exception:
+    pass
+
+def _get_rembg_session():
+    """Lazy-init singleton rembg session (u2netp). Thread-safe."""
+    global _rembg_session
+    if not REMBG_AVAILABLE:
+        return None
+    if _rembg_session is not None:
+        return _rembg_session
+    # Double-checked locking
+    if _rembg_lock:
+        with _rembg_lock:
+            if _rembg_session is not None:
+                return _rembg_session
+            print("    🧠 Loading rembg model (u2netp, ~4.7MB) — one-time init...")
+            _rembg_session = rembg_new_session("u2netp")
+            return _rembg_session
+    _rembg_session = rembg_new_session("u2netp")
+    return _rembg_session
+
 REPO_ROOT = Path(__file__).resolve().parent
 LOCAL_DEPS_DIR = REPO_ROOT / ".deps"
 DEFAULT_RUNS_DIR = REPO_ROOT / "my_test_files" / "runs"
@@ -3779,10 +3818,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         entry    = task.get("entry")
         if not prompt:
             return None
-        print(f"    🎨 [pipeline] Generating image: {prompt[:60]}...")
+        is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
+        print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {prompt[:60]}...")
         image_bytes, usage_meta = self._call_image_generation_llm(prompt)
         if not image_bytes:
             return None
+        # Remove background for cutout assets
+        if is_cutout:
+            image_bytes = self._remove_background(image_bytes)
         filename = f"img_pipe_{seg_idx}_{abs(hash(prompt))}.png"
         try:
             (images_dir / filename).write_bytes(image_bytes)
@@ -3796,6 +3839,79 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "filename":    filename,
             "usage":       usage_meta,
         }
+
+    @staticmethod
+    def _remove_background(image_bytes: bytes) -> bytes:
+        """Remove background from image bytes using rembg, returning transparent PNG.
+
+        Memory optimizations (pod limit ~3Gi):
+        - Singleton u2netp session (~4.7MB model, not 176MB u2net)
+        - Downscale to 1024px max before inference (reduces ONNX buffers)
+        - Serialized via _rembg_lock so only 1 thread runs inference at a time
+        - Mask is upscaled back to original resolution for crisp output
+        """
+        if not REMBG_AVAILABLE:
+            print("    ⚠️  rembg not available — skipping background removal")
+            return image_bytes
+        try:
+            from io import BytesIO
+            from PIL import Image
+
+            session = _get_rembg_session()
+            original_img = Image.open(BytesIO(image_bytes))
+            orig_w, orig_h = original_img.size
+
+            # Downscale large images before rembg to save memory
+            MAX_DIM = 1024
+            if max(orig_w, orig_h) > MAX_DIM:
+                scale = MAX_DIM / max(orig_w, orig_h)
+                small_w, small_h = int(orig_w * scale), int(orig_h * scale)
+                small_img = original_img.resize((small_w, small_h), Image.LANCZOS)
+                buf = BytesIO()
+                small_img.save(buf, format="PNG")
+                input_bytes = buf.getvalue()
+                del small_img, buf
+            else:
+                input_bytes = image_bytes
+
+            # Serialize rembg calls — only one thread runs inference at a time
+            # to prevent concurrent ONNX buffer allocation → OOM
+            lock = _rembg_lock
+            if lock:
+                lock.acquire()
+            try:
+                result_bytes = rembg_remove(input_bytes, session=session)
+            finally:
+                if lock:
+                    lock.release()
+
+            # If we downscaled, extract the alpha mask and apply to original resolution
+            result_img = Image.open(BytesIO(result_bytes))
+            if result_img.mode != "RGBA":
+                result_img = result_img.convert("RGBA")
+
+            if max(orig_w, orig_h) > MAX_DIM:
+                # Upscale the alpha mask to original resolution
+                alpha_mask = result_img.split()[3]  # extract alpha channel
+                alpha_mask = alpha_mask.resize((orig_w, orig_h), Image.LANCZOS)
+                # Apply mask to original full-res image
+                if original_img.mode != "RGBA":
+                    original_img = original_img.convert("RGBA")
+                original_img.putalpha(alpha_mask)
+                result_img = original_img
+
+            buf = BytesIO()
+            result_img.save(buf, format="PNG", optimize=True)
+            result_bytes = buf.getvalue()
+
+            # Free references
+            del original_img, result_img, buf
+
+            print(f"    ✂️  Background removed ({len(image_bytes)} → {len(result_bytes)} bytes)")
+            return result_bytes
+        except Exception as e:
+            print(f"    ⚠️  Background removal failed (using original): {e}")
+            return image_bytes
 
     def _enhance_image_prompt(self, raw_prompt: str) -> str:
         """Enhance an image generation prompt with cinematic details (Premium+ tiers).
@@ -3876,11 +3992,13 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if _SVG_KW_RE.search(prompt):
                     print(f"    ⚠️  Skipping image gen (SVG candidate): {prompt[:70]}...")
                     continue
+                is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
                     "prompt": prompt,
                     "seg_idx": seg_idx,
+                    "is_cutout": is_cutout,
                     "timestamp": datetime.now().strftime("%f")  # basic uniqueness
                 })
 
@@ -3903,22 +4021,33 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             Raises _GeminiRateLimitError on 429 so the executor thread is freed
             immediately — the caller handles sleep + requeue in the main thread.
             """
-            prompt = task["prompt"]
-            idx    = task["seg_idx"]
+            prompt     = task["prompt"]
+            idx        = task["seg_idx"]
+            is_cutout  = task.get("is_cutout", False)
 
-            # Enhance image prompt with cinematic details (Premium+ tiers)
-            prompt = self._enhance_image_prompt(prompt)
+            if is_cutout:
+                # Cutout assets need clean isolated objects — skip cinematic style
+                # prefix and LLM enhancement which would add backgrounds/scenes
+                pass
+            else:
+                # Enhance image prompt with cinematic details (Premium+ tiers)
+                prompt = self._enhance_image_prompt(prompt)
 
-            visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
-            if visual_style.lower() not in prompt.lower():
-                prompt = f"{visual_style}, {prompt}"
+                visual_style = getattr(self, '_current_visual_style', 'realistic cinematic photograph')
+                if visual_style.lower() not in prompt.lower():
+                    prompt = f"{visual_style}, {prompt}"
 
-            print(f"    🎨 Generating image seg={idx}: {prompt[:60]}...")
+            label = f"seg={idx}" + (" (cutout)" if is_cutout else "")
+            print(f"    🎨 Generating image {label}: {prompt[:60]}...")
             # May raise _GeminiRateLimitError — propagates to as_completed caller
             image_bytes, usage_meta = self._call_image_generation_llm(prompt)
             if not image_bytes:
                 print(f"    ❌ No image bytes for: {prompt[:50]}...")
                 return None
+
+            # Remove background for cutout assets
+            if is_cutout:
+                image_bytes = self._remove_background(image_bytes)
 
             # Save to disk for audit/debug (non-blocking write; bytes already in memory)
             filename = f"img_{idx}_{abs(hash(prompt))}.png"
@@ -4704,24 +4833,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         
         # Get audio delay from branding config (intro duration)
         audio_delay = 0.0
-        
-        # First try to get from stored branding config (works within same pipeline run)
-        if hasattr(self, '_current_branding') and self._current_branding:
+
+        # Primary: check branding_meta.json (ground truth — written during _write_timeline)
+        branding_meta_path = run_dir / "branding_meta.json"
+        if branding_meta_path.exists():
+            try:
+                branding_meta = json.loads(branding_meta_path.read_text())
+                audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
+                print(f"   🎵 Audio will start at {audio_delay}s (from branding_meta.json)")
+            except Exception as e:
+                print(f"   ⚠️ Could not load branding metadata: {e}")
+
+        # Fallback: use in-memory branding config (for first-run before _write_timeline)
+        if audio_delay == 0.0 and hasattr(self, '_current_branding') and self._current_branding:
             intro_config = self._current_branding.get("intro", {})
             if intro_config.get("enabled", False):
                 audio_delay = float(intro_config.get("duration_seconds", 0.0))
                 print(f"   🎵 Audio will start at {audio_delay}s (from branding config)")
-        
-        # Fallback: check branding_meta.json file (for resumed runs)
-        if audio_delay == 0.0:
-            branding_meta_path = run_dir / "branding_meta.json"
-            if branding_meta_path.exists():
-                try:
-                    branding_meta = json.loads(branding_meta_path.read_text())
-                    audio_delay = float(branding_meta.get("intro_duration_seconds", 0.0))
-                    print(f"   🎵 Audio will start at {audio_delay}s (from branding_meta.json)")
-                except Exception as e:
-                    print(f"   ⚠️ Could not load branding metadata: {e}")
         
         cmd = [
             sys.executable,

@@ -100,4 +100,41 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
        Long findTotalActiveTimeByUserAndDateRange(@Param("userId") String userId,
                      @Param("startTime") LocalDateTime startTime,
                      @Param("endTime") LocalDateTime endTime);
+
+       // ==================== Super Admin Queries ====================
+
+       @Query(value = """
+                     SELECT u.id, u.user_id, u.device_type, u.ip_address, u.is_active,
+                            u.login_time, u.last_activity_time, u.logout_time, u.session_duration_minutes
+                     FROM user_session u
+                     WHERE CAST(u.institute_id AS TEXT) = :instituteId
+                       AND (:startDate IS NULL OR u.login_time >= CAST(:startDate AS TIMESTAMP))
+                       AND (:endDate IS NULL OR u.login_time <= CAST(:endDate AS TIMESTAMP))
+                     ORDER BY u.login_time DESC
+                     LIMIT :size OFFSET :offset
+                     """, nativeQuery = true)
+       List<Object[]> findSessionsByInstitutePaginated(@Param("instituteId") String instituteId,
+                     @Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate,
+                     @Param("size") int size, @Param("offset") int offset);
+
+       @Query(value = """
+                     SELECT COUNT(*) FROM user_session u
+                     WHERE CAST(u.institute_id AS TEXT) = :instituteId
+                       AND (:startDate IS NULL OR u.login_time >= CAST(:startDate AS TIMESTAMP))
+                       AND (:endDate IS NULL OR u.login_time <= CAST(:endDate AS TIMESTAMP))
+                     """, nativeQuery = true)
+       Long countSessionsByInstitute(@Param("instituteId") String instituteId,
+                     @Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
+
+       @Query(value = "SELECT COUNT(DISTINCT u.user_id) FROM user_session u WHERE u.is_active = true", nativeQuery = true)
+       Long countTotalCurrentlyActiveUsers();
+
+       @Query(value = """
+                     SELECT CAST(u.institute_id AS TEXT) AS institute_id, COUNT(DISTINCT u.user_id) AS active_count
+                     FROM user_session u
+                     WHERE u.is_active = true AND u.institute_id IS NOT NULL
+                     GROUP BY u.institute_id
+                     ORDER BY active_count DESC
+                     """, nativeQuery = true)
+       List<Object[]> getPerInstituteActiveCounts();
 }

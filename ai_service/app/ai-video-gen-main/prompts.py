@@ -59,24 +59,26 @@ TOPIC_SHOT_PROFILES = {
     },
     "history": {
         "description": "History / Social Studies / Geography",
-        "preferred_shots": ["IMAGE_HERO", "IMAGE_SPLIT", "TIMELINE"],
+        "preferred_shots": ["IMAGE_HERO", "IMAGE_SPLIT", "ANIMATED_ASSET", "TIMELINE"],
         "image_ratio": 0.6,  # ~60% image shots for historical context
         "guidance": (
             "This is a HISTORY/GEOGRAPHY topic. Prioritize:\n"
             "- IMAGE_HERO shots with period-appropriate scenes\n"
             "- IMAGE_SPLIT for artifacts, maps, historical figures\n"
+            "- ANIMATED_ASSET for floating artifacts, tools, weapons, cultural objects\n"
             "- Timeline-style SVG for chronological events\n"
             "- Use rich, cinematic image prompts with era-specific details"
         ),
     },
     "science": {
         "description": "Biology / Chemistry / Physics / Earth Science",
-        "preferred_shots": ["IMAGE_SPLIT", "SVG_DIAGRAM", "TEXT_DIAGRAM"],
+        "preferred_shots": ["IMAGE_SPLIT", "ANIMATED_ASSET", "SVG_DIAGRAM", "TEXT_DIAGRAM"],
         "image_ratio": 0.35,  # ~35% images for specimens, experiments
         "guidance": (
             "This is a SCIENCE topic. Prioritize:\n"
             "- SVG diagrams for processes (cell division, circuits, etc.)\n"
             "- IMAGE_SPLIT for real-world specimens, lab setups\n"
+            "- ANIMATED_ASSET for molecules, cells, planets, organisms floating/moving\n"
             "- Mermaid diagrams for classification trees\n"
             "- Animated SVGs to show step-by-step processes\n"
             "- Use Vivus.js to draw scientific diagrams progressively"
@@ -109,13 +111,14 @@ TOPIC_SHOT_PROFILES = {
     },
     "general": {
         "description": "General / Mixed / Default",
-        "preferred_shots": ["IMAGE_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT"],
+        "preferred_shots": ["IMAGE_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT", "ANIMATED_ASSET"],
         "image_ratio": 0.3,
         "guidance": (
             "Use a balanced mix of shot types:\n"
             "- 1 IMAGE_HERO for the hook/opener\n"
             "- TEXT_DIAGRAM shots for core explanations\n"
-            "- IMAGE_SPLIT when a visual reference helps understanding"
+            "- IMAGE_SPLIT when a visual reference helps understanding\n"
+            "- ANIMATED_ASSET for floating illustrative objects when it adds visual interest"
         ),
     },
 }
@@ -193,7 +196,7 @@ JSON shape:
     {{
       "label": "Hook",
       "summary": "...",
-      "visual_type": "IMAGE_HERO or IMAGE_SPLIT or TEXT_DIAGRAM or LOWER_THIRD",
+      "visual_type": "IMAGE_HERO or IMAGE_SPLIT or TEXT_DIAGRAM or LOWER_THIRD or ANIMATED_ASSET",
       "visual_idea": "Describe a key visual metaphor for this section",
       "image_prompt_hint": "Only if visual_type uses images: cinematic photo description, 16:9, no text/faces",
       "key_terms": ["term1", "term2"],
@@ -236,8 +239,10 @@ JSON shape:
 - Use IMAGE_SPLIT when explaining with a visual reference alongside text
 - Use TEXT_DIAGRAM for abstract concepts, math, code, processes, comparisons
 - Use LOWER_THIRD for vocabulary definitions (pairs with another shot type)
+- Use ANIMATED_ASSET for floating illustrative objects (molecules, tools, animals) with GSAP animation
 - For **coding** topics: prefer TEXT_DIAGRAM and code blocks over images
-- For **history** topics: prefer IMAGE_HERO and IMAGE_SPLIT over diagrams
+- For **history** topics: prefer IMAGE_HERO, IMAGE_SPLIT, and ANIMATED_ASSET over diagrams
+- For **science** topics: use ANIMATED_ASSET for molecules, cells, planets alongside SVG diagrams
 - For **math** topics: prefer TEXT_DIAGRAM with KaTeX equations, almost no images
 - For **science** topics: balanced mix of IMAGE_SPLIT and SVG diagrams
 """
@@ -377,6 +382,7 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "</script>\n"
     "```\n"
     "Ken Burns options: `zoom-in`, `zoom-out`, `pan-left`, `pan-right`, `pan-up`, `zoom-pan-tl`\n"
+    "Ken Burns works best on shots 8-15 seconds. Below 6s the motion feels jarring. For very dense content, use `zoom-in` (slow, focused). For establishing shots, use `pan-left`/`pan-right` (wide, immersive).\n"
     "Gradient options: `gradient-bottom` (default), `gradient-top`, `gradient-full`, `gradient-center`\n\n"
     
     "**SHOT TYPE 2: IMAGE_SPLIT** — Image on one side, text on the other.\n"
@@ -557,6 +563,83 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "```\n"
     "Add `.eq-term` class to main variables, `.eq-sep` to operators/equals signs. Each term is its own `<span>`.\n\n"
 
+    "**SHOT TYPE 8: ANIMATED_ASSET** — Cutout images with transparent backgrounds, positioned absolutely, animated with GSAP.\n"
+    "USE FOR: Illustrating concepts with floating objects — molecules, planets, animals, tools, characters, historical artifacts.\n"
+    "Objects are individual AI-generated images with backgrounds removed. They animate independently using GSAP.\n"
+    "**IMPORTANT**: Image prompts for cutout assets MUST describe a SINGLE isolated object on a solid/plain background.\n"
+    "Add `data-cutout=\"true\"` to mark images for automatic background removal.\n"
+    "```html\n"
+    "<div style='position:relative; width:1920px; height:1080px; overflow:hidden;'>\n"
+    "  <h1 id='title' style='opacity:0; position:absolute; top:80px; left:100px;\n"
+    "      font-family:Montserrat,sans-serif; font-size:64px; font-weight:800;\n"
+    "      color:var(--text-color,#fff);'>\n"
+    "    The Water Cycle\n"
+    "  </h1>\n"
+    "\n"
+    "  <img id='cloud' class='generated-image'\n"
+    "       data-img-prompt='single white fluffy cumulus cloud, centered, studio lighting, isolated on solid dark blue background, no other objects, clean edges'\n"
+    "       data-cutout='true'\n"
+    "       src='placeholder.png'\n"
+    "       style='position:absolute; top:60px; right:100px; width:350px; opacity:0;' />\n"
+    "\n"
+    "  <img id='sun' class='generated-image'\n"
+    "       data-img-prompt='bright yellow sun with gentle rays, centered, cartoon illustration style, isolated on solid dark navy background, no other objects, clean edges'\n"
+    "       data-cutout='true'\n"
+    "       src='placeholder.png'\n"
+    "       style='position:absolute; top:30px; left:200px; width:200px; opacity:0;' />\n"
+    "\n"
+    "  <img id='droplet' class='generated-image'\n"
+    "       data-img-prompt='single blue water droplet, centered, realistic 3D render, isolated on solid white background, no other objects, clean edges'\n"
+    "       data-cutout='true'\n"
+    "       src='placeholder.png'\n"
+    "       style='position:absolute; top:250px; right:220px; width:60px; opacity:0;' />\n"
+    "\n"
+    "  <p id='caption' style='opacity:0; position:absolute; bottom:100px; left:100px; right:100px;\n"
+    "     font-family:Inter,sans-serif; font-size:28px; color:var(--text-color,#fff);'>\n"
+    "    Water evaporates, forms clouds, and falls back as rain.\n"
+    "  </p>\n"
+    "</div>\n"
+    "\n"
+    "<script>\n"
+    "fadeIn('#title', 0.5, 0);\n"
+    "// Sun scales up from center\n"
+    "gsap.fromTo('#sun',\n"
+    "  {scale: 0, opacity: 0},\n"
+    "  {scale: 1, opacity: 1, duration: 1.2, delay: 0.3, ease: 'back.out(1.7)'});\n"
+    "// Cloud floats in from right\n"
+    "gsap.fromTo('#cloud',\n"
+    "  {x: 300, opacity: 0},\n"
+    "  {x: 0, opacity: 1, duration: 1.5, delay: 0.8, ease: 'power2.out'});\n"
+    "// Droplet falls from cloud\n"
+    "gsap.fromTo('#droplet',\n"
+    "  {y: -30, opacity: 0},\n"
+    "  {y: 300, opacity: 1, duration: 2, delay: 2.5, ease: 'bounce.out'});\n"
+    "fadeIn('#caption', 0.6, 3.5);\n"
+    "</script>\n"
+    "```\n"
+    "**ANIMATED_ASSET rules**:\n"
+    "- Use `position:absolute` for ALL elements so they can be placed freely\n"
+    "- Image prompts MUST describe a SINGLE object on a SOLID, HIGH-CONTRAST background for clean cutout:\n"
+    "  Good: 'single red apple, centered, isolated on solid white background, studio lighting, no shadows on background'\n"
+    "  Good: 'one blue water molecule model, clean edges, centered on solid dark gray background, product photography'\n"
+    "  Bad: 'apples on a table in a kitchen' (complex background, cutout will have rough edges)\n"
+    "  Bad: 'cloud in the sky' (sky gradient makes cutout messy — say 'isolated on solid blue background' instead)\n"
+    "- ALWAYS end cutout image prompts with: 'isolated on solid [color] background, no other objects, clean edges'\n"
+    "- Choose background color that CONTRASTS with the object (white obj → dark bg, dark obj → white bg)\n"
+    "- Always include `data-cutout=\"true\"` on images that need background removal\n"
+    "- Use standard GSAP properties: `x`, `y`, `scale`, `rotation`, `opacity`\n"
+    "- Keep animations simple and purposeful: float-in, drop, scale-up, slide, gentle rotation\n"
+    "- **Easing**: Use `power2.out` (standard reveals), `expo.out` (grand entrances), `sine.inOut` (smooth loops). "
+    "Avoid `linear` (mechanical), `elastic` (bouncy/cheap). Use `bounce.out` only for playful/young audience content.\n"
+    "- **Hold state**: After entrance animation, objects must STAY VISIBLE during narration. "
+    "Don't animate out until the shot ends. Example: cloud floats in → stays put for 8s → shot transitions.\n"
+    "- **Density**: Max 3 elements animating simultaneously. Stagger reveals 300-500ms apart. "
+    "Too many moving things at once = visual chaos, reduced learning retention.\n"
+    "- **Z-index layering**: background assets (sky, landscape) z-index:1; mid-ground (tools, objects) z-index:5; "
+    "foreground (key item being discussed) z-index:10.\n"
+    "- Animations MUST sync with narration — use word timings to trigger object reveals when narrator mentions them\n"
+    "- Great for: science (molecules, cells, planets), history (artifacts, tools), nature (animals, plants)\n\n"
+
     "**📸 IMAGE PROMPT GUIDELINES (for data-img-prompt)**:\n"
     "Write descriptive, cinematic prompts (20-50 words) for AI image generation:\n"
     "- Specify style: 'realistic photograph', 'scientific illustration', 'infographic style', 'watercolor'\n"
@@ -656,7 +739,13 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "  <path d='M10,25 L150,25 M140,15 L160,25 L140,35' stroke='#dc2626' stroke-width='3' fill='none'/>\n"
     "</svg>\n"
     "<script>animateSVG('arrow', 60);</script>\n"
-    "```\n\n"
+    "```\n"
+    "**animateSVG speed parameter** (second argument = milliseconds per path frame):\n"
+    "- 35ms: Quick connector arrows, small icons\n"
+    "- 60ms: Medium arrows, simple shapes\n"
+    "- 100ms: Detailed diagrams, equations — deliberate 'handwriting' feel\n"
+    "- 150ms+: Very complex diagrams — slow, teacher-pacing\n"
+    "Higher number = slower, more deliberate drawing.\n\n"
     
     "**🔊 HOWLER.JS - SOUND EFFECTS (OPTIONAL BUT PROFESSIONAL)**:\n"
     "```javascript\n"
@@ -949,6 +1038,7 @@ Use a **variety of shot types** for visual engagement:
 6. **DATA_STORY**: Animated D3.js bar/line chart (use only when narration mentions actual numeric data)
 7. **PROCESS_STEPS**: Numbered nodes with Vivus connector arrows revealing one-by-one (algorithms, how-to, sequences)
 8. **EQUATION_BUILD**: KaTeX terms revealing sequentially with Rough Notation annotations (math/science formulas)
+9. **ANIMATED_ASSET**: Cutout images (transparent bg) positioned absolutely + animated with GSAP (floating objects, characters, illustrative elements)
 
 **EXAMPLE 1 — IMAGE_HERO SHOT (cinematic opening)**:
 ```html
@@ -1032,10 +1122,11 @@ showThenAnnotate('#text', '#key', 'underline', '{annotation_color}', 0, 0.8);  /
 - 'highlight' - Marker highlight (use yellow: #fef08a)
 - 'box' - Box around content (use: {primary_color})
 
-**AI Images** (for IMAGE_HERO and IMAGE_SPLIT shots):
+**AI Images** (for IMAGE_HERO, IMAGE_SPLIT, and ANIMATED_ASSET shots):
 - Write cinematic prompts (20-50 words): style, subject, composition, lighting
 - AVOID: text in images, logos, human faces
-- Always add `data-ken-burns` attribute for motion
+- For IMAGE_HERO/IMAGE_SPLIT: always add `data-ken-burns` attribute for motion
+- For ANIMATED_ASSET cutouts: add `data-cutout="true"`, describe a SINGLE isolated object on a solid/plain background
 
 **DO NOT**:
 - Text flying in from sides, bouncing, or spinning
@@ -1085,6 +1176,18 @@ setTimeout(() => annotate('#energy-term', {{type: 'underline', color: '{annotati
 - Supporting elements: Sync to word timings using the formula: `delay_ms = (word_time - shot_start) * 1000`
 - Annotations: Trigger slightly BEFORE the word is spoken (subtract 0.3s) so they're visible when heard
 - NEVER use delays longer than (shot_end - shot_start) seconds
+
+**⏸️ STRATEGIC PAUSES (what makes professional videos feel polished)**:
+- After showing a new concept (text + diagram), wait 1-1.5s before adding annotations — this gives the viewer time to read
+- After annotation, wait 0.5s before the next transition — prevents visual rush
+- Between staggered element reveals, use 300-500ms gaps — never reveal everything at once
+- If a shot is 12+ seconds, build the visual in 2-3 phases with pauses between, not one continuous animation
+- Think like Khan Academy: show → pause → annotate → pause → next element
+
+**🎯 ANIMATION SYNC TOLERANCE**:
+- Animations should trigger within ±200ms of word timing
+- If exact sync is impossible, show elements BEFORE they're mentioned (early by 0.3s) rather than after
+- Viewers perceive "slightly early" as natural; "slightly late" feels laggy and broken
 
 {topic_guidance}
 

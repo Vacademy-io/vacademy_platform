@@ -9,9 +9,10 @@ class CustomUserDetails(BaseModel):
     user_id: str
     institute_id: Optional[str] = None
     enabled: bool = True
+    is_root_user: bool = False
     roles: List[str] = []
     authorities: List[str] = []
-    
+
     # Allow extra fields to be robust against API changes
     model_config = ConfigDict(extra='ignore')
 

@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.fee_management.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
@@ -10,11 +11,21 @@ import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaym
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentRowDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardResponseDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardRequestDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.InstituteFeeTypePriorityDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.SetPriorityRequest;
+import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
+import vacademy.io.admin_core_service.features.fee_management.entity.InstituteFeeTypePriority;
+import vacademy.io.admin_core_service.features.fee_management.enums.AllocationScope;
+import vacademy.io.admin_core_service.features.fee_management.repository.InstituteFeeTypePriorityRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/admin-core-service/v1/admin/student-fee")
@@ -26,11 +37,52 @@ public class FeeTrackingAdminController {
     @Autowired
     private FeeLedgerAllocationService feeLedgerAllocationService;
 
-    @GetMapping("/{userId}/dues")
+    @Autowired
+    private InstituteFeeTypePriorityRepository priorityRepository;
+
+    @PostMapping("/{userId}/dues")
     public ResponseEntity<List<StudentFeePaymentDTO>> getStudentDues(
             @PathVariable("userId") String userId,
-            @RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(feeTrackingService.getStudentDues(userId, instituteId));
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody(required = false) DuesFilterRequest filter) {
+
+        List<StudentFeePaymentDTO> dues = feeTrackingService.getStudentDues(userId, instituteId);
+
+        if (filter != null) {
+            // Optional status filter (e.g., PENDING, PARTIAL_PAID, OVERDUE)
+            if (filter.getStatus() != null && !filter.getStatus().isBlank()) {
+                String statusFilter = filter.getStatus().trim().toUpperCase();
+                dues = dues.stream()
+                        .filter(d -> d.getStatus() != null
+                                && d.getStatus().toUpperCase().equals(statusFilter))
+                        .collect(Collectors.toList());
+            }
+
+            // Optional due date range filter
+            LocalDate start = filter.getStartDueDate();
+            LocalDate end = filter.getEndDueDate();
+            if (start != null || end != null) {
+                dues = dues.stream()
+                        .filter(d -> {
+                            if (d.getDueDate() == null) {
+                                return false;
+                            }
+                            LocalDate due = d.getDueDate().toInstant()
+                                    .atZone(ZoneId.systemDefault())
+                                    .toLocalDate();
+                            if (start != null && due.isBefore(start)) {
+                                return false;
+                            }
+                            if (end != null && due.isAfter(end)) {
+                                return false;
+                            }
+                            return true;
+                        })
+                        .collect(Collectors.toList());
+            }
+        }
+
+        return ResponseEntity.ok(dues);
     }
 
     @GetMapping("/{userId}/receipts")
@@ -41,31 +93,38 @@ public class FeeTrackingAdminController {
     }
 
     /**
-     * Allocate an offline/admin payment for a user across all their unpaid
-     * installments.
+     * Allocate an offline/admin payment for a user across their unpaid installments
+     * with overdue-first + institute fee-type priority ordering.
      *
-     * Input:
-     *  - userId (path) - the student whose installments are to be updated
-     *  - amount (query param) representing the payment amount
-     *
-     * Behavior:
-     *  - Creates a NEW PaymentLog row with status PAID for this amount
-     *  - Allocates that amount across all unpaid student_fee_payment rows (FIFO)
-     *  - Creates separate ledger rows per student_fee_payment_id for this payment
+     * @param userId      the student whose installments are to be updated
+     * @param amount      the payment amount
+     * @param instituteId optional – derived from bills when absent
+     * @param scope       OVERDUE_ONLY or ALL_DUES (defaults to ALL_DUES)
      */
     @PostMapping("/{userId}/allocate")
-    public ResponseEntity<Void> allocatePaymentForLog(
+    public ResponseEntity<Void> allocatePaymentForUser(
             @PathVariable("userId") String userId,
             @RequestParam("amount") java.math.BigDecimal amount,
+            @RequestParam(value = "instituteId", required = false) String instituteId,
+            @RequestParam(value = "scope", required = false, defaultValue = "ALL_DUES") String scope,
             @RequestAttribute("user") CustomUserDetails user) {
-        feeLedgerAllocationService.allocatePaymentForUser(userId, amount);
+
+        AllocationScope allocationScope;
+        try {
+            allocationScope = AllocationScope.valueOf(scope.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        feeLedgerAllocationService.allocatePaymentForUser(userId, amount, instituteId, allocationScope);
         return ResponseEntity.noContent().build();
     }
 
     /**
      * Admin fee roster search — powers the "Manage Finances" table in the frontend.
      *
-     * POST /admin-core-service/v1/admin/student-fee/search?instituteId={instituteId}
+     * POST
+     * /admin-core-service/v1/admin/student-fee/search?instituteId={instituteId}
      *
      * Accepts a rich filter payload and returns a paginated list of student fee
      * payment records enriched with student name/email and fee type context.
@@ -85,5 +144,97 @@ public class FeeTrackingAdminController {
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(feeTrackingService.getCollectionDashboard(request));
     }
-}
+    // ---- Fee-type priority configuration endpoints ----
 
+    @PutMapping("/priority")
+    @Transactional
+    public ResponseEntity<Void> setFeeTypePriority(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody SetPriorityRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+
+        if (request.getScope() == null || request.getPriorities() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        String scopeStr;
+        try {
+            scopeStr = AllocationScope.valueOf(request.getScope().trim().toUpperCase()).name();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        priorityRepository.deleteByInstituteIdAndScope(instituteId, scopeStr);
+
+        for (InstituteFeeTypePriorityDTO dto : request.getPriorities()) {
+            InstituteFeeTypePriority entity = new InstituteFeeTypePriority();
+            entity.setInstituteId(instituteId);
+            entity.setScope(scopeStr);
+            entity.setFeeTypeId(dto.getFeeTypeId());
+            entity.setPriorityOrder(dto.getPriorityOrder());
+            priorityRepository.save(entity);
+        }
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/priority")
+    public ResponseEntity<List<InstituteFeeTypePriorityDTO>> getFeeTypePriority(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("scope") String scope) {
+
+        String scopeStr;
+        try {
+            scopeStr = AllocationScope.valueOf(scope.trim().toUpperCase()).name();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        List<InstituteFeeTypePriorityDTO> result = priorityRepository
+                .findByInstituteIdAndScopeOrderByPriorityOrderAsc(instituteId, scopeStr)
+                .stream()
+                .map(e -> InstituteFeeTypePriorityDTO.builder()
+                        .feeTypeId(e.getFeeTypeId())
+                        .priorityOrder(e.getPriorityOrder())
+                        .build())
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Request body for filtering dues.
+     * - status: optional status filter (e.g. "PENDING", "PARTIAL_PAID").
+     * - startDueDate / endDueDate: optional due date range (yyyy-MM-dd).
+     */
+    public static class DuesFilterRequest {
+        private String status;
+        private LocalDate startDueDate;
+        private LocalDate endDueDate;
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public LocalDate getStartDueDate() {
+            return startDueDate;
+        }
+
+        public void setStartDueDate(LocalDate startDueDate) {
+            this.startDueDate = startDueDate;
+        }
+
+        public LocalDate getEndDueDate() {
+            return endDueDate;
+        }
+
+        public void setEndDueDate(LocalDate endDueDate) {
+            this.endDueDate = endDueDate;
+        }
+    }
+
+}

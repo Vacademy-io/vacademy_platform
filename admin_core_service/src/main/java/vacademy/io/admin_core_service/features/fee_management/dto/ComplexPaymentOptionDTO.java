@@ -1,10 +1,12 @@
 package vacademy.io.admin_core_service.features.fee_management.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.ArrayList;
 
 @Data
 @Builder
@@ -17,7 +19,21 @@ public class ComplexPaymentOptionDTO {
     private String instituteId;
     private String defaultPaymentOptionId;
     private String status;
+    private String createdBy;
+    private String approvedBy;
     private List<FeeTypeDTO> feeTypes;
+
+    @Builder.Default
+    private List<PackageSessionLinkDTO> packageSessionLinks = new ArrayList<>();
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class PackageSessionLinkDTO {
+        private String enrollInviteId;
+        private String packageSessionId;
+    }
 
     @Data
     @Builder
@@ -39,6 +55,12 @@ public class ComplexPaymentOptionDTO {
     public static class AssignedFeeValueDTO {
         private String id;
         private BigDecimal amount;
+        @JsonProperty("original_amount")
+        private BigDecimal originalAmount;
+        @JsonProperty("discount_type")
+        private String discountType;
+        @JsonProperty("discount_value")
+        private BigDecimal discountValue;
         private Integer noOfInstallments;
         private Boolean hasInstallment;
         private Boolean isRefundable;

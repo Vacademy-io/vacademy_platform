@@ -204,6 +204,13 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   .right-box .wr-header { color: #10b981; }
                   .wr-icon { font-size: 24px; margin-right: 8px; }
                   .wr-text { font-size: 24px; }
+
+                  /* Cutout asset images — transparent background, subtle depth */
+                  .generated-image[data-cutout="true"] {
+                    background: transparent;
+                    mix-blend-mode: normal;
+                    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
+                  }
                 </style>
               </head>
               <body>

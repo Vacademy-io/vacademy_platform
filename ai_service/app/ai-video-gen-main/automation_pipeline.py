@@ -33,11 +33,41 @@ import time
 import functools
 
 try:
-    from rembg import remove as rembg_remove
+    from rembg import remove as rembg_remove, new_session as rembg_new_session
     REMBG_AVAILABLE = True
 except ImportError:
     REMBG_AVAILABLE = False
+    rembg_remove = None       # type: ignore[assignment]
+    rembg_new_session = None   # type: ignore[assignment]
     print("⚠️  rembg not installed — cutout background removal disabled. pip install rembg")
+
+# Singleton rembg session — loads u2net model (~176MB) ONCE, shared across threads.
+# Without this, each ThreadPoolExecutor worker loads its own copy → OOM.
+_rembg_session = None
+_rembg_session_lock = None
+try:
+    import threading
+    _rembg_session_lock = threading.Lock()
+except Exception:
+    pass
+
+def _get_rembg_session():
+    """Lazy-init singleton rembg session. Thread-safe."""
+    global _rembg_session
+    if not REMBG_AVAILABLE:
+        return None
+    if _rembg_session is not None:
+        return _rembg_session
+    if _rembg_session_lock:
+        with _rembg_session_lock:
+            if _rembg_session is not None:
+                return _rembg_session
+            print("    🧠 Loading rembg model (u2net) — one-time init...")
+            _rembg_session = rembg_new_session("u2net")
+            return _rembg_session
+    # No lock available — just init
+    _rembg_session = rembg_new_session("u2net")
+    return _rembg_session
 
 REPO_ROOT = Path(__file__).resolve().parent
 LOCAL_DEPS_DIR = REPO_ROOT / ".deps"
@@ -3811,7 +3841,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
     @staticmethod
     def _remove_background(image_bytes: bytes) -> bytes:
         """Remove background from image bytes using rembg, returning transparent PNG.
-        Uses alpha matting for smoother edges when available.
+        Uses a singleton session to avoid loading the 176MB model per-thread.
         Falls back to original bytes if rembg is unavailable or fails."""
         if not REMBG_AVAILABLE:
             print("    ⚠️  rembg not available — skipping background removal")
@@ -3820,18 +3850,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             from io import BytesIO
             from PIL import Image
 
-            # Try with alpha matting first for smoother, higher-quality edges
-            try:
-                result_bytes = rembg_remove(
-                    image_bytes,
-                    alpha_matting=True,
-                    alpha_matting_foreground_threshold=240,
-                    alpha_matting_background_threshold=10,
-                    alpha_matting_erode_size=10,
-                )
-            except Exception:
-                # Alpha matting requires pymatting; fall back to standard removal
-                result_bytes = rembg_remove(image_bytes)
+            session = _get_rembg_session()
+            result_bytes = rembg_remove(image_bytes, session=session)
 
             # Validate output: ensure RGBA mode (transparent PNG) and re-export
             img = Image.open(BytesIO(result_bytes))

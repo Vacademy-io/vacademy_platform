@@ -2,9 +2,15 @@ package vacademy.io.admin_core_service.features.fee_management.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.fee_management.dto.InstituteFeeTypePriorityDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.SetPriorityRequest;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
+import vacademy.io.admin_core_service.features.fee_management.entity.InstituteFeeTypePriority;
+import vacademy.io.admin_core_service.features.fee_management.enums.AllocationScope;
+import vacademy.io.admin_core_service.features.fee_management.repository.InstituteFeeTypePriorityRepository;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -23,6 +29,9 @@ public class FeeTrackingAdminController {
 
     @Autowired
     private FeeLedgerAllocationService feeLedgerAllocationService;
+
+    @Autowired
+    private InstituteFeeTypePriorityRepository priorityRepository;
 
     @PostMapping("/{userId}/dues")
     public ResponseEntity<List<StudentFeePaymentDTO>> getStudentDues(
@@ -77,25 +86,89 @@ public class FeeTrackingAdminController {
     }
 
     /**
-     * Allocate an offline/admin payment for a user across all their unpaid
-     * installments.
+     * Allocate an offline/admin payment for a user across their unpaid installments
+     * with overdue-first + institute fee-type priority ordering.
      *
-     * Input:
-     *  - userId (path) - the student whose installments are to be updated
-     *  - amount (query param) representing the payment amount
-     *
-     * Behavior:
-     *  - Creates a NEW PaymentLog row with status PAID for this amount
-     *  - Allocates that amount across all unpaid student_fee_payment rows (FIFO)
-     *  - Creates separate ledger rows per student_fee_payment_id for this payment
+     * @param userId      the student whose installments are to be updated
+     * @param amount      the payment amount
+     * @param instituteId optional – derived from bills when absent
+     * @param scope       OVERDUE_ONLY or ALL_DUES (defaults to ALL_DUES)
      */
     @PostMapping("/{userId}/allocate")
-    public ResponseEntity<Void> allocatePaymentForLog(
+    public ResponseEntity<Void> allocatePaymentForUser(
             @PathVariable("userId") String userId,
             @RequestParam("amount") java.math.BigDecimal amount,
+            @RequestParam(value = "instituteId", required = false) String instituteId,
+            @RequestParam(value = "scope", required = false, defaultValue = "ALL_DUES") String scope,
             @RequestAttribute("user") CustomUserDetails user) {
-        feeLedgerAllocationService.allocatePaymentForUser(userId, amount);
+
+        AllocationScope allocationScope;
+        try {
+            allocationScope = AllocationScope.valueOf(scope.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        feeLedgerAllocationService.allocatePaymentForUser(userId, amount, instituteId, allocationScope);
         return ResponseEntity.noContent().build();
+    }
+
+    // ---- Fee-type priority configuration endpoints ----
+
+    @PutMapping("/priority")
+    @Transactional
+    public ResponseEntity<Void> setFeeTypePriority(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody SetPriorityRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+
+        if (request.getScope() == null || request.getPriorities() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        String scopeStr;
+        try {
+            scopeStr = AllocationScope.valueOf(request.getScope().trim().toUpperCase()).name();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        priorityRepository.deleteByInstituteIdAndScope(instituteId, scopeStr);
+
+        for (InstituteFeeTypePriorityDTO dto : request.getPriorities()) {
+            InstituteFeeTypePriority entity = new InstituteFeeTypePriority();
+            entity.setInstituteId(instituteId);
+            entity.setScope(scopeStr);
+            entity.setFeeTypeId(dto.getFeeTypeId());
+            entity.setPriorityOrder(dto.getPriorityOrder());
+            priorityRepository.save(entity);
+        }
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/priority")
+    public ResponseEntity<List<InstituteFeeTypePriorityDTO>> getFeeTypePriority(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("scope") String scope) {
+
+        String scopeStr;
+        try {
+            scopeStr = AllocationScope.valueOf(scope.trim().toUpperCase()).name();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        List<InstituteFeeTypePriorityDTO> result = priorityRepository
+                .findByInstituteIdAndScopeOrderByPriorityOrderAsc(instituteId, scopeStr)
+                .stream()
+                .map(e -> InstituteFeeTypePriorityDTO.builder()
+                        .feeTypeId(e.getFeeTypeId())
+                        .priorityOrder(e.getPriorityOrder())
+                        .build())
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(result);
     }
 
     /**

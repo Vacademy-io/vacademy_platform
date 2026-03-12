@@ -4,5 +4,6 @@ public enum PaymentType {
     INITIAL,
     RENEWAL,
     SCHOOL,
+    APPLICATION_FEE,
 
 }

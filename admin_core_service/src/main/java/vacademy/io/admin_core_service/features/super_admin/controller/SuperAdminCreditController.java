@@ -33,4 +33,20 @@ public class SuperAdminCreditController {
             throw e;
         }
     }
+
+    @PostMapping("/institutes/{instituteId}/deduct-credits")
+    public ResponseEntity<Map<String, Object>> deductCredits(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String instituteId,
+            @RequestBody CreditGrantRequestDTO request) {
+        try {
+            SuperAdminAuthUtil.requireSuperAdmin(user);
+            Map<String, Object> result = creditClient.deductCreditsAdmin(
+                    instituteId, request.getAmount(), request.getDescription());
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error deducting credits from institute {}: {}", instituteId, e.getMessage());
+            throw e;
+        }
+    }
 }

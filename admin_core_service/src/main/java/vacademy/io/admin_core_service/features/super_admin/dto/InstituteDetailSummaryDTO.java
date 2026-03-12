@@ -40,4 +40,5 @@ public class InstituteDetailSummaryDTO {
     private Integer profileCompletionPercentage;
 
     private Map<String, Object> creditBalance;
+    private String leadTag;
 }

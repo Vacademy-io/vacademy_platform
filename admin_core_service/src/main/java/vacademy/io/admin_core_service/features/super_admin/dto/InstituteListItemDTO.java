@@ -27,4 +27,5 @@ public class InstituteListItemDTO {
     private Long studentCount;
     private Long courseCount;
     private Long batchCount;
+    private String leadTag;
 }

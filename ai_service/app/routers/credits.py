@@ -113,6 +113,33 @@ def grant_credits(
 
 
 # ============================================================================
+# Admin Credit Deduction Endpoint (ROOT_ADMIN only)
+# ============================================================================
+
+@router.post(
+    "/institutes/{institute_id}/deduct-admin",
+    response_model=CreditGrantResponse,
+    summary="Deduct credits from institute (ROOT_ADMIN only)",
+    description="Admin deduction of credits from an institute. Only ROOT_ADMIN can perform this action.",
+)
+def admin_deduct_credits(
+    institute_id: str,
+    request: CreditGrantRequest,
+    service: CreditService = Depends(get_credit_service),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """Deduct credits from an institute (admin action)."""
+    if not check_root_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only ROOT_ADMIN can deduct credits",
+        )
+
+    user_id = current_user.get("user_id", "system") if current_user else "system"
+    return service.admin_deduct_credits(institute_id, request, deducted_by=user_id)
+
+
+# ============================================================================
 # Credit Check Endpoint (Internal - for pre-flight checks)
 # ============================================================================
 

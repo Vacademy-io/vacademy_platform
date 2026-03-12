@@ -266,4 +266,40 @@ public class CreditClient {
             return Map.of("success", false, "message", e.getMessage());
         }
     }
+
+    /**
+     * Deduct credits from an institute (super admin action).
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> deductCreditsAdmin(String instituteId, Double amount, String description) {
+        try {
+            String url = aiServiceUrl + "/ai-service/credits/v1/institutes/" + instituteId + "/deduct-admin";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, Object> body = Map.of(
+                    "amount", amount,
+                    "description", description != null ? description : "Super admin deduction");
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    request,
+                    (Class<Map<String, Object>>) (Class<?>) Map.class);
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("Successfully deducted {} credits from institute {}", amount, instituteId);
+                return response.getBody();
+            }
+
+            log.warn("Failed to deduct credits for institute {}: {}", instituteId, response.getStatusCode());
+            return Map.of("success", false, "message", "Credit deduction failed");
+        } catch (RestClientException e) {
+            log.error("Error deducting credits for institute {}: {}", instituteId, e.getMessage());
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
 }

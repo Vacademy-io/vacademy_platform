@@ -151,6 +151,15 @@ public class SuperAdminAnalyticsService {
         }
     }
 
+    @Transactional
+    public void deactivateUserFromInstitute(String instituteId, String userId) {
+        int updated = userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(
+                "INACTIVE", instituteId, List.of(userId));
+        if (updated == 0) {
+            throw new RuntimeException("No active role found for user " + userId + " in institute " + instituteId);
+        }
+    }
+
     private InstituteSessionDTO mapToSessionDTO(Object[] row) {
         return InstituteSessionDTO.builder()
                 .sessionId(row[0] != null ? row[0].toString() : null)

@@ -12,6 +12,8 @@ import vacademy.io.admin_core_service.features.super_admin.service.SuperAdminIns
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.util.SuperAdminAuthUtil;
 
+import java.util.Map;
+
 @Slf4j
 @RestController
 @RequestMapping("/admin-core-service/super-admin/v1")
@@ -25,11 +27,15 @@ public class SuperAdminInstituteController {
             @RequestAttribute("user") CustomUserDetails user,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String search) {
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String leadTag,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false, defaultValue = "DESC") String sortDirection) {
         try {
             SuperAdminAuthUtil.requireSuperAdmin(user);
             if (size > 50) size = 50;
-            return ResponseEntity.ok(superAdminInstituteService.listAllInstitutes(search, page, size));
+            return ResponseEntity.ok(superAdminInstituteService.listAllInstitutes(
+                    search, leadTag, sortBy, sortDirection, page, size));
         } catch (Exception e) {
             log.error("Error in listInstitutes: {}", e.getMessage());
             throw e;
@@ -49,6 +55,22 @@ public class SuperAdminInstituteController {
             return ResponseEntity.ok(detail);
         } catch (Exception e) {
             log.error("Error in getInstituteDetail: {}", e.getMessage());
+            throw e;
+        }
+    }
+
+    @PutMapping("/institutes/{instituteId}/lead-tag")
+    public ResponseEntity<Map<String, String>> updateLeadTag(
+            @RequestAttribute("user") CustomUserDetails user,
+            @PathVariable String instituteId,
+            @RequestBody Map<String, String> body) {
+        try {
+            SuperAdminAuthUtil.requireSuperAdmin(user);
+            String leadTag = body.get("lead_tag");
+            superAdminInstituteService.updateLeadTag(instituteId, leadTag);
+            return ResponseEntity.ok(Map.of("status", "success", "lead_tag", leadTag));
+        } catch (Exception e) {
+            log.error("Error in updateLeadTag: {}", e.getMessage());
             throw e;
         }
     }

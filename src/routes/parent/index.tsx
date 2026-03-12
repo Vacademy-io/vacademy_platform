@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { Preferences } from "@capacitor/preferences";
 import { useParentPortalStore } from "@/stores/parent-portal-store";
 import { ParentPortalShell } from "@/routes/parent/-components/ParentPortalShell";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +11,7 @@ import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
 import type { ChildProfile } from "@/types/parent-portal";
 import { useQuery } from "@tanstack/react-query";
 import { useStudyLibraryQuery } from "@/services/study-library/getStudyLibraryDetails";
+import { getInstituteId } from "@/constants/helper";
 
 export const Route = createFileRoute("/parent/")({
   component: ParentPortalIndex,
@@ -18,7 +20,7 @@ export const Route = createFileRoute("/parent/")({
 export default ParentPortalIndex;
 
 function ParentPortalIndex() {
-  const { selectedChild, selectChild, setChildren, setLoadingChildren } =
+  const { selectedChild, selectChild, setChildren, setLoadingChildren, children: storeChildren } =
     useParentPortalStore();
 
   // Get parent user ID from token
@@ -56,57 +58,76 @@ function ParentPortalIndex() {
     }
 
     if (parentData?.children) {
-      // Transform API response to ChildProfile format
-      const childProfiles: ChildProfile[] = parentData.children.map(
-        (child) => ({
-          id: child.childInfo.id,
-          student_id: child.childInfo.id,
-          parent_id: parentUserId || "",
-          full_name: child.childInfo.full_name,
-          email: child.childInfo.email,
-          date_of_birth: child.childInfo.date_of_birth,
-          gender: child.childInfo.gender,
-          grade_applying: child.enrollments?.[0]?.applyingForClass,
-          academic_year: child.enrollments?.[0]?.academicYear,
-          admission_status: (child.applications?.[0]?.overallStatus ||
-            "ENQUIRY") as any,
-          institute_id: "",
-          applicant_id:
-            child.applications?.[0]?.applicantId || child.childInfo.id,
-          destinationPackageSessionId:
-            child.applications?.[0]?.destinationPackageSessionId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
-      );
+      let cancelled = false;
 
-      // Sync children list in store
-      setChildren(childProfiles);
+      (async () => {
+        let resolvedInstituteId = await getInstituteId() ?? "";
+        if (!resolvedInstituteId) {
+          const prefInstitute = await Preferences.get({
+            key: "InstituteDetails",
+          });
+          resolvedInstituteId = prefInstitute.value
+            ? JSON.parse(prefInstitute.value)?.id ?? ""
+            : "";
+        }
 
-      // Auto-select single child if none selected
-      if (childProfiles.length === 1 && !selectedChild) {
-        selectChild(childProfiles[0]);
-      } else if (selectedChild) {
-        // If a child is selected, ensure it has the latest data (like destinationPackageSessionId)
-        const updated = childProfiles.find((c) => c.id === selectedChild.id);
-        if (updated) {
-          // Compare JSON to avoid loop if object reference changed but content is same
-          const hasChanged =
-            updated.destinationPackageSessionId !==
-              selectedChild.destinationPackageSessionId ||
-            updated.applicant_id !== selectedChild.applicant_id ||
-            updated.full_name !== selectedChild.full_name;
+        if (cancelled) return;
 
-          if (hasChanged) {
-            selectChild(updated);
+        const childProfiles: ChildProfile[] = parentData.children.map(
+          (child) => ({
+            id: child.childInfo.id,
+            student_id: child.childInfo.id,
+            parent_id: parentUserId || "",
+            full_name: child.childInfo.full_name,
+            email: child.childInfo.email,
+            date_of_birth: child.childInfo.date_of_birth,
+            gender: child.childInfo.gender,
+            grade_applying: child.enrollments?.[0]?.applyingForClass,
+            academic_year: child.enrollments?.[0]?.academicYear,
+            admission_status: (child.applications?.[0]?.overallStatus ||
+              "ENQUIRY") as any,
+            institute_id: resolvedInstituteId,
+            applicant_id:
+              child.applications?.[0]?.applicantId || child.childInfo.id,
+            destinationPackageSessionId:
+              child.applications?.[0]?.destinationPackageSessionId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+        );
+
+        if (cancelled) return;
+
+        setChildren(childProfiles);
+
+        if (childProfiles.length === 1 && !selectedChild) {
+          selectChild(childProfiles[0]);
+        } else if (selectedChild) {
+          const updated = childProfiles.find((c) => c.id === selectedChild.id);
+          if (updated) {
+            const hasChanged =
+              updated.destinationPackageSessionId !==
+                selectedChild.destinationPackageSessionId ||
+              updated.applicant_id !== selectedChild.applicant_id ||
+              updated.full_name !== selectedChild.full_name ||
+              updated.institute_id !== selectedChild.institute_id;
+
+            if (hasChanged) {
+              selectChild(updated);
+            }
           }
         }
-      }
 
-      setLoadingChildren(false);
+        setLoadingChildren(false);
+      })();
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, [
     parentData,
+    parentUserId,
     isLoading,
     error,
     selectedChild,
@@ -159,25 +180,28 @@ function ParentPortalIndex() {
 
   // If no child selected, show selection screen
   if (!selectedChild) {
-    const childProfiles: ChildProfile[] = parentData.children.map((child) => ({
-      id: child.childInfo.id,
-      student_id: child.childInfo.id,
-      parent_id: parentUserId || "",
-      full_name: child.childInfo.full_name,
-      email: child.childInfo.email,
-      date_of_birth: child.childInfo.date_of_birth,
-      gender: child.childInfo.gender,
-      grade_applying: child.enrollments?.[0]?.applyingForClass ?? "N/A",
-      academic_year: child.enrollments?.[0]?.academicYear ?? "N/A",
-      admission_status: (child.applications?.[0]?.overallStatus ||
-        "ENQUIRY") as any,
-      institute_id: "",
-      applicant_id: child.applications?.[0]?.applicantId ?? child.childInfo.id,
-      destinationPackageSessionId:
-        child.applications?.[0]?.destinationPackageSessionId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
+    const childProfiles: ChildProfile[] =
+      storeChildren.length === parentData.children.length
+        ? storeChildren
+        : parentData.children.map((child) => ({
+            id: child.childInfo.id,
+            student_id: child.childInfo.id,
+            parent_id: parentUserId || "",
+            full_name: child.childInfo.full_name,
+            email: child.childInfo.email,
+            date_of_birth: child.childInfo.date_of_birth,
+            gender: child.childInfo.gender,
+            grade_applying: child.enrollments?.[0]?.applyingForClass ?? "N/A",
+            academic_year: child.enrollments?.[0]?.academicYear ?? "N/A",
+            admission_status: (child.applications?.[0]?.overallStatus ||
+              "ENQUIRY") as any,
+            institute_id: "",
+            applicant_id: child.applications?.[0]?.applicantId ?? child.childInfo.id,
+            destinationPackageSessionId:
+              child.applications?.[0]?.destinationPackageSessionId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }));
 
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -231,25 +255,28 @@ function ParentPortalIndex() {
   }
 
   const parentName = "Parent";
-  const childProfiles: ChildProfile[] = parentData.children.map((child) => ({
-    id: child.childInfo.id,
-    student_id: child.childInfo.id,
-    parent_id: parentUserId || "",
-    full_name: child.childInfo.full_name,
-    email: child.childInfo.email,
-    date_of_birth: child.childInfo.date_of_birth,
-    gender: child.childInfo.gender,
-    grade_applying: child.enrollments?.[0]?.applyingForClass ?? "N/A",
-    academic_year: child.enrollments?.[0]?.academicYear ?? "N/A",
-    admission_status: (child.applications?.[0]?.overallStatus ||
-      "ENQUIRY") as any,
-    institute_id: "",
-    applicant_id: child.applications?.[0]?.applicantId ?? child.childInfo.id,
-    destinationPackageSessionId:
-      child.applications?.[0]?.destinationPackageSessionId,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }));
+  const childProfiles: ChildProfile[] =
+    storeChildren.length === parentData.children.length
+      ? storeChildren
+      : parentData.children.map((child) => ({
+          id: child.childInfo.id,
+          student_id: child.childInfo.id,
+          parent_id: parentUserId || "",
+          full_name: child.childInfo.full_name,
+          email: child.childInfo.email,
+          date_of_birth: child.childInfo.date_of_birth,
+          gender: child.childInfo.gender,
+          grade_applying: child.enrollments?.[0]?.applyingForClass ?? "N/A",
+          academic_year: child.enrollments?.[0]?.academicYear ?? "N/A",
+          admission_status: (child.applications?.[0]?.overallStatus ||
+            "ENQUIRY") as any,
+          institute_id: "",
+          applicant_id: child.applications?.[0]?.applicantId ?? child.childInfo.id,
+          destinationPackageSessionId:
+            child.applications?.[0]?.destinationPackageSessionId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
 
   // Child selected — render the parent dashboard shell
   return (

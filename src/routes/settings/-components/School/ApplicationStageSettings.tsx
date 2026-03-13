@@ -1,11 +1,19 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, FileText, CreditCard, GraduationCap, ArrowRight } from 'lucide-react';
+import {
+    Plus,
+    FileText,
+    CreditCard,
+    GraduationCap,
+    ArrowRight,
+    UploadCloud,
+    X,
+} from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MyButton } from '@/components/design-system/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { MyDialog } from '@/components/design-system/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,6 +29,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { ADD_APPLICATION_STAGE, GET_APPLICATION_STAGES } from '@/constants/urls';
 import { getPaymentOptions } from '@/services/payment-options';
+import { UploadFileInS3 } from '@/services/upload_file';
 import { PaymentPlans } from '@/types/payment';
 import { getInstituteId } from '@/constants/helper';
 
@@ -55,16 +64,34 @@ interface AddStageForm {
     // Payment-specific
     display_text: string;
     payment_option_id: string;
+    payment_qr_code_file_id: string;
+    // UPI details
+    upi_vpa: string;
+    upi_payee_name: string;
 }
 
 const DEFAULT_PAYMENT_DISPLAY_TEXT = 'Please pay the application fee to proceed.';
 
-const DEFAULT_PAYMENT_CONFIG = (display_text: string, payment_option_id: string) => ({
+const DEFAULT_PAYMENT_CONFIG = (
+    display_text: string,
+    payment_option_id: string,
+    payment_qr_code_file_id: string,
+    upi_vpa?: string,
+    upi_payee_name?: string
+) => ({
     order_id: null,
     display_text,
     gateway_rules: { fallback: 'RAZORPAY', preferred: 'RAZORPAY' },
     payment_status: null,
     payment_option_id,
+    payment_qr_code_file_id: payment_qr_code_file_id || null,
+    upi_details:
+        upi_vpa || upi_payee_name
+            ? {
+                  upi_vpa: upi_vpa || null,
+                  upi_payee_name: upi_payee_name || null,
+              }
+            : null,
 });
 
 // ─── API Calls ─────────────────────────────────────────────────────────────
@@ -196,7 +223,32 @@ function AddStageDialog({
         is_last: false,
         display_text: DEFAULT_PAYMENT_DISPLAY_TEXT,
         payment_option_id: '',
+        payment_qr_code_file_id: '',
+        upi_vpa: '',
+        upi_payee_name: '',
     });
+    const [isUploadingQr, setIsUploadingQr] = useState(false);
+    const [qrPreviewUrl, setQrPreviewUrl] = useState<string>('');
+    const qrInputRef = useRef<HTMLInputElement>(null);
+
+    const handleQrUpload = async (file: File) => {
+        setQrPreviewUrl(URL.createObjectURL(file));
+        const fileId = await UploadFileInS3(
+            file,
+            setIsUploadingQr,
+            instituteId,
+            'INSTITUTE',
+            instituteId,
+            true
+        );
+        if (fileId) {
+            update('payment_qr_code_file_id', fileId);
+            toast.success('QR code uploaded successfully');
+        } else {
+            toast.error('Failed to upload QR code');
+            setQrPreviewUrl('');
+        }
+    };
 
     const queryClient = useQueryClient();
 
@@ -222,7 +274,11 @@ function AddStageDialog({
             is_last: false,
             display_text: DEFAULT_PAYMENT_DISPLAY_TEXT,
             payment_option_id: '',
+            payment_qr_code_file_id: '',
+            upi_vpa: '',
+            upi_payee_name: '',
         });
+        setQrPreviewUrl('');
     };
 
     const handleClose = () => {
@@ -246,7 +302,15 @@ function AddStageDialog({
 
         const config_json =
             form.type === 'PAYMENT'
-                ? JSON.stringify(DEFAULT_PAYMENT_CONFIG(form.display_text, form.payment_option_id))
+                ? JSON.stringify(
+                      DEFAULT_PAYMENT_CONFIG(
+                          form.display_text,
+                          form.payment_option_id,
+                          form.payment_qr_code_file_id,
+                          form.upi_vpa,
+                          form.upi_payee_name
+                      )
+                  )
                 : '';
 
         const payload: ApplicationStage = {
@@ -270,164 +334,242 @@ function AddStageDialog({
         setForm((prev) => ({ ...prev, [key]: value }));
 
     return (
-        <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <GraduationCap className="size-5 text-primary-500" />
-                        Add Application Stage
-                    </DialogTitle>
-                </DialogHeader>
+        <MyDialog
+            open={open}
+            onOpenChange={(o) => !o && handleClose()}
+            heading="Add Application Stage"
+            dialogWidth="max-w-lg"
+            footer={
+                <>
+                    <MyButton
+                        buttonType="secondary"
+                        onClick={handleClose}
+                        disabled={mutation.isPending}
+                    >
+                        Cancel
+                    </MyButton>
+                    <MyButton
+                        buttonType="primary"
+                        onClick={handleSubmit}
+                        disabled={mutation.isPending}
+                    >
+                        {mutation.isPending ? 'Adding…' : 'Add Stage'}
+                    </MyButton>
+                </>
+            }
+        >
+            <div className="space-y-5">
+                {/* Stage Name */}
+                <div className="space-y-1.5">
+                    <Label htmlFor="stage_name">
+                        Stage Name <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                        id="stage_name"
+                        placeholder="e.g. Application Form, Payment"
+                        value={form.stage_name}
+                        onChange={(e) => update('stage_name', e.target.value)}
+                    />
+                </div>
 
-                <div className="space-y-5 pt-1">
-                    {/* Stage Name */}
+                {/* Type + Sequence in a row */}
+                <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                        <Label htmlFor="stage_name">
-                            Stage Name <span className="text-red-500">*</span>
+                        <Label htmlFor="stage_type">
+                            Stage Type <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                            value={form.type}
+                            onValueChange={(v) => update('type', v as 'FORM' | 'PAYMENT')}
+                        >
+                            <SelectTrigger id="stage_type">
+                                <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="FORM">
+                                    <span className="flex items-center gap-1.5">
+                                        <FileText className="size-3.5" /> Form
+                                    </span>
+                                </SelectItem>
+                                <SelectItem value="PAYMENT">
+                                    <span className="flex items-center gap-1.5">
+                                        <CreditCard className="size-3.5" /> Payment
+                                    </span>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <Label htmlFor="sequence">
+                            Sequence <span className="text-red-500">*</span>
                         </Label>
                         <Input
-                            id="stage_name"
-                            placeholder="e.g. Application Form, Payment"
-                            value={form.stage_name}
-                            onChange={(e) => update('stage_name', e.target.value)}
+                            id="sequence"
+                            type="number"
+                            min={1}
+                            placeholder="1"
+                            value={form.sequence}
+                            onChange={(e) => update('sequence', e.target.value)}
                         />
                     </div>
+                </div>
 
-                    {/* Type + Sequence in a row */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                            <Label htmlFor="stage_type">
-                                Stage Type <span className="text-red-500">*</span>
-                            </Label>
-                            <Select
-                                value={form.type}
-                                onValueChange={(v) => update('type', v as 'FORM' | 'PAYMENT')}
-                            >
-                                <SelectTrigger id="stage_type">
-                                    <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="FORM">
-                                        <span className="flex items-center gap-1.5">
-                                            <FileText className="size-3.5" /> Form
-                                        </span>
-                                    </SelectItem>
-                                    <SelectItem value="PAYMENT">
-                                        <span className="flex items-center gap-1.5">
-                                            <CreditCard className="size-3.5" /> Payment
-                                        </span>
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <Label htmlFor="sequence">
-                                Sequence <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                                id="sequence"
-                                type="number"
-                                min={1}
-                                placeholder="1"
-                                value={form.sequence}
-                                onChange={(e) => update('sequence', e.target.value)}
-                            />
-                        </div>
+                {/* Is First / Is Last */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                        <span className="text-sm font-medium text-gray-700">First Stage</span>
+                        <Switch
+                            checked={form.is_first}
+                            onCheckedChange={(v) => update('is_first', v)}
+                        />
                     </div>
-
-                    {/* Is First / Is Last */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
-                            <span className="text-sm font-medium text-gray-700">First Stage</span>
-                            <Switch
-                                checked={form.is_first}
-                                onCheckedChange={(v) => update('is_first', v)}
-                            />
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
-                            <span className="text-sm font-medium text-gray-700">Last Stage</span>
-                            <Switch
-                                checked={form.is_last}
-                                onCheckedChange={(v) => update('is_last', v)}
-                            />
-                        </div>
+                    <div className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                        <span className="text-sm font-medium text-gray-700">Last Stage</span>
+                        <Switch
+                            checked={form.is_last}
+                            onCheckedChange={(v) => update('is_last', v)}
+                        />
                     </div>
+                </div>
 
-                    {/* Payment-specific fields */}
-                    {form.type === 'PAYMENT' && (
-                        <div className="space-y-4 rounded-lg border border-amber-100 bg-amber-50 p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                                Payment Configuration
-                            </p>
+                {/* Payment-specific fields */}
+                {form.type === 'PAYMENT' && (
+                    <div className="space-y-4 rounded-lg border p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                            Payment Configuration
+                        </p>
 
-                            {/* Payment Option */}
+                        {/* Payment Option */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="payment_option">
+                                Payment Option <span className="text-red-500">*</span>
+                            </Label>
+                            {isLoadingPaymentOptions ? (
+                                <p className="text-sm text-gray-400">Loading payment options…</p>
+                            ) : paymentOptions.length === 0 ? (
+                                <p className="text-sm text-amber-700">
+                                    No payment options found. Please create one in Payment Settings
+                                    first.
+                                </p>
+                            ) : (
+                                <Select
+                                    value={form.payment_option_id}
+                                    onValueChange={(v) => update('payment_option_id', v)}
+                                >
+                                    <SelectTrigger id="payment_option">
+                                        <SelectValue placeholder="Select payment option" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {paymentOptions.map((opt) => (
+                                            <SelectItem key={opt.id} value={opt.id}>
+                                                {opt.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
+
+                        {/* Display Text */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="display_text">Display Text</Label>
+                            <Textarea
+                                id="display_text"
+                                rows={2}
+                                placeholder="Message shown to applicants before payment"
+                                value={form.display_text}
+                                onChange={(e) => update('display_text', e.target.value)}
+                            />
+                        </div>
+
+                        {/* QR Code Upload */}
+                        <div className="space-y-1.5">
+                            <Label>Payment QR Code</Label>
+                            <input
+                                ref={qrInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleQrUpload(file);
+                                }}
+                            />
+                            {qrPreviewUrl ? (
+                                <div className="relative inline-block">
+                                    <img
+                                        src={qrPreviewUrl}
+                                        alt="QR Preview"
+                                        className="h-32 w-32 rounded-lg border border-amber-200 bg-white object-contain p-1"
+                                    />
+                                    {isUploadingQr && (
+                                        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-white/70">
+                                            <span className="size-5 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+                                        </div>
+                                    )}
+                                    {!isUploadingQr && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setQrPreviewUrl('');
+                                                update('payment_qr_code_file_id', '');
+                                                if (qrInputRef.current)
+                                                    qrInputRef.current.value = '';
+                                            }}
+                                            className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-red-500 text-white shadow"
+                                        >
+                                            <X className="size-3" />
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => qrInputRef.current?.click()}
+                                    className="flex w-full flex-col items-center gap-1.5 rounded-lg border-2 border-dashed border-amber-300 bg-white py-5 text-amber-600 transition hover:bg-amber-50"
+                                >
+                                    <UploadCloud className="size-6" />
+                                    <span className="text-xs font-medium">
+                                        Click to upload QR code
+                                    </span>
+                                    <span className="text-[10px] text-amber-400">
+                                        PNG, JPG, SVG — max 5 MB
+                                    </span>
+                                </button>
+                            )}
+                            {form.payment_qr_code_file_id && (
+                                <p className="font-mono text-[10px] text-green-600">
+                                    ✓ File ID: {form.payment_qr_code_file_id}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* UPI Details */}
+                        <div className="space-y-3 rounded-lg border border-amber-200 bg-white p-3">
                             <div className="space-y-1.5">
-                                <Label htmlFor="payment_option">
-                                    Payment Option <span className="text-red-500">*</span>
-                                </Label>
-                                {isLoadingPaymentOptions ? (
-                                    <p className="text-sm text-gray-400">
-                                        Loading payment options…
-                                    </p>
-                                ) : paymentOptions.length === 0 ? (
-                                    <p className="text-sm text-amber-700">
-                                        No payment options found. Please create one in Payment
-                                        Settings first.
-                                    </p>
-                                ) : (
-                                    <Select
-                                        value={form.payment_option_id}
-                                        onValueChange={(v) => update('payment_option_id', v)}
-                                    >
-                                        <SelectTrigger id="payment_option">
-                                            <SelectValue placeholder="Select payment option" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {paymentOptions.map((opt) => (
-                                                <SelectItem key={opt.id} value={opt.id}>
-                                                    {opt.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
+                                <Label htmlFor="upi_vpa">UPI ID (VPA)</Label>
+                                <Input
+                                    id="upi_vpa"
+                                    placeholder="e.g. school@oksbi"
+                                    value={form.upi_vpa}
+                                    onChange={(e) => update('upi_vpa', e.target.value)}
+                                />
                             </div>
-
-                            {/* Display Text */}
                             <div className="space-y-1.5">
-                                <Label htmlFor="display_text">Display Text</Label>
-                                <Textarea
-                                    id="display_text"
-                                    rows={2}
-                                    placeholder="Message shown to applicants before payment"
-                                    value={form.display_text}
-                                    onChange={(e) => update('display_text', e.target.value)}
+                                <Label htmlFor="upi_payee_name">Payee Name</Label>
+                                <Input
+                                    id="upi_payee_name"
+                                    placeholder="e.g. Vacademy School"
+                                    value={form.upi_payee_name}
+                                    onChange={(e) => update('upi_payee_name', e.target.value)}
                                 />
                             </div>
                         </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex justify-end gap-3 border-t pt-4">
-                        <MyButton
-                            buttonType="secondary"
-                            onClick={handleClose}
-                            disabled={mutation.isPending}
-                        >
-                            Cancel
-                        </MyButton>
-                        <MyButton
-                            buttonType="primary"
-                            onClick={handleSubmit}
-                            disabled={mutation.isPending}
-                        >
-                            {mutation.isPending ? 'Adding…' : 'Add Stage'}
-                        </MyButton>
                     </div>
-                </div>
-            </DialogContent>
-        </Dialog>
+                )}
+            </div>
+        </MyDialog>
     );
 }
 

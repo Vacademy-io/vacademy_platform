@@ -1,5 +1,6 @@
-import { BASE_URL } from '@/constants/urls';
+import { BASE_URL, GET_PAYMENT_OPTIONS } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import type { PaymentOptionApi } from '@/types/payment';
 
 // API Base URL
 const APPLICANT_URL = `${BASE_URL}/admin-core-service/v1/applicant`;
@@ -204,14 +205,98 @@ export const fetchApplicationStages = async (
 };
 
 /**
- * Generate payment link for applicant
+ * Payment method types for parent payment link
+ */
+export type PaymentLinkMethod = 'ONLINE' | 'UPI';
+
+/**
+ * Generate payment link for applicant to share with parent
+ * @param instituteId - Institute ID
+ * @param applicantId - Applicant ID
+ * @param paymentOptionId - Payment option ID
+ * @param learnerPortalBaseUrl - Optional learner portal base URL (defaults to learner.vacademy.io)
+ * @param method - Payment method (ONLINE for gateway, UPI for QR scan & upload)
+ * @param qrCodeFileId - QR code file ID (passed directly so learner portal can resolve it without fetching the stage)
  */
 export const generatePaymentLink = (
     instituteId: string,
     applicantId: string,
-    paymentOptionId: string
+    paymentOptionId: string,
+    learnerPortalBaseUrl?: string,
+    method: PaymentLinkMethod = 'ONLINE',
+    qrCodeFileId?: string | null
 ): string => {
-    return `https://learner.vacademy.io/admission/payment/${instituteId}/${applicantId}/${paymentOptionId}`;
+    const baseUrl = learnerPortalBaseUrl
+        ? learnerPortalBaseUrl.startsWith('http')
+            ? learnerPortalBaseUrl
+            : `https://${learnerPortalBaseUrl}`
+        : 'https://learner.vacademy.io';
+
+    const url = `${baseUrl}/admission/payment/${instituteId}/${applicantId}/${paymentOptionId}/`;
+
+    const params = new URLSearchParams();
+    if (qrCodeFileId) params.set('qrCodeFileId', qrCodeFileId);
+    params.set('method', method);
+
+    return `${url}?${params.toString()}`;
+};
+
+/**
+ * Payment option details extracted from a PaymentOptionApi response
+ */
+export interface PaymentOptionDetails {
+    id: string;
+    name: string;
+    amount: number;
+    currency: string;
+    qrCodeFileId: string | null;
+    upiVpa: string | null;
+    upiPayeeName: string | null;
+    plans: Array<{ id: string; name: string; actual_price: number; currency: string }>;
+}
+
+/**
+ * Fetch payment option details by ID
+ */
+export const fetchPaymentOptionById = async (
+    instituteId: string,
+    paymentOptionId: string
+): Promise<PaymentOptionDetails | null> => {
+    try {
+        const response = await authenticatedAxiosInstance.post(
+            GET_PAYMENT_OPTIONS,
+            {
+                types: ['ONE_TIME', 'SUBSCRIPTION', 'DONATION', 'FREE'],
+                source: 'INSTITUTE',
+                source_id: instituteId,
+                require_approval: true,
+                not_require_approval: true,
+            },
+            { params: { instituteId } }
+        );
+        const options: PaymentOptionApi[] = response.data || [];
+        const match = options.find((o) => o.id === paymentOptionId);
+        if (!match) return null;
+        const firstPlan = match.payment_plans?.[0];
+        return {
+            id: match.id,
+            name: match.name,
+            amount: firstPlan?.actual_price ?? 0,
+            currency: firstPlan?.currency ?? 'INR',
+            qrCodeFileId: null, // populated separately from stage config
+            upiVpa: null,        // populated separately from stage config
+            upiPayeeName: null,  // populated separately from stage config
+            plans: (match.payment_plans || []).map((p) => ({
+                id: p.id ?? '',
+                name: p.name,
+                actual_price: p.actual_price,
+                currency: p.currency,
+            })),
+        };
+    } catch (error) {
+        console.error('Error fetching payment option by ID:', error);
+        return null;
+    }
 };
 
 /**
@@ -227,6 +312,32 @@ export const fetchEnquiryDetails = async (enquiryTrackingId: string): Promise<an
         }
     );
     return response.data;
+};
+
+/**
+ * Initiate a manual payment for an applicant
+ */
+export interface InitiateManualPaymentRequest {
+    vendor: 'MANUAL';
+    amount: number;
+    currency: string;
+    email: string;
+    manual_request: {
+        file_id?: string | null;
+        transaction_id: string;
+    };
+}
+
+export const initiateManualPayment = async (
+    applicantId: string,
+    paymentOptionId: string,
+    request: InitiateManualPaymentRequest
+): Promise<void> => {
+    await authenticatedAxiosInstance.post(
+        `${BASE_URL}/admin-core-service/v1/applicant/${applicantId}/payment/initiate`,
+        request,
+        { params: { paymentOptionId } }
+    );
 };
 
 // Query keys for React Query

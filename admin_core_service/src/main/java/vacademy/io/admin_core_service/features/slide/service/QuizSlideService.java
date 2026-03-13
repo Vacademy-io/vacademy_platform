@@ -265,6 +265,9 @@ public class QuizSlideService {
         QuizSlide newQuizSlide = new QuizSlide();
         newQuizSlide.setId(UUID.randomUUID().toString());
         newQuizSlide.setTitle(originalQuizSlide.getTitle());
+        newQuizSlide.setTimeLimitInMinutes(originalQuizSlide.getTimeLimitInMinutes());
+        newQuizSlide.setMarksPerQuestion(originalQuizSlide.getMarksPerQuestion() != null ? originalQuizSlide.getMarksPerQuestion() : 1.0);
+        newQuizSlide.setNegativeMarking(originalQuizSlide.getNegativeMarking() != null ? originalQuizSlide.getNegativeMarking() : 0.0);
 
         // Copy description RichTextData if it exists
         if (originalQuizSlide.getDescriptionRichText() != null) {

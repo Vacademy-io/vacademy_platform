@@ -34,6 +34,7 @@ public class ComplexPaymentOptionDTO {
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class PackageSessionLinkDTO {
         private String enrollInviteId;
         private String packageSessionId;
@@ -43,6 +44,7 @@ public class ComplexPaymentOptionDTO {
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class FeeTypeDTO {
         private String id;
         private String name;
@@ -56,14 +58,12 @@ public class ComplexPaymentOptionDTO {
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class AssignedFeeValueDTO {
         private String id;
         private BigDecimal amount;
-        @JsonProperty("original_amount")
         private BigDecimal originalAmount;
-        @JsonProperty("discount_type")
         private String discountType;
-        @JsonProperty("discount_value")
         private BigDecimal discountValue;
         private Integer noOfInstallments;
         private Boolean hasInstallment;
@@ -78,15 +78,13 @@ public class ComplexPaymentOptionDTO {
     @Builder
     @AllArgsConstructor
     @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class AftInstallmentDTO {
         private String id;
         private Integer installmentNumber;
         private BigDecimal amount;
-        @JsonProperty("start_date")
         private LocalDate startDate;
-        @JsonProperty("end_date")
         private LocalDate endDate;
-        @JsonProperty("due_date")
         private LocalDate dueDate;
         private String status;
     }

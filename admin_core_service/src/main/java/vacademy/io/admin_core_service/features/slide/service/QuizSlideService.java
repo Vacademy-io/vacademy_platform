@@ -147,10 +147,15 @@ public class QuizSlideService {
         }
 
         if (dto.getText() != null) {
+            String incomingTextContent = dto.getText().getContent();
             if (existingQuestion.getText() != null) {
-                existingQuestion.getText().setContent(dto.getText().getContent());
-                existingQuestion.getText().setType(dto.getText().getType());
-            } else {
+                // Only overwrite if the incoming content is non-empty, to avoid wiping
+                // existing titles when the frontend sends an empty string on passthrough.
+                if (incomingTextContent != null && !incomingTextContent.isEmpty()) {
+                    existingQuestion.getText().setContent(incomingTextContent);
+                    existingQuestion.getText().setType(dto.getText().getType());
+                }
+            } else if (incomingTextContent != null && !incomingTextContent.isEmpty()) {
                 existingQuestion.setText(new RichTextData(dto.getText()));
             }
         } else {
@@ -230,10 +235,14 @@ public class QuizSlideService {
 
     private void updateExistingOption(QuizSlideQuestionOption existingOption, QuizSlideQuestionOptionDTO dto) {
         if (dto.getText() != null) {
+            String incomingOptionContent = dto.getText().getContent();
             if (existingOption.getText() != null) {
-                existingOption.getText().setContent(dto.getText().getContent());
-                existingOption.getText().setType(dto.getText().getType());
-            } else {
+                // Only overwrite if the incoming content is non-empty
+                if (incomingOptionContent != null && !incomingOptionContent.isEmpty()) {
+                    existingOption.getText().setContent(incomingOptionContent);
+                    existingOption.getText().setType(dto.getText().getType());
+                }
+            } else if (incomingOptionContent != null && !incomingOptionContent.isEmpty()) {
                 existingOption.setText(new RichTextData(dto.getText()));
             }
         } else {

@@ -144,7 +144,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                             planId: plans[0].id,
                             paymentOptionId: firstOption.payment_option.id,
                             enrollInviteId: firstOption.enroll_invite_id || data.id,
-                            vendorId: data.vendor_id || "PHONEPE"
+                            vendorId: data.vendor_id || "RAZORPAY"
                         });
                     }
                 }
@@ -324,7 +324,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     },
                     institute_id: instituteId,
                     subject_id: "",
-                    vendor_id: "PHONEPE",
+                    vendor_id: "RAZORPAY",
                     learner_package_session_enroll: {
                         package_session_ids: sessionIds,
                         plan_id: paymentPlanData?.planId || membershipPlan?.id || items[0]?.id,
@@ -338,7 +338,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                             institute_id: instituteId,
                             order_id: orderId,
                             redirect_url: redirectUrl,
-                            phone_pe_request: {
+                            razorpay_request: {
                                 redirect_url: redirectUrl
                             }
                         },
@@ -384,14 +384,14 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 const buyPayload = {
                     user: userPayload,
                     institute_id: instituteId,
-                    vendor_id: "PHONEPE",
+                    vendor_id: "RAZORPAY",
                     learner_package_session_enrollments: learnerPackageSessionEnrollments,
                     payment_initiation_request: {
                         amount: calculatedTotalAmount,
                         currency: "INR",
                         merchant_id: "PGTESTPAYUAT",
                         redirect_url: redirectUrl,
-                        phone_pe_request: {
+                        razorpay_request: {
                             redirect_url: redirectUrl
                         }
                     }
@@ -418,7 +418,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             // Check multiple possible locations for the authoritative ID
             const backendOrderId =
                 response.data?.payment_response?.order_id ||
-                response.data?.payment_response?.response_data?.phonePeOrderId;
+                response.data?.payment_response?.response_data?.razorpayOrderId;
 
             if (backendOrderId && backendOrderId !== orderId) {
                 console.log("Backend generated different Order ID. Updating localStorage:", backendOrderId);
@@ -472,12 +472,49 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 localStorage.setItem("pendingInstituteId", instituteId || INSTITUTE_ID);
             }
 
-            // Check for redirect URL from response (e.g. PhonePe)
-            const paymentRedirectUrl =
-                response.data?.payment_response?.response_data?.redirectUrl;
+            // Handle Razorpay Modal flow
+            const razorpayOrderId = response.data?.payment_response?.response_data?.razorpayOrderId;
+            const razorpayKeyId = response.data?.payment_response?.response_data?.razorpayKeyId;
 
-            if (paymentRedirectUrl) {
-                window.location.href = paymentRedirectUrl;
+            if (razorpayOrderId && razorpayKeyId) {
+                const options = {
+                    key: razorpayKeyId,
+                    amount: response.data?.payment_response?.response_data?.amountDue || (totalAmount * 100),
+                    currency: response.data?.payment_response?.response_data?.currency || "INR",
+                    name: "Checkout",
+                    description: "Course Enrollment",
+                    order_id: razorpayOrderId,
+                    handler: async function (razorpayResponse: any) {
+                        console.log("Razorpay payment success:", razorpayResponse);
+                        toast.success("Payment successful!");
+                        
+                        // Wait for a brief moment for backend to process
+                        setTimeout(() => {
+                            if (directAccessToken && directRefreshToken) {
+                                window.location.href = `${targetDashboardUrl}?accessToken=${directAccessToken}&refreshToken=${directRefreshToken}`;
+                            } else {
+                                window.location.href = targetDashboardUrl;
+                            }
+                        }, 1000);
+                    },
+                    prefill: {
+                        name: fullName,
+                        email: email,
+                        contact: phone,
+                    },
+                    theme: {
+                        color: "#4F46E5",
+                    },
+                    modal: {
+                        ondismiss: function() {
+                            setLoading(false);
+                            toast.info("Payment cancelled");
+                        }
+                    }
+                };
+
+                const rzp = new (window as any).Razorpay(options);
+                rzp.open();
             } else if (response.data && (response.data.responseCode === "SUCCESS" || response.data.status === "SUCCESS")) {
                 toast.success("Checkout successful!");
                 // Clean up credentials storage as we are doing direct redirect with tokens potentially
@@ -493,8 +530,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     window.location.href = targetDashboardUrl;
                 }
             } else {
-                console.warn("No redirect URL found in response structure:", response.data);
-                throw new Error("Unable to initiate PhonePe payment. Redirect URL missing from backend response.");
+                console.warn("No Razorpay order details found in response structure:", response.data);
+                throw new Error("Unable to initiate Razorpay payment. Order ID missing from backend response.");
             }
         } catch (error: any) {
             console.error("Checkout failed:", error);

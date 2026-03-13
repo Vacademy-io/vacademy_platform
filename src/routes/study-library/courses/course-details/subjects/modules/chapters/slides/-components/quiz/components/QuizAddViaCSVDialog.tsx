@@ -60,21 +60,23 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
         // Skip header row (index 0)
         for (let i = 1; i < lines.length; i++) {
             const rowNum = i + 1; // 1-based for display
+            const line = lines[i];
+            if (!line) continue;
             // Simple CSV split — handles basic cases; doesn't handle quoted commas
-            const cols = lines[i].split(',');
+            const cols = line.split(',');
 
             if (cols.length < 7) {
                 errors.push({ row: rowNum, message: 'Not enough columns (need at least 7).' });
                 continue;
             }
 
-            const questionText = cols[0].trim();
-            const questionType = cols[1].trim().toUpperCase();
-            const optA = cols[2].trim();
-            const optB = cols[3].trim();
-            const optC = cols[4]?.trim() || '';
-            const optD = cols[5]?.trim() || '';
-            const correctAnswer = cols[6].trim().toUpperCase();
+            const questionText = (cols[0] || '').trim();
+            const questionType = (cols[1] || '').trim().toUpperCase();
+            const optA = (cols[2] || '').trim();
+            const optB = (cols[3] || '').trim();
+            const optC = (cols[4] || '').trim();
+            const optD = (cols[5] || '').trim();
+            const correctAnswer = (cols[6] || '').trim().toUpperCase();
             const explanation = cols.slice(7).join(',').trim(); // rest of line is explanation
 
             if (!questionText) {
@@ -85,7 +87,7 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
             if (questionType !== 'MCQS' && questionType !== 'TRUE_FALSE') {
                 errors.push({
                     row: rowNum,
-                    message: `Unsupported question_type "${cols[1].trim()}". Only MCQS and TRUE_FALSE are allowed.`,
+                    message: `Unsupported question_type "${(cols[1] || '').trim()}". Only MCQS and TRUE_FALSE are allowed.`,
                 });
                 continue;
             }
@@ -95,7 +97,7 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                 if (answerIndex === undefined) {
                     errors.push({
                         row: rowNum,
-                        message: `Invalid correct_answer "${cols[6].trim()}". Use A, B, C, or D.`,
+                        message: `Invalid correct_answer "${(cols[6] || '').trim()}". Use A, B, C, or D.`,
                     });
                     continue;
                 }
@@ -148,7 +150,7 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                 if (correctAnswer !== 'A' && correctAnswer !== 'B') {
                     errors.push({
                         row: rowNum,
-                        message: `Invalid correct_answer "${cols[6].trim()}" for TRUE_FALSE. Use A (True) or B (False).`,
+                        message: `Invalid correct_answer "${(cols[6] || '').trim()}" for TRUE_FALSE. Use A (True) or B (False).`,
                     });
                     continue;
                 }

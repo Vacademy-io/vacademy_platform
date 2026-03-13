@@ -48,6 +48,13 @@ const QuizQuestionsPreviewDialog = ({
         onConfirm(previewItems.map((item) => item.question));
     };
 
+    const mapOptions = (opts?: any[]) =>
+        opts?.map(o => ({
+            id: o.id || '',
+            name: o.name || '',
+            isSelected: o.isSelected || false
+        }));
+
     const toTransformedQuestion = (q: QuizQuestion, index: number): TransformedQuestion => ({
         id: (q as any).id || `preview-${index}`,
         questionName: q.questionName || '',
@@ -63,11 +70,11 @@ const QuizQuestionsPreviewDialog = ({
         subjectiveAnswerText: q.subjectiveAnswerText || '',
         decimals: q.decimals ?? 0,
         numericType: q.numericType || '',
-        singleChoiceOptions: q.singleChoiceOptions,
-        multipleChoiceOptions: q.multipleChoiceOptions,
-        trueFalseOptions: q.trueFalseOptions,
-        csingleChoiceOptions: q.csingleChoiceOptions,
-        cmultipleChoiceOptions: q.cmultipleChoiceOptions,
+        singleChoiceOptions: mapOptions(q.singleChoiceOptions),
+        multipleChoiceOptions: mapOptions(q.multipleChoiceOptions),
+        trueFalseOptions: mapOptions(q.trueFalseOptions),
+        csingleChoiceOptions: mapOptions(q.csingleChoiceOptions),
+        cmultipleChoiceOptions: mapOptions(q.cmultipleChoiceOptions),
     });
 
     const count = previewItems.length;

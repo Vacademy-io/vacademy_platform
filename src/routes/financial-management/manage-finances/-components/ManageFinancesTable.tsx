@@ -1,12 +1,17 @@
-import { useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { MyTable, TableData } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
-import { Badge } from '@/components/ui/badge';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { FinancalManagementPaginatedResponse, StudentFeePaymentRowDTO } from '@/types/manage-finances';
+import { Eye } from '@phosphor-icons/react';
+import {
+    FinancalManagementPaginatedResponse,
+    StudentFeePaymentRowDTO,
+} from '@/types/manage-finances';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import dayjs from 'dayjs';
+import { InstallmentDetailsModal } from './InstallmentDetailsModal';
+
+// ─── Props ──────────────────────────────────────────────────────────────────
 
 interface ManageFinancesTableProps {
     data: FinancalManagementPaginatedResponse | undefined;
@@ -16,30 +21,31 @@ interface ManageFinancesTableProps {
     onPageChange: (page: number) => void;
 }
 
-const getStatusBadgeVariant = (
-    status: string
-): 'default' | 'secondary' | 'destructive' | 'outline' => {
-    switch (status) {
-        case 'PAID':
-            return 'default'; // Green
-        case 'WAIVED':
-            return 'outline';
-        case 'PENDING':
-        case 'PARTIAL_PAID':
-            return 'secondary'; // Yellow-ish
-        case 'OVERDUE':
-            return 'destructive'; // Red
-        default:
-            return 'secondary';
-    }
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
+    PAID: { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+    OVERDUE: { bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-500' },
+    PARTIAL: { bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },
+    PENDING: { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
 };
 
-const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-        style: 'currency',
-        currency: 'INR',
-    }).format(amount);
-};
+function StatusPill({ status }: { status: string }) {
+    const style = STATUS_STYLES[status] || STATUS_STYLES['PENDING']!;
+    return (
+        <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${style.bg} ${style.text}`}
+        >
+            <span className={`inline-block h-1.5 w-1.5 rounded-full ${style.dot}`} />
+            {status}
+        </span>
+    );
+}
+
+const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export function ManageFinancesTable({
     data,
@@ -48,27 +54,38 @@ export function ManageFinancesTable({
     currentPage,
     onPageChange,
 }: ManageFinancesTableProps) {
-    const { instituteDetails,getDetailsFromPackageSessionId } = useInstituteDetailsStore();
+    const { getDetailsFromPackageSessionId, instituteDetails } = useInstituteDetailsStore();
 
-    const getPackageName = useCallback((id: string) => {
-        let details = getDetailsFromPackageSessionId({ packageSessionId: id });
-        console.log("this is details: ", details);
-        // Try fallback if not found directly
-        if (!details && instituteDetails?.batches_for_sessions) {
-            details = instituteDetails.batches_for_sessions.find(
-                (batch) => batch.package_dto?.id === id || batch.id === id
-            ) || null;
-        }
+    // Modal state
+    const [selectedRow, setSelectedRow] = useState<{
+        studentId: string;
+        cpoId: string;
+        studentName: string;
+        cpoName: string;
+    } | null>(null);
 
-        if (details) {
-            const pkgName = details.package_dto?.package_name || '';
-            const lvlName = details.level?.level_name || '';
-            if (pkgName && lvlName) return `${pkgName} - ${lvlName}`;
-            // if (pkgName) return pkgName;
-            // if (lvlName) return lvlName;
-        }
-        return id;
-    }, [getDetailsFromPackageSessionId, instituteDetails]);
+    // Map package_session_id → "Package Name - Level"
+    const getPackageName = useCallback(
+        (id: string) => {
+            let details = getDetailsFromPackageSessionId({ packageSessionId: id });
+            if (!details && instituteDetails?.batches_for_sessions) {
+                details =
+                    instituteDetails.batches_for_sessions.find(
+                        (batch) => batch.package_dto?.id === id || batch.id === id
+                    ) || null;
+            }
+            if (details) {
+                const pkg = details.package_dto?.package_name || '';
+                const lvl = details.level?.level_name || '';
+                if (pkg && lvl) return `${pkg} - ${lvl}`;
+                if (pkg) return pkg;
+            }
+            return id;
+        },
+        [getDetailsFromPackageSessionId, instituteDetails]
+    );
+
+    // Normalize paginated response (handle camel / snake)
     const tableData: TableData<StudentFeePaymentRowDTO> | undefined = useMemo(() => {
         if (!data) return undefined;
         const d = data as any;
@@ -82,140 +99,155 @@ export function ManageFinancesTable({
         };
     }, [data]);
 
+    // ── Column definitions ──────────────────────────────────────────────
+
     const columns = useMemo<ColumnDef<StudentFeePaymentRowDTO>[]>(
         () => [
             {
                 id: 'student',
                 header: 'Student',
-                accessorFn: (row: any) => row.studentName || row.student_name || '',
+                accessorFn: (row) => row.student_name || '',
                 cell: ({ row }) => {
-                    const data = row.original as any;
+                    const r = row.original;
                     return (
-                        <div className="space-y-1">
-                            <div className="font-medium text-gray-900">{data.studentName || data.student_name || '-'}</div>
-                            <div className="text-xs text-gray-500">{data.studentEmail || data.student_email || '-'}</div>
+                        <div className="space-y-0.5 min-w-[140px]">
+                            <div className="font-semibold text-gray-800">
+                                {r.student_name || '—'}
+                            </div>
+                            {r.phone && (
+                                <div className="text-[11px] text-gray-400">{r.phone}</div>
+                            )}
+                        </div>
+                    );
+                },
+                size: 180,
+            },
+            {
+                id: 'package',
+                header: 'Course / Package',
+                accessorFn: (row) => {
+                    const ids = row.package_session_ids || [];
+                    return ids.length ? ids.map((id) => getPackageName(id)).join(', ') : '—';
+                },
+                cell: ({ row }) => {
+                    const ids = row.original.package_session_ids || [];
+                    const names = ids.map((id) => getPackageName(id));
+                    const display = names.length > 0 ? names.join(', ') : '—';
+                    return (
+                        <div
+                            className="text-sm text-gray-700 max-w-[200px] truncate"
+                            title={display}
+                        >
+                            {display}
                         </div>
                     );
                 },
                 size: 200,
             },
             {
-                id: 'packageSessionIds',
-                header: 'Course/Package',
-                accessorFn: (row: any) => {
-                    const ids: string[] = row.packageSessionIds || row.package_session_ids || [];
-                    return ids?.length ? ids.map(id => getPackageName(id)).join(', ') : '—';
-                },
-                cell: ({ row }) => {
-                    const data = row.original as any;
-                    const ids: string[] = data.packageSessionIds || data.package_session_ids || [];
-                    const names = ids.map(id => getPackageName(id));
-                    const display =
-                        !names || names.length === 0
-                            ? '—'
-                            : names.join(', ');
-                    return (
-                        <div className="text-sm text-gray-900 break-all" title={display}>
-                            {display}
-                        </div>
-                    );
-                },
-                size: 220,
-            },
-            {
-                id: 'feeDetails',
-                header: 'Fee Details',
-                accessorFn: (row: any) => row.feeTypeName || row.fee_type_name || '',
-                cell: ({ row }) => {
-                    const data = row.original as any;
-                    return (
-                        <div className="space-y-1">
-                            <div className="font-medium text-gray-900">{data.feeTypeName || data.fee_type_name || '-'}</div>
-                            <div className="text-xs text-gray-500">Inst. #{data.installmentNumber ?? data.installment_number}</div>
-                        </div>
-                    );
-                },
+                id: 'cpoName',
+                header: 'CPO / Plan',
+                accessorFn: (row) => row.cpo_name || '',
+                cell: ({ row }) => (
+                    <div className="text-sm font-medium text-gray-700">
+                        {row.original.cpo_name || '—'}
+                    </div>
+                ),
                 size: 160,
             },
             {
-                id: 'amountExpected',
+                id: 'totalExpected',
                 header: 'Expected',
-                accessorFn: (row: any) => row.amountExpected ?? row.amount_expected ?? 0,
-                cell: ({ row }) => {
-                    const data = row.original as any;
-                    return (
-                        <div className="font-semibold text-gray-900">
-                            {formatCurrency(data.amountExpected ?? data.amount_expected ?? 0)}
-                        </div>
-                    );
-                },
-                size: 130,
+                accessorFn: (row) => row.total_expected_amount ?? 0,
+                cell: ({ row }) => (
+                    <div className="font-semibold text-gray-800">
+                        {formatCurrency(row.original.total_expected_amount ?? 0)}
+                    </div>
+                ),
+                size: 120,
             },
             {
-                id: 'amountPaid',
+                id: 'totalPaid',
                 header: 'Paid',
-                accessorFn: (row: any) => row.amountPaid ?? row.amount_paid ?? 0,
-                cell: ({ row }) => {
-                    const data = row.original as any;
-                    return (
-                        <div className="font-semibold text-gray-900">
-                            {formatCurrency(data.amountPaid ?? data.amount_paid ?? 0)}
-                        </div>
-                    );
-                },
-                size: 130,
+                accessorFn: (row) => row.total_paid_amount ?? 0,
+                cell: ({ row }) => (
+                    <div className="font-semibold text-emerald-700">
+                        {formatCurrency(row.original.total_paid_amount ?? 0)}
+                    </div>
+                ),
+                size: 120,
             },
             {
-                id: 'totalDue',
+                id: 'dueAmount',
                 header: 'Due',
-                accessorFn: (row: any) => row.totalDue ?? row.total_due ?? 0,
+                accessorFn: (row) => row.due_amount ?? 0,
                 cell: ({ row }) => {
-                    const data = row.original as any;
+                    const due = row.original.due_amount ?? 0;
                     return (
-                        <div className="font-semibold text-gray-900">
-                            {formatCurrency(data.totalDue ?? data.total_due ?? 0)}
+                        <div
+                            className={`font-semibold ${due > 0 ? 'text-orange-600' : 'text-gray-400'}`}
+                        >
+                            {formatCurrency(due)}
                         </div>
                     );
                 },
-                size: 130,
+                size: 120,
             },
             {
-                id: 'dueDate',
-                header: 'Due Date',
-                accessorFn: (row: any) => row.dueDate || row.due_date || '',
+                id: 'overdueAmount',
+                header: 'Overdue',
+                accessorFn: (row) => row.overdue_amount ?? 0,
                 cell: ({ row }) => {
-                    const data = row.original as any;
-                    const dateVal = data.dueDate || data.due_date;
+                    const od = row.original.overdue_amount ?? 0;
                     return (
-                        <div className="text-sm text-gray-700">
-                            {dateVal ? dayjs(dateVal).format('D MMM YYYY, h:mm a') : '-'}
+                        <div
+                            className={`font-semibold ${od > 0 ? 'text-red-600' : 'text-gray-400'}`}
+                        >
+                            {formatCurrency(od)}
                         </div>
                     );
                 },
-                size: 140,
+                size: 120,
             },
             {
                 id: 'status',
                 header: 'Status',
-                accessorFn: (row: any) => row.status || '',
-                cell: ({ row }) => {
-                    const data = row.original as any;
-                    const status = data.status;
-                    return (
-                        <Badge variant={getStatusBadgeVariant(status)} className="font-medium">
-                            {status?.replace(/_/g, ' ') || '-'}
-                        </Badge>
-                    );
-                },
-                size: 140,
+                accessorFn: (row) => row.status || '',
+                cell: ({ row }) => <StatusPill status={row.original.status} />,
+                size: 120,
+            },
+            {
+                id: 'actions',
+                header: '',
+                cell: ({ row }) => (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const r = row.original;
+                            setSelectedRow({
+                                studentId: r.student_id,
+                                cpoId: r.cpo_id,
+                                studentName: r.student_name,
+                                cpoName: r.cpo_name,
+                            });
+                        }}
+                        className="rounded-full p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                        title="View installments"
+                    >
+                        <Eye size={18} weight="duotone" />
+                    </button>
+                ),
+                size: 50,
             },
         ],
         [getPackageName]
     );
 
+    // ── Render states ───────────────────────────────────────────────────
+
     if (isLoading) {
         return (
-            <div className="flex h-64 items-center justify-center">
+            <div className="flex h-48 items-center justify-center text-gray-500 font-semibold tracking-wide">
                 <DashboardLoader />
             </div>
         );
@@ -223,60 +255,94 @@ export function ManageFinancesTable({
 
     if (error) {
         return (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-8 text-center">
-                <p className="text-red-800">Error loading payment records</p>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center shadow-sm">
+                <p className="font-semibold text-red-800">Unable to load payment data</p>
                 <p className="mt-2 text-sm text-red-600">
-                    {error instanceof Error ? error.message : 'Unknown error occurred'}
+                    {error instanceof Error ? error.message : 'Please try again.'}
                 </p>
             </div>
         );
     }
 
-    if (!tableData) {
-        return null;
-    }
+    if (!tableData) return null;
 
     if (tableData.content.length === 0) {
         return (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-12 text-center">
-                <p className="text-lg font-medium text-gray-600">No payment records found</p>
-                <p className="mt-2 text-sm text-gray-500">
-                    Try adjusting your filters to see more results
+            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center shadow-sm">
+                <p className="text-lg font-semibold text-gray-600">No payment records found.</p>
+                <p className="mt-2 text-sm text-gray-400">
+                    Try adjusting your filters to see more results.
                 </p>
             </div>
         );
     }
 
     return (
-        <div className="space-y-4">
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-                <MyTable
-                    data={tableData}
-                    columns={columns}
-                    isLoading={false}
-                    error={null}
-                    currentPage={currentPage}
-                    scrollable={true}
-                    enableColumnResizing={true}
-                    enableColumnPinning={false}
-                />
+        <>
+            <div className="space-y-4">
+                {/* Table Card */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <MyTable
+                        data={tableData}
+                        columns={columns}
+                        isLoading={false}
+                        error={null}
+                        currentPage={currentPage}
+                        scrollable={true}
+                        enableColumnResizing={true}
+                        enableColumnPinning={false}
+                        onCellClick={(row: StudentFeePaymentRowDTO) => {
+                            setSelectedRow({
+                                studentId: row.student_id,
+                                cpoId: row.cpo_id,
+                                studentName: row.student_name,
+                                cpoName: row.cpo_name,
+                            });
+                        }}
+                    />
+                </div>
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between rounded-xl border border-gray-100 bg-white px-5 py-3 shadow-sm">
+                    <div className="text-sm text-gray-500 font-medium">
+                        Showing{' '}
+                        <span className="font-semibold text-gray-800">
+                            {tableData.page_no * tableData.page_size + 1}
+                        </span>
+                        {' – '}
+                        <span className="font-semibold text-gray-800">
+                            {Math.min(
+                                (tableData.page_no + 1) * tableData.page_size,
+                                tableData.total_elements
+                            )}
+                        </span>{' '}
+                        of{' '}
+                        <span className="font-semibold text-gray-800">
+                            {tableData.total_elements}
+                        </span>{' '}
+                        records
+                    </div>
+                    <MyPagination
+                        currentPage={currentPage}
+                        totalPages={tableData.total_pages}
+                        onPageChange={onPageChange}
+                    />
+                </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
-                <div className="text-sm text-gray-600">
-                    Showing {tableData.page_no * tableData.page_size + 1} -{' '}
-                    {Math.min(
-                        (tableData.page_no + 1) * tableData.page_size,
-                        tableData.total_elements
-                    )}{' '}
-                    of {tableData.total_elements} payments
-                </div>
-                <MyPagination
-                    currentPage={currentPage}
-                    totalPages={tableData.total_pages}
-                    onPageChange={onPageChange}
+            {/* Installment Details Popup */}
+            {selectedRow && (
+                <InstallmentDetailsModal
+                    open={!!selectedRow}
+                    onOpenChange={(open) => {
+                        if (!open) setSelectedRow(null);
+                    }}
+                    studentId={selectedRow.studentId}
+                    cpoId={selectedRow.cpoId}
+                    studentName={selectedRow.studentName}
+                    cpoName={selectedRow.cpoName}
                 />
-            </div>
-        </div>
+            )}
+        </>
     );
 }

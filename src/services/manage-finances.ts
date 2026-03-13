@@ -1,6 +1,14 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getInstituteId } from '@/constants/helper';
-import { FeeSearchFilterDTO, FinancalManagementPaginatedResponse } from '@/types/manage-finances';
+import {
+    FeeSearchFilterDTO,
+    FinancalManagementPaginatedResponse,
+    InstallmentDetailDTO,
+} from '@/types/manage-finances';
+
+const BASE_URL = () => import.meta.env.VITE_BACKEND_URL || 'http://localhost:8072';
+
+// ─── Main Table Search ──────────────────────────────────────────────────────
 
 export const getManageFinancesQueryKey = (filter: FeeSearchFilterDTO) => [
     'MANAGE_FINANCES_LOGS',
@@ -19,13 +27,32 @@ export const fetchManageFinancesLogs = async (
         throw new Error('Institute ID not found');
     }
 
-    const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8072';
-
     const response = await authenticatedAxiosInstance.post<FinancalManagementPaginatedResponse>(
-        `${BASE_URL}/admin-core-service/v1/admin/student-fee/search`,
+        `${BASE_URL()}/admin-core-service/v1/admin/student-fee/search`,
         filter,
         {
             params: { instituteId },
+        }
+    );
+    return response.data;
+};
+
+// ─── Installment Details (Popup) ────────────────────────────────────────────
+
+export const getInstallmentDetailsQueryKey = (studentId: string, cpoId: string) => [
+    'INSTALLMENT_DETAILS',
+    studentId,
+    cpoId,
+];
+
+export const fetchInstallmentDetails = async (
+    studentId: string,
+    cpoId: string
+): Promise<InstallmentDetailDTO[]> => {
+    const response = await authenticatedAxiosInstance.get<InstallmentDetailDTO[]>(
+        `${BASE_URL()}/admin-core-service/v1/admin/student-fee/payment-details`,
+        {
+            params: { studentId, cpoId },
         }
     );
     return response.data;

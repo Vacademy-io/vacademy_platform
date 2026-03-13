@@ -348,9 +348,9 @@ export function RegistrationFormPage() {
             icon: <User size={20} />,
             isComplete: Boolean(
                 formData.studentName &&
-                    formData.dateOfBirth &&
-                    formData.gender &&
-                    formData.nationality
+                formData.dateOfBirth &&
+                formData.gender &&
+                formData.nationality
             ),
             hasErrors: false,
         },
@@ -371,7 +371,7 @@ export function RegistrationFormPage() {
             icon: <Users size={20} />,
             isComplete: Boolean(
                 (formData.fatherInfo?.name && formData.fatherInfo?.mobile) ||
-                    (formData.motherInfo?.name && formData.motherInfo?.mobile)
+                (formData.motherInfo?.name && formData.motherInfo?.mobile)
             ),
             hasErrors: false,
         },
@@ -382,8 +382,8 @@ export function RegistrationFormPage() {
             icon: <MapPin size={20} />,
             isComplete: Boolean(
                 formData.currentAddress?.city &&
-                    formData.currentAddress?.state &&
-                    formData.currentAddress?.pincode
+                formData.currentAddress?.state &&
+                formData.currentAddress?.pincode
             ),
             hasErrors: false,
         },
@@ -468,7 +468,7 @@ export function RegistrationFormPage() {
                 enquiry_id: enquiryId || null,
                 institute_id: instituteId,
                 session_id: sessionId,
-                destination_package_session_id: formData?.applyingForClass,
+                destination_package_session_id: formData?.selectedPackageSessionId || '',
                 source: 'INSTITUTE',
                 source_id: instituteId,
                 form_data: {
@@ -646,8 +646,8 @@ export function RegistrationFormPage() {
                                                 section.isComplete
                                                     ? 'bg-green-100 text-green-700'
                                                     : index === activeSection
-                                                      ? 'bg-primary-100 text-primary-700'
-                                                      : 'bg-neutral-100 text-neutral-500'
+                                                        ? 'bg-primary-100 text-primary-700'
+                                                        : 'bg-neutral-100 text-neutral-500'
                                             )}
                                         >
                                             {section.isComplete ? (
@@ -683,8 +683,8 @@ export function RegistrationFormPage() {
                                             section.isComplete
                                                 ? 'bg-green-100 text-green-700'
                                                 : index === activeSection
-                                                  ? 'bg-primary-500 text-white'
-                                                  : 'bg-neutral-100 text-neutral-500'
+                                                    ? 'bg-primary-500 text-white'
+                                                    : 'bg-neutral-100 text-neutral-500'
                                         )}
                                     >
                                         {section.isComplete ? (

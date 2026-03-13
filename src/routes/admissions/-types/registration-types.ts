@@ -116,8 +116,8 @@ export interface Registration {
     motherTongue?: string;
     languagesKnown?: string[];
 
-    // Selected Level (NEW) - for API submission
-    selectedLevelId?: string;
+    // Selected Package Session (NEW) - for API submission
+    selectedPackageSessionId?: string;
 
     // Special Requirements
     hasSpecialNeeds?: boolean;

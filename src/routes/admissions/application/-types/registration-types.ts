@@ -111,8 +111,7 @@ export interface Registration {
     preferredBoard: string;
 
     // Level & Package Selection
-    selectedLevelId?: string;
-    packageSessionId?: string;
+    selectedPackageSessionId?: string;
     idType?: 'AADHAR_CARD' | 'BIRTH_CERTIFICATE' | 'PASSPORT' | 'OTHER';
     idNumber?: string;
 

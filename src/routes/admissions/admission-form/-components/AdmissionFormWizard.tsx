@@ -392,7 +392,7 @@ export default function AdmissionFormWizard() {
                 ) : (
                     <button
                         onClick={nextStep}
-                        className="px-6 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
+                        className="px-6 py-2.5 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-500 transition-colors shadow-sm"
                     >
                         Save & Next
                     </button>

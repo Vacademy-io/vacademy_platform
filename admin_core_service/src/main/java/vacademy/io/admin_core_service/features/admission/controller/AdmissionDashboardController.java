@@ -23,29 +23,43 @@ public class AdmissionDashboardController {
     public ResponseEntity<DashboardPipelineMetricsDTO> getPipelineMetrics(
             @RequestAttribute("user") CustomUserDetails user,
             @RequestParam("instituteId") String instituteId,
-            @RequestParam("packageSessionId") String packageSessionId) {
+            @RequestParam(value = "packageSessionId", required = false) String packageSessionId) {
 
-        logger.info("Fetching pipeline metrics for institute: {}, session: {}", instituteId, packageSessionId);
+        logger.info("Fetching pipeline metrics for institute: {}, session: {}", instituteId,
+                packageSessionId != null ? packageSessionId : "ALL");
 
-        if (instituteId == null || packageSessionId == null) {
-            throw new VacademyException("instituteId and packageSessionId are required.");
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new VacademyException("instituteId is required.");
         }
 
-        long totalEnquiries = pipelineRepository.countByInstituteIdAndPackageSessionIdAndLeadStatus(instituteId, packageSessionId, "ENQUIRY");
-        long totalApplications = pipelineRepository.countByInstituteIdAndPackageSessionIdAndLeadStatus(instituteId, packageSessionId, "APPLICATION");
-        long totalAdmissions = pipelineRepository.countByInstituteIdAndPackageSessionIdAndLeadStatus(instituteId, packageSessionId, "ADMITTED");
+        long totalEnquiries, totalApplications, totalAdmissions;
+        long admissionsFromEnquiry, admissionsFromAppOnly, directAdmissions;
 
-        long admissionsFromEnquiry = pipelineRepository.countAdmissionsFromEnquiry(instituteId, packageSessionId);
-        long admissionsFromAppOnly = pipelineRepository.countAdmissionsFromApplicationOnly(instituteId, packageSessionId);
-        long directAdmissions = pipelineRepository.countDirectAdmissions(instituteId, packageSessionId);
+        if (packageSessionId != null && !packageSessionId.isBlank()) {
+            // ── Per-session mode ─────────────────────────────────────────────────
+            totalEnquiries    = pipelineRepository.countByInstituteIdAndPackageSessionIdAndLeadStatus(instituteId, packageSessionId, "ENQUIRY");
+            totalApplications = pipelineRepository.countByInstituteIdAndPackageSessionIdAndLeadStatus(instituteId, packageSessionId, "APPLICATION");
+            totalAdmissions   = pipelineRepository.countByInstituteIdAndPackageSessionIdAndLeadStatus(instituteId, packageSessionId, "ADMITTED");
+            admissionsFromEnquiry  = pipelineRepository.countAdmissionsFromEnquiry(instituteId, packageSessionId);
+            admissionsFromAppOnly  = pipelineRepository.countAdmissionsFromApplicationOnly(instituteId, packageSessionId);
+            directAdmissions       = pipelineRepository.countDirectAdmissions(instituteId, packageSessionId);
+        } else {
+            // ── Institute-wide mode (aggregate across all sessions) ───────────────
+            totalEnquiries    = pipelineRepository.countByInstituteIdAndLeadStatus(instituteId, "ENQUIRY");
+            totalApplications = pipelineRepository.countByInstituteIdAndLeadStatus(instituteId, "APPLICATION");
+            totalAdmissions   = pipelineRepository.countByInstituteIdAndLeadStatus(instituteId, "ADMITTED");
+            admissionsFromEnquiry  = pipelineRepository.countAdmissionsFromEnquiryByInstitute(instituteId);
+            admissionsFromAppOnly  = pipelineRepository.countAdmissionsFromApplicationOnlyByInstitute(instituteId);
+            directAdmissions       = pipelineRepository.countDirectAdmissionsByInstitute(instituteId);
+        }
 
-        double enquiryToAppRate = totalEnquiries > 0 ? ((double) (totalApplications + admissionsFromEnquiry) / totalEnquiries) * 100.0 : 0.0;
-        double appToAdmissionRate = totalApplications > 0 ? ((double) totalAdmissions / totalApplications) * 100.0 : 0.0;
-        double overallRate = totalEnquiries > 0 ? ((double) totalAdmissions / totalEnquiries) * 100.0 : 0.0;
+        double enquiryToAppRate    = totalEnquiries > 0 ? ((double) (totalApplications + admissionsFromEnquiry) / totalEnquiries) * 100.0 : 0.0;
+        double appToAdmissionRate  = totalApplications > 0 ? ((double) totalAdmissions / totalApplications) * 100.0 : 0.0;
+        double overallRate         = totalEnquiries > 0 ? ((double) totalAdmissions / totalEnquiries) * 100.0 : 0.0;
 
         DashboardPipelineMetricsDTO response = DashboardPipelineMetricsDTO.builder()
                 .instituteId(instituteId)
-                .packageSessionId(packageSessionId)
+                .packageSessionId(packageSessionId) // null when institute-wide
                 .totalEnquiries(totalEnquiries)
                 .totalApplications(totalApplications)
                 .totalAdmissions(totalAdmissions)

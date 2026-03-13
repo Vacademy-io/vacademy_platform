@@ -336,6 +336,9 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
             await addUpdateQuizSlide(payload);
             // Append atomically (single call with array) after save so UI updates immediately
             append(questions);
+            // Eagerly sync Zustand store so SaveDraft can't race against the React-Query
+            // refetch that replaces activeItem.quiz_slide.questions with backend-format data.
+            syncToStore();
             setIsPreviewDialogOpen(false);
             setPendingQuestions([]);
             toast.success(`${questions.length} question(s) added successfully!`);

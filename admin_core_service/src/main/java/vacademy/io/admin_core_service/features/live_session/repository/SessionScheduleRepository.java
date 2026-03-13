@@ -101,6 +101,8 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
 
         String getTimezone();
 
+        String getProviderMeetingId(); // Zoho/provider meeting key stored on session_schedules
+
     }
 
     @Query(value = """
@@ -190,7 +192,8 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                     ss.thumbnail_file_id AS scheduleThumbnailFileId,  -- NEW
                     ss.daily_attendance AS dailyAttendance,           -- NEW
                     s.allow_play_pause As allowPlayPause,
-                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
+                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+                    ss.provider_meeting_id AS providerMeetingId
                 FROM session_schedules ss
                 JOIN live_session s ON ss.session_id = s.id
                 WHERE ss.id = :scheduleId
@@ -392,6 +395,10 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                   AND ss.link_type = :provider
                   AND ss.status != 'DELETED'
                   AND (ss.last_recording_sync_at IS NULL OR ss.last_recording_sync_at < :before)
+                  AND (
+                      ss.meeting_date < CURRENT_DATE
+                      OR (ss.meeting_date = CURRENT_DATE AND ss.last_entry_time < CURRENT_TIME)
+                  )
             """, nativeQuery = true)
     List<SessionSchedule> findNeedingRecordingSync(
             @Param("provider") String provider,

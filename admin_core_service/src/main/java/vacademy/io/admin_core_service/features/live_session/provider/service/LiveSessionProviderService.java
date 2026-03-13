@@ -95,8 +95,6 @@ public class LiveSessionProviderService {
                 .durationMinutes(request.getDurationMinutes())
                 .timezone(request.getTimezone())
                 .hostEmail(request.getHostEmail())
-                .sessionId(request.getSessionId())
-                .scheduleId(request.getScheduleId())
                 .build();
 
         CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
@@ -132,8 +130,16 @@ public class LiveSessionProviderService {
 
     public List<MeetingRecordingDTO> getRecordings(String scheduleId, String instituteId) {
         SessionSchedule schedule = getScheduleOrThrow(scheduleId);
-        return providerFactory.getStrategy(schedule.getLinkType())
+        List<MeetingRecordingDTO> recordings = providerFactory.getStrategy(schedule.getLinkType())
                 .getRecordings(schedule.getProviderMeetingId(), instituteId);
+        try {
+            schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
+            schedule.setLastRecordingSyncAt(new java.util.Date());
+            scheduleRepository.save(schedule);
+        } catch (Exception e) {
+            log.warn("Failed to cache recordings for schedule {}: {}", scheduleId, e.getMessage());
+        }
+        return recordings;
     }
 
     public List<MeetingAttendeeDTO> getAttendance(String scheduleId, String instituteId) {

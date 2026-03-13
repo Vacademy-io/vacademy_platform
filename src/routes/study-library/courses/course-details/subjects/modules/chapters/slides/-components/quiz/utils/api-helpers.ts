@@ -207,6 +207,8 @@ const createQuestionStructure = (
         quiz_slide_id: '', // This will be set by the caller
         can_skip: question.canSkip || false,
         new_question: true, // Added for backend compatibility
+        marks: question.marks != null ? question.marks : (question.questionMark ? parseFloat(question.questionMark) : null),
+        negative_marking: question.negativeMarking != null ? question.negativeMarking : (question.questionPenalty ? parseFloat(question.questionPenalty) : null),
         options: options,
     };
 
@@ -241,10 +243,17 @@ export const transformFormQuestionsToBackend = (
     });
 };
 
+export interface QuizSettings {
+    timeLimitInMinutes?: number | null;
+    marksPerQuestion?: number;
+    negativeMarking?: number;
+}
+
 // Helper function to create quiz slide payload for API
 export const createQuizSlidePayload = (
     questions: UploadQuestionPaperFormType['questions'],
-    activeItem: Slide
+    activeItem: Slide,
+    settings?: QuizSettings
 ): QuizSlidePayload => {
     const transformedQuestions = transformFormQuestionsToBackend(questions);
 
@@ -287,6 +296,18 @@ export const createQuizSlidePayload = (
                 content: '',
                 type: 'TEXT',
             },
+            time_limit_in_minutes:
+                settings?.timeLimitInMinutes !== undefined
+                    ? settings.timeLimitInMinutes
+                    : (activeItem.quiz_slide?.time_limit_in_minutes ?? null),
+            marks_per_question:
+                settings?.marksPerQuestion !== undefined
+                    ? settings.marksPerQuestion
+                    : (activeItem.quiz_slide?.marks_per_question ?? 1),
+            negative_marking:
+                settings?.negativeMarking !== undefined
+                    ? settings.negativeMarking
+                    : (activeItem.quiz_slide?.negative_marking ?? 0),
             questions: transformedQuestions,
         },
         is_loaded: true,

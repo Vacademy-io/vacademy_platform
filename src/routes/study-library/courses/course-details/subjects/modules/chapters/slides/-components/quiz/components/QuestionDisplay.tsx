@@ -235,6 +235,11 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
                     <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
                         {question.questionType}
                     </span>
+                    {question.marks != null && (
+                        <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+                            {question.marks} mark{question.marks !== 1 ? 's' : ''}
+                        </span>
+                    )}
                     <button
                         type="button"
                         className="flex size-8 items-center justify-center rounded border border-slate-200 bg-white p-0 text-slate-600 hover:bg-slate-50"

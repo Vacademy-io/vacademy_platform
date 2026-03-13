@@ -247,6 +247,10 @@ const AIQuestionsPreview = ({
                 sectionsForm?.setValue(
                     `section.${currentSectionIndex}.adaptive_marking_for_each_question`,
                     transformQuestionsData.map((question) => ({
+                        // Spread full question data (options, validAnswers, etc.) so that
+                        // quiz context can read them via getValues. The Zod schema strips
+                        // unknown fields on validation, so the assessment flow is unaffected.
+                        ...question,
                         questionId: question.questionId,
                         questionName: question.questionName,
                         questionType: question.questionType,

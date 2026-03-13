@@ -92,4 +92,8 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                         "AND psl.cpoId IS NOT NULL " +
                         "AND psl.status = 'ACTIVE'")
         List<String> findDistinctCpoIdsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
+
+        @Query("SELECT psl FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.cpoId = :cpoId AND psl.status != 'DELETED'")
+        List<PackageSessionLearnerInvitationToPaymentOption> findByCpoId(@Param("cpoId") String cpoId);
 }

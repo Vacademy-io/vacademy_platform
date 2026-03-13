@@ -78,6 +78,11 @@ public class ComplexPaymentOptionDTO {
         private String id;
         private Integer installmentNumber;
         private BigDecimal amount;
+        @JsonProperty("start_date")
+        private LocalDate startDate;
+        @JsonProperty("end_date")
+        private LocalDate endDate;
+        @JsonProperty("due_date")
         private LocalDate dueDate;
         private String status;
     }

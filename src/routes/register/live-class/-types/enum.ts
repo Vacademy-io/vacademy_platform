@@ -13,6 +13,7 @@ export enum LinkType {
     ZOHO = "zoho",
     ZOHO_MEETING = "zoho_meeting",
     ZOHO_RECORDED = "zoho_recorded",
+    UNKNOWN = "unknown",
 }
 
 export enum SessionStreamingServiceType {

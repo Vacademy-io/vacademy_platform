@@ -110,4 +110,5 @@ export interface SessionDetailsResponse {
   customMeetingLink: string;
   customWaitingRoomMediaId: string | null;
   providerMeetingId: string | null;
+  providerEmbedToken: string | null;
 }

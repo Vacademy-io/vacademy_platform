@@ -278,18 +278,6 @@ function EmbedComponent() {
       );
     }
 
-    // Check if embedding is enabled — if not, open the link in a new tab
-    if (sessionDetails.sessionStreamingServiceType &&
-      sessionDetails.sessionStreamingServiceType.toLowerCase() !== "embed") {
-      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-      window.open(joinLink, "_blank", "noopener,noreferrer");
-      return (
-        <div className="flex flex-col items-center justify-center p-8 h-full">
-          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
-        </div>
-      );
-    }
-
     // --- Zoho links ---
     if (
       linkType === LinkType.ZOHO ||
@@ -301,7 +289,8 @@ function EmbedComponent() {
         <div className="w-full h-full flex flex-col gap-4">
           <ZohoEmbedPlayer
             meetingUrl={zohoUrl}
-            providerMeetingId={(sessionDetails as any).providerMeetingId}
+            providerMeetingId={sessionDetails.providerMeetingId}
+            providerEmbedToken={sessionDetails.providerEmbedToken}
           />
           {learnerButtonConfig?.visible && (
             <div className="flex justify-end w-full mt-2">
@@ -321,6 +310,18 @@ function EmbedComponent() {
               </Button>
             </div>
           )}
+        </div>
+      );
+    }
+
+    // Check if embedding is enabled — if not, open the link in a new tab
+    if (sessionDetails.sessionStreamingServiceType &&
+      sessionDetails.sessionStreamingServiceType.toLowerCase() !== "embed") {
+      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      window.open(joinLink, "_blank", "noopener,noreferrer");
+      return (
+        <div className="flex flex-col items-center justify-center p-8 h-full">
+          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
         </div>
       );
     }

@@ -107,18 +107,6 @@ function GuestEmbedComponent() {
       return <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />;
     }
 
-    // Check if embedding is enabled — if not, open the link in a new tab
-    if (sessionDetails.sessionStreamingServiceType &&
-      sessionDetails.sessionStreamingServiceType.toLowerCase() !== "embed") {
-      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-      window.open(joinLink, "_blank", "noopener,noreferrer");
-      return (
-        <div className="flex flex-col items-center justify-center p-12 h-screen bg-white">
-          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
-        </div>
-      );
-    }
-
     // ----- Zoho -----
     if (
       linkType === LinkType.ZOHO ||
@@ -129,8 +117,21 @@ function GuestEmbedComponent() {
       return (
         <ZohoEmbedPlayer
           meetingUrl={zohoUrl}
-          providerMeetingId={(sessionDetails as any).providerMeetingId}
+          providerMeetingId={sessionDetails.providerMeetingId}
+          providerEmbedToken={sessionDetails.providerEmbedToken}
         />
+      );
+    }
+
+    // Check if embedding is enabled — if not, open the link in a new tab
+    if (sessionDetails.sessionStreamingServiceType &&
+      sessionDetails.sessionStreamingServiceType.toLowerCase() !== "embed") {
+      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      window.open(joinLink, "_blank", "noopener,noreferrer");
+      return (
+        <div className="flex flex-col items-center justify-center p-12 h-screen bg-white">
+          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
+        </div>
       );
     }
 

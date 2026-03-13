@@ -370,12 +370,32 @@ export const SlideMaterial = ({
 
                 // Get the final inner content
                 contentForDeserialization = current.innerHTML.trim();
+
+                // DEBUG: Log data-yoopta-type divs surviving pre-processing
+                const debugDiv = document.createElement('div');
+                debugDiv.innerHTML = contentForDeserialization;
+                const customDivs = debugDiv.querySelectorAll('div[data-yoopta-type]');
+                if (customDivs.length > 0) {
+                    console.log('[DEBUG deserialize] data-yoopta-type divs in pre-processed HTML:', customDivs.length);
+                    customDivs.forEach((d) => console.log('  -', d.getAttribute('data-yoopta-type')));
+                }
             }
         } catch (e) {
             console.error('Error parsing HTML for Yoopta:', e);
         }
 
         const rawEditorContent = html.deserialize(editor, contentForDeserialization || '');
+
+        // DEBUG: Log deserialized blocks
+        if (rawEditorContent && typeof rawEditorContent === 'object') {
+            const blockTypes = Object.values(rawEditorContent).map((b: any) => b.type);
+            const customBlocks = Object.values(rawEditorContent).filter((b: any) =>
+                b?.value?.[0]?.props?.editorType
+            );
+            console.log('[DEBUG deserialize] All block types:', blockTypes);
+            console.log('[DEBUG deserialize] Custom blocks found:', customBlocks.length,
+                customBlocks.map((b: any) => `${b.type}(${b.value?.[0]?.props?.editorType})`));
+        }
 
         const processNode = (node: any): any => {
             const newNode = { ...node };
@@ -554,6 +574,23 @@ export const SlideMaterial = ({
             return '';
         }
         const formattedHtmlString = formatHTMLString(htmlString);
+
+        // DEBUG: Log serialization for custom plugin blocks
+        if (data && typeof data === 'object') {
+            const customTypes = Object.values(data)
+                .filter((b: any) => b?.value?.[0]?.props?.editorType)
+                .map((b: any) => b.type);
+            if (customTypes.length > 0) {
+                console.log('[DEBUG serialize] Custom blocks in editor:', customTypes);
+                console.log('[DEBUG serialize] HTML output includes data-yoopta-type?', formattedHtmlString.includes('data-yoopta-type'));
+                // Log each custom block type's presence in the output
+                customTypes.forEach((t: string) => {
+                    const plugin = (editor as any).plugins?.[t];
+                    console.log(`[DEBUG serialize] Plugin "${t}" has parsers.html.serialize:`, !!plugin?.parsers?.html?.serialize);
+                });
+            }
+        }
+
         return formattedHtmlString;
     };
 

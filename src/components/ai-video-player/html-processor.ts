@@ -57,6 +57,13 @@ function getBaseStyles(): string {
                 visibility: visible !important;
             }
 
+            /* Cutout asset images — transparent background, subtle depth */
+            .generated-image[data-cutout="true"] {
+                background: transparent;
+                mix-blend-mode: normal;
+                filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
+            }
+
             .text-display { font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
             .text-h2 { font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
             .text-body { font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; line-height: 1.5; }

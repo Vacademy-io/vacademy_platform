@@ -111,7 +111,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     passwordDelivery: "none",
   },
   permissions: {
-    canViewProfile: false,
+    canViewProfile: true,
     canEditProfile: false,
     canDeleteProfile: false,
     canViewFiles: false,

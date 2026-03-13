@@ -50,6 +50,7 @@ public class GetSessionByIdService {
         response.setNotifications(notifications);
         return response;
     }
+
     public GetSessionByIdResponseDTO getScheduleDetails(String sessionId) {
         List<ScheduleDTO> schedules = scheduleRepository.findSchedulesBySessionId(sessionId);
         List<LiveSessionParticipants> participants = liveSessionParticipantRepository.findBySessionId(sessionId);
@@ -138,18 +139,18 @@ public class GetSessionByIdService {
         return dto;
     }
 
-
     public GetSessionByIdResponseDTO.NotificationConfigResponse getNotificationDetails(String sessionId) {
 
         List<NotificationQueryDTO> notifications = notificationRepository.findNotificationsBySessionId(sessionId);
-        List<CustomFieldRepository.FlatFieldProjection> flatList =
-                customFieldRepository.getSessionCustomFieldsBySessionId(sessionId);
+        List<CustomFieldRepository.FlatFieldProjection> flatList = customFieldRepository
+                .getSessionCustomFieldsBySessionId(sessionId);
         List<GetSessionByIdResponseDTO.NotificationAction> addedNotificationActions = new ArrayList<>();
 
         for (NotificationQueryDTO n : notifications) {
             GetSessionByIdResponseDTO.NotifyBy notifyBy = new GetSessionByIdResponseDTO.NotifyBy();
             notifyBy.setMail("EMAIL".equalsIgnoreCase(n.getChannel()) || "BOTH".equalsIgnoreCase(n.getChannel()));
-            notifyBy.setWhatsapp("WHATSAPP".equalsIgnoreCase(n.getChannel()) || "BOTH".equalsIgnoreCase(n.getChannel()));
+            notifyBy.setWhatsapp(
+                    "WHATSAPP".equalsIgnoreCase(n.getChannel()) || "BOTH".equalsIgnoreCase(n.getChannel()));
 
             GetSessionByIdResponseDTO.NotificationAction action = new GetSessionByIdResponseDTO.NotificationAction();
             action.setId(n.getNotificationId());
@@ -163,7 +164,7 @@ public class GetSessionByIdService {
 
         List<GetSessionByIdResponseDTO.Field> fields = new ArrayList<>();
 
-        for(CustomFieldRepository.FlatFieldProjection item : flatList){
+        for (CustomFieldRepository.FlatFieldProjection item : flatList) {
             GetSessionByIdResponseDTO.Field field = new GetSessionByIdResponseDTO.Field();
             field.setId(item.getCustomFieldId());
             field.setLabel(item.getFieldName());
@@ -205,9 +206,9 @@ public class GetSessionByIdService {
                         .attendanceEmailMessage(p.getAttendanceEmailMessage())
                         .coverFileId(p.getCoverFileId())
                         .subject(p.getSubject())
-                        .thumbnailFileId(p.getThumbnailFileId())                  // session-level
+                        .thumbnailFileId(p.getThumbnailFileId()) // session-level
                         .scheduleThumbnailFileId(p.getScheduleThumbnailFileId()) // schedule-level
-                        .allowPlayPause(p.getAllowPlayPause())                  // session-level
+                        .allowPlayPause(p.getAllowPlayPause()) // session-level
                         .backgroundScoreFileId(p.getBackgroundScoreFileId())
                         .status(p.getStatus())
                         .recurrenceType(p.getRecurrenceType())
@@ -219,6 +220,7 @@ public class GetSessionByIdService {
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
                         .allowRewind(p.getAllowRewind())
                         .timezone(p.getTimezone())
+                        .providerMeetingId(p.getProviderMeetingId())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }
@@ -250,9 +252,9 @@ public class GetSessionByIdService {
                         .attendanceEmailMessage(p.getAttendanceEmailMessage())
                         .coverFileId(p.getCoverFileId())
                         .subject(p.getSubject())
-                        .thumbnailFileId(p.getThumbnailFileId())                  // session-level
+                        .thumbnailFileId(p.getThumbnailFileId()) // session-level
                         .scheduleThumbnailFileId(p.getScheduleThumbnailFileId()) // schedule-level
-                        .allowPlayPause(p.getAllowPlayPause())                  // session-level
+                        .allowPlayPause(p.getAllowPlayPause()) // session-level
                         .backgroundScoreFileId(p.getBackgroundScoreFileId())
                         .status(p.getStatus())
                         .recurrenceType(p.getRecurrenceType())
@@ -264,11 +266,12 @@ public class GetSessionByIdService {
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
                         .allowRewind(p.getAllowRewind())
                         .timezone(p.getTimezone())
+                        .providerMeetingId(p.getProviderMeetingId())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }
 
-    public String findEarliestSchedule(String sessionId){
+    public String findEarliestSchedule(String sessionId) {
         return scheduleRepository.findEarliestScheduleIdBySessionId(sessionId);
     }
 

@@ -52,6 +52,13 @@ public class PaymentLog {
     @Column(name = "payment_amount")
     private Double paymentAmount;
 
+    /**
+     * Amount from this payment that was not allocated to any student_fee_payment
+     * (excess/overpayment). Used by fee allocation; default 0 for existing rows.
+     */
+    @Column(name = "unallocated_amount")
+    private Double unallocatedAmount;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

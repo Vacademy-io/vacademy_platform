@@ -128,19 +128,24 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         String userId = (String) cfg.get("zohoUserId");
         String apiBase = ZohoOAuthService.buildApiBase(domain);
 
-        String url = apiBase + "/meeting/api/v2/" + userId + "/recordings/" + providerMeetingId + ".json";
+        // Correct Zoho Recording API:
+        // https://meeting.zoho.in/api/v2/{zsoid}/recordings/{meetingKey}.json
+        String url = apiBase + "/api/v2/" + userId + "/recordings/" + providerMeetingId + ".json";
+        log.info("[Zoho Recordings] Calling URL: {}", url);
+
         JsonNode response = webClientBuilder.build()
                 .get().uri(url)
                 .header("Authorization", "Zoho-oauthtoken " + token)
                 .retrieve()
                 .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
                         resp -> resp.bodyToMono(String.class).map(body -> {
-                            log.error("Zoho recordings API failed: {}", body);
+                            log.error("[Zoho Recordings] API failed — HTTP {} — body: {}", resp.statusCode(), body);
                             return new VacademyException("Zoho recordings error: " + body);
                         }))
                 .bodyToMono(JsonNode.class)
                 .block();
 
+        log.info("[Zoho Recordings] Raw response for meetingKey={}: {}", providerMeetingId, response);
         return parseRecordingsResponse(response, providerMeetingId);
     }
 
@@ -203,24 +208,51 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
 
     private List<MeetingRecordingDTO> parseRecordingsResponse(JsonNode response, String meetingId) {
         List<MeetingRecordingDTO> list = new ArrayList<>();
-        if (response == null || response.isNull() || response.isMissingNode())
+        if (response == null || response.isNull() || response.isMissingNode()) {
+            log.warn("[Zoho Recordings] Null/empty response for meetingId={}", meetingId);
             return list;
+        }
 
+        // Zoho returns: { "recordings": [ {...}, ... ] }
+        // or a wrapped array [ { "recordings": [...] } ]
         JsonNode firstElement = response.isArray() && response.size() > 0 ? response.get(0) : response;
         JsonNode node = firstElement.has("recordings") ? firstElement.get("recordings") : response;
 
-        if (!node.isArray())
+        if (!node.isArray()) {
+            log.warn("[Zoho Recordings] 'recordings' node is not an array. Full response: {}", response);
             return list;
+        }
 
+        log.info("[Zoho Recordings] Parsing {} recording(s) for meetingId={}", node.size(), meetingId);
         for (JsonNode rec : node) {
+            // erecordingId is Zoho's primary recording identifier; recordingId is a
+            // fallback
+            String recId = rec.path("erecordingId").asText(null);
+            if (recId == null || recId.isBlank())
+                recId = rec.path("recordingId").asText(null);
+            if (recId == null || recId.isBlank())
+                recId = rec.path("id").asText(null);
+
+            // Zoho returns duration in milliseconds → convert to seconds
+            long durationMs = rec.path("duration").asLong(0);
+            long durationSecs = durationMs > 0 ? durationMs / 1000L
+                    : rec.path("durationInMins").asLong(0) * 60L;
+
+            // Zoho uses 'playUrl' for the browser-embeddable viewer link
+            String playUrl = rec.path("playUrl").asText(null);
+            if (playUrl == null || playUrl.isBlank())
+                playUrl = rec.path("shareUrl").asText(null);
+
             list.add(MeetingRecordingDTO.builder()
-                    .recordingId(rec.path("recordingId").asText(null))
+                    .recordingId(recId)
                     .downloadUrl(rec.path("downloadUrl").asText(null))
-                    .playbackUrl(rec.path("viewUrl").asText(null))
-                    .durationSeconds(rec.path("duration").asLong(0))
+                    .playbackUrl(playUrl)
+                    .durationSeconds(durationSecs)
                     .startTime(rec.path("startTime").asText(null))
                     .providerMeetingId(meetingId)
                     .build());
+            log.info("[Zoho Recordings] Parsed recording: id={}, downloadUrl={}, durationSecs={}",
+                    recId, rec.path("downloadUrl").asText("N/A"), durationSecs);
         }
         return list;
     }

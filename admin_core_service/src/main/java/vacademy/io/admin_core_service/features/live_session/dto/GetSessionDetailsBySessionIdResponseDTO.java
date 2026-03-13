@@ -40,7 +40,7 @@ public class GetSessionDetailsBySessionIdResponseDTO {
     private String coverFileId;
     private String subject;
     private String thumbnailFileId;
-    //new field added
+    // new field added
     private String scheduleThumbnailFileId;
     private Boolean allowPlayPause;
 
@@ -56,5 +56,5 @@ public class GetSessionDetailsBySessionIdResponseDTO {
     private String customMeetingLink;
     private String customWaitingRoomMediaId;
     private String timezone;
+    private String providerMeetingId;
 }
-

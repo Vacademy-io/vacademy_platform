@@ -126,6 +126,8 @@ public class FeeManagementService {
                             inst.setInstallmentNumber(instDTO.getInstallmentNumber());
                             inst.setAmount(instDTO.getAmount());
                             inst.setDueDate(instDTO.getDueDate());
+                            inst.setStartDate(instDTO.getStartDate());
+                            inst.setEndDate(instDTO.getEndDate());
                             inst.setStatus(instDTO.getStatus() != null ? instDTO.getStatus() : "PENDING");
                             inst.setAssignedFeeValueId(savedAfv.getId());
                             aftInstallmentRepository.save(inst);
@@ -232,6 +234,8 @@ public class FeeManagementService {
                                 .installmentNumber(inst.getInstallmentNumber())
                                 .amount(inst.getAmount())
                                 .dueDate(inst.getDueDate())
+                                .startDate(inst.getStartDate())
+                                .endDate(inst.getEndDate())
                                 .status(inst.getStatus())
                                 .build())
                         .collect(Collectors.toList());
@@ -432,6 +436,8 @@ public class FeeManagementService {
                     inst.setInstallmentNumber(instDTO.getInstallmentNumber());
                     inst.setAmount(instDTO.getAmount());
                     inst.setDueDate(instDTO.getDueDate());
+                    inst.setStartDate(instDTO.getStartDate());
+                    inst.setEndDate(instDTO.getEndDate());
                     inst.setStatus(instDTO.getStatus() != null ? instDTO.getStatus() : "PENDING");
                     inst.setAssignedFeeValueId(savedAfv.getId());
                     aftInstallmentRepository.save(inst);

@@ -147,6 +147,9 @@ public class ApplicantService {
         private TimelineEventService timelineEventService;
 
         @Autowired
+        private vacademy.io.admin_core_service.features.admission.service.AdmissionPipelineService admissionPipelineService;
+
+        @Autowired
         private ApplicationFeeReceiptService applicationFeeReceiptService;
 
         @Autowired
@@ -841,100 +844,105 @@ public class ApplicantService {
                 } else {
                         // === Path 2: Manual / Direct Application ===
 
-                        // 2. Create Users (Parent & Child)
-                        parentUser = createParentUser(request);
-                        childUser = createChildUser(request, parentUser.getId());
+                        // 2. Manage Parent User
+                        // First check if parent exists via Mobile Number (similar to Admission logic)
+                        String parentMobile = getFormDataString(request.getFormData(), "parent_phone");
+                        if (parentMobile != null && !parentMobile.isBlank()) {
+                                parentUser = authService.getUserByMobileNumber(parentMobile);
+                        }
 
-                        // 3. Create Student
+                        // If not found by mobile, create conventionally (or update if email matches)
+                        if (parentUser == null) {
+                                parentUser = createParentUser(request);
+                        }
+
+                        // 3. Prevent Ghost Child Generation & Check Duplicates BEFORE creation
+                        String childName = getFormDataString(request.getFormData(), "child_name");
+                        if (parentUser != null && childName != null && !childName.isBlank()) {
+                                try {
+                                        List<ParentWithChildDTO> parentChildren = authService
+                                                        .getUsersWithChildren(List.of(parentUser.getId()));
+
+                                        final String finalParentId = parentUser.getId();
+                                        boolean duplicateInAuth = parentChildren.stream()
+                                                        .filter(dto -> dto.getParent() != null
+                                                                        && dto.getParent().getId()
+                                                                                        .equals(finalParentId))
+                                                        .map(ParentWithChildDTO::getChild)
+                                                        .filter(Objects::nonNull)
+                                                        .anyMatch(child -> child.getFullName()
+                                                                        .equalsIgnoreCase(childName));
+
+                                        if (duplicateInAuth) {
+                                                throw new VacademyException(
+                                                                "An application for a student named '" + childName
+                                                                                + "' has already been submitted under this parent account.");
+                                        }
+                                } catch (VacademyException ve) {
+                                        if (ve.getMessage().contains("already been submitted"))
+                                                throw ve;
+                                } catch (Exception e) {
+                                        logger.warn("Auth Service child check failed, proceeding: {}", e.getMessage());
+                                }
+                        }
+
+                        // Now safely create Child & Student Profile
+                        childUser = createChildUser(request, parentUser.getId());
                         if (childUser != null) {
                                 createStudentProfile(childUser, request.getFormData(), request.getCustomFieldValues(),
                                                 request.getInstituteId());
                         }
 
-                        // 4. Check for Existing Audience Response by User IDs (Optimization for
-                        // Admission)
-                        // If we are in ADMISSION mode (or even standard), checking for existing link
-                        // prevents duplicates
-                        List<AudienceResponse> existingResponses = audienceResponseRepository
-                                        .findByUserIdOrStudentUserId(
-                                                        parentUser.getId(),
-                                                        childUser != null ? childUser.getId() : null);
+                        // 4. Setup Lead Tracking (Audience Response)
+                        // Because we proved the child is NEW, we create a fresh AudienceResponse
+                        // specific to this child
+                        boolean isDirectApplication = "ADMISSION".equals(workflowType)
+                                        || "INSTITUTE".equals(request.getSource());
 
-                        // Filter for relevant response (checking if one already exists with source
-                        // linkage or generic)
-                        // For Admission, we prioritize any existing link to reuse
-                        Optional<AudienceResponse> existingAr = existingResponses.stream().findFirst();
-
-                        if (existingAr.isPresent()) {
-                                audienceResponse = existingAr.get();
-                                logger.info("Found existing AudienceResponse/Lead for user. Reusing ID: {}",
-                                                audienceResponse.getId());
-
-                                // Check existing applicant on this AR
-                                if (audienceResponse.getApplicantId() != null) {
-                                        if ("ADMISSION".equals(workflowType)) {
-                                                logger.info("Transitioning existing applicant {} to ADMISSION workflow (Direct Path)",
-                                                                audienceResponse.getApplicantId());
-                                                // Logic continues below to reused applicant
-                                        } else {
-                                                throw new VacademyException(
-                                                                "Application already submitted for this user.");
-                                        }
-                                }
+                        if (isDirectApplication) {
+                                // Direct path: no Audience campaign required
+                                String sourceType = "ADMISSION".equals(workflowType)
+                                                ? "MANUAL_ADMISSION"
+                                                : "DIRECT_APPLICATION";
+                                audienceResponse = AudienceResponse.builder()
+                                                .audienceId(null) // No campaign needed
+                                                .userId(parentUser.getId())
+                                                .studentUserId(childUser != null ? childUser.getId() : null) // Link to
+                                                                                                             // exact
+                                                                                                             // child
+                                                .sourceType(sourceType)
+                                                .sourceId(request.getSourceId())
+                                                .enquiryId(null)
+                                                .parentName(getFormDataString(request.getFormData(), "parent_name"))
+                                                .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
+                                                .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
+                                                .overallStatus("ADMISSION".equals(workflowType) ? "ADMISSION"
+                                                                : "APPLICATION")
+                                                .build();
                         } else {
-                                // Create NEW Audience Response
-                                // For ADMISSION workflow, or for direct INSTITUTE-sourced applications
-                                // where no campaign is configured, create the response without a campaign.
-                                boolean isDirectApplication = "ADMISSION".equals(workflowType)
-                                                || "INSTITUTE".equals(request.getSource());
+                                // Campaign-linked Application
+                                Audience audience = audienceRepository
+                                                .findByInstituteIdAndSessionId(request.getInstituteId(),
+                                                                request.getSessionId())
+                                                .orElseThrow(() -> new VacademyException(
+                                                                "No audience campaign found for this session. Please contact admin."));
 
-                                if (isDirectApplication) {
-                                        // Direct path: no Audience campaign required
-                                        String sourceType = "ADMISSION".equals(workflowType)
-                                                        ? "MANUAL_ADMISSION"
-                                                        : "DIRECT_APPLICATION";
-                                        audienceResponse = AudienceResponse.builder()
-                                                        .audienceId(null) // No campaign needed
-                                                        .userId(parentUser.getId())
-                                                        .studentUserId(childUser != null ? childUser.getId() : null)
-                                                        .sourceType(sourceType)
-                                                        .sourceId(request.getSourceId())
-                                                        .enquiryId(null)
-                                                        .parentName(getFormDataString(request.getFormData(),
-                                                                        "parent_name"))
-                                                        .parentEmail(getFormDataString(request.getFormData(),
-                                                                        "parent_email"))
-                                                        .parentMobile(getFormDataString(request.getFormData(),
-                                                                        "parent_phone"))
-                                                        .overallStatus("ADMISSION".equals(workflowType)
-                                                                        ? "ADMISSION"
-                                                                        : "APPLICATION")
-                                                        .build();
-                                } else {
-                                        Audience audience = audienceRepository
-                                                        .findByInstituteIdAndSessionId(request.getInstituteId(),
-                                                                        request.getSessionId())
-                                                        .orElseThrow(() -> new VacademyException(
-                                                                        "No audience campaign found for this session. Please contact admin."));
-
-                                        audienceResponse = AudienceResponse.builder()
-                                                        .audienceId(audience.getId())
-                                                        .userId(parentUser.getId())
-                                                        .studentUserId(childUser != null ? childUser.getId() : null)
-                                                        .sourceType("DIRECT_APPLICATION")
-                                                        .sourceId(request.getSourceId())
-                                                        .enquiryId(null) // Skip Enquiry
-                                                        .parentName(getFormDataString(request.getFormData(),
-                                                                        "parent_name"))
-                                                        .parentEmail(getFormDataString(request.getFormData(),
-                                                                        "parent_email"))
-                                                        .parentMobile(getFormDataString(request.getFormData(),
-                                                                        "parent_phone"))
-                                                        .overallStatus("APPLICATION")
-                                                        .build();
-                                }
-                                audienceResponse = audienceResponseRepository.save(audienceResponse);
+                                audienceResponse = AudienceResponse.builder()
+                                                .audienceId(audience.getId())
+                                                .userId(parentUser.getId())
+                                                .studentUserId(childUser != null ? childUser.getId() : null) // Link to
+                                                                                                             // exact
+                                                                                                             // child
+                                                .sourceType("DIRECT_APPLICATION")
+                                                .sourceId(request.getSourceId())
+                                                .enquiryId(null) // Skip Enquiry
+                                                .parentName(getFormDataString(request.getFormData(), "parent_name"))
+                                                .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
+                                                .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
+                                                .overallStatus("APPLICATION")
+                                                .build();
                         }
+                        audienceResponse = audienceResponseRepository.save(audienceResponse);
                 }
 
                 // === Common Path: Create Applicant & Link ===
@@ -1023,6 +1031,25 @@ public class ApplicantService {
                                 Map.of(
                                                 "workflow_type", workflowType,
                                                 "stage_name", firstStage.getStageName()));
+
+                // --- NEW: Record Application in Pipeline ---
+                admissionPipelineService.recordApplication(
+                                request.getInstituteId(),
+                                request.getDestinationPackageSessionId() != null
+                                                ? request.getDestinationPackageSessionId()
+                                                : request.getSessionId(),
+                                parentUser != null ? parentUser.getId() : null,
+                                childUser != null ? childUser.getId()
+                                                : (parentUser != null ? parentUser.getId() : null), // if no child user,
+                                                                                                    // parent user is
+                                                                                                    // child (unlikely
+                                                                                                    // for admission but
+                                                                                                    // possible)
+                                request.getEnquiryId(),
+                                savedApplicant != null && savedApplicant.getId() != null
+                                                ? savedApplicant.getId().toString()
+                                                : null,
+                                request.getSource());
 
                 return ApplyResponseDTO.builder()
                                 .applicantId(savedApplicant.getId().toString())

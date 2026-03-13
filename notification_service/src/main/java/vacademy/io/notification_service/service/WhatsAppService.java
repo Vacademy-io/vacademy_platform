@@ -210,15 +210,29 @@ public class WhatsAppService {
         if (allow.isEmpty())
             return bodyParams;
 
-        List<Map<String, Map<String, String>>> filtered = bodyParams.stream()
-                .filter(detail -> {
-                    String phone = detail.keySet().iterator().next();
-                    String normalized = phone.replaceAll("[^0-9]", "");
-                    return allow.contains(normalized);
-                })
-                .collect(Collectors.toList());
+        List<Map<String, Map<String, String>>> filtered = new ArrayList<>();
+        List<String> excluded = new ArrayList<>();
+        
+        for (Map<String, Map<String, String>> detail : bodyParams) {
+            String phone = detail.keySet().iterator().next();
+            String normalized = phone.replaceAll("[^0-9]", "");
+            if (allow.contains(normalized)) {
+                filtered.add(detail);
+            } else {
+                // Log excluded number with masking for security (show only last 4 digits)
+                String masked = normalized.length() > 4 
+                    ? "*".repeat(normalized.length() - 4) + normalized.substring(normalized.length() - 4)
+                    : "****";
+                excluded.add(masked);
+            }
+        }
 
-        log.info("TEST allowlist enabled: {} of {} recipients will be sent", filtered.size(), bodyParams.size());
+        if (!excluded.isEmpty()) {
+            log.warn("TEST allowlist enabled: {} recipients EXCLUDED from send (not in whitelist): {}. Only {} of {} will be sent",
+                    excluded.size(), excluded, filtered.size(), bodyParams.size());
+        } else {
+            log.info("TEST allowlist enabled: {} of {} recipients will be sent", filtered.size(), bodyParams.size());
+        }
         return filtered;
     }
 
@@ -393,17 +407,25 @@ public class WhatsAppService {
         
         List<Map<String, Object>> components = new ArrayList<>();
         
-        // 1. Handle Header (Image OR Video)
+        // 1. Handle Header (Image, Document, or Video)
         if (headerImageParams != null && !headerImageParams.isEmpty()) {
-            // Image header
             Map<String, Object> headerComponent = new HashMap<>();
             headerComponent.put("type", "header");
             
-            String imageUrl = headerImageParams.values().iterator().next(); // Get first value
-            Map<String, Object> imageObj = Map.of("link", imageUrl);
-            Map<String, Object> imageParam = Map.of("type", "image", "image", imageObj);
+            String mediaUrl = headerImageParams.values().iterator().next(); // Get first value
             
-            headerComponent.put("parameters", Collections.singletonList(imageParam));
+            if ("document".equalsIgnoreCase(headerType)) {
+                // Document header (e.g. PDF invoice)
+                Map<String, Object> docObj = Map.of("link", mediaUrl);
+                Map<String, Object> docParam = Map.of("type", "document", "document", docObj);
+                headerComponent.put("parameters", Collections.singletonList(docParam));
+            } else {
+                // Default to image header
+                Map<String, Object> imageObj = Map.of("link", mediaUrl);
+                Map<String, Object> imageParam = Map.of("type", "image", "image", imageObj);
+                headerComponent.put("parameters", Collections.singletonList(imageParam));
+            }
+            
             components.add(headerComponent);
             
         } else if (headerVideoUrl != null && !headerVideoUrl.isBlank()) {
@@ -584,11 +606,6 @@ public class WhatsAppService {
             jsonRequest = "{\"error\":\"failed to serialize request\"}";
         }
         String logId = externalCommunicationLogService.start(ExternalCommunicationSource.WHATSAPP, null, request);
-        // Right now bypass the whatsapp; log success and return
-        if (true) {
-            externalCommunicationLogService.markSuccess(logId, "Whatsapp Send Successfully");
-            return ResponseEntity.ok("Whatsapp Send Successfully");
-        }
 
         try {
             // Create headers
@@ -602,7 +619,7 @@ public class WhatsAppService {
             // Create HTTP entity
             HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
 
-            // Send request
+            // Send request to Meta Graph API
             ResponseEntity<String> response = restTemplate.exchange(
                     "https://graph.facebook.com/v22.0/" + appId + "/messages", HttpMethod.POST, entity, String.class);
             externalCommunicationLogService.markSuccess(logId, response.getBody());

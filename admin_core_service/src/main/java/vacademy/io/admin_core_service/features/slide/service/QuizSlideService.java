@@ -94,6 +94,9 @@ public class QuizSlideService {
 
     public void updateData(QuizSlideDTO dto, QuizSlide quizSlide) {
         quizSlide.setDescriptionRichText(new RichTextData(dto.getDescription()));
+        quizSlide.setTimeLimitInMinutes(dto.getTimeLimitInMinutes());
+        quizSlide.setMarksPerQuestion(dto.getMarksPerQuestion() != null ? dto.getMarksPerQuestion() : 1.0);
+        quizSlide.setNegativeMarking(dto.getNegativeMarking() != null ? dto.getNegativeMarking() : 0.0);
         addOrUpdateQuestionsInBulk(quizSlide, dto.getQuestions());
     }
 
@@ -184,6 +187,8 @@ public class QuizSlideService {
         existingQuestion.setEvaluationType(dto.getEvaluationType());
         existingQuestion.setQuestionOrder(dto.getQuestionOrder());
         existingQuestion.setCanSkip(dto.getCanSkip());
+        existingQuestion.setMarks(dto.getMarks());
+        existingQuestion.setNegativeMarking(dto.getNegativeMarking());
         existingQuestion.setUpdatedAt(LocalDateTime.now());
 
         // Update options

@@ -329,13 +329,20 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
     const handleConfirmAddQuestions = async (questions: UploadQuestionPaperFormType['questions']) => {
         setIsAddingExternal(true);
         try {
+            // Assign stable IDs to new questions so every subsequent save reuses the same ID
+            // and the backend updates instead of creating duplicate questions.
+            const questionsWithIds = questions.map((q) => ({
+                ...q,
+                id: (q as any).id || crypto.randomUUID(),
+            }));
+
             // Build the full payload upfront (existing + new) before touching the form,
             // so we're never racing against RHF's internal state updates.
-            const allQuestions = [...form.getValues('questions'), ...questions];
+            const allQuestions = [...form.getValues('questions'), ...questionsWithIds];
             const payload = createQuizSlidePayload(allQuestions, activeItem, buildSettingsPayload(quizSettings));
             await addUpdateQuizSlide(payload);
             // Append atomically (single call with array) after save so UI updates immediately
-            append(questions);
+            append(questionsWithIds);
             // Eagerly sync Zustand store so SaveDraft can't race against the React-Query
             // refetch that replaces activeItem.quiz_slide.questions with backend-format data.
             syncToStore();
@@ -491,8 +498,14 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         const newQuestion = editForm.getValues(`questions.0`);
         if (newQuestion.questionName.trim()) {
             try {
+                // Assign a stable ID now so every future save reuses the same ID.
+                // Without this, createQuestionStructure generates a new UUID each time
+                // the question is saved (settings save, draft save, etc.) which makes the
+                // backend treat it as a brand-new question on every save → duplicates.
+                const newQuestionWithId = { ...newQuestion, id: (newQuestion as any).id || crypto.randomUUID() };
+
                 // Add the new question to the form
-                append(newQuestion);
+                append(newQuestionWithId);
 
                 // Get all current questions including the new one
                 const currentQuestions = form.getValues('questions');

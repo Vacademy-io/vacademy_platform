@@ -40,5 +40,6 @@ export { initializeLibraries, loadLibraries } from './library-loader';
 // Hook exports
 export * from './hooks';
 
+
 // Component exports
 export { CaptionDisplay, CaptionSettingsPopover } from './components';

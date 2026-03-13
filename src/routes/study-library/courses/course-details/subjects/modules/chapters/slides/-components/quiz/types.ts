@@ -28,6 +28,8 @@ export interface BackendQuestion {
     can_skip?: boolean;
     canSkip?: boolean;
     tags?: string[];
+    marks?: number | null;
+    negative_marking?: number | null;
     options?: Array<{ id?: string; text?: { content: string }; content?: string }>;
 }
 
@@ -55,6 +57,8 @@ export interface TransformedQuestion {
     csingleChoiceOptions?: Array<{ id: string; name: string; isSelected: boolean }>;
     cmultipleChoiceOptions?: Array<{ id: string; name: string; isSelected: boolean }>;
     subjectiveAnswerText?: string;
+    marks?: number | null;
+    negativeMarking?: number | null;
 }
 
 export interface QuestionTypeProps {
@@ -82,6 +86,9 @@ export interface Slide {
         id: string;
         title: string;
         description: { id: string; content: string; type: string };
+        time_limit_in_minutes?: number | null;
+        marks_per_question?: number;
+        negative_marking?: number;
         questions?: BackendQuestion[];
     } | null;
     is_loaded: boolean;

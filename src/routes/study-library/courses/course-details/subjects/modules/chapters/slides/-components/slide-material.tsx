@@ -304,6 +304,66 @@ export const SlideMaterial = ({
     };
 
     const setEditorContent = () => {
+        // Ensure plugins and blocks are registered on the editor BEFORE
+        // calling html.deserialize.  On a fresh page load the YooptaEditor
+        // component hasn't mounted yet so editor.plugins / editor.blocks are
+        // still empty — the deserializer would silently drop every block.
+        if (!editor.plugins || Object.keys(editor.plugins).length === 0) {
+            const pluginDefs = plugins.map((p: any) =>
+                typeof p.getPlugin === 'object' ? p.getPlugin : p,
+            );
+
+            // Build plugins map  (type → full plugin config)
+            const pluginsMap: Record<string, any> = {};
+            const inlineElements: Record<string, any> = {};
+            pluginDefs.forEach((p: any) => {
+                if (!p?.type) return;
+                if (p.elements) {
+                    Object.keys(p.elements).forEach((key: string) => {
+                        const el = p.elements[key];
+                        const nt = el?.props?.nodeType;
+                        if (nt === 'inline' || nt === 'inlineVoid') {
+                            inlineElements[key] = { ...el, rootPlugin: p.type };
+                        }
+                    });
+                }
+                pluginsMap[p.type] = p;
+            });
+            // Merge inline elements into every plugin (mirrors YooptaEditor init)
+            pluginDefs.forEach((p: any) => {
+                if (p?.elements) {
+                    pluginsMap[p.type] = {
+                        ...p,
+                        elements: { ...p.elements, ...inlineElements },
+                    };
+                }
+            });
+            (editor as any).plugins = pluginsMap;
+
+            // Build blocks map  (type → { type, elements (sans render), … })
+            const blocksMap: Record<string, any> = {};
+            pluginDefs.forEach((p: any) => {
+                if (!p?.type || !p.elements) return;
+                const rootKey = Object.keys(p.elements)[0];
+                const rootEl = rootKey ? p.elements[rootKey] : undefined;
+                const nodeType = rootEl?.props?.nodeType;
+                if (nodeType === 'inline' || nodeType === 'inlineVoid') return;
+
+                const elements: Record<string, any> = {};
+                Object.keys(p.elements).forEach((key: string) => {
+                    const { render: _render, ...rest } = p.elements[key] || {};
+                    elements[key] = rest;
+                });
+                blocksMap[p.type] = {
+                    type: p.type,
+                    elements,
+                    hasCustomEditor: !!p.customEditor,
+                    options: p.options || {},
+                };
+            });
+            (editor as any).blocks = blocksMap;
+        }
+
         const docData =
             activeItem?.status == 'PUBLISHED'
                 ? activeItem.document_slide?.published_data || null
@@ -324,12 +384,13 @@ export const SlideMaterial = ({
 
             // Get body element and its inner HTML
             if (doc.body) {
-                // Unwrap iframes from divs to ensure they are recognized by Yoopta deserializer
-                const iframes = doc.body.querySelectorAll('iframe');
-                iframes.forEach((iframe) => {
-                    const parent = iframe.parentElement;
+                // Unwrap media/semantic elements from wrapper divs so Yoopta
+                // deserializers can find them by nodeName (IFRAME, VIDEO, IMG, A).
+                // Each plugin serializes as <div style="..."><element/></div>
+                // but the deserializer looks for the bare element.
+                const unwrapFromDiv = (el: Element) => {
+                    const parent = el.parentElement;
                     if (parent && parent.tagName === 'DIV') {
-                        // Replace parent div with its children
                         const fragment = document.createDocumentFragment();
                         while (parent.firstChild) {
                             fragment.appendChild(parent.firstChild);
@@ -338,22 +399,12 @@ export const SlideMaterial = ({
                             parent.parentNode.replaceChild(fragment, parent);
                         }
                     }
-                });
+                };
 
-                // Unwrap anchors from divs to ensure they are recognized (especially for File blocks)
-                const anchors = doc.body.querySelectorAll('a');
-                anchors.forEach((anchor) => {
-                    const parent = anchor.parentElement;
-                    if (parent && parent.tagName === 'DIV') {
-                        const fragment = document.createDocumentFragment();
-                        while (parent.firstChild) {
-                            fragment.appendChild(parent.firstChild);
-                        }
-                        if (parent.parentNode) {
-                            parent.parentNode.replaceChild(fragment, parent);
-                        }
-                    }
-                });
+                doc.body.querySelectorAll('iframe').forEach(unwrapFromDiv);
+                doc.body.querySelectorAll('video').forEach(unwrapFromDiv);
+                doc.body.querySelectorAll('img').forEach(unwrapFromDiv);
+                doc.body.querySelectorAll('a[download]').forEach(unwrapFromDiv);
 
                 contentForDeserialization = doc.body.innerHTML.trim();
 
@@ -362,14 +413,16 @@ export const SlideMaterial = ({
                 const wrapper = document.createElement('div');
                 wrapper.innerHTML = contentForDeserialization;
 
-                // Keep unwrapping single-child divs (but stop if div has mermaid class)
+                // Keep unwrapping single-child divs (but stop if div has
+                // mermaid class or data-yoopta-type — those are content blocks)
                 let current: Element = wrapper;
                 while (current.children.length === 1) {
                     const firstChild = current.children[0];
                     if (
                         firstChild &&
                         firstChild.tagName === 'DIV' &&
-                        !firstChild.classList.contains('mermaid')
+                        !firstChild.classList.contains('mermaid') &&
+                        !firstChild.hasAttribute('data-yoopta-type')
                     ) {
                         current = firstChild;
                     } else {
@@ -379,6 +432,7 @@ export const SlideMaterial = ({
 
                 // Get the final inner content
                 contentForDeserialization = current.innerHTML.trim();
+
             }
         } catch (e) {
             console.error('Error parsing HTML for Yoopta:', e);
@@ -473,15 +527,24 @@ export const SlideMaterial = ({
 
         const editorContent = sanitizeNodes(rawEditorContent);
 
-        // Fix Embed provider.type & provider.id after deserialization.
+        // Fix Embed/Video provider.type & provider.id after deserialization.
         // The @yoopta/embed deserializer sets provider.type to the hostname
         // (e.g. "www.youtube.com") and provider.id to the full URL, but the
         // render component looks up by short name ("youtube", "vimeo", …).
+        // The @yoopta/video deserializer doesn't reconstruct provider at all,
+        // so we detect provider from the src URL and add it back.
         if (editorContent && typeof editorContent === 'object') {
             Object.values(editorContent).forEach((block: any) => {
-                if (block?.type !== 'Embed') return;
+                if (block?.type !== 'Embed' && block?.type !== 'Video') return;
                 const el = block?.value?.[0];
-                const prov = el?.props?.provider;
+                if (!el?.props) return;
+
+                // For Video blocks, reconstruct provider from src if missing
+                if (block.type === 'Video' && !el.props.provider?.url && el.props.src) {
+                    el.props.provider = { type: null, id: '', url: el.props.src };
+                }
+
+                const prov = el.props.provider;
                 if (!prov?.url) return;
                 const url = prov.url;
                 const detect: [string, RegExp][] = [
@@ -554,6 +617,7 @@ export const SlideMaterial = ({
             return '';
         }
         const formattedHtmlString = formatHTMLString(htmlString);
+
         return formattedHtmlString;
     };
 

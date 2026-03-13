@@ -151,6 +151,8 @@ const createBaseTransformedQuestion = (
         multipleChoiceOptions: [],
         trueFalseOptions: [],
         subjectiveAnswerText: '',
+        marks: question.marks ?? null,
+        negativeMarking: question.negative_marking ?? null,
     };
 };
 

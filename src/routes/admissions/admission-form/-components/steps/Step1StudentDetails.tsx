@@ -19,7 +19,7 @@ export default function Step1StudentDetails({ formData, handleChange, packageSes
         const selected = packageSessionOptions.find(opt => opt.id === packageSessionId);
         onFormDataUpdate({
             destinationPackageSessionId: packageSessionId,
-            studentClass: selected?.label || '',
+            studentClass: selected?.label || packageSessionId,
             sessionId: selected?.sessionId || formData.sessionId,
         });
     };
@@ -90,7 +90,9 @@ export default function Step1StudentDetails({ formData, handleChange, packageSes
                 >
                     <option value="">Select Class</option>
                     {packageSessionOptions.map((opt) => (
-                        <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        <option key={opt.id} value={opt.id}>
+                            {opt.label}
+                        </option>
                     ))}
                 </select>
             </div>

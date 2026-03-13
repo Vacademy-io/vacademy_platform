@@ -28,10 +28,20 @@ import {
     EyeOff,
     Paperclip,
     Loader2,
+    Palette,
+    Settings2,
+    Film,
+    Type,
+    ExternalLink,
+    Check,
+    X,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
+import { getInstituteId } from '@/constants/helper';
+import { GET_VIDEO_STYLE, GET_VIDEO_BRANDING } from '@/constants/urls';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     handleStartProcessUploadedFile,
     handleConvertPDFToHTML,
@@ -106,6 +116,19 @@ export function PromptInput({
 }: PromptInputProps) {
     const [showPreview, setShowPreview] = useState(false);
     const [isPdfProcessing, setIsPdfProcessing] = useState(false);
+    const [videoStyle, setVideoStyle] = useState<{
+        primary_color?: string;
+        layout_theme?: string;
+        heading_font?: string;
+        body_font?: string;
+        background_type?: string;
+        has_custom_style?: boolean;
+    } | null>(null);
+    const [videoBranding, setVideoBranding] = useState<{
+        intro?: { enabled: boolean; duration_seconds?: number };
+        outro?: { enabled: boolean; duration_seconds?: number };
+        watermark?: { enabled: boolean; position?: string };
+    } | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
     const { data: modelsList } = useAIModelsList();
@@ -139,6 +162,30 @@ export function PromptInput({
             onOptionsChange({ ...options, model: defaultForTier.model_id });
         }
     }, [modelsList, options.quality_tier]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Fetch current video style & branding for the style preview chip
+    useEffect(() => {
+        const instituteId = getInstituteId();
+        if (!instituteId) return;
+        authenticatedAxiosInstance
+            .get(GET_VIDEO_STYLE(instituteId))
+            .then((res) => {
+                if (res.data?.style) {
+                    setVideoStyle({ ...res.data.style, has_custom_style: res.data.has_custom_style });
+                } else if (res.data) {
+                    setVideoStyle(res.data);
+                }
+            })
+            .catch(() => {});
+        authenticatedAxiosInstance
+            .get(GET_VIDEO_BRANDING(instituteId))
+            .then((res) => {
+                if (res.data?.branding) {
+                    setVideoBranding(res.data.branding);
+                }
+            })
+            .catch(() => {});
+    }, []);
 
     const handleSubmit = () => {
         if (!prompt.trim() || isGenerating || disabled) return;
@@ -509,6 +556,147 @@ export function PromptInput({
                                     checked={options.captions_enabled}
                                     onCheckedChange={(v) => updateOption('captions_enabled', v)}
                                 />
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+
+                    {/* Style Preview Chip */}
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1.5 bg-background text-xs font-normal hover:bg-muted"
+                                title="Current video style — click to preview"
+                            >
+                                {videoStyle?.primary_color ? (
+                                    <span
+                                        className="inline-block size-3 rounded-full border border-border"
+                                        style={{ backgroundColor: videoStyle.primary_color }}
+                                    />
+                                ) : (
+                                    <Palette className="size-3" />
+                                )}
+                                <span className="hidden text-muted-foreground sm:inline">Style:</span>
+                                <span className="max-w-[80px] truncate font-medium">
+                                    {videoStyle?.has_custom_style
+                                        ? (videoStyle.layout_theme
+                                              ?.replace(/_/g, ' ')
+                                              .replace(/\b\w/g, (c) => c.toUpperCase()) ?? 'Custom')
+                                        : 'Default'}
+                                </span>
+                                <Settings2 className="size-2.5 text-muted-foreground" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72 p-0" align="start">
+                            <div className="space-y-3 p-3">
+                                <Label className="text-xs font-medium text-muted-foreground">
+                                    Video Style & Branding
+                                </Label>
+
+                                {/* Theme */}
+                                <div className="flex items-center gap-2">
+                                    <Palette className="size-3.5 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground">Theme:</span>
+                                    <span className="text-xs font-medium">
+                                        {videoStyle?.layout_theme
+                                            ? videoStyle.layout_theme
+                                                  .replace(/_/g, ' ')
+                                                  .replace(/\b\w/g, (c) => c.toUpperCase())
+                                            : 'Default'}
+                                    </span>
+                                    <Badge variant="outline" className="ml-auto h-4 px-1 text-[9px]">
+                                        {videoStyle?.background_type === 'black' ? 'Dark' : 'Light'}
+                                    </Badge>
+                                </div>
+
+                                {/* Colors */}
+                                <div className="flex items-center gap-2">
+                                    <span
+                                        className="inline-block size-3.5 rounded-full border border-border"
+                                        style={{
+                                            backgroundColor:
+                                                videoStyle?.primary_color || '#6366f1',
+                                        }}
+                                    />
+                                    <span className="text-xs text-muted-foreground">Color:</span>
+                                    <span className="font-mono text-xs font-medium">
+                                        {videoStyle?.primary_color || '#6366f1'}
+                                    </span>
+                                </div>
+
+                                {/* Fonts */}
+                                <div className="flex items-center gap-2">
+                                    <Type className="size-3.5 text-muted-foreground" />
+                                    <span className="text-xs text-muted-foreground">Fonts:</span>
+                                    <span className="text-xs font-medium">
+                                        {videoStyle?.heading_font || 'Inter'}
+                                        {videoStyle?.body_font &&
+                                            videoStyle.body_font !== videoStyle.heading_font &&
+                                            ` / ${videoStyle.body_font}`}
+                                    </span>
+                                </div>
+
+                                {/* Branding — Intro / Outro */}
+                                <div className="space-y-1.5 border-t pt-2">
+                                    <div className="flex items-center gap-2">
+                                        <Film className="size-3.5 text-muted-foreground" />
+                                        <span className="text-xs text-muted-foreground">Intro:</span>
+                                        {videoBranding?.intro?.enabled ? (
+                                            <span className="flex items-center gap-1 text-xs font-medium text-green-600">
+                                                <Check className="size-3" />
+                                                {videoBranding.intro.duration_seconds}s
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                                <X className="size-3" />
+                                                Off
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Film className="size-3.5 text-muted-foreground" />
+                                        <span className="text-xs text-muted-foreground">Outro:</span>
+                                        {videoBranding?.outro?.enabled ? (
+                                            <span className="flex items-center gap-1 text-xs font-medium text-green-600">
+                                                <Check className="size-3" />
+                                                {videoBranding.outro.duration_seconds}s
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                                <X className="size-3" />
+                                                Off
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="size-3.5 text-center text-[10px] text-muted-foreground">W</span>
+                                        <span className="text-xs text-muted-foreground">Watermark:</span>
+                                        {videoBranding?.watermark?.enabled ? (
+                                            <span className="flex items-center gap-1 text-xs font-medium text-green-600">
+                                                <Check className="size-3" />
+                                                {videoBranding.watermark.position?.replace('-', ' ')}
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                                <X className="size-3" />
+                                                Off
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Edit link */}
+                            <div className="border-t px-3 py-2">
+                                <Link
+                                    to="/settings"
+                                    search={{ selectedTab: 'aiSettings' }}
+                                    className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
+                                >
+                                    <ExternalLink className="size-3" />
+                                    Edit in AI Settings
+                                </Link>
                             </div>
                         </PopoverContent>
                     </Popover>

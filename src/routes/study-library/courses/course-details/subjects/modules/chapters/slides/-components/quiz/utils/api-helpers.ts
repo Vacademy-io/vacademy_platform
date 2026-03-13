@@ -3,12 +3,14 @@ import { QuizSlidePayload, QuizSlideQuestion } from '../../../-hooks/use-slides'
 import { Slide } from '../types';
 
 // Helper function to create option structure
+// Handles both form-format options ({ id, name, isSelected }) and
+// backend-format options ({ id, text: { content }, ... })
 const createOptionStructure = (option: any) => ({
     id: option.id || crypto.randomUUID(),
     quiz_slide_question_id: '',
-    text: { id: '', type: 'TEXT', content: option.name || '' },
-    explanation_text: { id: '', type: 'TEXT', content: '' },
-    explanation_text_data: { id: '', type: 'TEXT', content: '' }, // Added for backend compatibility
+    text: { id: option.text?.id || '', type: 'HTML', content: option.name || option.text?.content || '' },
+    explanation_text: { id: '', type: 'HTML', content: '' },
+    explanation_text_data: { id: '', type: 'HTML', content: '' }, // Added for backend compatibility
     media_id: '',
 });
 
@@ -48,6 +50,7 @@ const getQuestionResponseConfig = (
 };
 
 // Helper function to transform options based on question type
+// Handles both form-format (singleChoiceOptions etc.) and backend-format (options array)
 const transformOptionsByType = (
     question: any
 ): Array<{
@@ -58,24 +61,34 @@ const transformOptionsByType = (
     explanation_text_data: { id: string; type: string; content: string };
     media_id: string;
 }> => {
+    // Fallback: backend-format questions store options in question.options
+    const backendOptions = question.options || [];
+    const pick = (arr: any[], limit?: number) => {
+        const src = arr && arr.length > 0 ? arr : backendOptions;
+        return (limit ? src.slice(0, limit) : src).map(createOptionStructure);
+    };
     switch (question.questionType) {
         case 'MCQS':
-            return (question.singleChoiceOptions || []).slice(0, 4).map(createOptionStructure);
+            return pick(question.singleChoiceOptions || [], 4);
         case 'MCQM':
-            return (question.multipleChoiceOptions || []).slice(0, 4).map(createOptionStructure);
+            return pick(question.multipleChoiceOptions || [], 4);
         case 'CMCQS':
-            return (question.csingleChoiceOptions || []).slice(0, 4).map(createOptionStructure);
+            return pick(question.csingleChoiceOptions || [], 4);
         case 'CMCQM':
-            return (question.cmultipleChoiceOptions || []).slice(0, 4).map(createOptionStructure);
+            return pick(question.cmultipleChoiceOptions || [], 4);
         case 'TRUE_FALSE':
-            return (question.trueFalseOptions || []).map(createOptionStructure);
+            return pick(question.trueFalseOptions || []);
         default:
-            return (question.singleChoiceOptions || []).slice(0, 4).map(createOptionStructure);
+            return pick(question.singleChoiceOptions || [], 4);
     }
 };
 
 // Helper function to create auto evaluation JSON
-const createAutoEvaluationJson = (question: any): string => {
+// `transformedOptions` are the backend-format options (with stable IDs) produced by
+// transformOptionsByType.  When available we store option **IDs** (strings) instead of
+// positional indices so that the correct answer is independent of the order the DB
+// returns options in.  The learner frontend already handles both formats.
+const createAutoEvaluationJson = (question: any, transformedOptions?: any[]): string => {
     if (
         question.questionType === 'MCQS' ||
         question.questionType === 'MCQM' ||
@@ -83,10 +96,19 @@ const createAutoEvaluationJson = (question: any): string => {
         question.questionType === 'CMCQM' ||
         question.questionType === 'TRUE_FALSE'
     ) {
-        // Use selected indices for correct answers
-        const correctAnswers = getCorrectAnswerIndices(question);
-        if (correctAnswers.length > 0) {
-            return JSON.stringify({ correctAnswers });
+        const correctIndices = getCorrectAnswerIndices(question);
+        if (correctIndices.length > 0) {
+            // Map indices → option IDs when the transformed options are available
+            if (transformedOptions && transformedOptions.length > 0) {
+                const correctOptionIds = correctIndices
+                    .map((idx: number) => transformedOptions[idx]?.id)
+                    .filter(Boolean);
+                if (correctOptionIds.length > 0) {
+                    return JSON.stringify({ correctAnswers: correctOptionIds });
+                }
+            }
+            // Fallback to indices if transformed options are not available
+            return JSON.stringify({ correctAnswers: correctIndices });
         }
     }
     if (question.questionType === 'LONG_ANSWER' || question.questionType === 'ONE_WORD') {
@@ -146,18 +168,21 @@ const createQuestionStructure = (
             question.comprehensionText ||
             question.passage ||
             question.parentRichTextContent ||
+            question.parent_rich_text?.content ||
             question.text?.content ||
             question.text_data?.content ||
             '';
         parentRichTextId =
             question.parent_rich_text?.id || question.parentRichTextId || crypto.randomUUID();
-        textContent = question.questionName || question.questionText || '';
+        // For comprehension types: questionName is the sub-question text; text.content is the sub-question too
+        textContent = question.questionName || question.questionText || question.text?.content || '';
         textId = question.text?.id || question.textId || crypto.randomUUID();
         textDataId = question.text_data?.id || question.textDataId || crypto.randomUUID();
     } else {
         parentRichTextContent = '';
         parentRichTextId = crypto.randomUUID();
-        textContent = question.questionName || question.questionText || '';
+        // Fallback: backend-format questions have text.content instead of questionName
+        textContent = question.questionName || question.questionText || question.text?.content || question.text_data?.content || '';
         textId = question.text?.id || question.textId || crypto.randomUUID();
         textDataId = question.text_data?.id || question.textDataId || crypto.randomUUID();
     }
@@ -179,19 +204,19 @@ const createQuestionStructure = (
         id: question.id || crypto.randomUUID(),
         parent_rich_text: {
             id: parentRichTextId,
-            type: 'TEXT',
+            type: 'HTML',
             content: parentRichTextContent,
         },
-        text: { id: textId, type: 'TEXT', content: textContent },
-        text_data: { id: textDataId, type: 'TEXT', content: textContent },
+        text: { id: textId, type: 'HTML', content: textContent },
+        text_data: { id: textDataId, type: 'HTML', content: textContent },
         explanation_text: {
             id: explanationTextId,
-            type: 'TEXT',
+            type: 'HTML',
             content: explanationContent,
         },
         explanation_text_data: {
             id: explanationTextDataId,
-            type: 'TEXT',
+            type: 'HTML',
             content: explanationContent,
         },
         media_id: '',
@@ -200,13 +225,20 @@ const createQuestionStructure = (
         question_type: question.questionType,
         questionType: question.questionType, // Fix: Add questionType field for backend compatibility
         access_level: 'INSTITUTE',
-        auto_evaluation_json: createAutoEvaluationJson(question),
+        // Prefer freshly computed value; fall back to existing backend value to preserve correct answers
+        // for backend-format passthrough (where option arrays are absent so computed value would be empty)
+        auto_evaluation_json: createAutoEvaluationJson(question, options) || (question as any).auto_evaluation_json || '',
         evaluation_type: evaluationType,
         question_time_in_millis: calculateQuestionTimeInMillis(question),
         question_order: index + 1,
         quiz_slide_id: '', // This will be set by the caller
-        can_skip: question.canSkip || false,
+        can_skip: question.canSkip || (question as any).can_skip || false,
         new_question: true, // Added for backend compatibility
+        marks: question.marks != null ? question.marks : (question.questionMark ? parseFloat(question.questionMark) : null),
+        // Handle both camelCase (form-format) and snake_case (backend-format) negative_marking
+        negative_marking: (question.negativeMarking ?? (question as any).negative_marking) != null
+            ? (question.negativeMarking ?? (question as any).negative_marking)
+            : (question.questionPenalty ? parseFloat(question.questionPenalty) : null),
         options: options,
     };
 
@@ -222,17 +254,24 @@ const createQuestionStructure = (
 };
 
 // Helper function to transform form questions to backend format
+// Handles both form-format questions (questionType camelCase, singleChoiceOptions etc.)
+// and backend-format questions (question_type snake_case, options array) — the latter
+// occurs when SaveDraft reads activeItem.quiz_slide.questions after a React-Query refetch
+// replaces the store with fresh API data.
 export const transformFormQuestionsToBackend = (
     questions: UploadQuestionPaperFormType['questions']
 ): QuizSlideQuestion[] => {
     return questions.map((question, index) => {
-        const { questionResponseType, evaluationType } = getQuestionResponseConfig(
-            question.questionType
-        );
-        const options = transformOptionsByType(question);
+        // Normalize: backend questions use snake_case question_type
+        const questionType =
+            question.questionType || (question as any).question_type || 'MCQS';
+        const normalizedQuestion = { ...question, questionType };
+
+        const { questionResponseType, evaluationType } = getQuestionResponseConfig(questionType);
+        const options = transformOptionsByType(normalizedQuestion);
 
         return createQuestionStructure(
-            question,
+            normalizedQuestion,
             index,
             options,
             questionResponseType,
@@ -241,10 +280,17 @@ export const transformFormQuestionsToBackend = (
     });
 };
 
+export interface QuizSettings {
+    timeLimitInMinutes?: number | null;
+    marksPerQuestion?: number;
+    negativeMarking?: number;
+}
+
 // Helper function to create quiz slide payload for API
 export const createQuizSlidePayload = (
     questions: UploadQuestionPaperFormType['questions'],
-    activeItem: Slide
+    activeItem: Slide,
+    settings?: QuizSettings
 ): QuizSlidePayload => {
     const transformedQuestions = transformFormQuestionsToBackend(questions);
 
@@ -287,6 +333,18 @@ export const createQuizSlidePayload = (
                 content: '',
                 type: 'TEXT',
             },
+            time_limit_in_minutes:
+                settings?.timeLimitInMinutes !== undefined
+                    ? settings.timeLimitInMinutes
+                    : (activeItem.quiz_slide?.time_limit_in_minutes ?? null),
+            marks_per_question:
+                settings?.marksPerQuestion !== undefined
+                    ? settings.marksPerQuestion
+                    : (activeItem.quiz_slide?.marks_per_question ?? 1),
+            negative_marking:
+                settings?.negativeMarking !== undefined
+                    ? settings.negativeMarking
+                    : (activeItem.quiz_slide?.negative_marking ?? 0),
             questions: transformedQuestions,
         },
         is_loaded: true,

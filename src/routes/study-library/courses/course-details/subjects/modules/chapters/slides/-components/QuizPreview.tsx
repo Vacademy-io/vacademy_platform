@@ -27,6 +27,12 @@ import {
     QuestionTypeSelector,
     DeleteConfirmDialog,
 } from './quiz';
+import QuizAddQuestionsDropdown from './quiz/components/QuizAddQuestionsDropdown';
+import QuizAddViaAIDialog from './quiz/components/QuizAddViaAIDialog';
+import QuizAddViaDocumentDialog from './quiz/components/QuizAddViaDocumentDialog';
+import QuizAddViaCSVDialog from './quiz/components/QuizAddViaCSVDialog';
+import QuizQuestionsPreviewDialog from './quiz/components/QuizQuestionsPreviewDialog';
+import QuizSettingsPanel, { QuizSettings } from './quiz/components/QuizSettingsPanel';
 
 const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
     // Get route parameters for API calls
@@ -78,6 +84,24 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
     const [isDeleteConfirmDialogOpen, setIsDeleteConfirmDialogOpen] = useState(false);
     const [questionToDelete, setQuestionToDelete] = useState<number | null>(null);
 
+    // Quiz-level settings (time limit, marks, negative marking)
+    const [quizSettings, setQuizSettings] = useState<QuizSettings>({
+        timeLimitEnabled: false,
+        timeLimitMinutes: 30,
+        marksPerQuestion: 1,
+        negativeMarkingEnabled: false,
+        negativeMarking: 0,
+    });
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+    // External question adding (document / AI / CSV)
+    const [isDocDialogOpen, setIsDocDialogOpen] = useState(false);
+    const [isAIDialogOpen, setIsAIDialogOpen] = useState(false);
+    const [isCSVDialogOpen, setIsCSVDialogOpen] = useState(false);
+    const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
+    const [pendingQuestions, setPendingQuestions] = useState<UploadQuestionPaperFormType['questions']>([]);
+    const [isAddingExternal, setIsAddingExternal] = useState(false);
+
     const editForm = useForm<UploadQuestionPaperFormType>({
         resolver: zodResolver(uploadQuestionPaperFormSchema()),
         mode: 'onChange',
@@ -93,6 +117,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 const currentQuestions = form.getValues('questions');
 
                 // Update the store with the new questions data
+                // IMPORTANT: preserve quiz settings so they are not wiped on every question edit
                 setActiveItem({
                     ...activeItem,
                     title: activeItem.title || 'Quiz',
@@ -107,6 +132,9 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                             content: '',
                             type: 'TEXT',
                         },
+                        time_limit_in_minutes: quizSettings.timeLimitEnabled ? quizSettings.timeLimitMinutes : null,
+                        marks_per_question: quizSettings.marksPerQuestion,
+                        negative_marking: quizSettings.negativeMarkingEnabled ? quizSettings.negativeMarking : 0,
                         questions: currentQuestions,
                     },
                 });
@@ -114,8 +142,11 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         });
 
         return () => subscription.unsubscribe(); // cleanup
-    }, [form, activeItem, setActiveItem]);
+    }, [form, activeItem, setActiveItem, quizSettings]);
 
+    // Only re-populate the form when navigating to a different slide (id change).
+    // Depending on the questions reference causes a circular loop:
+    //   form watch → setActiveItem(questions) → useEffect → replace → form watch → ...
     useEffect(() => {
         if (activeItem?.quiz_slide?.questions) {
             const questions = activeItem.quiz_slide.questions;
@@ -129,7 +160,26 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         } else {
             replace([]);
         }
-    }, [activeItem.quiz_slide?.questions, replace]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeItem.quiz_slide?.id]);
+
+    // Initialise quiz settings whenever the active slide changes
+    useEffect(() => {
+        const qs = activeItem?.quiz_slide;
+        if (qs) {
+            const timeLimitMinutes = qs.time_limit_in_minutes ?? 30;
+            const marksPerQuestion = qs.marks_per_question ?? 1;
+            const negativeMarking = qs.negative_marking ?? 0;
+            setQuizSettings({
+                timeLimitEnabled: qs.time_limit_in_minutes != null,
+                timeLimitMinutes: timeLimitMinutes > 0 ? timeLimitMinutes : 30,
+                marksPerQuestion: marksPerQuestion > 0 ? marksPerQuestion : 1,
+                negativeMarkingEnabled: negativeMarking > 0,
+                negativeMarking: negativeMarking,
+            });
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeItem.quiz_slide?.id]);
 
     // Check if the slide is deleted
     if (activeItem?.status === 'DELETED') {
@@ -179,6 +229,10 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                     content: '',
                     type: 'TEXT',
                 },
+                // Use quizSettings state (reliable) instead of activeItem.quiz_slide (may be stale)
+                time_limit_in_minutes: quizSettings.timeLimitEnabled ? quizSettings.timeLimitMinutes : null,
+                marks_per_question: quizSettings.marksPerQuestion,
+                negative_marking: quizSettings.negativeMarkingEnabled ? quizSettings.negativeMarking : 0,
                 questions: currentQuestions,
             },
         });
@@ -245,6 +299,63 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         return question;
     };
 
+    // Converts UI settings state to the QuizSettings payload shape
+    const buildSettingsPayload = (s: typeof quizSettings) => ({
+        timeLimitInMinutes: s.timeLimitEnabled ? s.timeLimitMinutes : null,
+        marksPerQuestion: s.marksPerQuestion,
+        negativeMarking: s.negativeMarkingEnabled ? s.negativeMarking : 0,
+    });
+
+    const handleSaveSettings = async () => {
+        setIsSavingSettings(true);
+        try {
+            const currentQuestions = form.getValues('questions');
+            const payload = createQuizSlidePayload(currentQuestions, activeItem, buildSettingsPayload(quizSettings));
+            await addUpdateQuizSlide(payload);
+            syncToStore();
+            toast.success('Quiz settings saved!');
+        } catch {
+            toast.error('Failed to save settings. Please try again.');
+        } finally {
+            setIsSavingSettings(false);
+        }
+    };
+
+    const handleQuestionsReady = (questions: UploadQuestionPaperFormType['questions']) => {
+        setPendingQuestions(questions);
+        setIsPreviewDialogOpen(true);
+    };
+
+    const handleConfirmAddQuestions = async (questions: UploadQuestionPaperFormType['questions']) => {
+        setIsAddingExternal(true);
+        try {
+            // Assign stable IDs to new questions so every subsequent save reuses the same ID
+            // and the backend updates instead of creating duplicate questions.
+            const questionsWithIds = questions.map((q) => ({
+                ...q,
+                id: (q as any).id || crypto.randomUUID(),
+            }));
+
+            // Append to form FIRST (synchronous), then build payload from form state.
+            // This matches the manual-add flow (handleAddQuestionConfirm) and avoids a
+            // race condition: addUpdateQuizSlide's onSuccess awaits a slides refetch which
+            // can trigger the useEffect(replace) before append runs, causing duplicates.
+            append(questionsWithIds);
+
+            const allQuestions = form.getValues('questions');
+            const payload = createQuizSlidePayload(allQuestions, activeItem, buildSettingsPayload(quizSettings));
+            await addUpdateQuizSlide(payload);
+            syncToStore();
+            setIsPreviewDialogOpen(false);
+            setPendingQuestions([]);
+            toast.success(`${questions.length} question(s) added successfully!`);
+        } catch {
+            toast.error('Failed to add questions. Please try again.');
+        } finally {
+            setIsAddingExternal(false);
+        }
+    };
+
     const handleEdit = (index: number) => {
         const question = form.getValues(`questions.${index}`);
 
@@ -275,7 +386,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 const currentQuestions = form.getValues('questions');
 
                 // Create payload for API call
-                const payload = createQuizSlidePayload(currentQuestions, activeItem);
+                const payload = createQuizSlidePayload(currentQuestions, activeItem, buildSettingsPayload(quizSettings));
 
                 // Call the API to update the quiz slide
                 await addUpdateQuizSlide(payload);
@@ -387,14 +498,20 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         const newQuestion = editForm.getValues(`questions.0`);
         if (newQuestion.questionName.trim()) {
             try {
+                // Assign a stable ID now so every future save reuses the same ID.
+                // Without this, createQuestionStructure generates a new UUID each time
+                // the question is saved (settings save, draft save, etc.) which makes the
+                // backend treat it as a brand-new question on every save → duplicates.
+                const newQuestionWithId = { ...newQuestion, id: (newQuestion as any).id || crypto.randomUUID() };
+
                 // Add the new question to the form
-                append(newQuestion);
+                append(newQuestionWithId);
 
                 // Get all current questions including the new one
                 const currentQuestions = form.getValues('questions');
 
                 // Create payload for API call
-                const payload = createQuizSlidePayload(currentQuestions, activeItem);
+                const payload = createQuizSlidePayload(currentQuestions, activeItem, buildSettingsPayload(quizSettings));
 
                 // Call the API to update the quiz slide
                 await addUpdateQuizSlide(payload);
@@ -438,7 +555,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 replace(updatedQuestions);
 
                 // Create payload for API call with the updated questions
-                const payload = createQuizSlidePayload(updatedQuestions, activeItem);
+                const payload = createQuizSlidePayload(updatedQuestions, activeItem, buildSettingsPayload(quizSettings));
 
                 // Call the API to update the quiz slide
                 await addUpdateQuizSlide(payload);
@@ -496,15 +613,21 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 {/* Header */}
                 <div className="flex items-center justify-between border-b bg-primary-50 px-6 py-4">
                     <h2 className="text-primary-700 text-lg font-semibold">Quiz Questions</h2>
-                    <Button
-                        type="button"
-                        onClick={() => setIsQuestionTypeDialogOpen(true)}
-                        className="flex items-center gap-2"
-                    >
-                        <Plus size={16} />
-                        Add Question
-                    </Button>
+                    <QuizAddQuestionsDropdown
+                        onManual={() => setIsQuestionTypeDialogOpen(true)}
+                        onDocument={() => setIsDocDialogOpen(true)}
+                        onAI={() => setIsAIDialogOpen(true)}
+                        onCSV={() => setIsCSVDialogOpen(true)}
+                    />
                 </div>
+
+                {/* Settings Panel */}
+                <QuizSettingsPanel
+                    settings={quizSettings}
+                    onChange={setQuizSettings}
+                    onSave={handleSaveSettings}
+                    isSaving={isSavingSettings}
+                />
 
                 {/* Question List */}
                 <div className="flex-1 space-y-4 overflow-y-auto bg-white px-6 py-5">
@@ -636,6 +759,30 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                     onOpenChange={setIsDeleteConfirmDialogOpen}
                     onConfirm={confirmDelete}
                     onCancel={cancelDelete}
+                />
+
+                {/* External question adding dialogs */}
+                <QuizAddViaDocumentDialog
+                    open={isDocDialogOpen}
+                    onOpenChange={setIsDocDialogOpen}
+                    onQuestionsReady={handleQuestionsReady}
+                />
+                <QuizAddViaAIDialog
+                    open={isAIDialogOpen}
+                    onOpenChange={setIsAIDialogOpen}
+                    onQuestionsReady={handleQuestionsReady}
+                />
+                <QuizAddViaCSVDialog
+                    open={isCSVDialogOpen}
+                    onOpenChange={setIsCSVDialogOpen}
+                    onQuestionsReady={handleQuestionsReady}
+                />
+                <QuizQuestionsPreviewDialog
+                    open={isPreviewDialogOpen}
+                    onOpenChange={setIsPreviewDialogOpen}
+                    questions={pendingQuestions}
+                    onConfirm={handleConfirmAddQuestions}
+                    isLoading={isAddingExternal}
                 />
             </div>
         </FormProvider>

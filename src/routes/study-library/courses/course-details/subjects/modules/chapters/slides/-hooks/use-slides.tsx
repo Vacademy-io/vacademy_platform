@@ -140,6 +140,9 @@ export interface QuizSlide {
     default_question_time_mins?: number;
     re_attempt_count?: number;
     source_type?: string;
+    time_limit_in_minutes?: number | null;
+    marks_per_question?: number;
+    negative_marking?: number;
 }
 
 // Audio slide interface

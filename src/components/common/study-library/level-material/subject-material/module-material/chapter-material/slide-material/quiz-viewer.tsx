@@ -1,5 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle } from "lucide-react";
+import QuizTimer from "./QuizTimer";
+import QuizTimeWarning from "./QuizTimeWarning";
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,17 +26,17 @@ interface Option {
 
 interface Question {
   id: string;
-  parent_rich_text?: { 
+  parent_rich_text?: {
     id?: string;
     type?: string;
     content?: string;
   }; // Passage for comprehension questions
-  text?: { 
+  text?: {
     id?: string;
     type?: string;
     content?: string;
   } | string; // Question text (always present)
-  text_data?: { 
+  text_data?: {
     id?: string;
     type?: string;
     content?: string;
@@ -42,12 +44,25 @@ interface Question {
   options: Option[];
   question_type?: string;
   auto_evaluation_json?: string;
+  marks?: number | null;
+  negative_marking?: number | null;
+}
+
+export interface ScoreCard {
+  earned: number;
+  totalMarks: number;
+  correct: number;
+  wrong: number;
+  skipped: number;
 }
 
 interface QuizViewerProps {
   questions: Question[];
   onAnswer: (questionId: string, selectedOptionId: string | number | string[]) => void;
   onComplete?: () => void;
+  timeLimitMinutes?: number | null;
+  marksPerQuestion?: number;
+  defaultNegativeMarking?: number;
 }
 
 const BASE_QUESTION_TYPE_DESCRIPTIONS: Record<string, string> = {
@@ -96,16 +111,29 @@ const getQuestionTypeDescription = (type?: string): string => {
 
 
 
-export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onComplete }) => {
+export const QuizViewer: React.FC<QuizViewerProps> = ({
+  questions,
+  onAnswer,
+  onComplete,
+  timeLimitMinutes,
+  marksPerQuestion = 1,
+  defaultNegativeMarking = 0,
+}) => {
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<{ [questionId: string]: string | number | string[] }>({});
   const [numericErrors, setNumericErrors] = useState<{ [questionId: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showFullPassage, setShowFullPassage] = useState(false); // <-- NEW
-  const [showReview, setShowReview] = useState(false); // <-- NEW
+  const [showFullPassage, setShowFullPassage] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [moveOnlyOnCorrectAnswer, setMoveOnlyOnCorrectAnswer] = useState(false);
   const [celebrateOnQuizComplete, setCelebrateOnQuizComplete] = useState(true);
   const [showIncorrectNotice, setShowIncorrectNotice] = useState(false);
+  const [showWarning, setShowWarning] = useState(false);
+  const timerExpiredRef = useRef(false);
+  // Keep a ref to always-current answers so the timer's stale closure gets the latest values
+  const answersRef = useRef(answers);
+  useEffect(() => { answersRef.current = answers; }, [answers]);
+  const [scoreCard, setScoreCard] = useState<ScoreCard | null>(null);
 
   const submitQuizMutation = useSubmitQuizSlideActivityLog();
   const queryClient = useQueryClient();
@@ -362,25 +390,173 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
     );
   }
 
+  // Score computation (called once before showing review)
+  const computeScore = (finalAnswers: typeof answers): ScoreCard => {
+    let earned = 0;
+    let totalMarks = 0;
+    let correct = 0;
+    let wrong = 0;
+    let skipped = 0;
+
+    const checkAnswerCorrect = (q: Question, userAns: string | number | string[] | undefined): boolean => {
+      if (userAns == null || (typeof userAns === "string" && userAns.trim() === "")) return false;
+      if (!q.auto_evaluation_json) return false;
+      try {
+        const parsed = JSON.parse(q.auto_evaluation_json);
+        const correctAnswers: (string | number)[] = Array.isArray(parsed.correctAnswers)
+          ? parsed.correctAnswers[0] !== undefined && typeof parsed.correctAnswers[0] === "number" && q.options?.length
+            ? parsed.correctAnswers.map((idx: number) => q.options[idx]?.id ?? idx)
+            : parsed.correctAnswers
+          : [];
+        if (correctAnswers.length === 0) return false;
+        if (Array.isArray(userAns)) {
+          const asStr = userAns.map(String);
+          const corrStr = correctAnswers.map(String);
+          return asStr.length === corrStr.length && corrStr.every((c) => asStr.includes(c));
+        }
+        return correctAnswers.map(String).includes(String(userAns));
+      } catch {
+        return false;
+      }
+    };
+
+    questions.forEach((q) => {
+      const qMarks = q.marks != null ? q.marks : marksPerQuestion;
+      const qNeg = q.negative_marking != null ? q.negative_marking : defaultNegativeMarking;
+      totalMarks += qMarks;
+      const isAnswered = finalAnswers[q.id] != null;
+      const isCorrect = isAnswered && checkAnswerCorrect(q, finalAnswers[q.id]);
+      if (isCorrect) {
+        earned += qMarks;
+        correct++;
+      } else if (isAnswered) {
+        earned -= qNeg;
+        wrong++;
+      } else {
+        skipped++;
+      }
+    });
+
+    return { earned: Math.max(0, earned), totalMarks, correct, wrong, skipped };
+  };
+
   // ✅ Only show review if we have answers (prevents "undefined" on first click)
   if (showReview && Object.keys(answers).length > 0) {
-    return <QuizReview 
-      questions={questions} 
-      userAnswers={answers} 
-      onRestart={() => { 
+    return <QuizReview
+      questions={questions}
+      userAnswers={answers}
+      scoreCard={scoreCard ?? undefined}
+      onRestart={() => {
         // ✅ Clear localStorage when retaking quiz
         const { slideId, chapterId } = getUrlParams();
         const storageKey = `quiz_answers_${slideId}_${chapterId}`;
         localStorage.removeItem(storageKey);
         console.log("🗑️ [QuizViewer] Cleared localStorage for quiz retake:", storageKey);
-        
+
         // Reset quiz state
-        setShowReview(false); 
-        setCurrent(0); 
-        setAnswers({}); 
-      }} 
+        setShowReview(false);
+        setCurrent(0);
+        setAnswers({});
+        setScoreCard(null);
+        timerExpiredRef.current = false;
+      }}
     />;
   }
+
+  // Auto-submit handler when timer expires
+  const handleTimerExpire = () => {
+    if (timerExpiredRef.current) return;
+    timerExpiredRef.current = true;
+    // Use ref to avoid stale closure — answersRef always holds the latest answers
+    handleQuizSubmit(answersRef.current);
+  };
+
+  const handleQuizSubmit = async (finalAnswers: typeof answers) => {
+    setIsSubmitting(true);
+    try {
+      const { slideId, chapterId, moduleId, subjectId, packageSessionId } = getUrlParams();
+      const userId = (await getUserId()) || "";
+
+      if (!slideId || !chapterId || !moduleId || !subjectId || !packageSessionId || !userId) {
+        toast.error("Cannot submit quiz — missing context. Please reopen this slide.");
+        return;
+      }
+
+      const now = Date.now();
+      const payload: QuizSlideActivityLogPayload = {
+        id: uuidv4(),
+        source_id: slideId,
+        source_type: "QUIZ",
+        user_id: userId,
+        slide_id: slideId,
+        start_time_in_millis: now - 60000,
+        end_time_in_millis: now,
+        percentage_watched: 100,
+        videos: [],
+        documents: [],
+        question_slides: [],
+        assignment_slides: [],
+        video_slides_questions: [],
+        new_activity: true,
+        concentration_score: {
+          id: uuidv4(),
+          concentration_score: 100,
+          tab_switch_count: 0,
+          pause_count: 0,
+          answer_times_in_seconds: [],
+        },
+        quiz_sides: questions.map((q) => ({
+          id: uuidv4(),
+          response_json: JSON.stringify({ answer: finalAnswers[q.id] }),
+          response_status: "SUBMITTED",
+          activity_id: slideId,
+          question_id: q.id,
+        })),
+      };
+
+      await submitQuizMutation.mutateAsync({
+        slideId, chapterId, moduleId, subjectId,
+        packageSessionId, userId,
+        requestPayload: payload,
+      });
+
+      toast.success("Quiz submitted!", { className: "text-center" });
+
+      const storageKey = `quiz_answers_${slideId}_${chapterId}`;
+      localStorage.setItem(storageKey, JSON.stringify(finalAnswers));
+
+      queryClient.setQueryData<Slide[]>(["slides", chapterId], (oldSlides) => {
+        if (!oldSlides) return oldSlides;
+        return oldSlides.map((slide) =>
+          slide.id === slideId ? { ...slide, percentage_completed: 100 } : slide
+        );
+      });
+
+      setTimeout(async () => {
+        try {
+          await queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "GET_MODULES_WITH_CHAPTERS" });
+          await queryClient.refetchQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "GET_MODULES_WITH_CHAPTERS" });
+          setTimeout(async () => {
+            try {
+              await queryClient.invalidateQueries({ queryKey: ["slides", chapterId] });
+              await queryClient.refetchQueries({ queryKey: ["slides", chapterId] });
+              restoreLocalStorageCompletions(chapterId);
+            } catch { /* ignore */ }
+          }, 3000);
+        } catch { /* ignore */ }
+      }, 2000);
+
+      const card = computeScore(finalAnswers);
+      setScoreCard(card);
+      setAnswers(finalAnswers);
+      setShowReview(true);
+      if (onComplete) onComplete();
+    } catch {
+      toast.error("Failed to submit quiz. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
 
 
@@ -643,6 +819,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
             // ignore celebration errors
           }
         }
+        const card = computeScore(answers);
+        setScoreCard(card);
         setShowReview(true); // <-- Show review page
         if (onComplete) onComplete();
       } catch (err) {
@@ -865,13 +1043,25 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({ questions, onAnswer, onC
 
   return (
     <div className="w-full min-h-[80vh] bg-white rounded-xl shadow-lg p-4 sm:p-8">
+      {/* Timer warning overlay */}
+      {showWarning && <QuizTimeWarning onDismiss={() => setShowWarning(false)} />}
+
       {/* Question X of Y and Progress bar */}
       <div className="mb-8">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm text-gray-700 font-medium">Question {current + 1} of {total}</span>
-          <span className="ml-auto text-xs text-primary-600 font-medium" style={{ minWidth: 80, textAlign: 'right' }}>
-            {questionTypeDescription}
-          </span>
+          <div className="ml-auto flex items-center gap-3">
+            {timeLimitMinutes && timeLimitMinutes > 0 && (
+              <QuizTimer
+                totalSeconds={timeLimitMinutes * 60}
+                onWarn={() => setShowWarning(true)}
+                onExpire={handleTimerExpire}
+              />
+            )}
+            <span className="text-xs text-primary-600 font-medium" style={{ minWidth: 80, textAlign: 'right' }}>
+              {questionTypeDescription}
+            </span>
+          </div>
         </div>
         <div className="w-full h-3 rounded-full overflow-hidden bg-gray-200 relative">
           <div

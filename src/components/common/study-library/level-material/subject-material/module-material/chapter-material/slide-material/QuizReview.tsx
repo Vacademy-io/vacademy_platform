@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import type { ScoreCard } from "./quiz-viewer";
 
 interface Option {
   id: string;
@@ -36,6 +37,7 @@ interface QuizReviewProps {
   questions: Question[];
   userAnswers: { [questionId: string]: string | number | string[] };
   onRestart: () => void;
+  scoreCard?: ScoreCard;
 }
 
 const getQuestionText = (q: Question) => {
@@ -99,7 +101,7 @@ const getCorrectAnswers = (q: Question): (string | number)[] => {
   return [];
 };
 
-export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart }) => {
+export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard }) => {
   const [showFullPassageIdx, setShowFullPassageIdx] = useState<number | null>(null);
   const PASSAGE_LIMIT = 200;
 
@@ -131,10 +133,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
   return (
     <div className="w-full min-h-[80vh] bg-white rounded-xl shadow-lg p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
-        {/* <span className="inline-block bg-primary-100 text-primary-700 text-base font-semibold px-4 py-1 rounded-full shadow-sm border border-primary-200">
-          Quiz Review
-        </span> */}
-        <h2 className="text-primary-800 text-base font-bold ">Quiz Review</h2>
+        <h2 className="text-primary-800 text-base font-bold">Quiz Review</h2>
         <button
           className="px-4 py-2 bg-secondary-500 hover:bg-primary-100 text-black font-semibold text-xs border rounded shadow transition-colors"
           onClick={onRestart}
@@ -143,6 +142,36 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           Restart
         </button>
       </div>
+
+      {/* Score Card */}
+      {scoreCard && scoreCard.totalMarks > 0 && (
+        <div className="mb-8 rounded-xl border border-primary-200 bg-primary-50 p-5 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-lg">📊</span>
+            <span className="font-semibold text-primary-800">Your Score</span>
+          </div>
+          <div className="mb-4 flex items-baseline gap-3">
+            <span className="text-3xl font-bold text-primary-700">
+              {scoreCard.earned % 1 === 0 ? scoreCard.earned : scoreCard.earned.toFixed(2)}
+            </span>
+            <span className="text-lg text-primary-500">/ {scoreCard.totalMarks} marks</span>
+            <span className="ml-auto rounded-full bg-primary-100 px-3 py-1 text-sm font-semibold text-primary-700">
+              {scoreCard.totalMarks > 0 ? Math.round((scoreCard.earned / scoreCard.totalMarks) * 100) : 0}%
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="flex items-center gap-1.5 font-medium text-green-700">
+              <span>✅</span> Correct: {scoreCard.correct}
+            </span>
+            <span className="flex items-center gap-1.5 font-medium text-red-600">
+              <span>❌</span> Wrong: {scoreCard.wrong}
+            </span>
+            <span className="flex items-center gap-1.5 font-medium text-gray-500">
+              <span>⏭</span> Skipped: {scoreCard.skipped}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="space-y-10">
         {questions.map((q, idx) => {
           const passage = getPassageText(q);

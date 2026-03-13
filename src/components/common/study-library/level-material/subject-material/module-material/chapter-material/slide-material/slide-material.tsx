@@ -538,7 +538,12 @@ export const SlideMaterial = () => {
           // Support for new quiz slide structure
           const slideWithQuiz = activeItem as Slide & { quiz_slide?: unknown };
           const quizSlide = slideWithQuiz.quiz_slide as
-            | { questions?: unknown[] }
+            | {
+                questions?: unknown[];
+                time_limit_in_minutes?: number | null;
+                marks_per_question?: number;
+                negative_marking?: number;
+              }
             | undefined;
           const questions = Array.isArray(quizSlide?.questions)
             ? quizSlide!.questions
@@ -562,6 +567,8 @@ export const SlideMaterial = () => {
                 type?: string;
                 content?: string;
               };
+              marks?: number | null;
+              negative_marking?: number | null;
             };
             return {
               id: question.id,
@@ -580,12 +587,17 @@ export const SlideMaterial = () => {
                   ],
               auto_evaluation_json: question.auto_evaluation_json,
               explanation_text: question.explanation_text,
+              marks: question.marks ?? null,
+              negative_marking: question.negative_marking ?? null,
             };
           });
 
           setContent(
             <QuizViewer
               questions={mappedQuestions}
+              timeLimitMinutes={quizSlide?.time_limit_in_minutes ?? null}
+              marksPerQuestion={quizSlide?.marks_per_question ?? 1}
+              defaultNegativeMarking={quizSlide?.negative_marking ?? 0}
               onAnswer={async (_questionId, selectedOptionId) => {
                 // Send/save answer data here if needed
                 await handleQuestionSubmit(String(selectedOptionId));

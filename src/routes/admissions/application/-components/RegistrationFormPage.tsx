@@ -27,11 +27,10 @@ import {
     type ApplyPayload,
     fetchApplicationStages,
     generatePaymentLink,
-    type ApplicationStage,
-    type PaymentConfig,
+    fetchPaymentOptionById,
+    type PaymentOptionDetails,
 } from '../../-services/applicant-services';
 import { getCustomFieldSettings } from '@/services/custom-field-settings';
-import { Copy } from 'phosphor-react';
 import { toast } from 'sonner';
 
 interface FormSection {
@@ -152,6 +151,10 @@ export function RegistrationFormPage() {
     const [paymentLink, setPaymentLink] = useState<string>('');
     const [applicantId, setApplicantId] = useState<string>('');
     const [showPaymentSection, setShowPaymentSection] = useState(false);
+    const [paymentOptionId, setPaymentOptionId] = useState<string>('');
+    const [paymentOptionDetails, setPaymentOptionDetails] = useState<PaymentOptionDetails | null>(
+        null
+    );
 
     // Get institute details
     const { instituteDetails } = useInstituteDetailsStore();
@@ -189,6 +192,56 @@ export function RegistrationFormPage() {
         };
         loadCustomFields();
     }, []);
+
+    // Fetch application stages and payment option details on page load
+    useEffect(() => {
+        if (!instituteId) return;
+        const loadPaymentInfo = async () => {
+            try {
+                const stages = await fetchApplicationStages(instituteId, 'INSTITUTE', instituteId);
+                const paymentStage = stages.find((stage) => stage.type === 'PAYMENT');
+                if (paymentStage) {
+                    const paymentConfig = JSON.parse(paymentStage.config_json) as {
+                        payment_option_id: string;
+                        payment_qr_code_file_id?: string | null;
+                        upi_details?: {
+                            upi_vpa?: string | null;
+                            upi_payee_name?: string | null;
+                        } | null;
+                    };
+                    const optionId = paymentConfig.payment_option_id;
+                    const qrCodeFileId = paymentConfig.payment_qr_code_file_id ?? null;
+                    const upiVpa = paymentConfig.upi_details?.upi_vpa ?? null;
+                    const upiPayeeName = paymentConfig.upi_details?.upi_payee_name ?? null;
+                    setPaymentOptionId(optionId);
+                    const optionDetails = await fetchPaymentOptionById(instituteId, optionId);
+                    if (optionDetails) {
+                        setPaymentOptionDetails({
+                            ...optionDetails,
+                            qrCodeFileId,
+                            upiVpa,
+                            upiPayeeName,
+                        });
+                    } else {
+                        // Still surface the QR code even if the payment option lookup failed
+                        setPaymentOptionDetails({
+                            id: optionId,
+                            name: 'Application / Registration Fee',
+                            amount: 0,
+                            currency: 'INR',
+                            qrCodeFileId,
+                            upiVpa,
+                            upiPayeeName,
+                            plans: [],
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading payment information:', error);
+            }
+        };
+        loadPaymentInfo();
+    }, [instituteId]);
 
     // Function to prefill form from enquiry data
     const prefillFormFromEnquiry = (enquiryData: any) => {
@@ -439,13 +492,17 @@ export function RegistrationFormPage() {
             }
 
             if (!sessionId) {
-                toast.warning('Session ID is missing. Please select a session from the registration list');
+                toast.warning(
+                    'Session ID is missing. Please select a session from the registration list'
+                );
                 setIsSaving(false);
                 return;
             }
 
             // Confirmation dialog before submission
-            const confirmed = window.confirm('Are you sure you want to submit this application? Please review all details before proceeding.');
+            const confirmed = window.confirm(
+                'Are you sure you want to submit this application? Please review all details before proceeding.'
+            );
             if (!confirmed) {
                 setIsSaving(false);
                 return;
@@ -513,28 +570,15 @@ export function RegistrationFormPage() {
             console.log('Registration submitted successfully:', response);
             setApplicantId(response?.applicant_id);
 
-            // Automatically generate payment link
-            try {
-                const stages = await fetchApplicationStages(
+            // Generate payment link using the paymentOptionId fetched at page load
+            if (paymentOptionId) {
+                const link = generatePaymentLink(
                     instituteId,
-                    'INSTITUTE',
-                    instituteId.toString()
+                    response?.applicant_id,
+                    paymentOptionId
                 );
-
-                const paymentStage = stages.find((stage) => stage.type === 'PAYMENT');
-                if (paymentStage) {
-                    const paymentConfig = JSON.parse(paymentStage.config_json);
-                    const paymentOptionId = paymentConfig.payment_option_id;
-                    const link = generatePaymentLink(
-                        instituteId,
-                        response?.applicant_id,
-                        paymentOptionId
-                    );
-                    setPaymentLink(link);
-                    setShowPaymentSection(true);
-                }
-            } catch (error) {
-                console.error('Error fetching payment information:', error);
+                setPaymentLink(link);
+                setShowPaymentSection(true);
             }
 
             setActiveSection(4);
@@ -571,6 +615,7 @@ export function RegistrationFormPage() {
                         updateFormData={updateFormData}
                         paymentLink={paymentLink}
                         applicantId={applicantId}
+                        paymentOptionDetails={paymentOptionDetails}
                     />
                 );
             default:

@@ -12,4 +12,6 @@ public interface AssignedFeeValueRepository extends JpaRepository<AssignedFeeVal
     List<AssignedFeeValue> findByFeeTypeId(String feeTypeId);
 
     List<AssignedFeeValue> findByFeeTypeIdAndStatusNot(String feeTypeId, String status);
+
+    List<AssignedFeeValue> findByFeeTypeIdInAndStatusNot(List<String> feeTypeIds, String status);
 }

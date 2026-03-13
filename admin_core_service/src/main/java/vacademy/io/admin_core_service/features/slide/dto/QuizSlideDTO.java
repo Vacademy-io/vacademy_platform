@@ -19,5 +19,11 @@ public class QuizSlideDTO {
 
     private String title;
 
+    private Integer timeLimitInMinutes;
+
+    private Double marksPerQuestion;
+
+    private Double negativeMarking;
+
     private List<QuizSlideQuestionDTO> questions;
 }

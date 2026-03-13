@@ -101,4 +101,8 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                           AND p.status != 'DELETED'
                         """, nativeQuery = true)
         List<Object[]> findPackageSessionIdsByUserPlanIds(@Param("userPlanIds") List<String> userPlanIds);
+
+        @Query("SELECT psl FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.cpoId = :cpoId AND psl.status != 'DELETED'")
+        List<PackageSessionLearnerInvitationToPaymentOption> findByCpoId(@Param("cpoId") String cpoId);
 }

@@ -86,6 +86,9 @@ public class AdmissionService {
     @Autowired
     private EnquiryRepository enquiryRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.admission.service.AdmissionPipelineService admissionPipelineService;
+
     @Transactional
     public AdmissionResponseDTO submitAdmissionForm(AdmissionRequestDTO request, CustomUserDetails userDetails) {
         logger.info("Processing Admission Form for Institute: {}, Source: {}, SourceId: {}",
@@ -118,6 +121,17 @@ public class AdmissionService {
 
         sendAdmissionWelcomeEmail(userResult.parentUser(), userResult.childUser(), userResult.sendCredentials(),
                 userResult.password(), request.getInstituteId());
+
+        // --- NEW: Record Admission in Pipeline ---
+        admissionPipelineService.recordAdmission(
+                request.getInstituteId(),
+                request.getDestinationPackageSessionId() != null ? request.getDestinationPackageSessionId() : request.getSessionId(),
+                userResult.parentUser() != null ? userResult.parentUser().getId() : null,
+                userResult.childUser() != null ? userResult.childUser().getId() : null,
+                null,
+                applicant != null && applicant.getId() != null ? applicant.getId().toString() : null,
+                request.getSource()
+        );
 
         return AdmissionResponseDTO.builder()
                 .applicantId(applicant.getId().toString())
@@ -163,6 +177,17 @@ public class AdmissionService {
 
         sendAdmissionWelcomeEmail(userResult.parentUser(), userResult.childUser(), userResult.sendCredentials(),
                 userResult.password(), request.getInstituteId());
+
+        // --- NEW: Record Admission in Pipeline ---
+        admissionPipelineService.recordAdmission(
+                request.getInstituteId(),
+                request.getDestinationPackageSessionId() != null ? request.getDestinationPackageSessionId() : request.getSessionId(),
+                userResult.parentUser() != null ? userResult.parentUser().getId() : null,
+                userResult.childUser() != null ? userResult.childUser().getId() : null,
+                request.getEnquiryId(),
+                applicant != null && applicant.getId() != null ? applicant.getId().toString() : null,
+                request.getSource()
+        );
 
         return AdmissionResponseDTO.builder()
                 .applicantId(applicant.getId().toString())
@@ -230,6 +255,17 @@ public class AdmissionService {
         applicant = applicantRepository.save(applicant);
 
         sendAdmissionWelcomeEmail(parentUser, childUser, false, null, request.getInstituteId());
+
+        // --- NEW: Record Admission in Pipeline ---
+        admissionPipelineService.recordAdmission(
+                request.getInstituteId(),
+                request.getDestinationPackageSessionId() != null ? request.getDestinationPackageSessionId() : request.getSessionId(),
+                parentUser != null ? parentUser.getId() : null,
+                childUser != null ? childUser.getId() : null,
+                ar.getEnquiryId(),
+                applicant != null && applicant.getId() != null ? applicant.getId().toString() : null,
+                request.getSource()
+        );
 
         return AdmissionResponseDTO.builder()
                 .applicantId(applicant.getId().toString())

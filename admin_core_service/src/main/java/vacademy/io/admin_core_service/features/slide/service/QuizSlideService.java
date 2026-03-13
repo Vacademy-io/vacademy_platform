@@ -94,6 +94,9 @@ public class QuizSlideService {
 
     public void updateData(QuizSlideDTO dto, QuizSlide quizSlide) {
         quizSlide.setDescriptionRichText(new RichTextData(dto.getDescription()));
+        quizSlide.setTimeLimitInMinutes(dto.getTimeLimitInMinutes());
+        quizSlide.setMarksPerQuestion(dto.getMarksPerQuestion() != null ? dto.getMarksPerQuestion() : 1.0);
+        quizSlide.setNegativeMarking(dto.getNegativeMarking() != null ? dto.getNegativeMarking() : 0.0);
         addOrUpdateQuestionsInBulk(quizSlide, dto.getQuestions());
     }
 
@@ -144,10 +147,15 @@ public class QuizSlideService {
         }
 
         if (dto.getText() != null) {
+            String incomingTextContent = dto.getText().getContent();
             if (existingQuestion.getText() != null) {
-                existingQuestion.getText().setContent(dto.getText().getContent());
-                existingQuestion.getText().setType(dto.getText().getType());
-            } else {
+                // Only overwrite if the incoming content is non-empty, to avoid wiping
+                // existing titles when the frontend sends an empty string on passthrough.
+                if (incomingTextContent != null && !incomingTextContent.isEmpty()) {
+                    existingQuestion.getText().setContent(incomingTextContent);
+                    existingQuestion.getText().setType(dto.getText().getType());
+                }
+            } else if (incomingTextContent != null && !incomingTextContent.isEmpty()) {
                 existingQuestion.setText(new RichTextData(dto.getText()));
             }
         } else {
@@ -184,6 +192,8 @@ public class QuizSlideService {
         existingQuestion.setEvaluationType(dto.getEvaluationType());
         existingQuestion.setQuestionOrder(dto.getQuestionOrder());
         existingQuestion.setCanSkip(dto.getCanSkip());
+        existingQuestion.setMarks(dto.getMarks());
+        existingQuestion.setNegativeMarking(dto.getNegativeMarking());
         existingQuestion.setUpdatedAt(LocalDateTime.now());
 
         // Update options
@@ -225,10 +235,14 @@ public class QuizSlideService {
 
     private void updateExistingOption(QuizSlideQuestionOption existingOption, QuizSlideQuestionOptionDTO dto) {
         if (dto.getText() != null) {
+            String incomingOptionContent = dto.getText().getContent();
             if (existingOption.getText() != null) {
-                existingOption.getText().setContent(dto.getText().getContent());
-                existingOption.getText().setType(dto.getText().getType());
-            } else {
+                // Only overwrite if the incoming content is non-empty
+                if (incomingOptionContent != null && !incomingOptionContent.isEmpty()) {
+                    existingOption.getText().setContent(incomingOptionContent);
+                    existingOption.getText().setType(dto.getText().getType());
+                }
+            } else if (incomingOptionContent != null && !incomingOptionContent.isEmpty()) {
                 existingOption.setText(new RichTextData(dto.getText()));
             }
         } else {
@@ -260,6 +274,9 @@ public class QuizSlideService {
         QuizSlide newQuizSlide = new QuizSlide();
         newQuizSlide.setId(UUID.randomUUID().toString());
         newQuizSlide.setTitle(originalQuizSlide.getTitle());
+        newQuizSlide.setTimeLimitInMinutes(originalQuizSlide.getTimeLimitInMinutes());
+        newQuizSlide.setMarksPerQuestion(originalQuizSlide.getMarksPerQuestion() != null ? originalQuizSlide.getMarksPerQuestion() : 1.0);
+        newQuizSlide.setNegativeMarking(originalQuizSlide.getNegativeMarking() != null ? originalQuizSlide.getNegativeMarking() : 0.0);
 
         // Copy description RichTextData if it exists
         if (originalQuizSlide.getDescriptionRichText() != null) {

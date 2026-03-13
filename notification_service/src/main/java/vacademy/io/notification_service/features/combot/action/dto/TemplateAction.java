@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.util.List;
+
 /**
  * Template action - sends a WhatsApp template message.
  * For backward compatibility, this allows specifying templates in the new
@@ -18,4 +20,11 @@ public class TemplateAction extends FlowAction {
      */
     @JsonProperty("templateName")
     private String templateName;
+
+    /**
+     * Optional template body parameters.
+     * Supports {{placeholder}} syntax for dynamic values from context.
+     */
+    @JsonProperty("params")
+    private List<String> params;
 }

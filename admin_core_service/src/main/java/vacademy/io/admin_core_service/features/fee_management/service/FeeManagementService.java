@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
 import vacademy.io.admin_core_service.features.fee_management.dto.ComplexPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment;
@@ -27,7 +28,9 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -126,6 +129,8 @@ public class FeeManagementService {
                             inst.setInstallmentNumber(instDTO.getInstallmentNumber());
                             inst.setAmount(instDTO.getAmount());
                             inst.setDueDate(instDTO.getDueDate());
+                            inst.setStartDate(instDTO.getStartDate());
+                            inst.setEndDate(instDTO.getEndDate());
                             inst.setStatus(instDTO.getStatus() != null ? instDTO.getStatus() : "PENDING");
                             inst.setAssignedFeeValueId(savedAfv.getId());
                             aftInstallmentRepository.save(inst);
@@ -175,16 +180,83 @@ public class FeeManagementService {
      */
     public Page<ComplexPaymentOptionDTO> listCposByInstitute(String instituteId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return cpoRepository.findByInstituteIdAndStatusNot(instituteId, "DELETED", pageable)
-                .map(cpo -> ComplexPaymentOptionDTO.builder()
-                        .id(cpo.getId())
-                        .name(cpo.getName())
-                        .instituteId(cpo.getInstituteId())
-                        .defaultPaymentOptionId(cpo.getDefaultPaymentOptionId())
-                        .status(cpo.getStatus())
-                        .createdBy(cpo.getCreatedBy())
-                        .approvedBy(cpo.getApprovedBy())
-                        .build());
+        Page<ComplexPaymentOption> cposPage = cpoRepository.findByInstituteIdAndStatusNot(instituteId, "DELETED", pageable);
+
+        if (!cposPage.hasContent()) {
+            return cposPage.map(cpo -> ComplexPaymentOptionDTO.builder().id(cpo.getId()).build());
+        }
+
+        List<String> cpoIds = cposPage.getContent().stream().map(ComplexPaymentOption::getId).collect(Collectors.toList());
+
+        // 1. Fetch all fee types for these CPOs
+        List<FeeType> allFeeTypes = feeTypeRepository.findByCpoIdInAndStatusNot(cpoIds, "DELETED");
+        Map<String, List<FeeType>> feeTypesByCpoId = allFeeTypes.stream()
+                .collect(Collectors.groupingBy(FeeType::getCpoId));
+
+        // 2. Fetch all assigned fee values for these fee types
+        List<String> feeTypeIds = allFeeTypes.stream().map(FeeType::getId).collect(Collectors.toList());
+        List<AssignedFeeValue> allAssignedValues = feeTypeIds.isEmpty() ? new ArrayList<>() 
+                : assignedFeeValueRepository.findByFeeTypeIdInAndStatusNot(feeTypeIds, "DELETED");
+        Map<String, AssignedFeeValue> afvByFeeTypeId = new HashMap<>();
+        for (AssignedFeeValue afv : allAssignedValues) {
+            afvByFeeTypeId.putIfAbsent(afv.getFeeTypeId(), afv);
+        }
+
+        return cposPage.map(cpo -> {
+            // Mapping Fee Types and Assigned Fee Values
+            List<FeeType> cpoFeeTypes = feeTypesByCpoId.getOrDefault(cpo.getId(), new ArrayList<>());
+            List<ComplexPaymentOptionDTO.FeeTypeDTO> feeTypeDTOs = cpoFeeTypes.stream().map(ft -> {
+                AssignedFeeValue afv = afvByFeeTypeId.get(ft.getId());
+                ComplexPaymentOptionDTO.AssignedFeeValueDTO afvDTO = null;
+
+                if (afv != null) {
+                    afvDTO = ComplexPaymentOptionDTO.AssignedFeeValueDTO.builder()
+                            .id(afv.getId())
+                            .amount(afv.getAmount())
+                            .originalAmount(afv.getOriginalAmount())
+                            .discountType(afv.getDiscountType())
+                            .discountValue(afv.getDiscountValue())
+                            .noOfInstallments(afv.getNoOfInstallments())
+                            .hasInstallment(afv.getHasInstallment())
+                            .isRefundable(afv.getIsRefundable())
+                            .hasPenalty(afv.getHasPenalty())
+                            .penaltyPercentage(afv.getPenaltyPercentage())
+                            .status(afv.getStatus())
+                            // Intentional: NO installments
+                            .build();
+                }
+
+                return ComplexPaymentOptionDTO.FeeTypeDTO.builder()
+                        .id(ft.getId())
+                        .name(ft.getName())
+                        .code(ft.getCode())
+                        .description(ft.getDescription())
+                        .status(ft.getStatus())
+                        .assignedFeeValue(afvDTO)
+                        .build();
+            }).collect(Collectors.toList());
+
+            // Mapping Links
+            List<PackageSessionLearnerInvitationToPaymentOption> links = bridgeRepository.findByCpoId(cpo.getId());
+            List<ComplexPaymentOptionDTO.PackageSessionLinkDTO> linkDTOs = links.stream()
+                    .map(l -> ComplexPaymentOptionDTO.PackageSessionLinkDTO.builder()
+                            .packageSessionId(l.getPackageSession() != null ? l.getPackageSession().getId() : null)
+                            .enrollInviteId(l.getEnrollInvite() != null ? l.getEnrollInvite().getId() : null)
+                            .build())
+                    .collect(Collectors.toList());
+
+            return ComplexPaymentOptionDTO.builder()
+                    .id(cpo.getId())
+                    .name(cpo.getName())
+                    .instituteId(cpo.getInstituteId())
+                    .defaultPaymentOptionId(cpo.getDefaultPaymentOptionId())
+                    .status(cpo.getStatus())
+                    .createdBy(cpo.getCreatedBy())
+                    .approvedBy(cpo.getApprovedBy())
+                    .feeTypes(feeTypeDTOs)
+                    .packageSessionLinks(linkDTOs)
+                    .build();
+        });
     }
 
     /**
@@ -232,6 +304,8 @@ public class FeeManagementService {
                                 .installmentNumber(inst.getInstallmentNumber())
                                 .amount(inst.getAmount())
                                 .dueDate(inst.getDueDate())
+                                .startDate(inst.getStartDate())
+                                .endDate(inst.getEndDate())
                                 .status(inst.getStatus())
                                 .build())
                         .collect(Collectors.toList());
@@ -262,6 +336,14 @@ public class FeeManagementService {
                     .build());
         }
 
+        List<PackageSessionLearnerInvitationToPaymentOption> links = bridgeRepository.findByCpoId(cpoId);
+        List<ComplexPaymentOptionDTO.PackageSessionLinkDTO> linkDTOs = links.stream()
+                .map(l -> ComplexPaymentOptionDTO.PackageSessionLinkDTO.builder()
+                        .packageSessionId(l.getPackageSession() != null ? l.getPackageSession().getId() : null)
+                        .enrollInviteId(l.getEnrollInvite() != null ? l.getEnrollInvite().getId() : null)
+                        .build())
+                .collect(Collectors.toList());
+
         return ComplexPaymentOptionDTO.builder()
                 .id(cpo.getId())
                 .name(cpo.getName())
@@ -271,6 +353,7 @@ public class FeeManagementService {
                 .createdBy(cpo.getCreatedBy())
                 .approvedBy(cpo.getApprovedBy())
                 .feeTypes(feeTypeDTOs)
+                .packageSessionLinks(linkDTOs)
                 .build();
     }
 
@@ -432,6 +515,8 @@ public class FeeManagementService {
                     inst.setInstallmentNumber(instDTO.getInstallmentNumber());
                     inst.setAmount(instDTO.getAmount());
                     inst.setDueDate(instDTO.getDueDate());
+                    inst.setStartDate(instDTO.getStartDate());
+                    inst.setEndDate(instDTO.getEndDate());
                     inst.setStatus(instDTO.getStatus() != null ? instDTO.getStatus() : "PENDING");
                     inst.setAssignedFeeValueId(savedAfv.getId());
                     aftInstallmentRepository.save(inst);

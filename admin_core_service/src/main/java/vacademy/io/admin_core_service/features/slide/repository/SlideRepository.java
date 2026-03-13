@@ -538,6 +538,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     'id', qs.id,
                                     'title', qs.title,
                                     'description', CASE WHEN qs_description_rt.id IS NOT NULL THEN json_build_object('id', qs_description_rt.id, 'type', qs_description_rt.type, 'content', qs_description_rt.content) ELSE NULL END,
+                                    'time_limit_in_minutes', qs.time_limit_in_minutes,
+                                    'marks_per_question', qs.marks_per_question,
+                                    'negative_marking', qs.negative_marking,
                                     'questions', COALESCE((
                                         SELECT json_agg(
                                             json_build_object(
@@ -551,6 +554,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                                 'can_skip', q.can_skip,
                                                 'auto_evaluation_json', q.auto_evaluation_json,
                                                 'evaluation_type', q.evaluation_type,
+                                                'marks', q.marks,
+                                                'negative_marking', q.negative_marking,
                                                 'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
                                                 'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', q_parent_rt.content) ELSE NULL END,
                                                 'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
@@ -995,6 +1000,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             'id', qs.id,
                             'title', qs.title,
                             'description', CASE WHEN qs_description_rt.id IS NOT NULL THEN json_build_object('id', qs_description_rt.id, 'type', qs_description_rt.type, 'content', qs_description_rt.content) ELSE NULL END,
+                            'time_limit_in_minutes', qs.time_limit_in_minutes,
+                            'marks_per_question', qs.marks_per_question,
+                            'negative_marking', qs.negative_marking,
                             'questions', COALESCE((
                                                 SELECT json_agg(
                                                     json_build_object(
@@ -1008,6 +1016,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                                         'can_skip', q.can_skip,
                                                         'auto_evaluation_json', q.auto_evaluation_json,
                                                         'evaluation_type', q.evaluation_type,
+                                                        'marks', q.marks,
+                                                        'negative_marking', q.negative_marking,
                                                         'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
                                                         'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', q_parent_rt.content) ELSE NULL END,
                                                         'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
@@ -1670,6 +1680,9 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'id', qs.id,
                                 'title', qs.title,
                                 'description', CASE WHEN qs_description_rt.id IS NOT NULL THEN json_build_object('id', qs_description_rt.id, 'type', qs_description_rt.type, 'content', qs_description_rt.content) ELSE NULL END,
+                                'time_limit_in_minutes', qs.time_limit_in_minutes,
+                                'marks_per_question', qs.marks_per_question,
+                                'negative_marking', qs.negative_marking,
                                 'questions', COALESCE((
                                     SELECT json_agg(
                                         json_build_object(
@@ -1683,6 +1696,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                             'can_skip', q.can_skip,
                                             'auto_evaluation_json', q.auto_evaluation_json,
                                             'evaluation_type', q.evaluation_type,
+                                            'marks', q.marks,
+                                            'negative_marking', q.negative_marking,
                                             'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
                                             'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', q_parent_rt.content) ELSE NULL END,
                                             'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,

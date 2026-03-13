@@ -75,21 +75,15 @@ export default function CollectionDashboardMain() {
     const { getAllSessions } = useInstituteDetailsStore();
     const availableSessions = getAllSessions() || [];
     
-    // We default to the first session initially
-    const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+    // We default to "All" (empty string)
+    const [sessionId, setSessionId] = useState<string>('');
     const [selectedFeeTypes, setSelectedFeeTypes] = useState<string[]>([]);
 
     const allFeeTypes = ['Tuition Fee', 'Bus Fee', 'Mess Fee', 'Annual Fee', 'Exam Fee'];
 
     const instituteId = getInstituteId() || '';
 
-    React.useEffect(() => {
-        if (sessionId === undefined && availableSessions.length > 0) {
-            setSessionId(availableSessions[0]?.id || '');
-        }
-    }, [availableSessions, sessionId]);
-
-    const actualSessionId = sessionId === undefined ? '' : sessionId;
+    const actualSessionId = sessionId;
 
     // --- Query ---
     const requestBody: DashboardCollectionRequest = {

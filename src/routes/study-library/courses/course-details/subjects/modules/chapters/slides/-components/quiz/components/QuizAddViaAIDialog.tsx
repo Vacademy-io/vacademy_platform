@@ -81,7 +81,8 @@ const QuizAddViaAIDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVia
                 // Convert minimal bridge-form data to UploadQuestionPaperFormType questions
                 const converted: UploadQuestionPaperFormType['questions'] = rawQuestions.map(
                     (q: any) => ({
-                        questionName: q.questionName || '',
+                        // q.text?.content is a fallback for questions loaded via the question-paper round-trip
+                        questionName: q.questionName || q.text?.content || '',
                         questionType: q.questionType || 'MCQS',
                         questionMark: q.questionMark || '1',
                         questionPenalty: q.questionPenalty || '0',
@@ -94,12 +95,12 @@ const QuizAddViaAIDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVia
                         subjectiveAnswerText: q.subjectiveAnswerText || '',
                         decimals: q.decimals ?? 0,
                         numericType: q.numericType || '',
-                        // Preserve any option arrays if AI tool wrote them as extra fields
-                        singleChoiceOptions: q.singleChoiceOptions || Array(4).fill({ id: '', name: '', isSelected: false }),
-                        multipleChoiceOptions: q.multipleChoiceOptions || Array(4).fill({ id: '', name: '', isSelected: false }),
-                        csingleChoiceOptions: q.csingleChoiceOptions || Array(4).fill({ id: '', name: '', isSelected: false }),
-                        cmultipleChoiceOptions: q.cmultipleChoiceOptions || Array(4).fill({ id: '', name: '', isSelected: false }),
-                        trueFalseOptions: q.trueFalseOptions || [
+                        // Use length check (not ||) because [] is truthy but should use the fallback
+                        singleChoiceOptions: q.singleChoiceOptions?.length > 0 ? q.singleChoiceOptions : Array(4).fill({ id: '', name: '', isSelected: false }),
+                        multipleChoiceOptions: q.multipleChoiceOptions?.length > 0 ? q.multipleChoiceOptions : Array(4).fill({ id: '', name: '', isSelected: false }),
+                        csingleChoiceOptions: q.csingleChoiceOptions?.length > 0 ? q.csingleChoiceOptions : Array(4).fill({ id: '', name: '', isSelected: false }),
+                        cmultipleChoiceOptions: q.cmultipleChoiceOptions?.length > 0 ? q.cmultipleChoiceOptions : Array(4).fill({ id: '', name: '', isSelected: false }),
+                        trueFalseOptions: q.trueFalseOptions?.length > 0 ? q.trueFalseOptions : [
                             { id: '', name: 'True', isSelected: false },
                             { id: '', name: 'False', isSelected: false },
                         ],

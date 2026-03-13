@@ -117,6 +117,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 const currentQuestions = form.getValues('questions');
 
                 // Update the store with the new questions data
+                // IMPORTANT: preserve quiz settings so they are not wiped on every question edit
                 setActiveItem({
                     ...activeItem,
                     title: activeItem.title || 'Quiz',
@@ -131,6 +132,9 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                             content: '',
                             type: 'TEXT',
                         },
+                        time_limit_in_minutes: quizSettings.timeLimitEnabled ? quizSettings.timeLimitMinutes : null,
+                        marks_per_question: quizSettings.marksPerQuestion,
+                        negative_marking: quizSettings.negativeMarkingEnabled ? quizSettings.negativeMarking : 0,
                         questions: currentQuestions,
                     },
                 });
@@ -138,8 +142,11 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         });
 
         return () => subscription.unsubscribe(); // cleanup
-    }, [form, activeItem, setActiveItem]);
+    }, [form, activeItem, setActiveItem, quizSettings]);
 
+    // Only re-populate the form when navigating to a different slide (id change).
+    // Depending on the questions reference causes a circular loop:
+    //   form watch → setActiveItem(questions) → useEffect → replace → form watch → ...
     useEffect(() => {
         if (activeItem?.quiz_slide?.questions) {
             const questions = activeItem.quiz_slide.questions;
@@ -153,7 +160,8 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         } else {
             replace([]);
         }
-    }, [activeItem.quiz_slide?.questions, replace]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeItem.quiz_slide?.id]);
 
     // Initialise quiz settings whenever the active slide changes
     useEffect(() => {
@@ -221,6 +229,10 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                     content: '',
                     type: 'TEXT',
                 },
+                // Use quizSettings state (reliable) instead of activeItem.quiz_slide (may be stale)
+                time_limit_in_minutes: quizSettings.timeLimitEnabled ? quizSettings.timeLimitMinutes : null,
+                marks_per_question: quizSettings.marksPerQuestion,
+                negative_marking: quizSettings.negativeMarkingEnabled ? quizSettings.negativeMarking : 0,
                 questions: currentQuestions,
             },
         });
@@ -317,11 +329,13 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
     const handleConfirmAddQuestions = async (questions: UploadQuestionPaperFormType['questions']) => {
         setIsAddingExternal(true);
         try {
-            questions.forEach((q) => append(q));
-            const allQuestions = form.getValues('questions');
+            // Build the full payload upfront (existing + new) before touching the form,
+            // so we're never racing against RHF's internal state updates.
+            const allQuestions = [...form.getValues('questions'), ...questions];
             const payload = createQuizSlidePayload(allQuestions, activeItem, buildSettingsPayload(quizSettings));
             await addUpdateQuizSlide(payload);
-            syncToStore();
+            // Append atomically (single call with array) after save so UI updates immediately
+            append(questions);
             setIsPreviewDialogOpen(false);
             setPendingQuestions([]);
             toast.success(`${questions.length} question(s) added successfully!`);

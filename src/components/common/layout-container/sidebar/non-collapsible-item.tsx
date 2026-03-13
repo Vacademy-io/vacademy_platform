@@ -3,7 +3,7 @@ import { Link, useRouter } from "@tanstack/react-router";
 import { SidebarItemProps } from "../../../../types/layout-container-types";
 import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
-export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
+export const NonCollapsibleItem = ({ icon, title, to, onClick }: SidebarItemProps) => {
     const router = useRouter();
     const currentRoute = router.state.location.pathname;
     const isActive = to ? currentRoute.includes(to) : false;
@@ -16,7 +16,7 @@ export const NonCollapsibleItem = ({ icon, title, to }: SidebarItemProps) => {
                 tooltip={title}
                 size="lg"
             >
-                <Link to={to}>
+                <Link to={to} onClick={onClick}>
                     {icon && React.createElement(icon, {
                         weight: "duotone",
                         className: "size-4"

@@ -240,6 +240,7 @@ export const LogoutSidebar = ({
                       }
                       title={obj.title}
                       to={(obj.to || "/") as string}
+                      onClick={setSidebarOpen}
                     />
                   </div>
                 </div>

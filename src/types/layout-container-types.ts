@@ -22,6 +22,7 @@ export interface SidebarItemProps {
     to?: string;
     subItems?: subItemsType[];
     selectedItem?: string;
+    onClick?: () => void;
 }
 
 export interface SidebarStateType {

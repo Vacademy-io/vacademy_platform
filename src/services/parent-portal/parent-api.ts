@@ -16,11 +16,16 @@ import type {
   AdmissionOverview,
   AdmissionTimelineEvent,
   UserRole,
+  StudentFeeDue,
+  StudentFeeReceipt,
+  DuesFilterBody,
 } from "@/types/parent-portal";
 
 // ── Helpers ────────────────────────────────────────────────────
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL;
+// Base URL for admin-core service (stage backend) used by dues/receipts APIs.
+const ADMIN_CORE_BASE_URL = "https://backend-stage.vacademy.io";
 
 async function getHeaders(): Promise<Record<string, string>> {
   const token = await getTokenFromStorage(TokenKey.accessToken);
@@ -244,4 +249,55 @@ export async function downloadReceipt(transactionId: string): Promise<Blob> {
   );
   if (!response.ok) throw new Error("Failed to download receipt");
   return response.blob();
+}
+
+// ── Student Fee Dues & Receipts ─────────────────────────────────
+
+/** Fetch student fee dues/installments with optional filters. */
+export async function getStudentDues(
+  userId: string,
+  instituteId: string,
+  filters?: DuesFilterBody,
+): Promise<StudentFeeDue[]> {
+  const headers = await getHeaders();
+  const response = await fetch(
+    `${ADMIN_CORE_BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/dues?instituteId=${instituteId}`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(filters || {}),
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "Unknown error");
+    throw new Error(
+      `API Error ${response.status}: ${response.statusText} — ${errorBody}`,
+    );
+  }
+
+  return response.json() as Promise<StudentFeeDue[]>;
+}
+
+/** Fetch student fee payment receipts/allocations. */
+export async function getStudentReceipts(
+  userId: string,
+  instituteId: string,
+): Promise<StudentFeeReceipt[]> {
+  const headers = await getHeaders();
+  const response = await fetch(
+    `${ADMIN_CORE_BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/receipts?instituteId=${instituteId}`,
+    {
+      headers,
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "Unknown error");
+    throw new Error(
+      `API Error ${response.status}: ${response.statusText} — ${errorBody}`,
+    );
+  }
+
+  return response.json() as Promise<StudentFeeReceipt[]>;
 }

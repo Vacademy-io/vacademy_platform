@@ -1,17 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
-import type { ChildProfile } from "@/types/parent-portal";
-import type {
-  StudentFeeDue,
-  StudentFeeReceipt,
-  DuesFilterBody,
-} from "@/types/parent-portal";
-import {
-  getStudentDues,
-  getStudentReceipts,
-} from "@/services/parent-portal/parent-api";
+import type { ChildProfile, DuesFilterBody, StudentFeeDue, StudentFeeReceipt } from "@/types/parent-portal";
+import { getStudentDues, getStudentReceipts } from "@/services/parent-portal/parent-api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,15 +25,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import { AlertTriangle, Download, Receipt } from "lucide-react";
 import { toast } from "sonner";
-import { AlertTriangle, Receipt, Download } from "lucide-react";
 
-interface PaymentsModuleProps {
+interface ParentFeesAccordionProps {
   child: ChildProfile;
 }
 
-const formatINR = (amount: number) =>
-  `₹${amount.toLocaleString("en-IN")}`;
+const formatINR = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
 
 const formatDueDate = (dateStr: string) => {
   try {
@@ -59,11 +51,10 @@ const formatReceiptDate = (dateStr: string) => {
   }
 };
 
-export function PaymentsModule({ child }: PaymentsModuleProps) {
+export function ParentFeesAccordion({ child }: ParentFeesAccordionProps) {
   const userId = child.id;
   const instituteId = child.institute_id;
 
-  const [activeTab, setActiveTab] = useState("installments");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -71,37 +62,34 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
 
   const hasActiveFilters = Object.keys(appliedFilters).length > 0;
 
-  // Unfiltered dues — powers summary cards and default table
   const {
     data: allDues = [],
     isLoading: loadingAllDues,
     isError: allDuesError,
     error: allDuesErrorObj,
   } = useQuery({
-    queryKey: ["student-dues-summary", userId, instituteId],
+    queryKey: ["student-dues-summary", "accordion", userId, instituteId],
     queryFn: () => getStudentDues(userId, instituteId),
     enabled: !!userId && !!instituteId,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Filtered dues — runs only when user applies filters
   const {
     data: filteredDuesData = [],
     isLoading: loadingFilteredDues,
     error: filteredDuesErrorObj,
   } = useQuery({
-    queryKey: ["student-dues-filtered", userId, instituteId, appliedFilters],
+    queryKey: ["student-dues-filtered", "accordion", userId, instituteId, appliedFilters],
     queryFn: () => getStudentDues(userId, instituteId, appliedFilters),
     enabled: !!userId && !!instituteId && hasActiveFilters,
     staleTime: 2 * 60 * 1000,
   });
 
-  // Receipts for payment history tab
   const {
     data: receipts = [],
     isLoading: loadingReceipts,
   } = useQuery({
-    queryKey: ["student-receipts", userId, instituteId],
+    queryKey: ["student-receipts", "accordion", userId, instituteId],
     queryFn: () => getStudentReceipts(userId, instituteId),
     enabled: !!userId && !!instituteId,
     staleTime: 2 * 60 * 1000,
@@ -121,12 +109,12 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
 
   const tableDues = hasActiveFilters ? filteredDuesData : allDues;
 
-  // Summary computations (always from unfiltered data)
-  const totalDues = useMemo(
-    () => allDues.reduce((sum, d) => sum + d.amount_due, 0),
+  // Overall totals across all installments
+  const totalFees = useMemo(
+    () => allDues.reduce((sum, d) => sum + d.amount_expected, 0),
     [allDues],
   );
-  const overdueAmount = useMemo(
+  const totalDues = useMemo(
     () =>
       allDues
         .filter((d) => d.is_overdue)
@@ -138,15 +126,23 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
     [allDues],
   );
 
-  // Tab data derived from potentially-filtered dues
-  const installmentItems = useMemo(
-    () => tableDues.filter((d) => d.status !== "PAID"),
-    [tableDues],
+  const installmentsByType = useMemo(() => {
+    const groups: Record<string, StudentFeeDue[]> = {};
+    tableDues.forEach((d) => {
+      const key = d.fee_type_name || "Other";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(d);
+    });
+    return groups;
+  }, [tableDues]);
+
+  const distinctTypes = useMemo(
+    () => Object.keys(installmentsByType).sort(),
+    [installmentsByType],
   );
-  const overdueItems = useMemo(
-    () => tableDues.filter((d) => d.is_overdue),
-    [tableDues],
-  );
+
+  const defaultType = distinctTypes[0];
+
   const overdueCount = useMemo(
     () => allDues.filter((d) => d.is_overdue).length,
     [allDues],
@@ -222,10 +218,10 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
         <Card className="shadow-sm bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
           <CardContent className="p-4 text-center">
             <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">
-              Total Dues
+              Total Fees
             </p>
             <p className="text-lg sm:text-xl font-bold text-blue-700 dark:text-blue-300">
-              {formatINR(totalDues)}
+              {formatINR(totalFees)}
             </p>
           </CardContent>
         </Card>
@@ -233,10 +229,10 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
         <Card className="shadow-sm bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
           <CardContent className="p-4 text-center">
             <p className="text-[10px] font-medium text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">
-              Overdue Amount
+              Total Dues
             </p>
             <p className="text-lg sm:text-xl font-bold text-red-700 dark:text-red-300">
-              {formatINR(overdueAmount)}
+              {formatINR(totalDues)}
             </p>
           </CardContent>
         </Card>
@@ -253,139 +249,185 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
         </Card>
       </motion.div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="installments">Installments</TabsTrigger>
-          <TabsTrigger value="overdues" className="gap-1.5">
-            Overdues
-            {overdueCount > 0 && (
-              <Badge
-                variant="destructive"
-                className="ml-1 text-[10px] px-1.5 py-0 h-4 leading-4"
-              >
-                {overdueCount}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="history">Payment History</TabsTrigger>
-        </TabsList>
+      {/* Global Filters */}
+      <motion.div
+        initial={{ opacity: 0, y: -5 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mt-1"
+      >
+        <Card className="shadow-sm">
+          <CardContent className="p-3">
+            <div className="flex flex-col sm:flex-row items-end gap-3">
+              <div className="w-full sm:w-40">
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  Status
+                </label>
+                <Select
+                  value={statusFilter}
+                  onValueChange={setStatusFilter}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="PARTIAL_PAID">Partial Paid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-        {/* Filters — visible in Installments & Overdues tabs */}
-        {(activeTab === "installments" || activeTab === "overdues") && (
-          <motion.div
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-4"
-          >
-            <Card className="shadow-sm">
-              <CardContent className="p-3">
-                <div className="flex flex-col sm:flex-row items-end gap-3">
-                  <div className="w-full sm:w-40">
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                      Status
-                    </label>
-                    <Select
-                      value={statusFilter}
-                      onValueChange={setStatusFilter}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="All" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ALL">All</SelectItem>
-                        <SelectItem value="PENDING">Pending</SelectItem>
-                        <SelectItem value="PARTIAL_PAID">
-                          Partial Paid
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <div className="w-full sm:w-40">
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  Start Date
+                </label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="h-9"
+                />
+              </div>
 
-                  <div className="w-full sm:w-40">
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                      Start Date
-                    </label>
-                    <Input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="h-9"
-                    />
-                  </div>
+              <div className="w-full sm:w-40">
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  End Date
+                </label>
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="h-9"
+                />
+              </div>
 
-                  <div className="w-full sm:w-40">
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                      End Date
-                    </label>
-                    <Input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="h-9"
-                    />
-                  </div>
-
-                  <Button onClick={handleApplyFilters} className="h-9 px-6">
-                    Apply
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Tab: Installments */}
-        <TabsContent value="installments" className="mt-4">
-          <DuesTable
-            items={installmentItems}
-            isLoading={hasActiveFilters ? loadingFilteredDues : false}
-            emptyMessage="No installments found"
-          />
-        </TabsContent>
-
-        {/* Tab: Overdues */}
-        <TabsContent value="overdues" className="mt-4 space-y-3">
-          {overdueItems.length > 0 && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
-              <AlertTriangle
-                size={16}
-                className="text-red-600 dark:text-red-400 shrink-0"
-              />
-              <p className="text-sm text-red-700 dark:text-red-300">
-                You have{" "}
-                <strong>{overdueItems.length}</strong> overdue
-                {" installment"}
-                {overdueItems.length !== 1 ? "s" : ""} totaling{" "}
-                <strong>
-                  {formatINR(
-                    overdueItems.reduce((s, d) => s + d.amount_due, 0),
-                  )}
-                </strong>
-              </p>
+              <Button onClick={handleApplyFilters} className="h-9 px-6">
+                Apply
+              </Button>
             </div>
-          )}
-          <DuesTable
-            items={overdueItems}
-            isLoading={hasActiveFilters ? loadingFilteredDues : false}
-            emptyMessage="No overdue installments"
-          />
-        </TabsContent>
+          </CardContent>
+        </Card>
+      </motion.div>
 
-        {/* Tab: Payment History */}
-        <TabsContent value="history" className="mt-4">
-          <ReceiptsTable
-            items={receipts}
-            isLoading={loadingReceipts}
-            emptyMessage="No payment history"
-          />
-        </TabsContent>
-      </Tabs>
+      {/* Fee Type Accordions */}
+      <Accordion
+        type="single"
+        collapsible
+        defaultValue={defaultType}
+        className="w-full space-y-2"
+      >
+        {distinctTypes.map((feeType) => {
+          const group = installmentsByType[feeType] || [];
+          const overdues = group.filter((d) => d.is_overdue);
+          const totalExpected = group.reduce(
+            (sum, d) => sum + d.amount_expected,
+            0,
+          );
+          const totalPaidType = group.reduce(
+            (sum, d) => sum + d.amount_paid,
+            0,
+          );
+          const pendingCount = group.filter(
+            (d) => d.status === "PENDING" && !d.is_overdue,
+          ).length;
+          const paidCount = group.filter(
+            (d) => d.status === "PAID" || d.status === "COMPLETED",
+          ).length;
+
+          return (
+            <AccordionItem key={feeType} value={feeType} className="border rounded-lg">
+              <AccordionTrigger className="px-4">
+                <div className="flex w-full items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {feeType}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {group.length} installment{group.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm">
+                    <div className="text-right">
+                      <p className="uppercase text-[10px] text-muted-foreground tracking-wide">
+                        Total Amount
+                      </p>
+                      <p className="font-bold text-foreground">
+                        {formatINR(totalExpected)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="uppercase text-[10px] text-muted-foreground tracking-wide">
+                        Paid
+                      </p>
+                      <p className="font-bold text-emerald-600 dark:text-emerald-400">
+                        {formatINR(totalPaidType)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      {overdues.length > 0 && (
+                        <Badge
+                          variant="destructive"
+                          className="text-[11px] px-3 py-1 rounded-full whitespace-nowrap"
+                        >
+                          {overdues.length} Dues
+                        </Badge>
+                      )}
+                      <Badge
+                        className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-[11px] px-3 py-1 rounded-full whitespace-nowrap"
+                      >
+                        {pendingCount} Pending
+                      </Badge>
+                      <Badge
+                        className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-[11px] px-3 py-1 rounded-full whitespace-nowrap"
+                      >
+                        {paidCount} Paid
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-4">
+                <Tabs defaultValue="installments">
+                  <TabsList className="w-full sm:w-auto mb-3">
+                    <TabsTrigger value="installments">Installments</TabsTrigger>
+                    <TabsTrigger value="overdues">Dues</TabsTrigger>
+                    <TabsTrigger value="history">Payment History</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="installments">
+                    <DuesTable
+                      items={group}
+                      isLoading={hasActiveFilters ? loadingFilteredDues : false}
+                      emptyMessage="No installments found"
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="overdues">
+                    <DuesTable
+                      items={overdues}
+                      isLoading={hasActiveFilters ? loadingFilteredDues : false}
+                      emptyMessage="No due installments"
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="history">
+                    <ReceiptsTable
+                      items={receipts}
+                      isLoading={loadingReceipts}
+                      emptyMessage="No payment history"
+                    />
+                  </TabsContent>
+                </Tabs>
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
+      </Accordion>
     </div>
   );
 }
 
-// ── Dues Table ──────────────────────────────────────────────────
+// Reuse existing table helpers from PaymentsModule
 
 function DuesTable({
   items,
@@ -552,8 +594,6 @@ function DuesTable({
   );
 }
 
-// ── Status Badge ────────────────────────────────────────────────
-
 function StatusBadge({
   status,
   isOverdue,
@@ -595,8 +635,6 @@ function StatusBadge({
     </div>
   );
 }
-
-// ── Receipts Table ──────────────────────────────────────────────
 
 const allocationTypeColors: Record<string, string> = {
   PAYMENT:
@@ -665,6 +703,7 @@ function ReceiptsTable({
             <TableHead className="text-right">Amount</TableHead>
             <TableHead className="text-center">Type</TableHead>
             <TableHead>Remarks</TableHead>
+            <TableHead className="text-right">Receipt</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -688,6 +727,22 @@ function ReceiptsTable({
               </TableCell>
               <TableCell className="text-muted-foreground text-sm">
                 {item.remarks || "—"}
+              </TableCell>
+              <TableCell className="text-right">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 gap-1"
+                  onClick={() =>
+                    toast.message("Receipt download", {
+                      description: `Receipt download will be integrated later. (Receipt: ${item.id})`,
+                    })
+                  }
+                  title="Download receipt"
+                >
+                  <Download size={14} />
+                  <span className="text-xs">Download</span>
+                </Button>
               </TableCell>
             </TableRow>
           ))}
@@ -728,3 +783,4 @@ function ReceiptsTable({
     </Card>
   );
 }
+

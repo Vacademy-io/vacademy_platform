@@ -50,11 +50,7 @@ public class StudentFeePaymentSpecification {
                 predicates.add(root.get("feeTypeId").in(filters.getFeeTypeIds()));
             }
 
-            // --- 4. Filter by statuses ---
-            if (filters.getStatuses() != null && !filters.getStatuses().isEmpty()) {
-                predicates.add(root.get("status").in(filters.getStatuses()));
-            }
-
+            // --- 4. Status filter is done in-memory after aggregation per architect requirements ---
             // --- 5. Filter by due date range ---
             if (filters.getDueDateRange() != null) {
                 FeeSearchFilterDTO.DueDateRange range = filters.getDueDateRange();

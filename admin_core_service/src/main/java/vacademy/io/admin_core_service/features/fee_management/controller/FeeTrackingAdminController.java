@@ -144,6 +144,14 @@ public class FeeTrackingAdminController {
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(feeTrackingService.getCollectionDashboard(request));
     }
+
+    @GetMapping("/payment-details")
+    public ResponseEntity<List<vacademy.io.admin_core_service.features.fee_management.dto.InstallmentDetailsDTO>> getPaymentDetails(
+            @RequestParam("studentId") String studentId,
+            @RequestParam("cpoId") String cpoId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(feeTrackingService.getPaymentDetails(studentId, cpoId));
+    }
     // ---- Fee-type priority configuration endpoints ----
 
     @PutMapping("/priority")

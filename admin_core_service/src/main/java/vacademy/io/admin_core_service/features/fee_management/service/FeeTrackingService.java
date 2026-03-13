@@ -136,83 +136,160 @@ public class FeeTrackingService {
                 Specification<StudentFeePayment> spec = StudentFeePaymentSpecification
                                 .withFilters(instituteId, filters, matchedUserIds);
 
-                // Step 3: Build pageable with sort
-                Sort.Direction direction = "ASC".equalsIgnoreCase(request.getSortDirection())
-                                ? Sort.Direction.ASC
-                                : Sort.Direction.DESC;
-                String sortField = StringUtils.hasText(request.getSortBy()) ? request.getSortBy() : "dueDate";
-                PageRequest pageable = PageRequest.of(request.getPage(), request.getSize(),
-                                Sort.by(direction, sortField));
-
-                // Step 4: Execute the paginated DB query
-                Page<StudentFeePayment> paymentPage = studentFeePaymentRepository.findAll(spec, pageable);
-
-                // Step 5: Batch-fetch all student info from auth-service
-                List<String> userIds = paymentPage.getContent().stream()
+                // Step 3: Fetch all matching rows (unpaginated) for aggregation
+                List<StudentFeePayment> allPayments = studentFeePaymentRepository.findAll(spec);
+                
+                // Fetch maps for enrichment before aggregation
+                List<String> userIds = allPayments.stream()
                                 .map(StudentFeePayment::getUserId)
                                 .distinct()
                                 .collect(Collectors.toList());
                 Map<String, UserDTO> userMap = fetchUserMap(userIds);
 
-                // Step 6: Batch-fetch FeeType names and AftInstallment numbers
-                List<String> asvIds = paymentPage.getContent().stream()
-                                .map(StudentFeePayment::getAsvId)
-                                .filter(Objects::nonNull)
-                                .distinct()
-                                .collect(Collectors.toList());
-                Map<String, String> feeTypeNameMap = fetchFeeTypeNameMap(asvIds);
-
-                List<String> installmentIds = paymentPage.getContent().stream()
-                                .map(StudentFeePayment::getIId)
-                                .filter(Objects::nonNull)
-                                .distinct()
-                                .collect(Collectors.toList());
-                Map<String, Integer> installmentNumberMap = fetchInstallmentNumberMap(installmentIds);
-
-                // Step 7: Batch-fetch packageSession IDs for each payment via enroll_invite +
-                // cpo_id
-                List<String> userPlanIds = paymentPage.getContent().stream()
+                List<String> userPlanIds = allPayments.stream()
                                 .map(StudentFeePayment::getUserPlanId)
                                 .distinct()
                                 .collect(Collectors.toList());
                 Map<String, List<String>> packageSessionMap = fetchPackageSessionMap(userPlanIds);
 
-                // Step 8: Map to response DTOs
-                List<StudentFeePaymentRowDTO> rows = paymentPage.getContent().stream()
-                                .map(sfp -> toRowDTO(sfp, userMap, feeTypeNameMap, installmentNumberMap,
-                                                packageSessionMap))
-                                .collect(Collectors.toList());
+                List<String> cpoIds = allPayments.stream().map(StudentFeePayment::getCpoId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
+                Map<String, String> cpoNameMap = complexPaymentOptionRepository.findAllById(cpoIds).stream().collect(Collectors.toMap(ComplexPaymentOption::getId, ComplexPaymentOption::getName, (a, b) -> a));
 
-                return new PageImpl<>(rows, pageable, paymentPage.getTotalElements());
+                // Step 4: Grouping by [userId, cpoId]
+                Map<String, List<StudentFeePayment>> groupedPayments = allPayments.stream()
+                        .collect(Collectors.groupingBy(p -> p.getUserId() + "_" + p.getCpoId()));
+
+                List<StudentFeePaymentRowDTO> aggregatedRows = new ArrayList<>();
+                LocalDate today = LocalDate.now(ZoneId.systemDefault());
+
+                for (Map.Entry<String, List<StudentFeePayment>> entry : groupedPayments.entrySet()) {
+                    List<StudentFeePayment> group = entry.getValue();
+                    StudentFeePayment first = group.get(0);
+
+                    BigDecimal totalExpectedAmount = BigDecimal.ZERO;
+                    BigDecimal totalPaidAmount = BigDecimal.ZERO;
+                    BigDecimal overdueAmount = BigDecimal.ZERO;
+
+                    for (StudentFeePayment p : group) {
+                        BigDecimal expected = p.getAmountExpected() != null ? p.getAmountExpected() : BigDecimal.ZERO;
+                        BigDecimal discount = p.getDiscountAmount() != null ? p.getDiscountAmount() : BigDecimal.ZERO;
+                        BigDecimal paid = p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO;
+                        
+                        BigDecimal netExpected = expected.subtract(discount);
+                        totalExpectedAmount = totalExpectedAmount.add(netExpected);
+                        totalPaidAmount = totalPaidAmount.add(paid);
+
+                        if (p.getDueDate() != null && netExpected.compareTo(paid) > 0) {
+                            LocalDate due = p.getDueDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                            if (due.isBefore(today)) {
+                                overdueAmount = overdueAmount.add(netExpected.subtract(paid));
+                            }
+                        }
+                    }
+
+                    BigDecimal dueAmount = totalExpectedAmount.subtract(totalPaidAmount);
+
+                    String status;
+                    if (totalExpectedAmount.compareTo(BigDecimal.ZERO) > 0 && totalPaidAmount.compareTo(totalExpectedAmount) >= 0) {
+                        status = "PAID";
+                    } else if (overdueAmount.compareTo(BigDecimal.ZERO) > 0) {
+                        status = "OVERDUE";
+                    } else if (totalPaidAmount.compareTo(BigDecimal.ZERO) > 0) {
+                        status = "PARTIAL";
+                    } else {
+                        status = "PENDING";
+                    }
+
+                    // Apply status filter after aggregation
+                    if (filters != null && filters.getStatuses() != null && !filters.getStatuses().isEmpty()) {
+                        if (!filters.getStatuses().contains(status)) {
+                            continue;
+                        }
+                    }
+
+                    UserDTO user = userMap.get(first.getUserId());
+                    
+                    aggregatedRows.add(StudentFeePaymentRowDTO.builder()
+                            .studentId(first.getUserId())
+                            .cpoId(first.getCpoId())
+                            .packageSessionIds(packageSessionMap.getOrDefault(first.getUserPlanId(), Collections.emptyList()))
+                            .studentName(user != null ? user.getFullName() : first.getUserId())
+                            .phone(user != null ? user.getMobileNumber() : null)
+                            .cpoName(cpoNameMap.getOrDefault(first.getCpoId(), "N/A"))
+                            .totalExpectedAmount(totalExpectedAmount)
+                            .totalPaidAmount(totalPaidAmount)
+                            .dueAmount(dueAmount)
+                            .overdueAmount(overdueAmount)
+                            .status(status)
+                            .build());
+                }
+
+                // Sorting
+                String sortField = StringUtils.hasText(request.getSortBy()) ? request.getSortBy() : "studentName";
+                boolean isAsc = !"DESC".equalsIgnoreCase(request.getSortDirection());
+
+                aggregatedRows.sort((a, b) -> {
+                    int cmp = 0;
+                    switch (sortField) {
+                        case "studentName":
+                            cmp = compareNullable(a.getStudentName(), b.getStudentName());
+                            break;
+                        case "cpoName":
+                            cmp = compareNullable(a.getCpoName(), b.getCpoName());
+                            break;
+                        case "totalExpectedAmount":
+                            cmp = compareNullable(a.getTotalExpectedAmount(), b.getTotalExpectedAmount());
+                            break;
+                        case "totalPaidAmount":
+                            cmp = compareNullable(a.getTotalPaidAmount(), b.getTotalPaidAmount());
+                            break;
+                        case "dueAmount":
+                            cmp = compareNullable(a.getDueAmount(), b.getDueAmount());
+                            break;
+                        case "overdueAmount":
+                            cmp = compareNullable(a.getOverdueAmount(), b.getOverdueAmount());
+                            break;
+                        case "status":
+                            cmp = compareNullable(a.getStatus(), b.getStatus());
+                            break;
+                        default:
+                            cmp = compareNullable(a.getStudentName(), b.getStudentName());
+                    }
+                    return isAsc ? cmp : -cmp;
+                });
+
+                // Pagination
+                int startIndex = request.getPage() * request.getSize();
+                int endIndex = Math.min(startIndex + request.getSize(), aggregatedRows.size());
+                
+                List<StudentFeePaymentRowDTO> pagedRows = new ArrayList<>();
+                if (startIndex < aggregatedRows.size()) {
+                    pagedRows = aggregatedRows.subList(startIndex, endIndex);
+                }
+
+                return new PageImpl<>(pagedRows, PageRequest.of(request.getPage(), request.getSize()), aggregatedRows.size());
         }
 
-        /**
-         * TODO: When the auth-service exposes a search-by-name/email endpoint,
-         * implement this to return matching userIds and pass them as a filter
-         * to the DB query (so the DB never sees external user data).
-         *
-         * For now, the studentSearchQuery filter is gracefully skipped —
-         * all other filters (status, CPO, feeType, dates, packageSession) work fully.
-         */
+        private <T extends Comparable<T>> int compareNullable(T a, T b) {
+            if (a == null && b == null) return 0;
+            if (a == null) return -1;
+            if (b == null) return 1;
+            return a.compareTo(b);
+        }
+
         private List<String> resolveStudentSearchQuery(FeeSearchFilterDTO.Filters filters) {
                 if (filters == null || !StringUtils.hasText(filters.getStudentSearchQuery())) {
-                        return null; // No search query provided — no user filter applied
+                        return null; 
                 }
-                // Auth-service does not yet have a search-by-name endpoint.
-                // Returning null here means this filter is silently ignored.
-                // Replace this with a real auth-service call when available.
-                log.warn("studentSearchQuery filter is not yet supported (auth-service search endpoint missing). " +
-                                "Ignoring filter value: '{}'", filters.getStudentSearchQuery());
+                log.warn("studentSearchQuery filter is not yet supported. Ignoring filter value: '{}'", filters.getStudentSearchQuery());
                 return null;
         }
 
         private Map<String, UserDTO> fetchUserMap(List<String> userIds) {
-                if (userIds == null || userIds.isEmpty())
-                        return Map.of();
+                if (userIds == null || userIds.isEmpty()) return Map.of();
                 try {
                         List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(userIds);
-                        return users.stream().collect(Collectors.toMap(UserDTO::getId, Function.identity(),
-                                        (a, b) -> a));
+                        return users.stream().collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
                 } catch (Exception e) {
                         log.warn("Failed to fetch user details for fee roster enrichment: {}", e.getMessage());
                         return Map.of();
@@ -220,95 +297,71 @@ public class FeeTrackingService {
         }
 
         private Map<String, String> fetchFeeTypeNameMap(List<String> asvIds) {
-                if (asvIds.isEmpty())
-                        return Map.of();
+                if (asvIds.isEmpty()) return Map.of();
 
                 List<AssignedFeeValue> afvs = assignedFeeValueRepository.findAllById(asvIds);
-                List<String> feeTypeIds = afvs.stream()
-                                .map(AssignedFeeValue::getFeeTypeId)
-                                .distinct()
-                                .collect(Collectors.toList());
+                List<String> feeTypeIds = afvs.stream().map(AssignedFeeValue::getFeeTypeId).distinct().collect(Collectors.toList());
 
                 Map<String, String> feeTypeNames = feeTypeRepository.findAllById(feeTypeIds).stream()
                                 .collect(Collectors.toMap(FeeType::getId, FeeType::getName, (a, b) -> a));
 
-                return afvs.stream().collect(Collectors.toMap(
-                                AssignedFeeValue::getId,
-                                afv -> feeTypeNames.getOrDefault(afv.getFeeTypeId(), "N/A"),
-                                (a, b) -> a));
+                return afvs.stream().collect(Collectors.toMap(AssignedFeeValue::getId,
+                                afv -> feeTypeNames.getOrDefault(afv.getFeeTypeId(), "N/A"), (a, b) -> a));
         }
 
         private Map<String, Integer> fetchInstallmentNumberMap(List<String> installmentIds) {
-                if (installmentIds.isEmpty())
-                        return Map.of();
+                if (installmentIds.isEmpty()) return Map.of();
                 return aftInstallmentRepository.findAllById(installmentIds).stream()
-                                .collect(Collectors.toMap(AftInstallment::getId, AftInstallment::getInstallmentNumber,
-                                                (a, b) -> a));
+                                .collect(Collectors.toMap(AftInstallment::getId, AftInstallment::getInstallmentNumber, (a, b) -> a));
         }
 
-        /**
-         * Batch-fetches package session IDs for all user plans in the current page.
-         * Returns a map: userPlanId -> List<packageSessionId>
-         * Uses: student_fee_payment.user_plan_id -> user_plan.enroll_invite_id + cpo_id
-         * -> package_session_learner_invitation_to_payment_option.package_session_id
-         */
         private Map<String, List<String>> fetchPackageSessionMap(List<String> userPlanIds) {
-                if (userPlanIds == null || userPlanIds.isEmpty()) {
-                        log.info("[PKG-SESSION] userPlanIds is null/empty, skipping query");
-                        return Collections.emptyMap();
-                }
-                log.info("[PKG-SESSION] Querying for {} userPlanIds: {}", userPlanIds.size(), userPlanIds);
+                if (userPlanIds == null || userPlanIds.isEmpty()) return Collections.emptyMap();
                 try {
                         List<Object[]> rows = packageSessionInviteRepo.findPackageSessionIdsByUserPlanIds(userPlanIds);
-                        log.info("[PKG-SESSION] Query returned {} rows", rows.size());
                         Map<String, List<String>> result = new HashMap<>();
                         for (Object[] row : rows) {
                                 String userPlanId = (String) row[0];
                                 String packageSessionId = (String) row[1];
-                                log.info("[PKG-SESSION] userPlanId={} -> packageSessionId={}", userPlanId,
-                                                packageSessionId);
                                 result.computeIfAbsent(userPlanId, k -> new ArrayList<>()).add(packageSessionId);
                         }
                         return result;
                 } catch (Exception e) {
-                        log.warn("[PKG-SESSION] Query FAILED: {}", e.getMessage(), e);
+                        log.warn("PKG-SESSION Fetch failed: {}", e.getMessage());
                         return Collections.emptyMap();
                 }
         }
 
-        private StudentFeePaymentRowDTO toRowDTO(
-                        StudentFeePayment sfp,
-                        Map<String, UserDTO> userMap,
-                        Map<String, String> feeTypeNameMap,
-                        Map<String, Integer> installmentNumberMap,
-                        Map<String, List<String>> packageSessionMap) {
+        @Transactional(readOnly = true)
+        public List<vacademy.io.admin_core_service.features.fee_management.dto.InstallmentDetailsDTO> getPaymentDetails(String studentId, String cpoId) {
+            List<StudentFeePayment> payments = studentFeePaymentRepository.findByUserId(studentId).stream()
+                    .filter(p -> Objects.equals(p.getCpoId(), cpoId))
+                    .collect(Collectors.toList());
 
-                UserDTO user = userMap.get(sfp.getUserId());
-                BigDecimal expected = sfp.getAmountExpected() != null ? sfp.getAmountExpected() : BigDecimal.ZERO;
-                BigDecimal discount = sfp.getDiscountAmount() != null ? sfp.getDiscountAmount() : BigDecimal.ZERO;
-                BigDecimal paid = sfp.getAmountPaid() != null ? sfp.getAmountPaid() : BigDecimal.ZERO;
-                BigDecimal totalDue = expected.subtract(discount).subtract(paid);
+            List<String> asvIds = payments.stream().map(StudentFeePayment::getAsvId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
+            Map<String, String> feeTypeNameMap = fetchFeeTypeNameMap(asvIds);
 
-                return StudentFeePaymentRowDTO.builder()
-                                .paymentId(sfp.getId())
-                                .userId(sfp.getUserId())
-                                .studentName(user != null ? user.getFullName() : sfp.getUserId())
-                                .studentEmail(user != null ? user.getEmail() : null)
-                                .packageSessionIds(packageSessionMap.getOrDefault(sfp.getUserPlanId(),
-                                                Collections.emptyList()))
-                                .feeTypeName(sfp.getAsvId() != null
-                                                ? feeTypeNameMap.getOrDefault(sfp.getAsvId(), "N/A")
-                                                : "N/A")
-                                .installmentNumber(sfp.getIId() != null
-                                                ? installmentNumberMap.getOrDefault(sfp.getIId(), null)
-                                                : null)
-                                .amountExpected(expected)
-                                .discountAmount(discount)
-                                .amountPaid(paid)
-                                .totalDue(totalDue)
-                                .dueDate(sfp.getDueDate())
-                                .status(sfp.getStatus())
-                                .build();
+            List<String> installmentIds = payments.stream().map(StudentFeePayment::getIId).filter(Objects::nonNull).distinct().collect(Collectors.toList());
+            Map<String, Integer> installmentNumberMap = fetchInstallmentNumberMap(installmentIds);
+
+            return payments.stream().map(p -> {
+                BigDecimal expected = p.getAmountExpected() != null ? p.getAmountExpected() : BigDecimal.ZERO;
+                BigDecimal discount = p.getDiscountAmount() != null ? p.getDiscountAmount() : BigDecimal.ZERO;
+                BigDecimal paid = p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO;
+                String name = feeTypeNameMap.getOrDefault(p.getAsvId(), "N/A");
+                Integer num = installmentNumberMap.getOrDefault(p.getIId(), null);
+
+                return vacademy.io.admin_core_service.features.fee_management.dto.InstallmentDetailsDTO.builder()
+                        .feeTypeName(name)
+                        .installmentNumber(num)
+                        .amountExpected(expected)
+                        .discountAmount(discount)
+                        .amountPaid(paid)
+                        .dueAmount(expected.subtract(discount).subtract(paid))
+                        .dueDate(p.getDueDate())
+                        .status(p.getStatus())
+                        .build();
+            }).collect(Collectors.toList());
         }
 
         @Transactional(readOnly = true)

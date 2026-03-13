@@ -84,7 +84,11 @@ const transformOptionsByType = (
 };
 
 // Helper function to create auto evaluation JSON
-const createAutoEvaluationJson = (question: any): string => {
+// `transformedOptions` are the backend-format options (with stable IDs) produced by
+// transformOptionsByType.  When available we store option **IDs** (strings) instead of
+// positional indices so that the correct answer is independent of the order the DB
+// returns options in.  The learner frontend already handles both formats.
+const createAutoEvaluationJson = (question: any, transformedOptions?: any[]): string => {
     if (
         question.questionType === 'MCQS' ||
         question.questionType === 'MCQM' ||
@@ -92,10 +96,19 @@ const createAutoEvaluationJson = (question: any): string => {
         question.questionType === 'CMCQM' ||
         question.questionType === 'TRUE_FALSE'
     ) {
-        // Use selected indices for correct answers
-        const correctAnswers = getCorrectAnswerIndices(question);
-        if (correctAnswers.length > 0) {
-            return JSON.stringify({ correctAnswers });
+        const correctIndices = getCorrectAnswerIndices(question);
+        if (correctIndices.length > 0) {
+            // Map indices → option IDs when the transformed options are available
+            if (transformedOptions && transformedOptions.length > 0) {
+                const correctOptionIds = correctIndices
+                    .map((idx: number) => transformedOptions[idx]?.id)
+                    .filter(Boolean);
+                if (correctOptionIds.length > 0) {
+                    return JSON.stringify({ correctAnswers: correctOptionIds });
+                }
+            }
+            // Fallback to indices if transformed options are not available
+            return JSON.stringify({ correctAnswers: correctIndices });
         }
     }
     if (question.questionType === 'LONG_ANSWER' || question.questionType === 'ONE_WORD') {
@@ -214,7 +227,7 @@ const createQuestionStructure = (
         access_level: 'INSTITUTE',
         // Prefer freshly computed value; fall back to existing backend value to preserve correct answers
         // for backend-format passthrough (where option arrays are absent so computed value would be empty)
-        auto_evaluation_json: createAutoEvaluationJson(question) || (question as any).auto_evaluation_json || '',
+        auto_evaluation_json: createAutoEvaluationJson(question, options) || (question as any).auto_evaluation_json || '',
         evaluation_type: evaluationType,
         question_time_in_millis: calculateQuestionTimeInMillis(question),
         question_order: index + 1,

@@ -122,6 +122,11 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                     continue;
                 }
 
+                // Find the correct answer index within the FILTERED options array
+                // (answerIndex is relative to the original A/B/C/D slots, but
+                // filtering out empty options may shift it).
+                const filteredAnswerIndex = options.findIndex((opt) => opt.isSelected);
+
                 questions.push({
                     questionName: questionText,
                     questionType: 'MCQS',
@@ -131,19 +136,12 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                     explanation,
                     tags: [],
                     canSkip: false,
-                    validAnswers: [answerIndex],
+                    validAnswers: [filteredAnswerIndex >= 0 ? filteredAnswerIndex : answerIndex],
                     parentRichTextContent: '',
                     subjectiveAnswerText: '',
                     decimals: 0,
                     numericType: '',
                     singleChoiceOptions: options,
-                    multipleChoiceOptions: Array(4).fill({ id: '', name: '', isSelected: false }),
-                    csingleChoiceOptions: Array(4).fill({ id: '', name: '', isSelected: false }),
-                    cmultipleChoiceOptions: Array(4).fill({ id: '', name: '', isSelected: false }),
-                    trueFalseOptions: [
-                        { id: '', name: 'True', isSelected: false },
-                        { id: '', name: 'False', isSelected: false },
-                    ],
                 });
             } else {
                 // TRUE_FALSE
@@ -169,10 +167,6 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                     subjectiveAnswerText: '',
                     decimals: 0,
                     numericType: '',
-                    singleChoiceOptions: Array(4).fill({ id: '', name: '', isSelected: false }),
-                    multipleChoiceOptions: Array(4).fill({ id: '', name: '', isSelected: false }),
-                    csingleChoiceOptions: Array(4).fill({ id: '', name: '', isSelected: false }),
-                    cmultipleChoiceOptions: Array(4).fill({ id: '', name: '', isSelected: false }),
                     trueFalseOptions: [
                         { id: '', name: 'True', isSelected: isTrue },
                         { id: '', name: 'False', isSelected: !isTrue },

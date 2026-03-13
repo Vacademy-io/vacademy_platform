@@ -336,15 +336,15 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 id: (q as any).id || crypto.randomUUID(),
             }));
 
-            // Build the full payload upfront (existing + new) before touching the form,
-            // so we're never racing against RHF's internal state updates.
-            const allQuestions = [...form.getValues('questions'), ...questionsWithIds];
+            // Append to form FIRST (synchronous), then build payload from form state.
+            // This matches the manual-add flow (handleAddQuestionConfirm) and avoids a
+            // race condition: addUpdateQuizSlide's onSuccess awaits a slides refetch which
+            // can trigger the useEffect(replace) before append runs, causing duplicates.
+            append(questionsWithIds);
+
+            const allQuestions = form.getValues('questions');
             const payload = createQuizSlidePayload(allQuestions, activeItem, buildSettingsPayload(quizSettings));
             await addUpdateQuizSlide(payload);
-            // Append atomically (single call with array) after save so UI updates immediately
-            append(questionsWithIds);
-            // Eagerly sync Zustand store so SaveDraft can't race against the React-Query
-            // refetch that replaces activeItem.quiz_slide.questions with backend-format data.
             syncToStore();
             setIsPreviewDialogOpen(false);
             setPendingQuestions([]);

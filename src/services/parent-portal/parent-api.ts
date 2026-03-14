@@ -5,6 +5,7 @@
 import { Preferences } from "@capacitor/preferences";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import { BASE_URL } from "@/constants/urls";
 import type {
   ChildProfile,
   RegistrationFormData,
@@ -23,7 +24,6 @@ import type {
 
 // ── Helpers ────────────────────────────────────────────────────
 
-const BASE_URL = import.meta.env.VITE_BACKEND_URL;
 const ADMIN_CORE_TEST_INSTITUTE_ID = "6157dd59-b48d-4d6f-85ac-6d5c8c89cc93";
 
 async function getHeaders(): Promise<Record<string, string>> {

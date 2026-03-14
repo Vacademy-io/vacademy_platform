@@ -134,13 +134,15 @@ public class AdmissionService {
         );
 
         return AdmissionResponseDTO.builder()
-                .applicantId(applicant.getId().toString())
-                .trackingId(applicant.getTrackingId())
-            .parentUserId(userResult.parentUser().getId())
-            .childUserId(userResult.childUser().getId())
+            .applicantId(getApplicantId(applicant))
+            .trackingId(getTrackingId(applicant))
+            .parentUserId(getUserId(userResult.parentUser()))
+            .childUserId(getUserId(userResult.childUser()))
+                .parent(toUserSummary(userResult.parentUser()))
+                .child(toUserSummary(userResult.childUser()))
                 .workflowType("ADMISSION")
                 .overallStatus("ADMISSION_INITIATED")
-                .currentStageId(applicant.getApplicationStageId())
+            .currentStageId(getCurrentStageId(applicant))
                 .message("Admission processed successfully.")
                 .isTransition(false)
                 .build();
@@ -192,13 +194,15 @@ public class AdmissionService {
         );
 
         return AdmissionResponseDTO.builder()
-                .applicantId(applicant.getId().toString())
-                .trackingId(applicant.getTrackingId())
-            .parentUserId(userResult.parentUser().getId())
-            .childUserId(userResult.childUser().getId())
+            .applicantId(getApplicantId(applicant))
+            .trackingId(getTrackingId(applicant))
+            .parentUserId(getUserId(userResult.parentUser()))
+            .childUserId(getUserId(userResult.childUser()))
+                .parent(toUserSummary(userResult.parentUser()))
+                .child(toUserSummary(userResult.childUser()))
                 .workflowType("ADMISSION")
                 .overallStatus("ADMISSION_INITIATED")
-                .currentStageId(applicant.getApplicationStageId())
+            .currentStageId(getCurrentStageId(applicant))
                 .message("Admission from enquiry processed successfully.")
                 .isTransition(true)
                 .build();
@@ -272,15 +276,57 @@ public class AdmissionService {
         );
 
         return AdmissionResponseDTO.builder()
-                .applicantId(applicant.getId().toString())
-                .trackingId(applicant.getTrackingId())
-            .parentUserId(parentUser.getId())
-            .childUserId(childUser.getId())
+                .applicantId(getApplicantId(applicant))
+                .trackingId(getTrackingId(applicant))
+                .parentUserId(getUserId(parentUser))
+                .childUserId(getUserId(childUser))
+                .parent(toUserSummary(parentUser))
+                .child(toUserSummary(childUser))
                 .workflowType("ADMISSION")
                 .overallStatus("ADMISSION_COMPLETED")
-                .currentStageId(applicant.getApplicationStageId())
+                .currentStageId(getCurrentStageId(applicant))
                 .message("Admission from application processed successfully.")
                 .isTransition(true)
+                .build();
+    }
+
+    private String getApplicantId(Applicant applicant) {
+        if (applicant == null || applicant.getId() == null) {
+            return null;
+        }
+        return applicant.getId().toString();
+    }
+
+    private String getTrackingId(Applicant applicant) {
+        if (applicant == null) {
+            return null;
+        }
+        return applicant.getTrackingId();
+    }
+
+    private String getCurrentStageId(Applicant applicant) {
+        if (applicant == null) {
+            return null;
+        }
+        return applicant.getApplicationStageId();
+    }
+
+    private String getUserId(UserDTO user) {
+        if (user == null) {
+            return null;
+        }
+        return user.getId();
+    }
+
+    private AdmissionResponseDTO.UserSummaryDTO toUserSummary(UserDTO user) {
+        if (user == null) {
+            return null;
+        }
+        return AdmissionResponseDTO.UserSummaryDTO.builder()
+                .id(user.getId())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .phone(user.getMobileNumber())
                 .build();
     }
 

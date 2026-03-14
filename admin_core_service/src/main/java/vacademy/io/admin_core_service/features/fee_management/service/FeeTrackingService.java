@@ -9,6 +9,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.fee_management.dto.InvoiceReceiptDTO;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
@@ -41,6 +42,10 @@ import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
 import vacademy.io.admin_core_service.features.invoice.entity.InvoiceLineItem;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceLineItemRepository;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
+import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
+import vacademy.io.admin_core_service.features.invoice.entity.InvoiceLineItem;
+import vacademy.io.admin_core_service.features.invoice.repository.InvoiceLineItemRepository;
+import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -51,6 +56,7 @@ import java.util.function.Function;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -607,6 +613,12 @@ public class FeeTrackingService {
     @Autowired
     private InvoiceLineItemRepository invoiceLineItemRepository;
 
+    @Autowired
+    private InvoiceRepository invoiceRepository;
+
+    @Autowired
+    private InvoiceLineItemRepository invoiceLineItemRepository;
+
         @Transactional(readOnly = true)
         public List<StudentFeePaymentDTO> getStudentDues(String userId, String instituteId) {
                 List<StudentFeePayment> allBills = fetchBillsForUserAndInstitute(userId, instituteId);
@@ -642,6 +654,135 @@ public class FeeTrackingService {
         return studentFeeAllocationLedgerRepository.findByStudentFeePaymentIdInOrderByCreatedAtDesc(billIds).stream()
                 .map(ledger -> mapToLedgerDTO(ledger, billIdToMeta.get(ledger.getStudentFeePaymentId())))
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<InvoiceReceiptDTO> getStudentInvoiceReceipts(String userId, String instituteId) {
+        List<Invoice> invoices;
+        if (instituteId != null && !instituteId.isBlank()) {
+            invoices = invoiceRepository.findByUserIdAndInstituteIdOrderByCreatedAtDesc(userId, instituteId);
+        } else {
+            invoices = invoiceRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        }
+
+        if (invoices == null || invoices.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Collect all source_ids (student_fee_payment_ids) across all line items
+        // to batch-load fee metadata
+        Set<String> allSourceIds = new HashSet<>();
+        Map<String, List<InvoiceLineItem>> invoiceIdToLines = new HashMap<>();
+        for (Invoice inv : invoices) {
+            List<InvoiceLineItem> lines = invoiceLineItemRepository.findByInvoiceId(inv.getId());
+            invoiceIdToLines.put(inv.getId(), lines);
+            for (InvoiceLineItem line : lines) {
+                if (line.getSourceId() != null && !line.getSourceId().isBlank()) {
+                    allSourceIds.add(line.getSourceId());
+                }
+            }
+        }
+
+        // Build fee metadata map keyed by student_fee_payment_id
+        Map<String, FeeMeta> billIdToMeta = Collections.emptyMap();
+        if (!allSourceIds.isEmpty()) {
+            List<StudentFeePayment> relatedBills = studentFeePaymentRepository.findAllById(allSourceIds);
+            billIdToMeta = buildFeeMetaMap(relatedBills);
+        }
+
+        List<InvoiceReceiptDTO> result = new ArrayList<>();
+        for (Invoice inv : invoices) {
+            List<InvoiceLineItem> lines = invoiceIdToLines.getOrDefault(inv.getId(), Collections.emptyList());
+
+            // Extract fields from invoice_data_json
+            InvoiceDataFields dataFields = extractInvoiceDataFields(inv.getInvoiceDataJson());
+
+            List<InvoiceReceiptDTO.InvoiceLineItemDTO> lineDTOs = new ArrayList<>();
+            for (InvoiceLineItem line : lines) {
+                FeeMeta meta = (line.getSourceId() != null) ? billIdToMeta.get(line.getSourceId()) : null;
+                lineDTOs.add(InvoiceReceiptDTO.InvoiceLineItemDTO.builder()
+                        .lineItemId(line.getId())
+                        .itemType(line.getItemType())
+                        .description(line.getDescription())
+                        .amount(line.getAmount())
+                        .sourceId(line.getSourceId())
+                        .feeTypeName(meta != null ? meta.feeTypeName : null)
+                        .feeTypeCode(meta != null ? meta.feeTypeCode : null)
+                        .cpoName(meta != null ? meta.cpoName : null)
+                        .build());
+            }
+
+            result.add(InvoiceReceiptDTO.builder()
+                    .invoiceId(inv.getId())
+                    .invoiceNumber(inv.getInvoiceNumber())
+                    .totalAmount(inv.getTotalAmount())
+                    .currency(inv.getCurrency())
+                    .status(inv.getStatus())
+                    .pdfFileId(inv.getPdfFileId())
+                    .type(dataFields.type)
+                    .amountPaidNow(dataFields.amountPaidNow)
+                    .totalPaid(dataFields.totalPaid)
+                    .balanceDue(dataFields.balanceDue)
+                    .totalDiscount(dataFields.totalDiscount)
+                    .totalExpected(dataFields.totalExpected)
+                    .invoiceDate(inv.getInvoiceDate())
+                    .createdAt(inv.getCreatedAt())
+                    .lineItems(lineDTOs)
+                    .build());
+        }
+
+        return result;
+    }
+
+    private record InvoiceDataFields(
+            String type,
+            BigDecimal amountPaidNow,
+            BigDecimal totalPaid,
+            BigDecimal balanceDue,
+            BigDecimal totalDiscount,
+            BigDecimal totalExpected
+    ) {}
+
+    private InvoiceDataFields extractInvoiceDataFields(String json) {
+        if (json == null || json.isBlank()) {
+            return new InvoiceDataFields(null, null, null, null, null, null);
+        }
+
+        return new InvoiceDataFields(
+                extractStringField(json, "type"),
+                extractDecimalField(json, "amountPaidNow"),
+                extractDecimalField(json, "totalPaid"),
+                extractDecimalField(json, "balanceDue"),
+                extractDecimalField(json, "totalDiscount"),
+                extractDecimalField(json, "totalExpected")
+        );
+    }
+
+    private String extractStringField(String json, String fieldName) {
+        String pattern = "\"" + fieldName + "\":\"";
+        int idx = json.indexOf(pattern);
+        if (idx < 0) return null;
+        int start = idx + pattern.length();
+        int end = json.indexOf("\"", start);
+        return end > start ? json.substring(start, end) : null;
+    }
+
+    private BigDecimal extractDecimalField(String json, String fieldName) {
+        String pattern = "\"" + fieldName + "\":";
+        int idx = json.indexOf(pattern);
+        if (idx < 0) return null;
+        int start = idx + pattern.length();
+        int end = start;
+        while (end < json.length()) {
+            char c = json.charAt(end);
+            if (c == ',' || c == '}') break;
+            end++;
+        }
+        try {
+            return new BigDecimal(json.substring(start, end).trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     @Transactional(readOnly = true)

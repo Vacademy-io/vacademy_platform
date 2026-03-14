@@ -17,15 +17,14 @@ import type {
   AdmissionTimelineEvent,
   UserRole,
   StudentFeeDue,
-  StudentFeeReceipt,
+  InvoiceReceipt,
   DuesFilterBody,
 } from "@/types/parent-portal";
 
 // ── Helpers ────────────────────────────────────────────────────
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL;
-// Base URL for admin-core service (stage backend) used by dues/receipts APIs.
-const ADMIN_CORE_BASE_URL = "https://backend-stage.vacademy.io";
+const ADMIN_CORE_TEST_INSTITUTE_ID = "6157dd59-b48d-4d6f-85ac-6d5c8c89cc93";
 
 async function getHeaders(): Promise<Record<string, string>> {
   const token = await getTokenFromStorage(TokenKey.accessToken);
@@ -260,11 +259,21 @@ export async function getStudentDues(
   filters?: DuesFilterBody,
 ): Promise<StudentFeeDue[]> {
   const headers = await getHeaders();
+  // Testing override: force a specific institute regardless of login institute.
+  const effectiveInstituteId = ADMIN_CORE_TEST_INSTITUTE_ID || instituteId;
+  const effectiveHeaders: Record<string, string> = {
+    ...headers,
+    "x-institute-id": effectiveInstituteId,
+    // Some gateways/services expect these variants too.
+    clientId: effectiveInstituteId,
+    clientid: effectiveInstituteId,
+    "X-Institute-Id": effectiveInstituteId,
+  };
   const response = await fetch(
-    `${ADMIN_CORE_BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/dues?instituteId=${instituteId}`,
+    `${BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/dues?instituteId=${effectiveInstituteId}`,
     {
       method: "POST",
-      headers,
+      headers: effectiveHeaders,
       body: JSON.stringify(filters || {}),
     },
   );
@@ -279,16 +288,25 @@ export async function getStudentDues(
   return response.json() as Promise<StudentFeeDue[]>;
 }
 
-/** Fetch student fee payment receipts/allocations. */
+/** Fetch student fee invoice receipts. */
 export async function getStudentReceipts(
   userId: string,
   instituteId: string,
-): Promise<StudentFeeReceipt[]> {
+): Promise<InvoiceReceipt[]> {
   const headers = await getHeaders();
+  // Testing override: force a specific institute regardless of login institute.
+  const effectiveInstituteId = ADMIN_CORE_TEST_INSTITUTE_ID || instituteId;
+  const effectiveHeaders: Record<string, string> = {
+    ...headers,
+    "x-institute-id": effectiveInstituteId,
+    clientId: effectiveInstituteId,
+    clientid: effectiveInstituteId,
+    "X-Institute-Id": effectiveInstituteId,
+  };
   const response = await fetch(
-    `${ADMIN_CORE_BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/receipts?instituteId=${instituteId}`,
+    `${BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/invoice-receipts?instituteId=${effectiveInstituteId}`,
     {
-      headers,
+      headers: effectiveHeaders,
     },
   );
 
@@ -299,5 +317,48 @@ export async function getStudentReceipts(
     );
   }
 
-  return response.json() as Promise<StudentFeeReceipt[]>;
+  return response.json() as Promise<InvoiceReceipt[]>;
+}
+
+export interface ReceiptDownloadResponse {
+  download_url: string;
+  invoice_id: string;
+  invoice_number: string;
+  file_name: string;
+  expires_in: string;
+}
+
+/** Get pre-signed download URL for a receipt PDF. */
+export async function getReceiptDownloadUrl(
+  invoiceId: string,
+): Promise<ReceiptDownloadResponse> {
+  const headers = await getHeaders();
+  const instituteDetails = await Preferences.get({ key: "InstituteDetails" });
+  const instituteId = instituteDetails.value
+    ? JSON.parse(instituteDetails.value)?.id
+    : "";
+  // Testing override: force a specific institute regardless of login institute.
+  const effectiveInstituteId = ADMIN_CORE_TEST_INSTITUTE_ID || instituteId;
+  const effectiveHeaders: Record<string, string> = {
+    ...headers,
+    "x-institute-id": effectiveInstituteId,
+    clientId: effectiveInstituteId,
+    clientid: effectiveInstituteId,
+    "X-Institute-Id": effectiveInstituteId,
+  };
+  const response = await fetch(
+    `${BASE_URL}/admin-core-service/v1/admin/student-fee/receipt/${invoiceId}/download-url?instituteId=${effectiveInstituteId}`,
+    {
+      headers: effectiveHeaders,
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "Unknown error");
+    throw new Error(
+      `API Error ${response.status}: ${response.statusText} — ${errorBody}`,
+    );
+  }
+
+  return response.json() as Promise<ReceiptDownloadResponse>;
 }

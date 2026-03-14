@@ -6,9 +6,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.admission.dto.DashboardPipelineMetricsDTO;
+import vacademy.io.admin_core_service.features.admission.dto.PipelineUserListResponseDTO;
 import vacademy.io.admin_core_service.features.admission.repository.AdmissionPipelineRepository;
+import vacademy.io.admin_core_service.features.admission.service.AdmissionPipelineService;
+import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 @RestController
 @RequestMapping("/admin-core-service/v1/admission/dashboard")
@@ -18,6 +25,9 @@ public class AdmissionDashboardController {
 
     @Autowired
     private AdmissionPipelineRepository pipelineRepository;
+
+    @Autowired
+    private AdmissionPipelineService admissionPipelineService;
 
     @GetMapping("/pipeline-metrics")
     public ResponseEntity<DashboardPipelineMetricsDTO> getPipelineMetrics(
@@ -70,6 +80,32 @@ public class AdmissionDashboardController {
                 .admissionsFromApplicationOnly(admissionsFromAppOnly)
                 .directAdmissions(directAdmissions)
                 .build();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/pipeline-users")
+    public ResponseEntity<Page<PipelineUserListResponseDTO>> getPipelineUsers(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("stage") String stage,
+            @RequestParam(value = "packageSessionId", required = false) String packageSessionId,
+            @RequestParam(name = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
+            @RequestParam(name = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize) {
+
+        logger.info("Fetching pipeline users for institute: {}, session: {}, stage: {}", instituteId,
+                packageSessionId != null ? packageSessionId : "ALL", stage);
+
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new VacademyException("instituteId is required.");
+        }
+
+        if (stage == null || stage.isBlank()) {
+            throw new VacademyException("stage is required (e.g., ENQUIRY, APPLICATION, ADMITTED).");
+        }
+
+        Pageable pageable = PageRequest.of(pageNo, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<PipelineUserListResponseDTO> response = admissionPipelineService.getPipelineUsersByStage(instituteId, packageSessionId, stage, pageable);
 
         return ResponseEntity.ok(response);
     }

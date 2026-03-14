@@ -34,18 +34,6 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             String notificationType         // "WHATSAPP_OUTGOING"
     );
 
-<<<<<<< Updated upstream
-    // Backward-compatible: find latest COMBOT outgoing log with old "WHATSAPP" type (before fix)
-    @Query(value = """
-            SELECT * FROM notification_log 
-            WHERE channel_id = :channelId 
-              AND notification_type = 'WHATSAPP' 
-              AND message_payload LIKE '%"provider":"COMBOT"%'
-            ORDER BY notification_date DESC 
-            LIMIT 1
-            """, nativeQuery = true)
-    Optional<NotificationLog> findLatestLegacyCombotOutgoingLog(@Param("channelId") String channelId);
-=======
     @Query(value = """
             SELECT * FROM notification_log
             WHERE channel_id = :channelId
@@ -59,7 +47,6 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("notificationType") String notificationType,
             @Param("provider") String provider
     );
->>>>>>> Stashed changes
 
     // Debug method: Find any logs for a recipient (for debugging)
     Optional<NotificationLog> findTopByChannelIdOrderByNotificationDateDesc(String channelId);

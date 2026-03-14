@@ -258,20 +258,12 @@ public class CombotWebhookService {
                         .findTopByChannelIdAndSenderBusinessChannelIdAndNotificationTypeOrderByNotificationDateDesc(
                                 userPhone, receivingPhoneId, CombotNotificationType.WHATSAPP_OUTGOING.getType());
 
-<<<<<<< Updated upstream
-                // Backward-compatible fallback: find old logs with type "WHATSAPP" (before fix)
-                // that belong to COMBOT provider (filtered at DB level via payload)
-                if (lastLogOpt.isEmpty()) {
-                    lastLogOpt = notificationLogRepository
-                            .findLatestLegacyCombotOutgoingLog(userPhone);
-=======
                 // Fallback: outgoing logs from whatsapp-service may not have senderBusinessChannelId set,
                 // so filter by provider in the body field to only match COMBOT messages
                 if (lastLogOpt.isEmpty()) {
                     lastLogOpt = notificationLogRepository
                             .findLatestOutgoingByChannelIdAndProvider(
                                     userPhone, CombotNotificationType.WHATSAPP_OUTGOING.getType(), "COMBOT");
->>>>>>> Stashed changes
                 }
 
                 String lastTemplate = CombotConstants.DEFAULT_TEMPLATE;
@@ -841,17 +833,6 @@ public class CombotWebhookService {
         try {
             Map<String, Object> payload = objectMapper.readValue(payloadJson, new TypeReference<>() {
             });
-<<<<<<< Updated upstream
-            // Cloud API format: {"template": {"name": "..."}}
-            Object templateObj = payload.get(CombotWebhookKeys.TEMPLATE);
-            if (templateObj instanceof Map) {
-                String name = (String) ((Map<String, Object>) templateObj).get(CombotWebhookKeys.NAME);
-                if (name != null) return name;
-            }
-            // WhatsAppService flat format: {"templateName": "..."}
-            String templateName = (String) payload.get("templateName");
-            if (templateName != null) return templateName;
-=======
             // Format 1: Combot format - {"template": {"name": "..."}}
             Map<String, Object> template = (Map<String, Object>) payload.get(CombotWebhookKeys.TEMPLATE);
             if (template != null) {
@@ -862,7 +843,6 @@ public class CombotWebhookService {
             if (templateName != null) {
                 return templateName;
             }
->>>>>>> Stashed changes
             return CombotConstants.UNKNOWN_TEMPLATE;
         } catch (Exception e) {
             return CombotConstants.UNKNOWN_TEMPLATE;

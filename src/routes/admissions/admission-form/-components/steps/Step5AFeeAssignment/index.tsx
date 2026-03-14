@@ -1,294 +1,477 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
+import { useCPOOptions } from '@/routes/financial-management/fee-plans/-services/cpo-service';
+import type {
+    CPOInstallment,
+    CPOPackage,
+} from '@/routes/financial-management/fee-plans/-types/cpo-types';
+import { toast } from 'sonner';
+import {
+    fetchDefaultPaymentOptionId,
+    schoolEnroll,
+    type SchoolEnrollPayload,
+} from '@/routes/admissions/-services/enrollment-services';
+import type { AdmissionFormData } from '../../AdmissionFormWizard';
+import { MyButton } from '@/components/design-system/button';
 
-// Shared data with global schema
-interface AssignedFee {
-    id: string;
-    name: string;
-    amount: number;
-    plan: string;
-    isMandatory: boolean;
-    dueDetails: string;
+interface AdmissionSubmitResult {
+    child_user_id?: string;
+    parent_user_id?: string;
+    parent?: {
+        id?: string;
+        full_name?: string;
+        email?: string;
+        phone?: string;
+    };
+    child?: {
+        id?: string;
+        full_name?: string;
+        email?: string;
+        phone?: string;
+    };
 }
 
 interface Props {
-    formData: any;
-    handleChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
+    formData: AdmissionFormData;
+    admissionResult: AdmissionSubmitResult | null;
+    packageSessionId: string;
+    instituteId: string;
 }
 
-export default function Step5AFeeAssignment({ formData, handleChange }: Props) {
-    const [assignedFees, setAssignedFees] = useState<AssignedFee[]>([
-        { id: 'f1', name: 'Tuition Fee', amount: 50000, plan: 'Quarterly', isMandatory: true, dueDetails: '4 payments of ₹12,500' },
-        { id: 'f2', name: 'Bus Fee', amount: 12000, plan: 'Annual', isMandatory: false, dueDetails: '1 payment of ₹12,000' },
-        { id: 'f3', name: 'Computer Fee', amount: 3000, plan: 'Annual', isMandatory: true, dueDetails: '1 payment of ₹3,000' }
-    ]);
+const formatCurrency = (value: number | undefined) => {
+    if (!value && value !== 0) return '-';
+    return `₹ ${value.toLocaleString('en-IN')}`;
+};
 
-    const [isChangePlanOpen, setChangePlanOpen] = useState(false);
-    const [isAddFeeOpen, setAddFeeOpen] = useState(false);
-    const [paymentStatus, setPaymentStatus] = useState('Paid');
+const getInstallmentLabel = (installments?: CPOInstallment[]) => {
+    if (!installments || installments.length === 0) return 'One-time payment';
+    const count = installments.length;
+    const firstDue = installments[0]?.due_date;
+    return `${count} installment${count > 1 ? 's' : ''}${firstDue ? ` • starts ${new Date(firstDue).toLocaleDateString('en-IN')}` : ''}`;
+};
+
+const formatDate = (value?: string | null) => {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleDateString('en-IN');
+};
+
+export default function Step5AFeeAssignment({
+    formData,
+    admissionResult,
+    packageSessionId,
+    instituteId,
+}: Props) {
+    const navigate = useNavigate();
+    const {
+        data: cpoOptions,
+        isLoading,
+        isError,
+        refetch,
+    } = useCPOOptions(packageSessionId || null);
+    const [selectedCpoId, setSelectedCpoId] = useState<string | null>(null);
+    const [isEnrolling, setIsEnrolling] = useState(false);
+    const [defaultPaymentOptionId, setDefaultPaymentOptionId] = useState<string | null>(null);
+    const [isDefaultLoading, setIsDefaultLoading] = useState(false);
+    const [enrollSuccess, setEnrollSuccess] = useState<{
+        cpoName: string;
+        totalAmount: number;
+        paymentOptionId: string;
+        studentName?: string;
+    } | null>(null);
+
+    useEffect(() => {
+        if (cpoOptions && cpoOptions.length > 0 && !selectedCpoId) {
+            setSelectedCpoId(cpoOptions[0]?.id ?? null);
+        }
+    }, [cpoOptions, selectedCpoId]);
+
+    useEffect(() => {
+        const fetchDefaultPaymentOption = async () => {
+            if (!instituteId) return;
+            try {
+                setIsDefaultLoading(true);
+                const id = await fetchDefaultPaymentOptionId(instituteId);
+                setDefaultPaymentOptionId(id);
+            } catch (error) {
+                console.error('Failed to fetch default payment option', error);
+            } finally {
+                setIsDefaultLoading(false);
+            }
+        };
+        fetchDefaultPaymentOption();
+    }, [instituteId]);
+
+    const selectedCpo = useMemo(
+        () => cpoOptions?.find((cpo) => cpo.id === selectedCpoId) || null,
+        [cpoOptions, selectedCpoId]
+    );
+
+    const enrollInviteId = useMemo(() => {
+        if (!selectedCpo) return null;
+        const link = selectedCpo.package_session_links?.find(
+            (l) => l.package_session_id === packageSessionId
+        );
+        return link?.enroll_invite_id || null;
+    }, [selectedCpo, packageSessionId]);
+
+    const totalAmount = useMemo(() => {
+        if (!selectedCpo?.fee_types) return 0;
+        return selectedCpo.fee_types.reduce(
+            (sum, fee) => sum + (fee.assigned_fee_value?.amount ?? 0),
+            0
+        );
+    }, [selectedCpo]);
+
+    const handleEnroll = async () => {
+        if (!packageSessionId) {
+            toast.error('Package session is required to enroll.');
+            return;
+        }
+        if (!selectedCpo) {
+            toast.error('Select a fee plan to continue.');
+            return;
+        }
+        const child = admissionResult?.child;
+        const childUserId = child?.id || admissionResult?.child_user_id;
+        if (!childUserId) {
+            toast.error('Child user ID missing from admission response.');
+            return;
+        }
+
+        const paymentOptionId = selectedCpo.default_payment_option_id ?? defaultPaymentOptionId;
+        if (!paymentOptionId) {
+            toast.error('Payment option is required. Set a default or update the CPO.');
+            return;
+        }
+
+        const payload: SchoolEnrollPayload = {
+            user: {
+                id: childUserId,
+                username: child?.email,
+                email: child?.email,
+                full_name: child?.full_name,
+                mobile_number: child?.phone || formData.residentialPhone,
+                date_of_birth: formData.dateOfBirth || undefined,
+                gender: formData.gender || undefined,
+            },
+            institute_id: instituteId,
+            package_session_id: packageSessionId,
+            cpo_id: selectedCpo.id,
+            payment_option_id: paymentOptionId,
+            enroll_invite_id: enrollInviteId ?? null,
+            school_payment: {
+                payment_mode: 'OFFLINE',
+                amount: 0,
+                manual_payment: {
+                    file_id: '',
+                    transaction_id: '',
+                },
+            },
+            start_date: formData.dateOfAdmission || new Date().toISOString(),
+        };
+
+        try {
+            setIsEnrolling(true);
+            await schoolEnroll(payload);
+            toast.success('Student enrolled and fee plan assigned.');
+            setEnrollSuccess({
+                cpoName: selectedCpo.name,
+                totalAmount,
+                paymentOptionId,
+                studentName: child?.full_name || child?.email,
+            });
+        } catch (error) {
+            console.error('Enrollment failed', error);
+            toast.error('Failed to enroll student. Please try again.');
+        } finally {
+            setIsEnrolling(false);
+        }
+    };
+
+    if (!packageSessionId) {
+        return (
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-gray-600">
+                <div className="flex size-10 items-center justify-center rounded-full bg-yellow-100 text-lg text-yellow-700">
+                    !
+                </div>
+                <p className="text-sm font-medium">
+                    Select a package session in Step 1 to view fee plans.
+                </p>
+            </div>
+        );
+    }
+
+    if (enrollSuccess) {
+        return (
+            <div className="flex h-full flex-col items-center justify-center gap-4 rounded-lg border border-green-100 bg-green-50 p-8 text-center text-gray-800">
+                <div className="flex size-12 items-center justify-center rounded-full bg-white text-xl font-semibold text-green-600">
+                    ✓
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Enrollment complete</h3>
+                    <p className="mt-1 text-sm text-gray-600">
+                        {enrollSuccess.studentName
+                            ? `${enrollSuccess.studentName} has been enrolled with the selected fee plan.`
+                            : 'Student has been enrolled with the selected fee plan.'}
+                    </p>
+                </div>
+                <div className="flex flex-col gap-1 text-sm text-gray-700">
+                    <span>Plan: {enrollSuccess.cpoName}</span>
+                    <span>Total assigned: {formatCurrency(enrollSuccess.totalAmount)}</span>
+                    <span>Payment mode: Offline</span>
+                </div>
+                <div className="flex gap-3">
+                    <MyButton
+                        onClick={() => navigate({ to: '/admissions/admission-form' })}
+                        className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-100"
+                    >
+                        Go to admission form
+                    </MyButton>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-300">
-            {/* Header Information Box */}
-            <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-5 flex flex-wrap gap-8 items-center text-sm">
+        <div className="space-y-6 duration-200 animate-in fade-in">
+            <div className="flex items-start justify-between gap-4">
                 <div>
-                    <span className="text-gray-500 font-medium block text-xs">Student</span>
-                    <strong className="text-gray-900">{formData.studentFirstName} {formData.studentLastName || formData.fatherName}</strong>
+                    <h2 className="text-lg font-semibold text-gray-900">Assign Fee Plan</h2>
+                    <p className="text-sm text-gray-600">
+                        Fetched from CPO linked to the selected package session.
+                    </p>
                 </div>
-                <div>
-                    <span className="text-gray-500 font-medium block text-xs">Class</span>
-                    <strong className="text-gray-900">{formData.studentClass || 'Class 1'}</strong>
-                </div>
-                <div>
-                    <span className="text-gray-500 font-medium block text-xs">Admission Type</span>
-                    <strong className="text-gray-900">{formData.admissionType || 'Day Scholar'}</strong>
-                </div>
-                <div>
-                    <span className="text-gray-500 font-medium block text-xs">Transport</span>
-                    <strong className="text-gray-900">{formData.transport || 'Yes'}</strong>
-                </div>
-                <div className="ml-auto text-right">
-                    <span className="text-gray-500 font-medium block text-xs">Academic Year</span>
-                    <strong className="text-blue-700 bg-blue-100 px-2 py-0.5 rounded">2025-26</strong>
-                </div>
+                <button
+                    onClick={() => refetch()}
+                    className="rounded border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-600 transition hover:border-blue-300 hover:text-blue-700"
+                    disabled={isLoading}
+                >
+                    Refresh
+                </button>
             </div>
 
-            {/* Applicable Fees Section */}
-            <div>
-                <h3 className="text-base font-semibold text-gray-800 border-b pb-2 mb-4">ASSIGNED FEES</h3>
-                <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-gray-50 border-b">
-                            <tr>
-                                <th className="px-5 py-3 font-semibold text-gray-600">Fee Type</th>
-                                <th className="px-5 py-3 font-semibold text-gray-600">Amount</th>
-                                <th className="px-5 py-3 font-semibold text-gray-600">Installment Plan</th>
-                                <th className="px-5 py-3 font-semibold text-gray-600">Details</th>
-                                <th className="px-5 py-3 font-semibold text-gray-600 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {assignedFees.map(fee => (
-                                <tr key={fee.id} className="hover:bg-gray-50">
-                                    <td className="px-5 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-green-500">✓</span>
-                                            <span className="font-medium text-gray-900">{fee.name}</span>
+            {(isLoading || isDefaultLoading) && (
+                <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-600">
+                    Loading fee plans...
+                </div>
+            )}
+
+            {isError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    Failed to load CPO options. Please retry.
+                </div>
+            )}
+
+            {!isLoading && !isError && cpoOptions && cpoOptions.length === 0 && (
+                <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-600">
+                    No fee plans found for this package session.
+                </div>
+            )}
+
+            {!isLoading && !isError && cpoOptions && cpoOptions.length > 0 && (
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                    <div className="space-y-3 lg:col-span-1">
+                        {cpoOptions.map((cpo) => (
+                            <button
+                                key={cpo.id}
+                                onClick={() => setSelectedCpoId(cpo.id)}
+                                className={`w-full rounded-lg border bg-white p-4 text-left shadow-sm transition hover:border-blue-300 hover:shadow ${
+                                    selectedCpoId === cpo.id
+                                        ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200'
+                                        : 'border-gray-200'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="text-sm font-semibold text-gray-900">
+                                            {cpo.name}
                                         </div>
-                                        <span className="text-xs text-gray-500 block mt-0.5 pl-5">({fee.isMandatory ? 'Mandatory' : 'Selected'})</span>
-                                    </td>
-                                    <td className="px-5 py-4 font-semibold text-gray-800">
-                                        ₹ {fee.amount.toLocaleString()}
-                                    </td>
-                                    <td className="px-5 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded font-medium border border-blue-100">{fee.plan}</span>
-                                            <span className="text-yellow-500" title="Default">⭐</span>
+                                        <div className="mt-0.5 text-xs text-gray-500">
+                                            Default payment option:{' '}
+                                            {cpo.default_payment_option_id
+                                                ? 'Available'
+                                                : 'Not set'}
                                         </div>
-                                    </td>
-                                    <td className="px-5 py-4 text-gray-600">
-                                        {fee.dueDetails} <br/>
-                                        <span className="text-xs text-gray-400">Due: Starts April</span>
-                                    </td>
-                                    <td className="px-5 py-4 text-right">
-                                        <button onClick={() => setChangePlanOpen(true)} className="text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition text-xs border border-transparent hover:border-blue-200">
-                                            Change Plan
-                                        </button>
-                                        {!fee.isMandatory && (
-                                            <button className="text-red-500 hover:text-red-700 font-medium px-2 py-1 ml-2 text-xs">Remove</button>
+                                    </div>
+                                    <div className="text-sm font-semibold text-gray-800">
+                                        {formatCurrency(
+                                            cpo.fee_types?.reduce(
+                                                (sum, fee) =>
+                                                    sum + (fee.assigned_fee_value?.amount ?? 0),
+                                                0
+                                            )
                                         )}
-                                    </td>
-                                </tr>
-                            ))}
-                            <tr className="bg-gray-50 border-t">
-                                <td colSpan={5} className="px-5 py-3">
-                                    <button onClick={() => setAddFeeOpen(true)} className="text-blue-600 font-medium flex items-center gap-1.5 hover:text-blue-800 text-sm">
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-                                        Add Optional Fee (Hostel, Mess, Sports, etc.)
-                                    </button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Schedule Summary Section (Left) */}
-                <div>
-                    <h3 className="text-base font-semibold text-gray-800 border-b pb-2 mb-4">PAYMENT SCHEDULE (2025-26)</h3>
-                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 border-b">
-                                <tr>
-                                    <th className="px-4 py-2 font-semibold text-gray-600">Due Date</th>
-                                    <th className="px-4 py-2 font-semibold text-gray-600">Items</th>
-                                    <th className="px-4 py-2 font-semibold text-gray-600 text-right">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                <tr>
-                                    <td className="px-4 py-3 font-medium text-red-600">10 Apr 2025</td>
-                                    <td className="px-4 py-3 text-gray-600">Tuition (Q1), Bus, Computer</td>
-                                    <td className="px-4 py-3 text-right font-bold text-gray-900 border-l">₹ 27,500</td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 text-gray-600">10 Jul 2025</td>
-                                    <td className="px-4 py-3 text-gray-600">Tuition (Q2)</td>
-                                    <td className="px-4 py-3 text-right font-medium text-gray-700 border-l">₹ 12,500</td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 text-gray-600">10 Oct 2025</td>
-                                    <td className="px-4 py-3 text-gray-600">Tuition (Q3)</td>
-                                    <td className="px-4 py-3 text-right font-medium text-gray-700 border-l">₹ 12,500</td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 text-gray-600">10 Jan 2026</td>
-                                    <td className="px-4 py-3 text-gray-600">Tuition (Q4)</td>
-                                    <td className="px-4 py-3 text-right font-medium text-gray-700 border-l">₹ 12,500</td>
-                                </tr>
-                            </tbody>
-                            <tfoot className="bg-gray-100 border-t-2 border-gray-200">
-                                <tr>
-                                    <td colSpan={2} className="px-4 py-3 font-bold text-gray-800 text-right">TOTAL FEES FOR YEAR:</td>
-                                    <td className="px-4 py-3 font-bold text-blue-700 text-right text-lg">₹ 65,000</td>
-                                </tr>
-                            </tfoot>
-                        </table>
+                                    </div>
+                                </div>
+                            </button>
+                        ))}
                     </div>
-                </div>
 
-                {/* First Payment Record (Right) */}
-                <div>
-                    <h3 className="text-base font-semibold text-gray-800 border-b pb-2 mb-4 text-green-700">RECORD FIRST PAYMENT (Due Now)</h3>
-                    <div className="border-2 border-green-100 bg-green-50/30 rounded-lg p-5 shadow-sm space-y-5">
-                        <div className="flex justify-between items-center bg-white p-3 rounded border shadow-sm">
-                            <span className="font-semibold text-gray-700">Amount Due Today:</span>
-                            <span className="text-xl font-bold text-green-600">₹ 27,500</span>
-                        </div>
+                    <div className="space-y-4 lg:col-span-2">
+                        {selectedCpo ? (
+                            <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+                                <div className="flex items-center justify-between border-b px-5 py-4">
+                                    <div>
+                                        <div className="text-base font-semibold text-gray-900">
+                                            {selectedCpo.name}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                            {selectedCpo.package_session_links?.length
+                                                ? 'Linked to current package session'
+                                                : 'No session link found'}
+                                        </div>
+                                    </div>
+                                    <div className="text-sm font-semibold text-blue-700">
+                                        {formatCurrency(totalAmount)}
+                                    </div>
+                                </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Payment Status <span className="text-red-500">*</span></label>
-                            <div className="flex gap-4">
-                                {['Paid', 'Partial Payment', 'Payment Pending'].map(status => (
-                                    <label key={status} className="flex items-center gap-2 cursor-pointer bg-white px-3 py-2 border rounded shadow-sm hover:border-blue-400">
-                                        <input type="radio" checked={paymentStatus === status} onChange={() => setPaymentStatus(status)} className="text-blue-600 focus:ring-blue-600 w-4 h-4" />
-                                        <span className="text-sm font-medium text-gray-700">{status}</span>
-                                    </label>
-                                ))}
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-50 text-gray-600">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left font-semibold">
+                                                    Fee Type
+                                                </th>
+                                                <th className="px-4 py-3 text-left font-semibold">
+                                                    Amount
+                                                </th>
+                                                <th className="px-4 py-3 text-left font-semibold">
+                                                    Installments
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {selectedCpo.fee_types?.map((fee) => (
+                                                <tr key={fee.id} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-3 font-medium text-gray-900">
+                                                        {fee.name}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-gray-800">
+                                                        {formatCurrency(
+                                                            fee.assigned_fee_value?.amount
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-gray-600">
+                                                        {getInstallmentLabel(
+                                                            fee.assigned_fee_value?.installments
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="space-y-3 border-t bg-gray-50 px-5 py-4">
+                                    <div className="rounded-lg border border-gray-200 bg-white">
+                                        <div className="border-b px-4 py-3 text-sm font-semibold text-gray-800">
+                                            Installments
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-gray-50 text-gray-600">
+                                                    <tr>
+                                                        <th className="px-4 py-2 text-left font-semibold">
+                                                            Fee
+                                                        </th>
+                                                        <th className="px-4 py-2 text-left font-semibold">
+                                                            #
+                                                        </th>
+                                                        <th className="px-4 py-2 text-left font-semibold">
+                                                            Amount
+                                                        </th>
+                                                        <th className="px-4 py-2 text-left font-semibold">
+                                                            Due
+                                                        </th>
+                                                        <th className="px-4 py-2 text-left font-semibold">
+                                                            Start
+                                                        </th>
+                                                        <th className="px-4 py-2 text-left font-semibold">
+                                                            End
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {selectedCpo.fee_types?.flatMap((fee) =>
+                                                        (
+                                                            fee.assigned_fee_value?.installments ||
+                                                            []
+                                                        ).map((inst) => (
+                                                            <tr
+                                                                key={`${fee.id}-${inst.id || inst.installment_number}`}
+                                                                className="hover:bg-gray-50"
+                                                            >
+                                                                <td className="px-4 py-2 font-medium text-gray-900">
+                                                                    {fee.name}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-gray-700">
+                                                                    {inst.installment_number}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-gray-800">
+                                                                    {formatCurrency(inst.amount)}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-gray-700">
+                                                                    {formatDate(inst.due_date)}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-gray-700">
+                                                                    {formatDate(inst.start_date)}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-gray-700">
+                                                                    {formatDate(inst.end_date)}
+                                                                </td>
+                                                            </tr>
+                                                        ))
+                                                    )}
+                                                    {selectedCpo.fee_types?.every(
+                                                        (fee) =>
+                                                            !fee.assigned_fee_value?.installments
+                                                                ?.length
+                                                    ) && (
+                                                        <tr>
+                                                            <td
+                                                                colSpan={6}
+                                                                className="px-4 py-3 text-center text-sm text-gray-600"
+                                                            >
+                                                                No installments configured.
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="text-sm text-gray-700">
+                                            Total: {formatCurrency(totalAmount)}
+                                        </div>
+                                        <MyButton
+                                            onClick={handleEnroll}
+                                            disabled={isEnrolling}
+                                            className={`rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition ${
+                                                isEnrolling
+                                                    ? 'cursor-not-allowed bg-blue-300/60 text-blue-100'
+                                                    : 'border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white'
+                                            }`}
+                                        >
+                                            {isEnrolling
+                                                ? 'Enrolling...'
+                                                : 'Enroll with this fee plan'}
+                                        </MyButton>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-
-                        {paymentStatus === 'Paid' && (
-                            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-green-200">
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Payment Mode</label>
-                                    <select className="w-full border-gray-300 rounded px-2 py-1.5 text-sm outline-none focus:ring-blue-600 focus:border-blue-600">
-                                        <option>Online Payment</option>
-                                        <option>Cash</option>
-                                        <option>Cheque / DD</option>
-                                        <option>Bank Transfer</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Amount Paid (₹)</label>
-                                    <input type="text" readOnly value="27500" className="w-full border-gray-300 bg-gray-50 rounded px-2 py-1.5 text-sm font-semibold text-gray-800 outline-none" />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Transaction ID / Ref. No.</label>
-                                    <input type="text" placeholder="e.g. TXN123456789" className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:border-blue-600 focus:ring-blue-600 outline-none" />
-                                </div>
+                        ) : (
+                            <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-600">
+                                Select a fee plan to view details.
                             </div>
                         )}
-
-                        {paymentStatus === 'Partial Payment' && (
-                            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-green-200">
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Amount Paid Now (₹) *</label>
-                                    <input type="text" placeholder="15000" className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:border-blue-600 focus:ring-blue-600 outline-none font-semibold text-gray-800" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-600 mb-1">Remaining Balance expected by</label>
-                                    <input type="date" className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-600 outline-none" />
-                                </div>
-                            </div>
-                        )}
-
-                        {paymentStatus === 'Payment Pending' && (
-                            <div className="pt-2 border-t border-red-100 flex items-center gap-2 text-yellow-700 bg-yellow-50 p-2 text-sm rounded border border-yellow-200">
-                                <span className="font-bold text-lg">⚠️</span> Admission will proceed, but invoice will be marked as unpaid.
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Change Installment Plan Modal (Mock) */}
-            {isChangePlanOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-                        <div className="flex items-center justify-between border-b px-5 py-4 bg-gray-50">
-                            <h3 className="font-bold text-gray-800">Change Installment Plan</h3>
-                            <button onClick={() => setChangePlanOpen(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
-                        </div>
-                        <div className="p-5 space-y-4">
-                            <p className="text-sm text-gray-600 mb-2">Changing plan for: <strong>Tuition Fee</strong></p>
-                            <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                <input type="radio" name="plan" className="mt-1" />
-                                <div><strong className="block text-sm">Annual</strong><span className="text-xs text-gray-500">1 payment of ₹50,000</span></div>
-                            </label>
-                             <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                <input type="radio" name="plan" className="mt-1" />
-                                <div><strong className="block text-sm">Term-wise</strong><span className="text-xs text-gray-500">3 payments of ₹16,666</span></div>
-                            </label>
-                            <label className="flex items-start gap-3 p-3 border border-blue-500 bg-blue-50 rounded-lg cursor-pointer">
-                                <input type="radio" name="plan" checked readOnly className="mt-1 text-blue-600" />
-                                <div className="flex-1"><strong className="block text-sm text-blue-800">Quarterly ⭐ Recommended</strong><span className="text-xs text-blue-600 block">4 payments of ₹12,500</span></div>
-                            </label>
-                             <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                <input type="radio" name="plan" className="mt-1" />
-                                <div><strong className="block text-sm">Monthly</strong><span className="text-xs text-gray-500">12 payments of ₹4,166</span></div>
-                            </label>
-                        </div>
-                        <div className="px-5 py-4 border-t bg-gray-50 flex justify-end gap-2">
-                             <button onClick={() => setChangePlanOpen(false)} className="px-4 py-2 bg-white border rounded text-sm font-medium hover:bg-gray-50">Cancel</button>
-                             <button onClick={() => setChangePlanOpen(false)} className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700">Apply Plan</button>
-                        </div>
                     </div>
                 </div>
             )}
-
-            {/* Add Fee Modal (Mock) */}
-            {isAddFeeOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
-                        <div className="flex items-center justify-between border-b px-5 py-4 bg-gray-50">
-                            <h3 className="font-bold text-gray-800">Add Optional Fee</h3>
-                            <button onClick={() => setAddFeeOpen(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
-                        </div>
-                        <div className="p-5 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Select Fee Type</label>
-                                <select className="w-full border rounded px-3 py-2 text-sm outline-none focus:border-blue-600">
-                                    <option>Hostel Fee (₹ 60,000)</option>
-                                    <option>Mess Fee (₹ 24,000)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Payment Plan</label>
-                                <select className="w-full border rounded px-3 py-2 text-sm outline-none focus:border-blue-600">
-                                    <option>Monthly (12 payments of ₹5,000) ⭐</option>
-                                    <option>Quarterly (4 payments of ₹15,000)</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div className="px-5 py-4 border-t bg-gray-50 flex justify-end gap-2">
-                             <button onClick={() => setAddFeeOpen(false)} className="px-4 py-2 bg-white border rounded text-sm font-medium hover:bg-gray-50">Cancel</button>
-                             <button onClick={() => setAddFeeOpen(false)} className="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700">Add Fee</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
         </div>
     );
 }

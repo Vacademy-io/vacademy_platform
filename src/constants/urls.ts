@@ -588,3 +588,23 @@ export const WHITE_LABEL_STATUS = (instituteId: string) =>
 export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/application/stage`;
 
 export const GET_APPLICATION_STAGES = `${BASE_URL}/admin-core-service/v1/application/stages`;
+
+// Admission Dashboard
+export const GET_PIPELINE_METRICS = `${BASE_URL}/admin-core-service/v1/admission/dashboard/pipeline-metrics`;
+export const GET_PIPELINE_USERS = `${BASE_URL}/admin-core-service/v1/admission/dashboard/pipeline-users`;
+// Fee Management - CPO Options
+export const GET_CPO_OPTIONS = (packageSessionId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/package-session/${packageSessionId}/cpo-options`;
+
+// School enrollment
+export const SCHOOL_ENROLL = `${BASE_URL}/admin-core-service/v1/school/enroll`;
+
+// Default payment option (open)
+export const GET_DEFAULT_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/open/v1/payment-option/default-payment-option`;
+
+// Fee Management - CPO CRUD
+export const CREATE_CPO = `${BASE_URL}/admin-core-service/v1/fee-management/cpo`;
+export const GET_CPO_LIST = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${instituteId}`;
+export const GET_CPO_FULL_DETAILS = (cpoId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${cpoId}/full`;

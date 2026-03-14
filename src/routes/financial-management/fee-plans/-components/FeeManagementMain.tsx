@@ -3,7 +3,7 @@ import InstallmentPlansTab from './InstallmentPlansTab';
 
 export default function FeeManagementMain() {
     return (
-        <div className="flex flex-col h-full bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+        <div className="flex h-full flex-col rounded-lg border border-gray-100 bg-white p-6 shadow-sm">
             <InstallmentPlansTab />
         </div>
     );

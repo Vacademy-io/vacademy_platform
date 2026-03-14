@@ -67,7 +67,9 @@ import { Route as ManageInstituteBatchesIndexRouteImport } from "./routes/manage
 import { Route as LoginForgotPasswordIndexRouteImport } from "./routes/login/forgot-password/index"
 import { Route as LoginKeyIndexRouteImport } from "./routes/login/$key/index"
 import { Route as HomeworkCreationAssessmentListIndexRouteImport } from "./routes/homework-creation/assessment-list/index"
+import { Route as FinancialManagementManageFinancesIndexRouteImport } from "./routes/financial-management/manage-finances/index"
 import { Route as FinancialManagementFeePlansIndexRouteImport } from "./routes/financial-management/fee-plans/index"
+import { Route as FinancialManagementCollectionDashboardIndexRouteImport } from "./routes/financial-management/collection-dashboard/index"
 import { Route as EvaluatorAiStudentsIndexRouteImport } from "./routes/evaluator-ai/students/index"
 import { Route as EvaluatorAiEvaluationIndexRouteImport } from "./routes/evaluator-ai/evaluation/index"
 import { Route as EvaluatorAiAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/index"
@@ -88,6 +90,7 @@ import { Route as AiCenterMyResourcesIndexRouteImport } from "./routes/ai-center
 import { Route as AiCenterAiToolsIndexRouteImport } from "./routes/ai-center/ai-tools/index"
 import { Route as AdmissionsNewEnquiryIndexRouteImport } from "./routes/admissions/new-enquiry/index"
 import { Route as AdmissionsEnquiriesIndexRouteImport } from "./routes/admissions/enquiries/index"
+import { Route as AdmissionsDashboardIndexRouteImport } from "./routes/admissions/dashboard/index"
 import { Route as AdmissionsApplicationIndexRouteImport } from "./routes/admissions/application/index"
 import { Route as AdmissionsAdmissionFormIndexRouteImport } from "./routes/admissions/admission-form/index"
 import { Route as AdminPackageManagementBulkCreateIndexRouteImport } from "./routes/admin-package-management/bulk-create/index"
@@ -582,6 +585,16 @@ const HomeworkCreationAssessmentListIndexRoute =
       (d) => d.Route,
     ),
   )
+const FinancialManagementManageFinancesIndexRoute =
+  FinancialManagementManageFinancesIndexRouteImport.update({
+    id: "/financial-management/manage-finances/",
+    path: "/financial-management/manage-finances/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/financial-management/manage-finances/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const FinancialManagementFeePlansIndexRoute =
   FinancialManagementFeePlansIndexRouteImport.update({
     id: "/financial-management/fee-plans/",
@@ -589,6 +602,16 @@ const FinancialManagementFeePlansIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/financial-management/fee-plans/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const FinancialManagementCollectionDashboardIndexRoute =
+  FinancialManagementCollectionDashboardIndexRouteImport.update({
+    id: "/financial-management/collection-dashboard/",
+    path: "/financial-management/collection-dashboard/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/financial-management/collection-dashboard/index.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -755,6 +778,14 @@ const AdmissionsEnquiriesIndexRoute =
     path: "/admissions/enquiries/",
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdmissionsDashboardIndexRoute =
+  AdmissionsDashboardIndexRouteImport.update({
+    id: "/admissions/dashboard/",
+    path: "/admissions/dashboard/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/admissions/dashboard/index.lazy").then((d) => d.Route),
+  )
 const AdmissionsApplicationIndexRoute =
   AdmissionsApplicationIndexRouteImport.update({
     id: "/admissions/application/",
@@ -1214,6 +1245,7 @@ export interface FileRoutesByFullPath {
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/application/": typeof AdmissionsApplicationIndexRoute
+  "/admissions/dashboard/": typeof AdmissionsDashboardIndexRoute
   "/admissions/enquiries/": typeof AdmissionsEnquiriesIndexRoute
   "/admissions/new-enquiry/": typeof AdmissionsNewEnquiryIndexRoute
   "/ai-center/ai-tools/": typeof AiCenterAiToolsIndexRoute
@@ -1234,7 +1266,9 @@ export interface FileRoutesByFullPath {
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
   "/evaluator-ai/evaluation/": typeof EvaluatorAiEvaluationIndexRoute
   "/evaluator-ai/students/": typeof EvaluatorAiStudentsIndexRoute
+  "/financial-management/collection-dashboard/": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
+  "/financial-management/manage-finances/": typeof FinancialManagementManageFinancesIndexRoute
   "/homework-creation/assessment-list/": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key/": typeof LoginKeyIndexRoute
   "/login/forgot-password/": typeof LoginForgotPasswordIndexRoute
@@ -1346,6 +1380,7 @@ export interface FileRoutesByTo {
   "/admin-package-management/bulk-create": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admissions/admission-form": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/application": typeof AdmissionsApplicationIndexRoute
+  "/admissions/dashboard": typeof AdmissionsDashboardIndexRoute
   "/admissions/enquiries": typeof AdmissionsEnquiriesIndexRoute
   "/admissions/new-enquiry": typeof AdmissionsNewEnquiryIndexRoute
   "/ai-center/ai-tools": typeof AiCenterAiToolsIndexRoute
@@ -1366,7 +1401,9 @@ export interface FileRoutesByTo {
   "/evaluator-ai/assessment": typeof EvaluatorAiAssessmentIndexRoute
   "/evaluator-ai/evaluation": typeof EvaluatorAiEvaluationIndexRoute
   "/evaluator-ai/students": typeof EvaluatorAiStudentsIndexRoute
+  "/financial-management/collection-dashboard": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans": typeof FinancialManagementFeePlansIndexRoute
+  "/financial-management/manage-finances": typeof FinancialManagementManageFinancesIndexRoute
   "/homework-creation/assessment-list": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key": typeof LoginKeyIndexRoute
   "/login/forgot-password": typeof LoginForgotPasswordIndexRoute
@@ -1480,6 +1517,7 @@ export interface FileRoutesById {
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/application/": typeof AdmissionsApplicationIndexRoute
+  "/admissions/dashboard/": typeof AdmissionsDashboardIndexRoute
   "/admissions/enquiries/": typeof AdmissionsEnquiriesIndexRoute
   "/admissions/new-enquiry/": typeof AdmissionsNewEnquiryIndexRoute
   "/ai-center/ai-tools/": typeof AiCenterAiToolsIndexRoute
@@ -1500,7 +1538,9 @@ export interface FileRoutesById {
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
   "/evaluator-ai/evaluation/": typeof EvaluatorAiEvaluationIndexRoute
   "/evaluator-ai/students/": typeof EvaluatorAiStudentsIndexRoute
+  "/financial-management/collection-dashboard/": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
+  "/financial-management/manage-finances/": typeof FinancialManagementManageFinancesIndexRoute
   "/homework-creation/assessment-list/": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key/": typeof LoginKeyIndexRoute
   "/login/forgot-password/": typeof LoginForgotPasswordIndexRoute
@@ -1615,6 +1655,7 @@ export interface FileRouteTypes {
     | "/admin-package-management/bulk-create/"
     | "/admissions/admission-form/"
     | "/admissions/application/"
+    | "/admissions/dashboard/"
     | "/admissions/enquiries/"
     | "/admissions/new-enquiry/"
     | "/ai-center/ai-tools/"
@@ -1635,7 +1676,9 @@ export interface FileRouteTypes {
     | "/evaluator-ai/assessment/"
     | "/evaluator-ai/evaluation/"
     | "/evaluator-ai/students/"
+    | "/financial-management/collection-dashboard/"
     | "/financial-management/fee-plans/"
+    | "/financial-management/manage-finances/"
     | "/homework-creation/assessment-list/"
     | "/login/$key/"
     | "/login/forgot-password/"
@@ -1747,6 +1790,7 @@ export interface FileRouteTypes {
     | "/admin-package-management/bulk-create"
     | "/admissions/admission-form"
     | "/admissions/application"
+    | "/admissions/dashboard"
     | "/admissions/enquiries"
     | "/admissions/new-enquiry"
     | "/ai-center/ai-tools"
@@ -1767,7 +1811,9 @@ export interface FileRouteTypes {
     | "/evaluator-ai/assessment"
     | "/evaluator-ai/evaluation"
     | "/evaluator-ai/students"
+    | "/financial-management/collection-dashboard"
     | "/financial-management/fee-plans"
+    | "/financial-management/manage-finances"
     | "/homework-creation/assessment-list"
     | "/login/$key"
     | "/login/forgot-password"
@@ -1880,6 +1926,7 @@ export interface FileRouteTypes {
     | "/admin-package-management/bulk-create/"
     | "/admissions/admission-form/"
     | "/admissions/application/"
+    | "/admissions/dashboard/"
     | "/admissions/enquiries/"
     | "/admissions/new-enquiry/"
     | "/ai-center/ai-tools/"
@@ -1900,7 +1947,9 @@ export interface FileRouteTypes {
     | "/evaluator-ai/assessment/"
     | "/evaluator-ai/evaluation/"
     | "/evaluator-ai/students/"
+    | "/financial-management/collection-dashboard/"
     | "/financial-management/fee-plans/"
+    | "/financial-management/manage-finances/"
     | "/homework-creation/assessment-list/"
     | "/login/$key/"
     | "/login/forgot-password/"
@@ -2013,6 +2062,7 @@ export interface RootRouteChildren {
   AdminPackageManagementBulkCreateIndexRoute: typeof AdminPackageManagementBulkCreateIndexRoute
   AdmissionsAdmissionFormIndexRoute: typeof AdmissionsAdmissionFormIndexRoute
   AdmissionsApplicationIndexRoute: typeof AdmissionsApplicationIndexRoute
+  AdmissionsDashboardIndexRoute: typeof AdmissionsDashboardIndexRoute
   AdmissionsEnquiriesIndexRoute: typeof AdmissionsEnquiriesIndexRoute
   AdmissionsNewEnquiryIndexRoute: typeof AdmissionsNewEnquiryIndexRoute
   AiCenterAiToolsIndexRoute: typeof AiCenterAiToolsIndexRoute
@@ -2033,7 +2083,9 @@ export interface RootRouteChildren {
   EvaluatorAiAssessmentIndexRoute: typeof EvaluatorAiAssessmentIndexRoute
   EvaluatorAiEvaluationIndexRoute: typeof EvaluatorAiEvaluationIndexRoute
   EvaluatorAiStudentsIndexRoute: typeof EvaluatorAiStudentsIndexRoute
+  FinancialManagementCollectionDashboardIndexRoute: typeof FinancialManagementCollectionDashboardIndexRoute
   FinancialManagementFeePlansIndexRoute: typeof FinancialManagementFeePlansIndexRoute
+  FinancialManagementManageFinancesIndexRoute: typeof FinancialManagementManageFinancesIndexRoute
   HomeworkCreationAssessmentListIndexRoute: typeof HomeworkCreationAssessmentListIndexRoute
   LoginKeyIndexRoute: typeof LoginKeyIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
@@ -2532,11 +2584,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof HomeworkCreationAssessmentListIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/financial-management/manage-finances/": {
+      id: "/financial-management/manage-finances/"
+      path: "/financial-management/manage-finances"
+      fullPath: "/financial-management/manage-finances/"
+      preLoaderRoute: typeof FinancialManagementManageFinancesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/financial-management/fee-plans/": {
       id: "/financial-management/fee-plans/"
       path: "/financial-management/fee-plans"
       fullPath: "/financial-management/fee-plans/"
       preLoaderRoute: typeof FinancialManagementFeePlansIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/financial-management/collection-dashboard/": {
+      id: "/financial-management/collection-dashboard/"
+      path: "/financial-management/collection-dashboard"
+      fullPath: "/financial-management/collection-dashboard/"
+      preLoaderRoute: typeof FinancialManagementCollectionDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/evaluator-ai/students/": {
@@ -2677,6 +2743,13 @@ declare module "@tanstack/react-router" {
       path: "/admissions/enquiries"
       fullPath: "/admissions/enquiries/"
       preLoaderRoute: typeof AdmissionsEnquiriesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admissions/dashboard/": {
+      id: "/admissions/dashboard/"
+      path: "/admissions/dashboard"
+      fullPath: "/admissions/dashboard/"
+      preLoaderRoute: typeof AdmissionsDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/admissions/application/": {
@@ -3080,6 +3153,7 @@ const rootRouteChildren: RootRouteChildren = {
     AdminPackageManagementBulkCreateIndexRoute,
   AdmissionsAdmissionFormIndexRoute: AdmissionsAdmissionFormIndexRoute,
   AdmissionsApplicationIndexRoute: AdmissionsApplicationIndexRoute,
+  AdmissionsDashboardIndexRoute: AdmissionsDashboardIndexRoute,
   AdmissionsEnquiriesIndexRoute: AdmissionsEnquiriesIndexRoute,
   AdmissionsNewEnquiryIndexRoute: AdmissionsNewEnquiryIndexRoute,
   AiCenterAiToolsIndexRoute: AiCenterAiToolsIndexRoute,
@@ -3102,7 +3176,11 @@ const rootRouteChildren: RootRouteChildren = {
   EvaluatorAiAssessmentIndexRoute: EvaluatorAiAssessmentIndexRoute,
   EvaluatorAiEvaluationIndexRoute: EvaluatorAiEvaluationIndexRoute,
   EvaluatorAiStudentsIndexRoute: EvaluatorAiStudentsIndexRoute,
+  FinancialManagementCollectionDashboardIndexRoute:
+    FinancialManagementCollectionDashboardIndexRoute,
   FinancialManagementFeePlansIndexRoute: FinancialManagementFeePlansIndexRoute,
+  FinancialManagementManageFinancesIndexRoute:
+    FinancialManagementManageFinancesIndexRoute,
   HomeworkCreationAssessmentListIndexRoute:
     HomeworkCreationAssessmentListIndexRoute,
   LoginKeyIndexRoute: LoginKeyIndexRoute,

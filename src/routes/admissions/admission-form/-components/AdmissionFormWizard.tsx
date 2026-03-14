@@ -10,6 +10,30 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { toast } from 'sonner';
+import { MyButton } from '@/components/design-system/button';
+
+interface AdmissionSubmitResult {
+    applicant_id?: string;
+    tracking_id?: string;
+    parent_user_id?: string;
+    child_user_id?: string;
+    parent?: {
+        id?: string;
+        full_name?: string;
+        email?: string;
+        phone?: string;
+    };
+    child?: {
+        id?: string;
+        full_name?: string;
+        email?: string;
+        phone?: string;
+    };
+    workflow_type?: string;
+    overall_status?: string;
+    current_stage_id?: string;
+    message?: string;
+}
 
 export interface AdmissionFormData {
     // Source / context
@@ -99,6 +123,8 @@ export default function AdmissionFormWizard() {
     const [wizardStarted, setWizardStarted] = useState(false);
     const [currentStep, setCurrentStep] = useState(1);
     const [admissionId, setAdmissionId] = useState('');
+    const [admissionSubmitResult, setAdmissionSubmitResult] =
+        useState<AdmissionSubmitResult | null>(null);
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id || '';
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -115,24 +141,69 @@ export default function AdmissionFormWizard() {
     }, [instituteDetails, selectedSessionId]);
 
     const [formData, setFormData] = useState<AdmissionFormData>({
-        sessionId: '', destinationPackageSessionId: '', source: '', sourceId: '', enquiryId: null, applicationId: null,
+        sessionId: '',
+        destinationPackageSessionId: '',
+        source: '',
+        sourceId: '',
+        enquiryId: null,
+        applicationId: null,
 
-        studentFirstName: '', studentMiddleName: '', studentLastName: '',
-        gender: '', applicationNumber: '', studentClass: '', section: '',
-        classGroup: '', dateOfAdmission: '', dateOfBirth: '',
-        residentialPhone: '', studentType: '', admissionType: '',
-        transport: 'No', aadhaarType: '', aadhaarNumber: '',
+        studentFirstName: '',
+        studentMiddleName: '',
+        studentLastName: '',
+        gender: '',
+        applicationNumber: '',
+        studentClass: '',
+        section: '',
+        classGroup: '',
+        dateOfAdmission: '',
+        dateOfBirth: '',
+        residentialPhone: '',
+        studentType: '',
+        admissionType: '',
+        transport: 'No',
+        aadhaarType: '',
+        aadhaarNumber: '',
 
-        schoolName: '', previousClass: '', board: '', yearOfPassing: '',
-        percentage: '', percentageScience: '', percentageMaths: '', previousAdmissionNo: '',
-        religion: '', caste: '', motherTongue: '', bloodGroup: '', nationality: '', howDidYouKnow: '',
+        schoolName: '',
+        previousClass: '',
+        board: '',
+        yearOfPassing: '',
+        percentage: '',
+        percentageScience: '',
+        percentageMaths: '',
+        previousAdmissionNo: '',
+        religion: '',
+        caste: '',
+        motherTongue: '',
+        bloodGroup: '',
+        nationality: '',
+        howDidYouKnow: '',
 
-        fatherName: '', fatherMobile: '', fatherEmail: '', fatherAadhaar: '', fatherQualification: '', fatherOccupation: '',
-        motherName: '', motherMobile: '', motherEmail: '', motherAadhaar: '', motherQualification: '', motherOccupation: '',
-        guardianName: '', guardianMobile: '',
+        fatherName: '',
+        fatherMobile: '',
+        fatherEmail: '',
+        fatherAadhaar: '',
+        fatherQualification: '',
+        fatherOccupation: '',
+        motherName: '',
+        motherMobile: '',
+        motherEmail: '',
+        motherAadhaar: '',
+        motherQualification: '',
+        motherOccupation: '',
+        guardianName: '',
+        guardianMobile: '',
 
-        currentAddress: '', currentLocality: '', currentPinCode: '', sameAsPermanent: false, permanentAddress: '', permanentLocality: '',
-        documentsUploaded: false, sendSms: true, sendEmail: true
+        currentAddress: '',
+        currentLocality: '',
+        currentPinCode: '',
+        sameAsPermanent: false,
+        permanentAddress: '',
+        permanentLocality: '',
+        documentsUploaded: false,
+        sendSms: true,
+        sendEmail: true,
     });
 
     useEffect(() => {
@@ -140,34 +211,39 @@ export default function AdmissionFormWizard() {
         setAdmissionId(newId);
     }, []);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const handleChange = (
+        e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+    ) => {
         const { name, value, type } = e.target;
         if (type === 'checkbox') {
             const checked = (e.target as HTMLInputElement).checked;
-            setFormData(prev => ({ ...prev, [name]: checked }));
+            setFormData((prev) => ({ ...prev, [name]: checked }));
             if (name === 'sameAsPermanent') {
                 if (checked) {
-                    setFormData(prev => ({
+                    setFormData((prev) => ({
                         ...prev,
                         permanentAddress: prev.currentAddress,
-                        permanentLocality: prev.currentLocality
+                        permanentLocality: prev.currentLocality,
                     }));
                 }
             }
         } else {
-            setFormData(prev => ({ ...prev, [name]: value }));
+            setFormData((prev) => ({ ...prev, [name]: value }));
         }
     };
 
     const handleFormDataUpdate = (updates: Partial<AdmissionFormData>) => {
-        setFormData(prev => ({ ...prev, ...updates }));
+        setFormData((prev) => ({ ...prev, ...updates }));
     };
 
-    const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, STEPS.length));
-    const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
+    const nextStep = () => setCurrentStep((prev) => Math.min(prev + 1, STEPS.length));
+    const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
     const goToStep = (stepId: number) => setCurrentStep(stepId);
 
-    const handleStartAdmission = (data: Partial<StudentSearchResult> | null, sessionId?: string) => {
+    const handleStartAdmission = (
+        data: Partial<StudentSearchResult> | null,
+        sessionId?: string
+    ) => {
         if (sessionId) {
             setSelectedSessionId(sessionId);
         }
@@ -181,7 +257,7 @@ export default function AdmissionFormWizard() {
             const parentEmail = data.email || '';
             const isMother = data.parentGender === 'mother';
 
-            setFormData(prev => ({
+            setFormData((prev) => ({
                 ...prev,
                 studentFirstName: firstName,
                 studentLastName: lastName,
@@ -204,7 +280,7 @@ export default function AdmissionFormWizard() {
                 applicationId: data.applicationId ?? null,
             }));
         } else if (sessionId) {
-            setFormData(prev => ({ ...prev, sessionId }));
+            setFormData((prev) => ({ ...prev, sessionId }));
         }
         setWizardStarted(true);
     };
@@ -212,6 +288,12 @@ export default function AdmissionFormWizard() {
     const handleSubmitAdmission = async () => {
         if (!instituteId) {
             toast.error('Institute details not available. Please try again.');
+            return;
+        }
+
+        if (!formData.destinationPackageSessionId) {
+            toast.error('Please select a package session before submitting admission.');
+            setCurrentStep(1);
             return;
         }
 
@@ -223,7 +305,7 @@ export default function AdmissionFormWizard() {
             let sessionId = formData.sessionId;
             if (!sessionId && formData.destinationPackageSessionId) {
                 const match = instituteDetails?.batches_for_sessions?.find(
-                    b => b.id === formData.destinationPackageSessionId
+                    (b) => b.id === formData.destinationPackageSessionId
                 );
                 if (match) sessionId = match.session.id;
             }
@@ -239,7 +321,8 @@ export default function AdmissionFormWizard() {
                 first_name: formData.studentFirstName || '',
                 last_name: formData.studentLastName || '',
                 gender: formData.gender ? formData.gender.toUpperCase() : '',
-                class_applying_for: formData.destinationPackageSessionId || formData.studentClass || '',
+                class_applying_for:
+                    formData.destinationPackageSessionId || formData.studentClass || '',
                 section: formData.section || '',
                 admission_no: formData.applicationNumber || '',
                 date_of_admission: formData.dateOfAdmission || '',
@@ -290,9 +373,10 @@ export default function AdmissionFormWizard() {
             );
 
             if (response.status >= 200 && response.status < 300) {
+                const data = response.data as AdmissionSubmitResult;
+                setAdmissionSubmitResult(data);
                 toast.success(`Admission submitted successfully! ID: ${admissionId}`);
-                setWizardStarted(false);
-                setCurrentStep(1);
+                setCurrentStep(6);
             } else {
                 toast.error('Failed to submit admission form. Please try again.');
                 toast.error('Failed to submit admission form. Please try again.');
@@ -311,12 +395,26 @@ export default function AdmissionFormWizard() {
     }
 
     return (
-        <div className="flex h-full flex-col bg-gray-50/50 p-6 rounded-lg font-sans">
+        <div className="flex h-full flex-col rounded-lg bg-gray-50/50 p-6 font-sans">
             <div className="mb-6 flex flex-col gap-2">
-                <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
-                    <button onClick={() => setWizardStarted(false)} className="p-1 rounded-md hover:bg-gray-200 transition-colors" title="Back to Search">
-                        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                <h1 className="flex items-center gap-3 text-2xl font-bold text-gray-800">
+                    <button
+                        onClick={() => setWizardStarted(false)}
+                        className="rounded-md p-1 transition-colors hover:bg-gray-200"
+                        title="Back to Search"
+                    >
+                        <svg
+                            className="h-5 w-5 text-gray-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                            ></path>
                         </svg>
                     </button>
                     Admission Form
@@ -324,7 +422,7 @@ export default function AdmissionFormWizard() {
             </div>
 
             {/* Stepper Tabs */}
-            <div className="mb-8 w-full overflow-x-auto border-b border-gray-200 hide-scrollbar rounded-t-lg bg-white shadow-sm">
+            <div className="hide-scrollbar mb-8 w-full overflow-x-auto rounded-t-lg border-b border-gray-200 bg-white shadow-sm">
                 <div className="flex w-max min-w-full">
                     {STEPS.map((step) => {
                         const isActive = currentStep === step.id;
@@ -333,15 +431,24 @@ export default function AdmissionFormWizard() {
                             <button
                                 key={step.id}
                                 onClick={() => goToStep(step.id)}
-                                className={`flex-1 border-b-2 px-6 py-4 text-center text-sm font-medium whitespace-nowrap transition-colors
-                                ${isActive ? 'border-primary text-primary bg-primary/5'
-                                : isCompleted ? 'border-primary/50 text-gray-700 hover:bg-gray-50'
-                                : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50'}`}
+                                className={`flex-1 whitespace-nowrap border-b-2 px-6 py-4 text-center text-sm font-medium transition-colors
+                                ${
+                                    isActive
+                                        ? 'border-primary text-primary bg-primary/5'
+                                        : isCompleted
+                                          ? 'border-primary/50 text-gray-700 hover:bg-gray-50'
+                                          : 'border-transparent text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                                }`}
                             >
-                                <span className={`mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs
-                                    ${isActive ? 'bg-primary text-white'
-                                    : isCompleted ? 'bg-primary/20 text-primary'
-                                    : 'bg-gray-100 text-gray-500'}`}
+                                <span
+                                    className={`mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full text-xs
+                                    ${
+                                        isActive
+                                            ? 'bg-primary text-white'
+                                            : isCompleted
+                                              ? 'bg-primary/20 text-primary'
+                                              : 'bg-gray-100 text-gray-500'
+                                    }`}
                                 >
                                     {isCompleted ? '✓' : step.id}
                                 </span>
@@ -353,7 +460,7 @@ export default function AdmissionFormWizard() {
             </div>
 
             {/* Step Content */}
-            <div className="flex-1 overflow-y-auto rounded-lg bg-white p-6 shadow-sm border border-gray-100">
+            <div className="flex-1 overflow-y-auto rounded-lg border border-gray-100 bg-white p-6 shadow-sm">
                 {currentStep === 1 && (
                     <Step1StudentDetails
                         formData={formData}
@@ -362,40 +469,56 @@ export default function AdmissionFormWizard() {
                         onFormDataUpdate={handleFormDataUpdate}
                     />
                 )}
-                {currentStep === 2 && <Step2PreviousSchool formData={formData} handleChange={handleChange} />}
-                {currentStep === 3 && <Step3ParentDetails formData={formData} handleChange={handleChange} />}
-                {currentStep === 4 && <Step4AddressDetails formData={formData} handleChange={handleChange} />}
-                {currentStep === 5 && <Step6Finish formData={formData} handleChange={handleChange} admissionId={admissionId} />}
-                {currentStep === 6 && <Step5AFeeAssignment formData={formData} handleChange={handleChange} />}
+                {currentStep === 2 && (
+                    <Step2PreviousSchool formData={formData} handleChange={handleChange} />
+                )}
+                {currentStep === 3 && (
+                    <Step3ParentDetails formData={formData} handleChange={handleChange} />
+                )}
+                {currentStep === 4 && (
+                    <Step4AddressDetails formData={formData} handleChange={handleChange} />
+                )}
+                {currentStep === 5 && (
+                    <Step6Finish
+                        formData={formData}
+                        handleChange={handleChange}
+                        admissionId={admissionId}
+                    />
+                )}
+                {currentStep === 6 && (
+                    <Step5AFeeAssignment
+                        formData={formData}
+                        admissionResult={admissionSubmitResult}
+                        packageSessionId={formData.destinationPackageSessionId}
+                        instituteId={instituteId}
+                    />
+                )}
             </div>
 
             {/* Footer Navigation */}
-            <div className="mt-6 flex justify-between rounded-lg bg-white p-4 shadow-sm border border-gray-100">
-                <button
+            <div className="mt-6 flex justify-between rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+                <MyButton
                     onClick={prevStep}
                     disabled={currentStep === 1}
-                    className="px-6 py-2.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 disabled:opacity-50 hover:bg-gray-50 transition-colors"
+                    className="rounded-lg border border-gray-300 px-6 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
                 >
                     Previous
-                </button>
+                </MyButton>
 
                 {currentStep === 5 ? (
-                    <button
+                    <MyButton
                         onClick={handleSubmitAdmission}
                         disabled={isSubmitting}
-                        className={`px-6 py-2.5 rounded-lg text-white text-sm font-medium shadow-sm transition-colors ${
-                            isSubmitting ? 'bg-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+                        className={`rounded-lg px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-colors ${
+                            isSubmitting
+                                ? 'cursor-not-allowed bg-green-400'
+                                : 'bg-green-600 hover:bg-green-700'
                         }`}
                     >
                         {isSubmitting ? 'Submitting...' : 'Submit Admission'}
-                    </button>
+                    </MyButton>
                 ) : (
-                    <button
-                        onClick={nextStep}
-                        className="px-6 py-2.5 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-500 transition-colors shadow-sm"
-                    >
-                        Save & Next
-                    </button>
+                    <MyButton onClick={nextStep}>Save & Next</MyButton>
                 )}
             </div>
         </div>

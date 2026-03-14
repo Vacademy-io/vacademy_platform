@@ -231,13 +231,7 @@ export const AcademicInfoSection: React.FC<SectionProps> = ({ formData, updateFo
                         <Select
                             value={formData.selectedPackageSessionId || ''}
                             onValueChange={(value) => {
-                                const selected = packageSessions.find(
-                                    (ps) => ps.id === value
-                                );
-                                updateFormData({
-                                    applyingForClass: selected ? selected.levelName : '',
-                                    selectedPackageSessionId: value,
-                                });
+                                updateFormData({ applyingForClass: value });
                             }}
                         >
                             <SelectTrigger>

@@ -58,6 +58,7 @@ interface PaymentOption {
 interface AddStageForm {
     stage_name: string;
     type: 'FORM' | 'PAYMENT';
+    workflow_type: 'APPLICATION' | 'ADMISSION';
     sequence: string;
     is_first: boolean;
     is_last: boolean;
@@ -183,6 +184,9 @@ function StageCard({ stage, index }: { stage: ApplicationStage; index: number })
                             Last
                         </Badge>
                     )}
+                    <Badge variant="outline" className="border-gray-200 bg-gray-50 text-gray-700">
+                        {stage.workflow_type || 'APPLICATION'}
+                    </Badge>
                 </div>
                 {isPayment && paymentOptionId && (
                     <p className="mt-0.5 text-xs text-gray-500">
@@ -218,6 +222,7 @@ function AddStageDialog({
     const [form, setForm] = useState<AddStageForm>({
         stage_name: '',
         type: 'FORM',
+        workflow_type: 'APPLICATION',
         sequence: '1',
         is_first: false,
         is_last: false,
@@ -269,6 +274,7 @@ function AddStageDialog({
         setForm({
             stage_name: '',
             type: 'FORM',
+            workflow_type: 'APPLICATION',
             sequence: '1',
             is_first: false,
             is_last: false,
@@ -322,7 +328,7 @@ function AddStageDialog({
             source_id: instituteId,
             institute_id: instituteId,
             config_json,
-            workflow_type: 'APPLICATION',
+            workflow_type: form.workflow_type,
             is_first: form.is_first,
             is_last: form.is_last,
         };
@@ -415,22 +421,71 @@ function AddStageDialog({
                     </div>
                 </div>
 
-                {/* Is First / Is Last */}
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
-                        <span className="text-sm font-medium text-gray-700">First Stage</span>
-                        <Switch
-                            checked={form.is_first}
-                            onCheckedChange={(v) => update('is_first', v)}
+                {/* Type + Workflow + Sequence in a row */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="space-y-1.5">
+                        <Label htmlFor="stage_type">
+                            Stage Type <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                            value={form.type}
+                            onValueChange={(v) => update('type', v as 'FORM' | 'PAYMENT')}
+                        >
+                            <SelectTrigger id="stage_type">
+                                <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="FORM">
+                                    <span className="flex items-center gap-1.5">
+                                        <FileText className="size-3.5" /> Form
+                                    </span>
+                                </SelectItem>
+                                <SelectItem value="PAYMENT">
+                                    <span className="flex items-center gap-1.5">
+                                        <CreditCard className="size-3.5" /> Payment
+                                    </span>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <Label htmlFor="workflow_type">
+                            Workflow Type <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                            value={form.workflow_type}
+                            onValueChange={(v) =>
+                                update('workflow_type', v as 'APPLICATION' | 'ADMISSION')
+                            }
+                        >
+                            <SelectTrigger id="workflow_type">
+                                <SelectValue placeholder="Select workflow type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="APPLICATION">APPLICATION</SelectItem>
+                                <SelectItem value="ADMISSION">ADMISSION</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <Label htmlFor="sequence">
+                            Sequence <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                            id="sequence"
+                            type="number"
+                            min={1}
+                            placeholder="1"
+                            value={form.sequence}
+                            onChange={(e) => update('sequence', e.target.value)}
                         />
                     </div>
-                    <div className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
-                        <span className="text-sm font-medium text-gray-700">Last Stage</span>
-                        <Switch
-                            checked={form.is_last}
-                            onCheckedChange={(v) => update('is_last', v)}
-                        />
-                    </div>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                    <span className="text-sm font-medium text-gray-700">Last Stage</span>
+                    <Switch checked={form.is_last} onCheckedChange={(v) => update('is_last', v)} />
                 </div>
 
                 {/* Payment-specific fields */}

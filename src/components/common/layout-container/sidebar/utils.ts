@@ -164,6 +164,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
         category: 'CRM',
         subItems: [
             {
+                subItem: 'Dashboard',
+                subItemLink: '/admissions/dashboard',
+                subItemId: 'dashboard',
+            },
+            {
                 subItem: 'Admission Form',
                 subItemLink: '/admissions/admission-form',
                 subItemId: 'admission-form',
@@ -190,6 +195,16 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItem: 'Create Fee Plan',
                 subItemLink: '/financial-management/fee-plans',
                 subItemId: 'create-fee-plan',
+            },
+            {
+                subItem: 'Manage Finances',
+                subItemLink: '/financial-management/manage-finances',
+                subItemId: 'manage-finances',
+            },
+            {
+                subItem: 'Collection Dashboard',
+                subItemLink: '/financial-management/collection-dashboard',
+                subItemId: 'collection-dashboard',
             },
         ],
     },

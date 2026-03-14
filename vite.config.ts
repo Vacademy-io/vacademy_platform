@@ -79,6 +79,7 @@ export default defineConfig({
             external: (id) => {
                 // Handle problematic dependencies
                 if (id.includes('woff2-wasm')) return true;
+                if (id === '@excalidraw/excalidraw') return true;
                 // Don't externalize pyodide - it needs to be bundled
                 if (id.includes('pyodide')) return false;
                 return false;

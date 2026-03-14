@@ -1,10 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { UploadFileInS3 } from '@/services/upload_file';
 import { useCPOOptions } from '@/routes/financial-management/fee-plans/-services/cpo-service';
-import type {
-    CPOInstallment,
-    CPOPackage,
-} from '@/routes/financial-management/fee-plans/-types/cpo-types';
+import type { CPOInstallment } from '@/routes/financial-management/fee-plans/-types/cpo-types';
 import { toast } from 'sonner';
 import {
     fetchDefaultPaymentOptionId,
@@ -80,6 +78,32 @@ export default function Step5AFeeAssignment({
         paymentOptionId: string;
         studentName?: string;
     } | null>(null);
+    const [manualAmount, setManualAmount] = useState<string>('');
+    const [receiptFileId, setReceiptFileId] = useState<string>('');
+    const [transactionId, setTransactionId] = useState<string>(
+        `TRX-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`
+    );
+    const [isUploading, setIsUploading] = useState(false);
+    const [showPaymentForm, setShowPaymentForm] = useState(false);
+
+    const handleGenerateTransactionId = () => {
+        setTransactionId(`TRX-${Date.now()}-${Math.floor(Math.random() * 900 + 100)}`);
+    };
+
+    const handleReceiptUpload = async (file?: File) => {
+        if (!file) return;
+        try {
+            const fileId = await UploadFileInS3(file, setIsUploading, instituteId, 'INSTITUTE');
+            if (fileId) {
+                setReceiptFileId(fileId);
+                toast.success('Receipt uploaded');
+            }
+        } catch (error) {
+            console.error('Receipt upload failed', error);
+            toast.error('Failed to upload receipt');
+            setReceiptFileId('');
+        }
+    };
 
     useEffect(() => {
         if (cpoOptions && cpoOptions.length > 0 && !selectedCpoId) {
@@ -146,6 +170,8 @@ export default function Step5AFeeAssignment({
             return;
         }
 
+        const amountNumber = manualAmount ? Number(manualAmount) : 0;
+
         const payload: SchoolEnrollPayload = {
             user: {
                 id: childUserId,
@@ -163,10 +189,10 @@ export default function Step5AFeeAssignment({
             enroll_invite_id: enrollInviteId ?? null,
             school_payment: {
                 payment_mode: 'OFFLINE',
-                amount: 0,
+                amount: Number.isFinite(amountNumber) ? amountNumber : 0,
                 manual_payment: {
-                    file_id: '',
-                    transaction_id: '',
+                    file_id: receiptFileId,
+                    transaction_id: transactionId,
                 },
             },
             start_date: formData.dateOfAdmission || new Date().toISOString(),
@@ -221,14 +247,6 @@ export default function Step5AFeeAssignment({
                     <span>Plan: {enrollSuccess.cpoName}</span>
                     <span>Total assigned: {formatCurrency(enrollSuccess.totalAmount)}</span>
                     <span>Payment mode: Offline</span>
-                </div>
-                <div className="flex gap-3">
-                    <MyButton
-                        onClick={() => navigate({ to: '/admissions/admission-form' })}
-                        className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-100"
-                    >
-                        Go to admission form
-                    </MyButton>
                 </div>
             </div>
         );
@@ -444,19 +462,106 @@ export default function Step5AFeeAssignment({
                                         </div>
                                     </div>
 
+                                    <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="space-y-0.5">
+                                                <p className="text-sm font-semibold text-gray-900">
+                                                    Record payment (optional)
+                                                </p>
+                                                <p className="text-xs text-gray-600">
+                                                    Capture offline payment details before
+                                                    enrolling.
+                                                </p>
+                                            </div>
+                                            <MyButton
+                                                buttonType="secondary"
+                                                scale="small"
+                                                onClick={() => setShowPaymentForm((prev) => !prev)}
+                                            >
+                                                {showPaymentForm ? 'Hide' : 'Pay now'}
+                                            </MyButton>
+                                        </div>
+
+                                        {showPaymentForm && (
+                                            <div className="grid gap-3 sm:grid-cols-3">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-semibold text-gray-700">
+                                                        Amount received (optional)
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        step="0.01"
+                                                        value={manualAmount}
+                                                        onChange={(e) =>
+                                                            setManualAmount(e.target.value)
+                                                        }
+                                                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none"
+                                                        placeholder="0"
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-semibold text-gray-700">
+                                                        Transaction ID
+                                                    </label>
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={transactionId}
+                                                            onChange={(e) =>
+                                                                setTransactionId(e.target.value)
+                                                            }
+                                                            className="w-full rounded border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleGenerateTransactionId}
+                                                            className="rounded border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-100"
+                                                        >
+                                                            Generate
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-1.5">
+                                                    <label className="text-xs font-semibold text-gray-700">
+                                                        Receipt (optional)
+                                                    </label>
+                                                    <label className="flex cursor-pointer items-center justify-between rounded border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-700 shadow-sm transition hover:bg-gray-50">
+                                                        <span>
+                                                            {receiptFileId
+                                                                ? 'Receipt uploaded'
+                                                                : 'Upload receipt'}
+                                                        </span>
+                                                        <input
+                                                            type="file"
+                                                            accept="image/*,application/pdf"
+                                                            className="hidden"
+                                                            onChange={(e) =>
+                                                                handleReceiptUpload(
+                                                                    e.target.files?.[0]
+                                                                )
+                                                            }
+                                                            disabled={isUploading}
+                                                        />
+                                                    </label>
+
+                                                    {isUploading && (
+                                                        <p className="text-[11px] text-gray-500">
+                                                            Uploading...
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="flex flex-wrap items-center justify-between gap-3">
                                         <div className="text-sm text-gray-700">
                                             Total: {formatCurrency(totalAmount)}
                                         </div>
-                                        <MyButton
-                                            onClick={handleEnroll}
-                                            disabled={isEnrolling}
-                                            className={`rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition ${
-                                                isEnrolling
-                                                    ? 'cursor-not-allowed bg-blue-300/60 text-blue-100'
-                                                    : 'border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white'
-                                            }`}
-                                        >
+                                        <MyButton onClick={handleEnroll} disabled={isEnrolling}>
                                             {isEnrolling
                                                 ? 'Enrolling...'
                                                 : 'Enroll with this fee plan'}

@@ -164,6 +164,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
         category: 'CRM',
         subItems: [
             {
+                subItem: 'Dashboard',
+                subItemLink: '/admissions/dashboard',
+                subItemId: 'dashboard',
+            },
+            {
                 subItem: 'Admission Form',
                 subItemLink: '/admissions/admission-form',
                 subItemId: 'admission-form',

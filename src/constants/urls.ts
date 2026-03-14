@@ -589,6 +589,9 @@ export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/applicat
 
 export const GET_APPLICATION_STAGES = `${BASE_URL}/admin-core-service/v1/application/stages`;
 
+// Admission Dashboard
+export const GET_PIPELINE_METRICS = `${BASE_URL}/admin-core-service/v1/admission/dashboard/pipeline-metrics`;
+export const GET_PIPELINE_USERS = `${BASE_URL}/admin-core-service/v1/admission/dashboard/pipeline-users`;
 // Fee Management - CPO Options
 export const GET_CPO_OPTIONS = (packageSessionId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/package-session/${packageSessionId}/cpo-options`;

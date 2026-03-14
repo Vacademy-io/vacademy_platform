@@ -393,10 +393,10 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
 
     return (
         <div className={cn("space-y-4", className)} ref={containerRef}>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="flex flex-wrap items-end gap-4">
                 {/* 1. Package Autocomplete (First entry point) */}
-                <div className="relative space-y-2">
-                    <Label className="text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <div className="relative flex items-center gap-2">
+                    <Label className="text-xs font-medium text-gray-700 uppercase tracking-wider whitespace-nowrap">
                         1. Search Package
                     </Label>
                     <div className="relative group">
@@ -410,7 +410,7 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
                             onKeyDown={handleKeyDown}
                             onFocus={() => setShowResults(true)}
                             className={cn(
-                                "pl-10 pr-10 text-sm transition-all duration-200 focus-visible:ring-1 focus-visible:ring-ring",
+                                "pl-10 pr-10 text-sm transition-all duration-200 focus-visible:ring-1 focus-visible:ring-ring w-[220px]",
                                 (showResults && searchResults.length > 0) ? "rounded-b-none" : "rounded-md"
                             )}
                         />
@@ -435,7 +435,7 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
 
                     {/* Autocomplete Results Dropdown */}
                     {showResults && (isSearching || (Array.isArray(searchResults) && searchResults.length > 0)) && (
-                        <div className="absolute z-50 w-full rounded-b-md border border-t-0 border-gray-200 bg-white shadow-xl overflow-hidden max-h-[400px] overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
+                        <div className="absolute z-50 left-0 top-full w-full rounded-b-md border border-t-0 border-gray-200 bg-white shadow-xl overflow-hidden max-h-[400px] overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
                             {isSearching && searchResults.length === 0 ? (
                                 <div className="p-4 text-center text-sm text-gray-500 flex items-center justify-center gap-2">
                                     <div className="size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
@@ -485,7 +485,7 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
                     )}
 
                     {showResults && searchTerm && searchResults.length === 0 && !isSearching && (
-                        <div className="absolute z-50 w-full rounded-b-md border border-t-0 border-gray-200 bg-white p-6 shadow-xl text-center animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div className="absolute z-50 left-0 top-full w-full rounded-b-md border border-t-0 border-gray-200 bg-white p-6 shadow-xl text-center animate-in fade-in slide-in-from-top-1 duration-200">
                             <div className="mx-auto size-10 rounded-full bg-gray-50 flex items-center justify-center mb-3">
                                 <MagnifyingGlass className="size-5 text-gray-300" />
                             </div>
@@ -495,8 +495,8 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
                 </div>
 
                 {/* 2. Level Selector */}
-                <div className="space-y-2">
-                    <Label className="text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <div className="flex items-center gap-2">
+                    <Label className="text-xs font-medium text-gray-700 uppercase tracking-wider whitespace-nowrap">
                         2. Select Level
                     </Label>
                     <SelectChips
@@ -505,13 +505,13 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
                         onChange={handleLevelChange}
                         placeholder="Choose Level"
                         multiSelect={false}
-                        className="w-full"
+                        className="w-auto min-w-[160px]"
                     />
                 </div>
 
                 {/* 3. Session Selector */}
-                <div className="space-y-2">
-                    <Label className="text-xs font-medium text-gray-700 uppercase tracking-wider">
+                <div className="flex items-center gap-2">
+                    <Label className="text-xs font-medium text-gray-700 uppercase tracking-wider whitespace-nowrap">
                         3. Select Session
                     </Label>
                     <SelectChips
@@ -520,7 +520,7 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
                         onChange={handleSessionChange}
                         placeholder="Choose Session"
                         multiSelect={false}
-                        className="w-full"
+                        className="w-auto min-w-[160px]"
                     />
                 </div>
             </div>

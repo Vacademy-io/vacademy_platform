@@ -1,9 +1,16 @@
 package vacademy.io.admin_core_service.features.fee_management.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentRowDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardResponseDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardRequestDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.InstituteFeeTypePriorityDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.SetPriorityRequest;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
@@ -113,6 +120,38 @@ public class FeeTrackingAdminController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Admin fee roster search — powers the "Manage Finances" table in the frontend.
+     *
+     * POST
+     * /admin-core-service/v1/admin/student-fee/search?instituteId={instituteId}
+     *
+     * Accepts a rich filter payload and returns a paginated list of student fee
+     * payment records enriched with student name/email and fee type context.
+     */
+    @PostMapping("/search")
+    public ResponseEntity<Page<StudentFeePaymentRowDTO>> searchStudentFeePayments(
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody FeeSearchFilterDTO filter,
+            @RequestAttribute("user") CustomUserDetails user) {
+        Page<StudentFeePaymentRowDTO> results = feeTrackingService.searchFeePayments(instituteId, filter);
+        return ResponseEntity.ok(results);
+    }
+
+    @PostMapping("/dashboard/collection")
+    public ResponseEntity<CollectionDashboardResponseDTO> getCollectionDashboard(
+            @RequestBody CollectionDashboardRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(feeTrackingService.getCollectionDashboard(request));
+    }
+
+    @GetMapping("/payment-details")
+    public ResponseEntity<List<vacademy.io.admin_core_service.features.fee_management.dto.InstallmentDetailsDTO>> getPaymentDetails(
+            @RequestParam("studentId") String studentId,
+            @RequestParam("cpoId") String cpoId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(feeTrackingService.getPaymentDetails(studentId, cpoId));
+    }
     // ---- Fee-type priority configuration endpoints ----
 
     @PutMapping("/priority")

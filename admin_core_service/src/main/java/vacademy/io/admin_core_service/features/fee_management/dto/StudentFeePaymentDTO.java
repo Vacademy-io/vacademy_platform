@@ -32,6 +32,6 @@ public class StudentFeePaymentDTO {
 
     // Derived fields for "installments/dues/overdues" UI
     private BigDecimal amountDue; // amount_expected - discount_amount - amount_paid
-    private Boolean isOverdue;    // due_date < today AND amountDue > 0
-    private Long daysOverdue;     // null if not overdue or due_date null
+    private Boolean isOverdue; // due_date < today AND amountDue > 0
+    private Long daysOverdue; // null if not overdue or due_date null
 }

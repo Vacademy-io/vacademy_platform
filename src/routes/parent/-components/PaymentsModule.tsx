@@ -5,12 +5,13 @@ import { motion } from "framer-motion";
 import type { ChildProfile } from "@/types/parent-portal";
 import type {
   StudentFeeDue,
-  StudentFeeReceipt,
+  InvoiceReceipt,
   DuesFilterBody,
 } from "@/types/parent-portal";
 import {
   getStudentDues,
   getStudentReceipts,
+  getReceiptDownloadUrl,
 } from "@/services/parent-portal/parent-api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,14 +35,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { AlertTriangle, Receipt, Download } from "lucide-react";
+import { AlertTriangle, Receipt, Download, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 
 interface PaymentsModuleProps {
   child: ChildProfile;
 }
 
-const formatINR = (amount: number) =>
-  `₹${amount.toLocaleString("en-IN")}`;
+const formatINR = (amount: number | null | undefined) =>
+  `₹${(amount ?? 0).toLocaleString("en-IN")}`;
 
 const formatDueDate = (dateStr: string) => {
   try {
@@ -410,12 +411,6 @@ function DuesTable({
   const endIdx = Math.min(startIdx + PAGE_SIZE, totalItems);
   const pageItems = items.slice(startIdx, endIdx);
 
-  const handleDownloadInvoice = (installmentId: string) => {
-    toast.message("Invoice download", {
-      description: `Invoice download will be integrated later. (Installment: ${installmentId})`,
-    });
-  };
-
   if (isLoading) {
     return (
       <Card className="shadow-sm">
@@ -455,7 +450,6 @@ function DuesTable({
             <TableHead className="text-right">Paid</TableHead>
             <TableHead className="text-right font-semibold">Amt Due</TableHead>
             <TableHead className="text-center">Status</TableHead>
-            <TableHead className="text-right">Invoice</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -499,18 +493,6 @@ function DuesTable({
                   isOverdue={item.is_overdue}
                   daysOverdue={item.days_overdue}
                 />
-              </TableCell>
-              <TableCell className="text-right">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 gap-1"
-                  onClick={() => handleDownloadInvoice(item.id)}
-                  title="Download invoice"
-                >
-                  <Download size={14} />
-                  <span className="text-xs">Download</span>
-                </Button>
               </TableCell>
             </TableRow>
           ))}
@@ -596,15 +578,13 @@ function StatusBadge({
   );
 }
 
-// ── Receipts Table ──────────────────────────────────────────────
+// ── Receipts Table (Invoice-wise) ──────────────────────────────────────────────
 
-const allocationTypeColors: Record<string, string> = {
-  PAYMENT:
+const invoiceTypeColors: Record<string, string> = {
+  SCHOOL_FEE_RECEIPT:
     "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 hover:bg-emerald-100",
   REFUND:
     "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 hover:bg-red-100",
-  ADVANCE_ROLLOVER:
-    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-100",
 };
 
 function ReceiptsTable({
@@ -612,15 +592,18 @@ function ReceiptsTable({
   isLoading,
   emptyMessage,
 }: {
-  items: StudentFeeReceipt[];
+  items: InvoiceReceipt[];
   isLoading: boolean;
   emptyMessage: string;
 }) {
   const PAGE_SIZE = 10;
   const [page, setPage] = useState(1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     setPage(1);
+    setExpandedId(null);
   }, [items]);
 
   const totalItems = items.length;
@@ -629,6 +612,42 @@ function ReceiptsTable({
   const startIdx = (safePage - 1) * PAGE_SIZE;
   const endIdx = Math.min(startIdx + PAGE_SIZE, totalItems);
   const pageItems = items.slice(startIdx, endIdx);
+
+  const toggleExpand = (invoiceId: string) => {
+    setExpandedId((prev) => (prev === invoiceId ? null : invoiceId));
+  };
+
+  const handleDownloadReceipt = async (invoice: InvoiceReceipt) => {
+    if (!invoice.pdf_file_id) {
+      toast.error("Receipt PDF not available yet", {
+        description: `Receipt: ${invoice.invoice_number}`,
+      });
+      return;
+    }
+
+    setDownloadingId(invoice.invoice_id);
+    try {
+      const { download_url, file_name } = await getReceiptDownloadUrl(invoice.invoice_id);
+
+      const link = document.createElement("a");
+      link.href = download_url;
+      link.download = file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success("Download started", {
+        description: `Receipt: ${invoice.invoice_number}`,
+      });
+    } catch (error) {
+      console.error("Failed to download receipt:", error);
+      toast.error("Failed to download receipt", {
+        description: "Please try again later.",
+      });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -661,36 +680,156 @@ function ReceiptsTable({
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40">
+            <TableHead className="w-8"></TableHead>
             <TableHead>Date</TableHead>
             <TableHead className="text-right">Amount</TableHead>
             <TableHead className="text-center">Type</TableHead>
-            <TableHead>Remarks</TableHead>
+            <TableHead>Receipt No.</TableHead>
+            <TableHead className="text-right">Action</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {pageItems.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="whitespace-nowrap">
-                {formatReceiptDate(item.created_at)}
-              </TableCell>
-              <TableCell className="text-right font-medium">
-                {formatINR(item.amount_allocated)}
-              </TableCell>
-              <TableCell className="text-center">
-                <Badge
-                  className={`text-[10px] ${
-                    allocationTypeColors[item.allocation_type] ||
-                    "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300"
-                  }`}
+          {pageItems.map((invoice) => {
+            const isExpanded = expandedId === invoice.invoice_id;
+            return (
+              <>
+                <TableRow
+                  key={invoice.invoice_id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => toggleExpand(invoice.invoice_id)}
                 >
-                  {item.allocation_type}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground text-sm">
-                {item.remarks || "—"}
-              </TableCell>
-            </TableRow>
-          ))}
+                  <TableCell className="w-8 pr-0">
+                    {isExpanded ? (
+                      <ChevronUp size={16} className="text-muted-foreground" />
+                    ) : (
+                      <ChevronDown size={16} className="text-muted-foreground" />
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {formatReceiptDate(invoice.invoice_date)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {formatINR(invoice.amount_paid_now)}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge
+                      className={`text-[10px] ${
+                        invoiceTypeColors[invoice.type] ||
+                        "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300"
+                      }`}
+                    >
+                      PAYMENT
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {invoice.invoice_number}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-2 gap-1"
+                      disabled={!invoice.pdf_file_id || downloadingId === invoice.invoice_id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadReceipt(invoice);
+                      }}
+                      title={invoice.pdf_file_id ? "Download receipt" : "PDF not available"}
+                    >
+                      {downloadingId === invoice.invoice_id ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Download size={14} />
+                      )}
+                      <span className="text-xs">
+                        {!invoice.pdf_file_id
+                          ? "Generating..."
+                          : downloadingId === invoice.invoice_id
+                            ? "Downloading..."
+                            : "Download"}
+                      </span>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+                {isExpanded && (
+                  <TableRow key={`${invoice.invoice_id}-details`}>
+                    <TableCell colSpan={6} className="bg-muted/30 p-0">
+                      <div className="p-4 space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                              Amount Paid Now
+                            </p>
+                            <p className="font-semibold text-foreground">
+                              {formatINR(invoice.amount_paid_now)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                              Total Paid
+                            </p>
+                            <p className="font-semibold text-emerald-600 dark:text-emerald-400">
+                              {formatINR(invoice.total_paid)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                              Balance Due
+                            </p>
+                            <p className="font-semibold text-red-600 dark:text-red-400">
+                              {formatINR(invoice.balance_due)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                              Total Expected
+                            </p>
+                            <p className="font-semibold text-foreground">
+                              {formatINR(invoice.total_expected)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {invoice.line_items.length > 0 && (
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                              Installments Covered:
+                            </p>
+                            <div className="border rounded-md overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="bg-muted/50">
+                                    <TableHead className="text-xs">Description</TableHead>
+                                    <TableHead className="text-xs">Fee Type</TableHead>
+                                    <TableHead className="text-xs text-right">Amount</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {invoice.line_items.map((item) => (
+                                    <TableRow key={item.line_item_id}>
+                                      <TableCell className="text-sm">
+                                        {item.description}
+                                      </TableCell>
+                                      <TableCell className="text-sm text-muted-foreground">
+                                        {item.fee_type_name || "—"}
+                                      </TableCell>
+                                      <TableCell className="text-sm text-right font-medium">
+                                        {formatINR(item.amount)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </>
+            );
+          })}
         </TableBody>
       </Table>
 

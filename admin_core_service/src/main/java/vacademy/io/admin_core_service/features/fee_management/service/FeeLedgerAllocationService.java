@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.fee_management.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAllocationLedger;
@@ -16,6 +17,7 @@ import vacademy.io.admin_core_service.features.fee_management.enums.AllocationSc
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -32,6 +34,10 @@ public class FeeLedgerAllocationService {
 
     @Autowired
     private FeeAllocationEngine feeAllocationEngine;
+
+    @Autowired
+    @Lazy
+    private SchoolFeeReceiptService schoolFeeReceiptService;
 
     @Transactional
     public void allocatePayment(String paymentLogId, BigDecimal totalPaymentAmount, String userPlanId) {
@@ -281,6 +287,30 @@ public class FeeLedgerAllocationService {
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
             log.warn("Payment Log {} had excess amount {} after allocation for user {}",
                     paymentLog.getId(), remaining, userId);
+        }
+
+        // Generate receipt and send email using SchoolFeeReceiptService
+        BigDecimal allocatedAmount = amount.subtract(remaining);
+        if (allocatedAmount.compareTo(BigDecimal.ZERO) > 0) {
+            List<StudentFeeAllocationLedger> allocations =
+                    studentFeeAllocationLedgerRepository.findByPaymentLogId(paymentLog.getId());
+
+            if (!allocations.isEmpty()) {
+                List<String> paidInstallmentIds = allocations.stream()
+                        .map(StudentFeeAllocationLedger::getStudentFeePaymentId)
+                        .distinct()
+                        .collect(Collectors.toList());
+
+                schoolFeeReceiptService.generateAndSendReceipt(
+                        userId,
+                        paymentLog.getId(),
+                        instituteId,
+                        allocatedAmount,
+                        paymentLog.getId(),
+                        "OFFLINE",
+                        paidInstallmentIds
+                );
+            }
         }
     }
 }

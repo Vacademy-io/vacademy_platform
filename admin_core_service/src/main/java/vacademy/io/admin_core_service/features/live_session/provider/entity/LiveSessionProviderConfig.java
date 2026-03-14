@@ -32,8 +32,8 @@ public class LiveSessionProviderConfig {
     @Column(name = "id", nullable = false, unique = true)
     private String id;
 
-    /** Institute that owns this provider config */
-    @Column(name = "institute_id", nullable = false)
+    /** Institute that owns this provider config. NULL for platform-wide providers (e.g. BBB). */
+    @Column(name = "institute_id")
     private String instituteId;
 
     /**

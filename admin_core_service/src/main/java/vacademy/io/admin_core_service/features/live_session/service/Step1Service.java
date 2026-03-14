@@ -269,8 +269,8 @@ public class Step1Service {
                         schedule.setCustomMeetingLink(
                                 dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
                         schedule.setLinkType(dto.getLink() != null
-                                ? getLinkTypeFromUrl(dto.getLink())
-                                : getLinkTypeFromUrl(request.getDefaultMeetLink()));
+                                ? resolveScheduleLinkType(dto.getLink(), request.getLinkType())
+                                : resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
                         schedule.setCustomWaitingRoomMediaId(null);
 
                         if (dto.getDefaultClassLink() != null) {
@@ -313,8 +313,8 @@ public class Step1Service {
                             schedule.setCustomMeetingLink(
                                     dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
                             schedule.setLinkType(dto.getLink() != null
-                                    ? getLinkTypeFromUrl(dto.getLink())
-                                    : getLinkTypeFromUrl(request.getDefaultMeetLink()));
+                                    ? resolveScheduleLinkType(dto.getLink(), request.getLinkType())
+                                    : resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
                             schedule.setCustomWaitingRoomMediaId(null);
 
                             if (dto.getDefaultClassLink() != null) {
@@ -354,10 +354,13 @@ public class Step1Service {
 
         if (dto.getLink() != null) {
             schedule.setCustomMeetingLink(dto.getLink());
-            schedule.setLinkType(getLinkTypeFromUrl(dto.getLink()));
+            schedule.setLinkType(resolveScheduleLinkType(dto.getLink(), request.getLinkType()));
         } else if (request.getDefaultMeetLink() != null) {
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
-            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setLinkType(resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
+        } else if (request.getLinkType() != null && !request.getLinkType().isBlank()) {
+            // No link provided (e.g. BBB auto-creates later) — use explicit linkType
+            schedule.setLinkType(request.getLinkType());
         }
 
         if (dto.getThumbnailFileId() != null) {
@@ -553,7 +556,7 @@ public class Step1Service {
             schedule.setStartTime(Time.valueOf(startLocalTime));
             schedule.setLastEntryTime(Time.valueOf(lastEntryLocalTime));
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
-            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setLinkType(resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
             schedule.setCustomWaitingRoomMediaId(null);
             schedule.setThumbnailFileId(request.getThumbnailFileId());
             schedule.setDailyAttendance(false); // default for single schedule
@@ -600,10 +603,12 @@ public class Step1Service {
         // Update meeting link and link type
         if (dto.getLink() != null) {
             schedule.setCustomMeetingLink(dto.getLink());
-            schedule.setLinkType(getLinkTypeFromUrl(dto.getLink()));
+            schedule.setLinkType(resolveScheduleLinkType(dto.getLink(), request.getLinkType()));
         } else if (request.getDefaultMeetLink() != null) {
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
-            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setLinkType(resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
+        } else if (request.getLinkType() != null && !request.getLinkType().isBlank()) {
+            schedule.setLinkType(request.getLinkType());
         }
 
         // Update other fields
@@ -638,6 +643,19 @@ public class Step1Service {
         } else {
             return LinkType.RECORDED.name();
         }
+    }
+
+    /**
+     * Resolve schedule-level linkType: use URL-based detection first,
+     * but fall back to the explicit request linkType when URL is empty/unknown.
+     * This handles providers like BBB where the meeting link is auto-created later.
+     */
+    public static String resolveScheduleLinkType(String link, String requestLinkType) {
+        String fromUrl = getLinkTypeFromUrl(link);
+        if ("UNKNOWN".equals(fromUrl) && requestLinkType != null && !requestLinkType.isBlank()) {
+            return requestLinkType;
+        }
+        return fromUrl;
     }
 
     private LocalDate getNextOrSameDay(LocalDate startDate, String dayOfWeekStr) {

@@ -30,4 +30,12 @@ public interface LiveSessionProviderConfigRepository
      */
     @Query("SELECT c FROM LiveSessionProviderConfig c WHERE c.status = 'ACTIVE' AND c.provider = :provider")
     List<LiveSessionProviderConfig> findAllActiveByProvider(@Param("provider") String provider);
+
+    /**
+     * Find Vacademy-level config (instituteId IS NULL) by provider and status.
+     * Used for BBB which is a platform-wide provider, not per-institute.
+     */
+    @Query("SELECT c FROM LiveSessionProviderConfig c WHERE c.instituteId IS NULL AND c.provider = :provider AND c.status IN :statuses")
+    Optional<LiveSessionProviderConfig> findByProviderAndStatusIn(
+            @Param("provider") String provider, @Param("statuses") List<String> statuses);
 }

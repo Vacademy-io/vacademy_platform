@@ -53,6 +53,10 @@ public class LiveSessionProviderService {
 
     public boolean isProviderConnected(String instituteId, String providerName) {
         String normalizedProvider = MeetingProvider.fromString(providerName).name();
+        // For BBB, check Vacademy-level config (instituteId IS NULL)
+        if (MeetingProvider.BBB_MEETING.name().equals(normalizedProvider)) {
+            return configRepository.findByProviderAndStatusIn(normalizedProvider, ACTIVE).isPresent();
+        }
         return configRepository.existsByInstituteIdAndProviderAndStatusIn(instituteId, normalizedProvider, ACTIVE);
     }
 
@@ -95,6 +99,8 @@ public class LiveSessionProviderService {
                 .durationMinutes(request.getDurationMinutes())
                 .timezone(request.getTimezone())
                 .hostEmail(request.getHostEmail())
+                .sessionId(request.getSessionId())
+                .scheduleId(request.getScheduleId())
                 .build();
 
         CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
@@ -103,7 +109,11 @@ public class LiveSessionProviderService {
         if (request.getScheduleId() != null) {
             scheduleRepository.findById(request.getScheduleId()).ifPresent(schedule -> {
                 schedule.setCustomMeetingLink(response.getJoinUrl()); // learner join URL
-                schedule.setLinkType(providerName);
+                // Only set linkType if not already set — preserve the frontend-friendly
+                // value (e.g. "bbb") instead of overwriting with enum name ("BBB_MEETING")
+                if (schedule.getLinkType() == null || schedule.getLinkType().isBlank()) {
+                    schedule.setLinkType(providerName);
+                }
                 schedule.setProviderMeetingId(response.getProviderMeetingId());
                 schedule.setProviderHostUrl(response.getHostUrl());
                 scheduleRepository.save(schedule);
@@ -111,7 +121,9 @@ public class LiveSessionProviderService {
                 if (schedule.getSessionId() != null) {
                     sessionRepository.findById(schedule.getSessionId()).ifPresent(session -> {
                         session.setDefaultMeetLink(response.getJoinUrl());
-                        session.setLinkType(providerName);
+                        if (session.getLinkType() == null || session.getLinkType().isBlank()) {
+                            session.setLinkType(providerName);
+                        }
                         sessionRepository.save(session);
                     });
                 }
@@ -130,8 +142,8 @@ public class LiveSessionProviderService {
 
     public List<MeetingRecordingDTO> getRecordings(String scheduleId, String instituteId) {
         SessionSchedule schedule = getScheduleOrThrow(scheduleId);
-        List<MeetingRecordingDTO> recordings = providerFactory.getStrategy(schedule.getLinkType())
-                .getRecordings(schedule.getProviderMeetingId(), instituteId);
+        LiveSessionProviderStrategy strategy = getStrategyForSchedule(schedule);
+        List<MeetingRecordingDTO> recordings = strategy.getRecordings(schedule.getProviderMeetingId(), instituteId);
         try {
             schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
             schedule.setLastRecordingSyncAt(new java.util.Date());
@@ -144,8 +156,8 @@ public class LiveSessionProviderService {
 
     public List<MeetingAttendeeDTO> getAttendance(String scheduleId, String instituteId) {
         SessionSchedule schedule = getScheduleOrThrow(scheduleId);
-        return providerFactory.getStrategy(schedule.getLinkType())
-                .getAttendance(schedule.getProviderMeetingId(), instituteId);
+        LiveSessionProviderStrategy strategy = getStrategyForSchedule(schedule);
+        return strategy.getAttendance(schedule.getProviderMeetingId(), instituteId);
     }
 
     // -----------------------------------------------------------------------
@@ -163,6 +175,21 @@ public class LiveSessionProviderService {
                     "No live session provider connected for institute: " + request.getInstituteId());
         }
         return configs.get(0).getProvider();
+    }
+
+    /**
+     * Resolve the provider strategy from schedule's linkType.
+     * linkType may be a provider alias ("bbb", "zoho") or a non-provider value
+     * ("YOUTUBE", "ZOOM", "RECORDED") — the latter throws a clear error.
+     */
+    private LiveSessionProviderStrategy getStrategyForSchedule(SessionSchedule schedule) {
+        try {
+            return providerFactory.getStrategy(schedule.getLinkType());
+        } catch (IllegalArgumentException e) {
+            throw new VacademyException(
+                    "Schedule " + schedule.getId() + " has linkType '" + schedule.getLinkType()
+                            + "' which is not a managed provider. Recordings/attendance are only available for provider-managed sessions.");
+        }
     }
 
     private SessionSchedule getScheduleOrThrow(String scheduleId) {

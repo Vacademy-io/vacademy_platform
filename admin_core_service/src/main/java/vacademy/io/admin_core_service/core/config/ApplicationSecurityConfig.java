@@ -83,7 +83,9 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/applicant/v1/enquiry/**",
             "/admin-core-service/v1/applicant/**",
             "/admin-core-service/enrollment-policy/**",
-            "/admin-core-service/v1/admission/submit"
+            "/admin-core-service/v1/admission/submit",
+            // BBB server-to-server callback (no JWT — called by BigBlueButton when meeting ends)
+            "/admin-core-service/live-sessions/provider/meeting/bbb-callback"
 
     };
     @Autowired

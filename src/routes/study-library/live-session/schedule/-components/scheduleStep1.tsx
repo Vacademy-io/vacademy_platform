@@ -502,7 +502,7 @@ export default function ScheduleStep1() {
             bbbAutoStartRecording: schedule.bbb_config?.auto_start_recording ?? false,
             bbbMuteOnStart: schedule.bbb_config?.mute_on_start ?? true,
             bbbWebcamsOnlyForModerator: schedule.bbb_config?.webcams_only_for_moderator ?? false,
-            bbbGuestPolicy: schedule.bbb_config?.guest_policy ?? 'ALWAYS_ACCEPT',
+            bbbGuestPolicy: (schedule.bbb_config?.guest_policy as 'ALWAYS_ACCEPT' | 'ASK_MODERATOR' | 'ALWAYS_DENY') ?? 'ALWAYS_ACCEPT',
         });
 
         // Set existing file IDs for display

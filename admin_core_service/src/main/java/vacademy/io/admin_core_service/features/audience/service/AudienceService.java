@@ -2477,7 +2477,7 @@ public class AudienceService {
 
         // Get credentials (username and password)
         // Get credentials (username and password)
-        String username = parentUser != null ? parentUser.getEmail() : "";
+        String username = parentUser != null ? parentUser.getUsername() : "";
         String password = "";
 
         if (parentUser != null) {

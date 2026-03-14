@@ -7,8 +7,20 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.admission.entity.AdmissionPipeline;
 import vacademy.io.admin_core_service.features.admission.repository.AdmissionPipelineRepository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import vacademy.io.admin_core_service.features.admission.dto.PipelineUserListResponseDTO;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.common.auth.dto.ParentWithChildDTO;
+import vacademy.io.common.auth.dto.UserDTO;
+
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -16,6 +28,9 @@ public class AdmissionPipelineService {
 
     @Autowired
     private AdmissionPipelineRepository admissionPipelineRepository;
+
+    @Autowired
+    private AuthService authService;
 
     public void recordEnquiry(String instituteId, String packageSessionId, String parentUserId, String childUserId, String enquiryId, String sourceType) {
         if (!StringUtils.hasText(enquiryId)) {
@@ -154,5 +169,71 @@ public class AdmissionPipelineService {
         } catch (Exception e) {
             log.error("Pipeline Tracking Error: Failed to record admission for student {}", childUserId, e);
         }
+    }
+
+    public Page<PipelineUserListResponseDTO> getPipelineUsersByStage(String instituteId, String packageSessionId, String stage, Pageable pageable) {
+        Page<AdmissionPipeline> pipelinePage;
+        if (StringUtils.hasText(packageSessionId)) {
+            pipelinePage = admissionPipelineRepository.findByInstituteIdAndPackageSessionIdAndLeadStatus(instituteId, packageSessionId, stage, pageable);
+        } else {
+            pipelinePage = admissionPipelineRepository.findByInstituteIdAndLeadStatus(instituteId, stage, pageable);
+        }
+
+        // Collect distinct parent user IDs
+        Set<String> parentUserIds = pipelinePage.getContent().stream()
+                .map(AdmissionPipeline::getParentUserId)
+                .filter(id -> StringUtils.hasText(id) && !"UNASSIGNED".equals(id))
+                .collect(Collectors.toSet());
+
+        // Fetch parent-child data from Auth Service
+        Map<String, UserDTO> parentUserMap = new java.util.HashMap<>();
+        Map<String, UserDTO> childUserMap = new java.util.HashMap<>();
+
+        if (!parentUserIds.isEmpty()) {
+            try {
+                List<ParentWithChildDTO> parentWithChildList = authService.getUsersWithChildren(new java.util.ArrayList<>(parentUserIds));
+                for (ParentWithChildDTO pc : parentWithChildList) {
+                    if (pc.getParent() != null) {
+                        parentUserMap.put(pc.getParent().getId(), pc.getParent());
+                    }
+                    if (pc.getChild() != null) {
+                        childUserMap.put(pc.getChild().getId(), pc.getChild());
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Failed to fetch users/children from auth service for pipeline users", e);
+            }
+        }
+
+        return pipelinePage.map(pipeline -> {
+            PipelineUserListResponseDTO dto = PipelineUserListResponseDTO.builder()
+                    .pipelineId(pipeline.getId().toString())
+                    .parentUserId(pipeline.getParentUserId())
+                    .childUserId(pipeline.getChildUserId())
+                    .currentStage(pipeline.getLeadStatus())
+                    .sourceType(pipeline.getSourceType())
+                    .enquiryDate(pipeline.getEnquiryDate())
+                    .applicationDate(pipeline.getApplicationDate())
+                    .admissionDate(pipeline.getAdmissionDate())
+                    .enquiryId(pipeline.getEnquiryId())
+                    .applicantId(pipeline.getApplicantId())
+                    .build();
+
+            // Populate Parent Details
+            if (StringUtils.hasText(pipeline.getParentUserId()) && parentUserMap.containsKey(pipeline.getParentUserId())) {
+                UserDTO parent = parentUserMap.get(pipeline.getParentUserId());
+                dto.setParentName(parent.getFullName());
+                dto.setParentEmail(parent.getEmail());
+                dto.setParentPhone(parent.getMobileNumber());
+            }
+
+            // Populate Child Details
+            if (StringUtils.hasText(pipeline.getChildUserId()) && childUserMap.containsKey(pipeline.getChildUserId())) {
+                UserDTO child = childUserMap.get(pipeline.getChildUserId());
+                dto.setStudentName(child.getFullName());
+            }
+
+            return dto;
+        });
     }
 }

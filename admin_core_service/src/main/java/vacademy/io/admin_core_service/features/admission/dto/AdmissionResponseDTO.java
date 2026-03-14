@@ -17,8 +17,24 @@ import lombok.NoArgsConstructor;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class AdmissionResponseDTO {
 
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class UserSummaryDTO {
+        private String id;
+        private String fullName;
+        private String email;
+        private String phone;
+    }
+
     private String applicantId;
     private String trackingId;
+    private String parentUserId;
+    private String childUserId;
+    private UserSummaryDTO parent;
+    private UserSummaryDTO child;
     private String workflowType; // Always "ADMISSION"
     private String overallStatus;
     private String currentStageId;

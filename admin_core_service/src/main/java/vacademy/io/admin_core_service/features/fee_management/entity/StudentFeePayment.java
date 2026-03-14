@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.fee_management.entity;
 
 import jakarta.persistence.*;
+import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -35,10 +36,15 @@ public class StudentFeePayment {
     @Column(name = "cpo_id", nullable = false)
     private String cpoId;
 
+    // Read-only join used by admin fee roster Specification for institute filtering
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cpo_id", insertable = false, updatable = false)
+    private ComplexPaymentOption complexPaymentOption;
+
     @Column(name = "asv_id", nullable = false)
     private String asvId;
 
-    @Column(name = "i_id", nullable = false)
+    @Column(name = "i_id", nullable =  false)
     private String iId;
 
     @Column(name = "amount_expected", nullable = false)

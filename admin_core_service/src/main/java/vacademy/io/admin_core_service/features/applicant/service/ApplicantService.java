@@ -2111,7 +2111,7 @@ public class ApplicantService {
                         String instituteName = institute != null ? institute.getInstituteName() : "Institute";
 
                         // Get credentials (username and password)
-                        String username = parentUser != null ? parentUser.getEmail() : "";
+                        String username = parentUser != null ? parentUser.getUsername() : "";
                         String password = parentUser != null ? parentUser.getPassword() : ""; // Use getPassword, not
                                                                                               // getPasswordHash
 

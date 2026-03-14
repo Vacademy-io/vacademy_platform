@@ -37,6 +37,7 @@ public class DynamicNotificationService {
     private final InstituteService instituteService;
     private final WatiContactAttributeService watiContactAttributeService;
     private final CouponCodeService couponCodeService;
+    private final vacademy.io.admin_core_service.features.shortlink.service.ShortUrlManagementService shortUrlManagementService;
 
     /**
      * Send dynamic notifications based on event and package session
@@ -248,7 +249,8 @@ public class DynamicNotificationService {
                         .getCouponCodeBySource(user.getId(), "USER");
                 if (couponCode.isPresent() && couponCode.get().getShortUrl() != null
                         && !couponCode.get().getShortUrl().trim().isEmpty()) {
-                    couponShortUrl = couponCode.get().getShortUrl();
+                    couponShortUrl = shortUrlManagementService.getAbsoluteShortUrl(
+                            instituteId, couponCode.get().getShortUrl());
                 }
             } catch (Exception e) {
                 log.warn("Error getting short URL from coupon for user {}: {}", user.getId(), e.getMessage());
@@ -326,8 +328,9 @@ public class DynamicNotificationService {
                         .getCouponCodeBySource(user.getId(), "USER");
                 if (couponCode.isPresent() && couponCode.get().getShortUrl() != null
                         && !couponCode.get().getShortUrl().trim().isEmpty()) {
-                    couponShortUrl = couponCode.get().getShortUrl();
-                    log.debug("Using short_url from CouponCode table for user {}: {}", user.getId(), couponShortUrl);
+                    couponShortUrl = shortUrlManagementService.getAbsoluteShortUrl(
+                            institute.getId(), couponCode.get().getShortUrl());
+                    log.debug("Using absolute short_url from CouponCode table for user {}: {}", user.getId(), couponShortUrl);
                 }
             } catch (Exception e) {
                 log.warn("Error fetching short_url from CouponCode for user {}: {}", user.getId(), e.getMessage());

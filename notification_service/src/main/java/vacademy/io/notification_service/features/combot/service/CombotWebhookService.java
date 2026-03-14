@@ -258,6 +258,13 @@ public class CombotWebhookService {
                         .findTopByChannelIdAndSenderBusinessChannelIdAndNotificationTypeOrderByNotificationDateDesc(
                                 userPhone, receivingPhoneId, CombotNotificationType.WHATSAPP_OUTGOING.getType());
 
+                // Backward-compatible fallback: find old logs with type "WHATSAPP" (before fix)
+                // that belong to COMBOT provider (filtered at DB level via payload)
+                if (lastLogOpt.isEmpty()) {
+                    lastLogOpt = notificationLogRepository
+                            .findLatestLegacyCombotOutgoingLog(userPhone);
+                }
+
                 String lastTemplate = CombotConstants.DEFAULT_TEMPLATE;
                 if (lastLogOpt.isPresent()) {
                     lastTemplate = extractTemplateNameFromPayload(lastLogOpt.get().getMessagePayload());
@@ -812,8 +819,16 @@ public class CombotWebhookService {
         try {
             Map<String, Object> payload = objectMapper.readValue(payloadJson, new TypeReference<>() {
             });
-            Map<String, Object> template = (Map<String, Object>) payload.get(CombotWebhookKeys.TEMPLATE);
-            return (String) template.get(CombotWebhookKeys.NAME);
+            // Cloud API format: {"template": {"name": "..."}}
+            Object templateObj = payload.get(CombotWebhookKeys.TEMPLATE);
+            if (templateObj instanceof Map) {
+                String name = (String) ((Map<String, Object>) templateObj).get(CombotWebhookKeys.NAME);
+                if (name != null) return name;
+            }
+            // WhatsAppService flat format: {"templateName": "..."}
+            String templateName = (String) payload.get("templateName");
+            if (templateName != null) return templateName;
+            return CombotConstants.UNKNOWN_TEMPLATE;
         } catch (Exception e) {
             return CombotConstants.UNKNOWN_TEMPLATE;
         }

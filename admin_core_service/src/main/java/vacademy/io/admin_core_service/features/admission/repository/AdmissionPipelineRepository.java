@@ -54,4 +54,10 @@ public interface AdmissionPipelineRepository extends JpaRepository<AdmissionPipe
     @Query("SELECT COUNT(ap) FROM AdmissionPipeline ap WHERE ap.instituteId = :instituteId " +
            "AND ap.leadStatus = 'ADMITTED' AND ap.enquiryId IS NULL AND ap.applicantId IS NULL")
     long countDirectAdmissionsByInstitute(@Param("instituteId") String instituteId);
+
+    // ── Pagination queries for user listing ───────────────────────────────
+
+    org.springframework.data.domain.Page<AdmissionPipeline> findByInstituteIdAndLeadStatus(String instituteId, String leadStatus, org.springframework.data.domain.Pageable pageable);
+
+    org.springframework.data.domain.Page<AdmissionPipeline> findByInstituteIdAndPackageSessionIdAndLeadStatus(String instituteId, String packageSessionId, String leadStatus, org.springframework.data.domain.Pageable pageable);
 }

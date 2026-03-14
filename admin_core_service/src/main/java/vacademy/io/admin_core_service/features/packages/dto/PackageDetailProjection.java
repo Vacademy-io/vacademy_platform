@@ -41,6 +41,12 @@ public interface PackageDetailProjection {
 
     String getPackageSessionId();
 
+    /**
+     * Optional human-readable batch/subgroup name.
+     * Mirrors {@code package_session.name}. May be null for parent sessions or older data.
+     */
+    String getPackageSessionName();
+
     String getLevelId();
 
     String getLevelName();

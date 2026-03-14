@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.packages.dto.PackageDTOWithDetail
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.session.dto.*;
 import vacademy.io.admin_core_service.features.session.enums.SessionStatusEnum;
 import vacademy.io.admin_core_service.features.session.repository.SessionRepository;
@@ -49,8 +50,8 @@ public class SessionService {
     private final LearnerInvitationService learnerInvitationService;
     private final GroupService groupService;
     private final DefaultEnrollInviteService defaultEnrollInviteService;
-
     private final FacultyService facultyService;
+    private final PackageSessionService packageSessionService;
 
     public Session createOrGetSession(AddSessionDTO sessionDTO) {
         Session session = null;
@@ -196,7 +197,10 @@ public class SessionService {
     }
 
 
-    private PackageSession createPackageSession(AddLevelWithSessionDTO levelDTO, Session session, java.util.Date startDate,String instituteId) {
+    private PackageSession createPackageSession(AddLevelWithSessionDTO levelDTO,
+                                               Session session,
+                                               java.util.Date startDate,
+                                               String instituteId) {
         Level level = levelService.createOrAddLevel(
                 levelDTO.getId(),
                 levelDTO.getNewLevel(),
@@ -218,7 +222,53 @@ public class SessionService {
         packageSession.setGroup(group);
         packageSessionRepository.save(packageSession);
         defaultEnrollInviteService.createDefaultEnrollInvite(packageSession,instituteId);
+        // If this level contains subgroups, create child package sessions under this parent.
+        createSubgroupsForLevel(levelDTO, packageSession, instituteId);
         return packageSession;
+    }
+
+    /**
+     * Create child package sessions for the given parent batch based on the
+     * nested subgroups configured on the level DTO.
+     *
+     * Backward compatible:
+     * - If no subgroups are provided on the level, this is a no-op.
+     * - Old payloads that only use root-level subgroups remain unaffected.
+     */
+    private void createSubgroupsForLevel(AddLevelWithSessionDTO levelDTO,
+                                         PackageSession parent,
+                                         String instituteId) {
+        if (levelDTO.getSubgroups() == null || levelDTO.getSubgroups().isEmpty()) {
+            return;
+        }
+
+        List<String> childIds = new ArrayList<>();
+
+        levelDTO.getSubgroups().forEach(subgroupDTO -> {
+            if (subgroupDTO == null || !StringUtils.hasText(subgroupDTO.getName())) {
+                return;
+            }
+
+            PackageSession child = new PackageSession();
+            child.setPackageEntity(parent.getPackageEntity());
+            child.setLevel(parent.getLevel());
+            child.setSession(parent.getSession());
+            child.setGroup(parent.getGroup());
+            child.setStatus(PackageSessionStatusEnum.ACTIVE.name());
+            child.setStartTime(parent.getStartTime());
+            child.setIsParent(false);
+            child.setParentId(null);
+            child.setName(subgroupDTO.getName());
+            child.setMaxSeats(parent.getMaxSeats());
+            child.setAvailableSlots(parent.getAvailableSlots());
+
+            child = packageSessionRepository.save(child);
+            childIds.add(child.getId());
+        });
+
+        if (!childIds.isEmpty()) {
+            packageSessionService.mapParentAndChildren(instituteId, parent.getId(), childIds);
+        }
     }
 
     @Transactional

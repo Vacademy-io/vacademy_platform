@@ -790,6 +790,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     )
                 ), 0.0) AS rating,
 
+                ps.id AS packageSessionId,
+                CASE
+                    WHEN ps.name IS NULL OR ps.name = '' THEN NULL
+                    ELSE CONCAT(p.package_name, ' ', ps.name)
+                END AS packageSessionName,
+
                 /* 1. Direct Level/Session Selection */
                 l.id AS levelId,
                 l.level_name AS levelName,
@@ -870,6 +876,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                 AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                 AND (
+                    :packageSessionFilter IS NULL
+                    OR :packageSessionFilter = ''
+                    OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
+                    OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)
+                )
+                AND (
                     :#{#userIds == null || #userIds.isEmpty()} = true
                     OR EXISTS (
                         SELECT 1 FROM faculty_subject_package_session_mapping f
@@ -896,7 +908,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                 p.course_depth, p.course_html_description, p.created_at,
-                ps.id, l.id, l.level_name /* 3. Added Grouping by Session */
+                ps.id, ps.name, l.id, l.level_name /* 3. Added Grouping by Session */
             """,
 
             countQuery = """
@@ -914,11 +926,17 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         WHERE
                             (:instituteId IS NULL OR pi.institute_id = :instituteId)
                             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
-                    AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
+                            AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                             AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                             AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                             AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
+                            AND (
+                                :packageSessionFilter IS NULL
+                                OR :packageSessionFilter = ''
+                                OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
+                                OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)
+                            )
                             AND (
                                 :#{#userIds == null || #userIds.isEmpty()} = true
                                 OR EXISTS (
@@ -957,6 +975,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
             @Param("packageIds") List<String> packageIds,
             @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("packageSessionFilter") String packageSessionFilter,
             Pageable pageable);
 
     @Query(value = """
@@ -994,6 +1013,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ), 0.0) AS rating,
 
                 ps.id AS packageSessionId,
+                CASE
+                    WHEN ps.name IS NULL OR ps.name = '' THEN NULL
+                    ELSE CONCAT(p.package_name, ' ', ps.name)
+                END AS packageSessionName,
                 l.id AS levelId,
                 l.level_name AS levelName,
 
@@ -1024,7 +1047,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                 p.course_depth, p.course_html_description, p.created_at,
-                ps.id, l.id, l.level_name
+                ps.id, ps.name, l.id, l.level_name
 
             ORDER BY p.created_at DESC
             LIMIT 1
@@ -1069,6 +1092,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         )
                         AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
                     ), 0.0) AS rating,
+
+                    ps.id AS packageSessionId,
+                    CASE
+                        WHEN ps.name IS NULL OR ps.name = '' THEN NULL
+                        ELSE CONCAT(p.package_name, ' ', ps.name)
+                    END AS packageSessionName,
 
                     /* 1. Direct Level/Session Selection */
                     l.id AS levelId,
@@ -1152,6 +1181,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                     AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                     AND (
+                        :packageSessionFilter IS NULL
+                        OR :packageSessionFilter = ''
+                        OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
+                        OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)
+                    )
+                    AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true
                         OR EXISTS (
                             SELECT 1 FROM faculty_subject_package_session_mapping f
@@ -1176,7 +1211,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                     p.course_depth, p.course_html_description, p.created_at,
-                    ps.id, l.id, l.level_name /* 3. Added Grouping by Session */
+                    ps.id, ps.name, l.id, l.level_name /* 3. Added Grouping by Session */
             """,
 
             countQuery = """
@@ -1200,6 +1235,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                         AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
                         AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
+                        AND (
+                            :packageSessionFilter IS NULL
+                            OR :packageSessionFilter = ''
+                            OR (:packageSessionFilter = 'PARENTS_ONLY' AND COALESCE(ps.is_parent, false) = true)
+                            OR (:packageSessionFilter = 'CHILDREN_ONLY' AND ps.parent_id IS NOT NULL)
+                        )
                         AND (
                             :#{#facultyIds == null || #facultyIds.isEmpty()} = true
                             OR EXISTS (
@@ -1237,6 +1278,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
             @Param("packageIds") List<String> packageIds,
             @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("packageSessionFilter") String packageSessionFilter,
             Pageable pageable);
 
     @Query(value = """
@@ -2472,7 +2514,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND ps.status != 'INVITED'
                 GROUP BY ps.package_id
             ) ps_info ON ps_info.package_id = p.id
-            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED' AND ps_first.status != 'INVITED'
+            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED'
+                AND ps_first.status != 'INVITED'
             LEFT JOIN session s ON s.id = ps_first.session_id
             LEFT JOIN level l ON l.id = ps_first.level_id
             WHERE (
@@ -2523,7 +2566,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND ps.status != 'INVITED'
                 GROUP BY ps.package_id
             ) ps_info ON ps_info.package_id = p.id
-            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED' AND ps_first.status != 'INVITED'
+            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED'
+                AND ps_first.status != 'INVITED'
                 LEFT JOIN session s ON s.id = ps_first.session_id
                 LEFT JOIN level l ON l.id = ps_first.level_id
                 WHERE (

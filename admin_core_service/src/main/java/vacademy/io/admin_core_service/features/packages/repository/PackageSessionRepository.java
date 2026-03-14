@@ -351,4 +351,10 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
     List<PackageSession> findByPackageEntity_IdAndStatus(String packageId, String status);
 
+    /**
+     * Find child package sessions (subgroups) for a given parent batch.
+     * Used when syncing subgroups on edit course.
+     */
+    List<PackageSession> findByParentIdAndStatusIn(String parentId, List<String> statuses);
+
 }

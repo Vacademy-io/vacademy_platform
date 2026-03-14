@@ -5,8 +5,7 @@ import {
     FinancalManagementPaginatedResponse,
     InstallmentDetailDTO,
 } from '@/types/manage-finances';
-
-const BASE_URL = () => import.meta.env.VITE_BACKEND_URL || 'http://localhost:8072';
+import { BASE_URL } from '@/constants/urls';
 
 // ─── Main Table Search ──────────────────────────────────────────────────────
 
@@ -28,7 +27,7 @@ export const fetchManageFinancesLogs = async (
     }
 
     const response = await authenticatedAxiosInstance.post<FinancalManagementPaginatedResponse>(
-        `${BASE_URL()}/admin-core-service/v1/admin/student-fee/search`,
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/search`,
         filter,
         {
             params: { instituteId },
@@ -50,7 +49,7 @@ export const fetchInstallmentDetails = async (
     cpoId: string
 ): Promise<InstallmentDetailDTO[]> => {
     const response = await authenticatedAxiosInstance.get<InstallmentDetailDTO[]>(
-        `${BASE_URL()}/admin-core-service/v1/admin/student-fee/payment-details`,
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/payment-details`,
         {
             params: { studentId, cpoId },
         }

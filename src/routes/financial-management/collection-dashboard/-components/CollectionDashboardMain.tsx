@@ -16,6 +16,7 @@ import {
     PieChart,
     Pie
 } from 'recharts';
+import { BASE_URL } from '@/constants/urls';
 
 // --- API Types ---
 export interface DashboardCollectionRequest {
@@ -57,7 +58,6 @@ export interface DashboardCollectionResponse {
 
 // --- Mock Data Service for demonstration ---
 const fetchDashboardData = async (req: DashboardCollectionRequest): Promise<DashboardCollectionResponse> => {
-    const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8072';
     const response = await authenticatedAxiosInstance.post(`${BASE_URL}/admin-core-service/v1/admin/student-fee/dashboard/collection`, req);
     return response.data;
 };

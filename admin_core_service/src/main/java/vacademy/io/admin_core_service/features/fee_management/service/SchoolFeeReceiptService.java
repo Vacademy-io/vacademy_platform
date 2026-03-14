@@ -202,6 +202,120 @@ public class SchoolFeeReceiptService {
         }
     }
 
+    /**
+     * Overloaded method for fee allocation flow.
+     * Generates receipt ONLY for the specific installments that were paid in this transaction.
+     *
+     * @param userId              Student's user ID
+     * @param paymentLogId        The payment log ID for this transaction
+     * @param instituteId         The institute ID
+     * @param amountPaid          Amount paid in this transaction
+     * @param transactionId       Manual payment reference (e.g., "CASH-001")
+     * @param paymentMode         Payment mode (e.g., "OFFLINE")
+     * @param paidInstallmentIds  List of student_fee_payment IDs that were paid/partially paid in this allocation
+     */
+    @Transactional
+    public void generateAndSendReceipt(String userId, String paymentLogId,
+            String instituteId, BigDecimal amountPaid, String transactionId, String paymentMode,
+            List<String> paidInstallmentIds) {
+        try {
+            log.info("Starting school fee receipt generation for userId: {}, instituteId: {}, installments: {}",
+                    userId, instituteId, paidInstallmentIds.size());
+
+            if (paidInstallmentIds == null || paidInstallmentIds.isEmpty()) {
+                log.warn("No paid installment IDs provided for receipt generation");
+                return;
+            }
+
+            // 1. Check if invoice email is enabled
+            Institute institute = instituteRepository.findById(instituteId)
+                    .orElseThrow(() -> new VacademyException("Institute not found: " + instituteId));
+
+            Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+            boolean sendEmail = Boolean.TRUE.equals(invoiceSettings.get("sendInvoiceEmail"));
+            String currency = (String) invoiceSettings.getOrDefault("currency", "INR");
+
+            // 2. Fetch student info
+            UserDTO user = authService.getUsersFromAuthServiceByUserIds(List.of(userId)).get(0);
+            if (user == null) {
+                log.warn("User not found for receipt generation: {}", userId);
+                return;
+            }
+
+            // 3. Fetch ONLY the specific fee installments that were paid in this allocation
+            List<StudentFeePayment> feePayments = studentFeePaymentRepository.findAllById(paidInstallmentIds);
+            if (feePayments == null || feePayments.isEmpty()) {
+                log.warn("No fee payments found for provided installment IDs");
+                return;
+            }
+
+            // Sort fees chronologically (earliest due date first)
+            feePayments.sort(Comparator.comparing(StudentFeePayment::getDueDate, 
+                    Comparator.nullsLast(Comparator.naturalOrder())));
+
+            // 4. Build receipt data (only for paid installments)
+            BigDecimal totalExpected = BigDecimal.ZERO;
+            BigDecimal totalPaid = BigDecimal.ZERO;
+            BigDecimal totalDiscount = BigDecimal.ZERO;
+
+            for (StudentFeePayment fp : feePayments) {
+                totalExpected = totalExpected
+                        .add(fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO);
+                totalPaid = totalPaid.add(fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO);
+                totalDiscount = totalDiscount
+                        .add(fp.getDiscountAmount() != null ? fp.getDiscountAmount() : BigDecimal.ZERO);
+            }
+            BigDecimal balanceDue = totalExpected.subtract(totalPaid).subtract(totalDiscount);
+
+            // 5. Generate receipt number
+            String receiptNumber = generateReceiptNumber(instituteId);
+
+            // 6. Load school fee receipt template
+            String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
+
+            // 7. Build fee table HTML (only paid installments)
+            String feeTableHtml = buildFeeTableHtml(feePayments, currency);
+
+            // 8. Replace placeholders
+            String filledTemplate = replacePlaceholders(templateHtml, user, institute, feePayments,
+                    receiptNumber, amountPaid, transactionId, paymentMode,
+                    totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+
+            // 9. Generate PDF
+            byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
+
+            // 10. Upload to S3
+            String pdfFileId = uploadReceiptToS3(pdfBytes, receiptNumber, instituteId);
+
+            // 11. Save to invoice table
+            Invoice invoice = saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
+                    amountPaid, totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+
+            // 12. Save line items (only for paid installments)
+            saveLineItems(invoice, feePayments, currency);
+
+            log.info("School fee receipt generated successfully: {} for {} installments", 
+                    receiptNumber, feePayments.size());
+
+            // 13. Send email if enabled
+            if (sendEmail) {
+                try {
+                    sendReceiptEmail(invoice, user, institute, instituteId, pdfBytes, receiptNumber);
+                } catch (Exception e) {
+                    log.error("Failed to send receipt email for receipt: {}. Receipt generation succeeded.",
+                            receiptNumber, e);
+                }
+            } else {
+                log.debug("Receipt email disabled by institute setting for institute: {}", instituteId);
+            }
+
+        } catch (Exception e) {
+            log.error("Error generating school fee receipt for userId: {}, instituteId: {}",
+                    userId, instituteId, e);
+            // Don't throw — receipt failure should never break allocation
+        }
+    }
+
     // ─── Invoice Settings ────────────────────────────────────────────────────
 
     @SuppressWarnings("unchecked")

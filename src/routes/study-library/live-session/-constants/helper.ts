@@ -43,6 +43,15 @@ export interface LiveSessionStep1RequestDTO {
     time_zone?: string;
     learner_button_config?: LearnerButtonConfig | null;
     update_recurrence_scope?: 'ONLY_THIS' | 'ALL_FUTURE' | 'CURRENT_DAY_ALL_SESSIONS' | 'ALL_FUTURE_ALL_SESSIONS' | null;
+    bbb_config?: BbbMeetingConfig | null;
+}
+
+export interface BbbMeetingConfig {
+    record?: boolean;
+    auto_start_recording?: boolean;
+    mute_on_start?: boolean;
+    webcams_only_for_moderator?: boolean;
+    guest_policy?: string;
 }
 
 export interface LearnerButtonConfig {
@@ -255,6 +264,11 @@ export function transformFormToDTOStep1(
         allowPause,
         timeZone,
         learner_button_config,
+        bbbRecord,
+        bbbAutoStartRecording,
+        bbbMuteOnStart,
+        bbbWebcamsOnlyForModerator,
+        bbbGuestPolicy,
     } = form;
 
     // Convert hours and minutes to total duration in hours
@@ -327,6 +341,13 @@ export function transformFormToDTOStep1(
         time_zone: timeZone,
         learner_button_config: learner_button_config || null,
         update_recurrence_scope: updateRecurrenceScope || null,
+        bbb_config: sessionPlatform === 'bbb' ? {
+            record: bbbRecord ?? true,
+            auto_start_recording: bbbAutoStartRecording ?? false,
+            mute_on_start: bbbMuteOnStart ?? true,
+            webcams_only_for_moderator: bbbWebcamsOnlyForModerator ?? false,
+            guest_policy: bbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+        } : null,
     };
 }
 

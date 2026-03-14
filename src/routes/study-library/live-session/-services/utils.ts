@@ -98,6 +98,13 @@ export interface Schedule {
     background_score_file_id: string | null;
     cover_file_id: string | null;
     session_streaming_service_type: string | null;
+    bbb_config?: {
+        record?: boolean;
+        auto_start_recording?: boolean;
+        mute_on_start?: boolean;
+        webcams_only_for_moderator?: boolean;
+        guest_policy?: string;
+    } | null;
     schedule_id: string | null;
     meeting_date: string | null;
     timezone?: string;

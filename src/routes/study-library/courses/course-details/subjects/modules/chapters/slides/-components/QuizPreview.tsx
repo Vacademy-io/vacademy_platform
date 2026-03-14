@@ -326,15 +326,28 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         setIsPreviewDialogOpen(true);
     };
 
+    // Assign stable IDs to a question AND its options so that every subsequent
+    // save reuses the same IDs.  Without this, `createOptionStructure` generates
+    // a fresh UUID on every payload build → backend treats them as new options → duplicates.
+    const assignStableIds = (q: any) => {
+        const assignOptionIds = (opts: any[] | undefined) =>
+            opts?.map((o: any) => ({ ...o, id: o.id || crypto.randomUUID() }));
+
+        return {
+            ...q,
+            id: q.id || crypto.randomUUID(),
+            singleChoiceOptions: assignOptionIds(q.singleChoiceOptions),
+            multipleChoiceOptions: assignOptionIds(q.multipleChoiceOptions),
+            csingleChoiceOptions: assignOptionIds(q.csingleChoiceOptions),
+            cmultipleChoiceOptions: assignOptionIds(q.cmultipleChoiceOptions),
+            trueFalseOptions: assignOptionIds(q.trueFalseOptions),
+        };
+    };
+
     const handleConfirmAddQuestions = async (questions: UploadQuestionPaperFormType['questions']) => {
         setIsAddingExternal(true);
         try {
-            // Assign stable IDs to new questions so every subsequent save reuses the same ID
-            // and the backend updates instead of creating duplicate questions.
-            const questionsWithIds = questions.map((q) => ({
-                ...q,
-                id: (q as any).id || crypto.randomUUID(),
-            }));
+            const questionsWithIds = questions.map(assignStableIds);
 
             // Append to form FIRST (synchronous), then build payload from form state.
             // This matches the manual-add flow (handleAddQuestionConfirm) and avoids a
@@ -498,11 +511,9 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         const newQuestion = editForm.getValues(`questions.0`);
         if (newQuestion.questionName.trim()) {
             try {
-                // Assign a stable ID now so every future save reuses the same ID.
-                // Without this, createQuestionStructure generates a new UUID each time
-                // the question is saved (settings save, draft save, etc.) which makes the
-                // backend treat it as a brand-new question on every save → duplicates.
-                const newQuestionWithId = { ...newQuestion, id: (newQuestion as any).id || crypto.randomUUID() };
+                // Assign stable IDs to both the question and its options so every
+                // future save reuses the same IDs (prevents backend duplicates).
+                const newQuestionWithId = assignStableIds(newQuestion);
 
                 // Add the new question to the form
                 append(newQuestionWithId);

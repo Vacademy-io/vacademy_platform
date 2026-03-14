@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { getPublicUrl } from '@/services/upload_file';
 import { getSessionBySessionId } from '../-services/utils';
 import type { SessionBySessionIdResponse } from '../-services/utils';
@@ -64,6 +64,8 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { StreamingPlatform } from '../-constants/enums';
 
 export const Route = createFileRoute('/study-library/live-session/view/$sessionId')({
     component: ViewLiveSession,
@@ -146,6 +148,27 @@ function ViewLiveSession() {
         };
         fetchMediaUrls();
     }, [sessionData]);
+
+    const isBbbSession = sessionData?.schedule?.link_type === StreamingPlatform.BBB
+        || sessionData?.schedule?.link_type === 'BBB_MEETING';
+
+    const handleJoinAsHost = useCallback(async (scheduleId: string) => {
+        try {
+            const response = await authenticatedAxiosInstance.get(
+                '/admin-core-service/live-sessions/provider/meeting/join',
+                { params: { scheduleId, role: 'MODERATOR' } }
+            );
+            const joinUrl = response.data?.joinUrl;
+            if (joinUrl) {
+                window.open(joinUrl, '_blank', 'noopener,noreferrer');
+            } else {
+                toast.error('Failed to get host join URL');
+            }
+        } catch (err) {
+            console.error('Failed to join as host:', err);
+            toast.error('Failed to start session. Please try again.');
+        }
+    }, []);
 
     const handleEditSession = async () => {
         try {
@@ -673,14 +696,23 @@ function ViewLiveSession() {
                                                                                             {session.duration} mins
                                                                                             </span>
                                                                                         </div>
-                                                                                        <a
-                                                                                        href={session.link}
-                                                                                            target="_blank"
-                                                                                            rel="noopener noreferrer"
-                                                                                        className="text-xs font-medium text-primary hover:underline"
-                                                                                        >
-                                                                                            Join →
-                                                                                        </a>
+                                                                                        {isBbbSession ? (
+                                                                                            <button
+                                                                                                onClick={() => handleJoinAsHost(session.id)}
+                                                                                                className="text-xs font-medium text-primary hover:underline"
+                                                                                            >
+                                                                                                Start as Host →
+                                                                                            </button>
+                                                                                        ) : (
+                                                                                            <a
+                                                                                                href={session.link}
+                                                                                                target="_blank"
+                                                                                                rel="noopener noreferrer"
+                                                                                                className="text-xs font-medium text-primary hover:underline"
+                                                                                            >
+                                                                                                Join →
+                                                                                            </a>
+                                                                                        )}
                                                                                     </div>
                                                                                 </div>
                                                                         ))}

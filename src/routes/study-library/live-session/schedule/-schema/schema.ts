@@ -95,16 +95,22 @@ export const sessionFormSchema = z
         meetingType: z.nativeEnum(RecurringType),
         recurringSchedule: z.array(weeklyClassSchema).optional(),
         learner_button_config: learnerButtonConfigSchema,
+        // BBB meeting configuration (only used when sessionPlatform = 'bbb')
+        bbbRecord: z.boolean().optional(),
+        bbbAutoStartRecording: z.boolean().optional(),
+        bbbMuteOnStart: z.boolean().optional(),
+        bbbWebcamsOnlyForModerator: z.boolean().optional(),
+        bbbGuestPolicy: z.enum(['ALWAYS_ACCEPT', 'ASK_MODERATOR', 'ALWAYS_DENY']).optional(),
     })
     .superRefine((data, ctx) => {
-        if (data.sessionPlatform !== 'zoho' && !data.defaultLink) {
+        if (data.sessionPlatform !== 'zoho' && data.sessionPlatform !== 'bbb' && !data.defaultLink) {
             ctx.addIssue({
                 code: 'custom',
                 message: 'Live class link is required',
                 path: ['defaultLink'],
             });
         }
-        if (data.sessionPlatform !== 'zoho' && data.defaultLink) {
+        if (data.sessionPlatform !== 'zoho' && data.sessionPlatform !== 'bbb' && data.defaultLink) {
             try {
                 new URL(data.defaultLink);
             } catch {

@@ -19,6 +19,8 @@ public class AdmissionResponseDTO {
 
     private String applicantId;
     private String trackingId;
+    private String parentUserId;
+    private String childUserId;
     private String workflowType; // Always "ADMISSION"
     private String overallStatus;
     private String currentStageId;

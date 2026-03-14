@@ -449,6 +449,16 @@ public class Step1Service {
         if (request.getTimeZone() != null)
             session.setTimezone(request.getTimeZone());
 
+        // Save BBB meeting config as JSON
+        if (request.getBbbConfig() != null) {
+            try {
+                session.setBbbConfigJson(new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(request.getBbbConfig()));
+            } catch (Exception e) {
+                System.out.println("Failed to serialize BBB config: " + e.getMessage());
+            }
+        }
+
         session.setCreatedByUserId(user.getUserId());
 
         Object learnerButtonConfig = request.getLearnerButtonConfig();

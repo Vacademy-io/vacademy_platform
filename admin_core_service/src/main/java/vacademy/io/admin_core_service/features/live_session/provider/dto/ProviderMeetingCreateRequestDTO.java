@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
+
 /**
  * Request body for creating a provider meeting tied to a live session schedule.
  */
@@ -30,4 +32,6 @@ public class ProviderMeetingCreateRequestDTO {
      * e.g. "ZOHO_MEETING"
      */
     private String provider;
+    /** BBB-specific meeting config (record, muteOnStart, webcamsOnlyForModerator, guestPolicy) */
+    private Map<String, Object> bbbConfig;
 }

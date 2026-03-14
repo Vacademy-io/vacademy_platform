@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -40,6 +41,7 @@ public class GetSessionByIdResponseDTO {
     private Boolean allowPlayPause;
     private String sessionStreamingServiceType;
     private String timezone;
+    private Map<String, Object> bbbConfig;
     private List<String> packageSessionIds;
     private List<ScheduleItem> addedSchedules;
 

@@ -101,6 +101,7 @@ public class LiveSessionProviderService {
                 .hostEmail(request.getHostEmail())
                 .sessionId(request.getSessionId())
                 .scheduleId(request.getScheduleId())
+                .bbbConfig(request.getBbbConfig())
                 .build();
 
         CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());

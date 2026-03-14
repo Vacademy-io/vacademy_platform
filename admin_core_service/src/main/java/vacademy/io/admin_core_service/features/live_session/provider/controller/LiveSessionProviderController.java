@@ -39,6 +39,8 @@ public class LiveSessionProviderController {
     private final BbbMeetingManager bbbMeetingManager;
     private final SessionScheduleRepository scheduleRepository;
     private final LiveSessionLogsRepository liveSessionLogsRepository;
+    private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository liveSessionRepository;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -158,17 +160,41 @@ public class LiveSessionProviderController {
         // Auto-create BBB meeting if it doesn't exist yet
         if (providerMeetingId == null || providerMeetingId.isBlank()) {
             String sessionTitle = "Vacademy Live Class";
-            if (schedule.getDefaultClassName() != null && !schedule.getDefaultClassName().isBlank()) {
+            String instituteId = null;
+            java.util.Map<String, Object> bbbConfig = null;
+
+            // Load session-level data (title, instituteId, BBB config)
+            if (schedule.getSessionId() != null) {
+                var sessionOpt = liveSessionRepository.findById(schedule.getSessionId());
+                if (sessionOpt.isPresent()) {
+                    var session = sessionOpt.get();
+                    if (session.getTitle() != null && !session.getTitle().isBlank()) {
+                        sessionTitle = session.getTitle();
+                    }
+                    instituteId = session.getInstituteId();
+                    if (session.getBbbConfigJson() != null && !session.getBbbConfigJson().isBlank()) {
+                        try {
+                            bbbConfig = objectMapper.readValue(session.getBbbConfigJson(),
+                                    new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {});
+                        } catch (Exception e) {
+                            log.warn("[BBB] Failed to parse bbbConfigJson: {}", e.getMessage());
+                        }
+                    }
+                }
+            }
+            if ("Vacademy Live Class".equals(sessionTitle)
+                    && schedule.getDefaultClassName() != null && !schedule.getDefaultClassName().isBlank()) {
                 sessionTitle = schedule.getDefaultClassName();
             }
 
             ProviderMeetingCreateRequestDTO createRequest = ProviderMeetingCreateRequestDTO.builder()
-                    .instituteId(null)
+                    .instituteId(instituteId)
                     .sessionId(schedule.getSessionId())
                     .scheduleId(scheduleId)
                     .topic(sessionTitle)
                     .provider(MeetingProvider.BBB_MEETING.name())
                     .durationMinutes(120)
+                    .bbbConfig(bbbConfig)
                     .build();
 
             CreateMeetingResponseDTO created = providerService.createMeeting(createRequest);

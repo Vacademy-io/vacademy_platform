@@ -139,12 +139,24 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             }
         }
 
+        // Read BBB config from request (admin-set options)
+        // Keys are snake_case because BbbConfigDTO uses @JsonNaming(SnakeCaseStrategy)
+        Map<String, Object> bbbCfg = request.getBbbConfig() != null ? request.getBbbConfig() : Map.of();
+        boolean record = boolOrDefault(bbbCfg, "record", true);
+        boolean autoStartRec = boolOrDefault(bbbCfg, "auto_start_recording", false);
+        boolean muteOnStart = boolOrDefault(bbbCfg, "mute_on_start", true);
+        boolean webcamsOnlyForMod = boolOrDefault(bbbCfg, "webcams_only_for_moderator", false);
+        String guestPolicy = bbbCfg.containsKey("guest_policy") ? String.valueOf(bbbCfg.get("guest_policy")) : "ALWAYS_ACCEPT";
+
         Map<String, String> params = new LinkedHashMap<>();
         params.put("name", request.getTopic() != null ? request.getTopic() : instituteName + " Live Class");
         params.put("meetingID", meetingId);
-        params.put("record", "true");
-        params.put("autoStartRecording", "false");
+        params.put("record", String.valueOf(record));
+        params.put("autoStartRecording", String.valueOf(autoStartRec));
         params.put("allowStartStopRecording", "true");
+        params.put("muteOnStart", String.valueOf(muteOnStart));
+        params.put("webcamsOnlyForModerator", String.valueOf(webcamsOnlyForMod));
+        params.put("guestPolicy", guestPolicy);
         params.put("welcome", "Welcome to <b>" + instituteName + "</b> Live Class!");
 
         // Institute branding
@@ -385,6 +397,13 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         } catch (Exception e) {
             throw new VacademyException("Failed to read BBB config");
         }
+    }
+
+    private static boolean boolOrDefault(Map<String, Object> map, String key, boolean defaultValue) {
+        if (!map.containsKey(key)) return defaultValue;
+        Object val = map.get(key);
+        if (val instanceof Boolean) return (Boolean) val;
+        return Boolean.parseBoolean(String.valueOf(val));
     }
 
     private String buildQueryString(Map<String, String> params) {

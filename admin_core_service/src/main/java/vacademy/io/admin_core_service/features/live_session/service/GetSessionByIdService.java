@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.GetSessionByIdRe
 import vacademy.io.admin_core_service.features.live_session.dto.GetSessionDetailsBySessionIdResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.NotificationQueryDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.ScheduleDTO;
+import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
 import vacademy.io.admin_core_service.features.live_session.repository.*;
 
@@ -17,6 +18,7 @@ import java.time.Duration;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +36,8 @@ public class GetSessionByIdService {
     private final LiveSessionParticipantRepository liveSessionParticipantRepository;
     @Autowired
     private final CustomFieldRepository customFieldRepository;
+    @Autowired
+    private final LiveSessionRepository liveSessionRepository;
 
     @Data
     public static class SessionDetailsResponse {
@@ -135,6 +139,22 @@ public class GetSessionByIdService {
 
         dto.setAddedSchedules(addedSchedules);
         dto.setPackageSessionIds(packageSessionIds);
+
+        // Load BBB config from LiveSession entity if available
+        if (first != null && first.getSessionId() != null) {
+            liveSessionRepository.findById(first.getSessionId()).ifPresent(liveSession -> {
+                if (liveSession.getBbbConfigJson() != null && !liveSession.getBbbConfigJson().isBlank()) {
+                    try {
+                        Map<String, Object> bbbCfg = new com.fasterxml.jackson.databind.ObjectMapper()
+                                .readValue(liveSession.getBbbConfigJson(),
+                                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                        dto.setBbbConfig(bbbCfg);
+                    } catch (Exception e) {
+                        System.err.println("Error deserializing bbbConfigJson: " + e.getMessage());
+                    }
+                }
+            });
+        }
 
         return dto;
     }

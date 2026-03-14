@@ -1,12 +1,10 @@
 package vacademy.io.admin_core_service.features.fee_management.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
@@ -17,10 +15,7 @@ import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDash
 import vacademy.io.admin_core_service.features.fee_management.dto.CollectionDashboardRequestDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.InstituteFeeTypePriorityDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.InvoiceReceiptDTO;
-import vacademy.io.admin_core_service.features.fee_management.dto.InvoiceReceiptDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.SetPriorityRequest;
-import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
-import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
 import vacademy.io.admin_core_service.features.fee_management.entity.InstituteFeeTypePriority;
 import vacademy.io.admin_core_service.features.fee_management.enums.AllocationScope;
 import vacademy.io.admin_core_service.features.fee_management.repository.InstituteFeeTypePriorityRepository;
@@ -29,15 +24,11 @@ import vacademy.io.admin_core_service.features.fee_management.service.FeeTrackin
 import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
-import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
-import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
-import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Map;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -53,12 +44,6 @@ public class FeeTrackingAdminController {
 
     @Autowired
     private InstituteFeeTypePriorityRepository priorityRepository;
-
-    @Autowired
-    private InvoiceRepository invoiceRepository;
-
-    @Autowired
-    private MediaService mediaService;
 
     @Autowired
     private InvoiceRepository invoiceRepository;
@@ -116,13 +101,6 @@ public class FeeTrackingAdminController {
             @PathVariable("userId") String userId,
             @RequestParam("instituteId") String instituteId) {
         return ResponseEntity.ok(feeTrackingService.getStudentReceipts(userId, instituteId));
-    }
-
-    @GetMapping("/{userId}/invoice-receipts")
-    public ResponseEntity<List<InvoiceReceiptDTO>> getStudentInvoiceReceipts(
-            @PathVariable("userId") String userId,
-            @RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(feeTrackingService.getStudentInvoiceReceipts(userId, instituteId));
     }
 
     @GetMapping("/{userId}/invoice-receipts")
@@ -248,41 +226,6 @@ public class FeeTrackingAdminController {
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(result);
-    }
-
-    // ---- Receipt PDF Download ----
-
-    /**
-     * Get download URL for receipt PDF.
-     * Frontend should use the returned URL with &lt;a download&gt; to trigger download.
-     *
-     * @param invoiceId the invoice/receipt ID
-     * @return JSON with download_url, invoice_number, file_name
-     */
-    @GetMapping("/receipt/{invoiceId}/download")
-    public ResponseEntity<?> downloadReceiptPdf(@PathVariable("invoiceId") String invoiceId) {
-        Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
-        if (invoice == null) {
-            return ResponseEntity.notFound().build();
-        }
-
-        String pdfFileId = invoice.getPdfFileId();
-        if (!StringUtils.hasText(pdfFileId)) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", "PDF not available for this receipt"));
-        }
-
-        String signedUrl = mediaService.getFileUrlById(pdfFileId);
-        if (!StringUtils.hasText(signedUrl)) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Failed to generate download URL"));
-        }
-
-        return ResponseEntity.ok(Map.of(
-                "download_url", signedUrl,
-                "invoice_number", invoice.getInvoiceNumber(),
-                "file_name", "receipt_" + invoice.getInvoiceNumber() + ".pdf"
-        ));
     }
 
     // ---- Receipt PDF Download ----

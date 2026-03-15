@@ -16,6 +16,8 @@ import java.util.Optional;
 public interface LiveSessionProviderConfigRepository
         extends JpaRepository<LiveSessionProviderConfig, String> {
 
+    // ── Institute-wide (vendorUserId IS NULL) — backward-compatible ──────────
+
     Optional<LiveSessionProviderConfig> findByInstituteIdAndProviderAndStatusIn(
             String instituteId, String provider, List<String> statuses);
 
@@ -25,8 +27,18 @@ public interface LiveSessionProviderConfigRepository
     boolean existsByInstituteIdAndProviderAndStatusIn(
             String instituteId, String provider, List<String> statuses);
 
+    // ── Per-organizer (vendorUserId IS NOT NULL) ──────────────────────────────
+
+    Optional<LiveSessionProviderConfig> findByInstituteIdAndProviderAndVendorUserIdAndStatusIn(
+            String instituteId, String provider, String vendorUserId, List<String> statuses);
+
+    boolean existsByInstituteIdAndProviderAndVendorUserIdAndStatusIn(
+            String instituteId, String provider, String vendorUserId, List<String> statuses);
+
+    // ── Scheduler ────────────────────────────────────────────────────────────
+
     /**
-     * Used by the hourly scheduler — find all ACTIVE configs for a given provider
+     * Used by the hourly scheduler — find all ACTIVE configs for a given provider.
      */
     @Query("SELECT c FROM LiveSessionProviderConfig c WHERE c.status = 'ACTIVE' AND c.provider = :provider")
     List<LiveSessionProviderConfig> findAllActiveByProvider(@Param("provider") String provider);

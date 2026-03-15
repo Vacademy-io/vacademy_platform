@@ -116,6 +116,77 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
     }
 
     // -----------------------------------------------------------------------
+    // User schedule availability
+    // GET /api/v2/{zohoUserId}/sessions.json?listtype=upcoming
+    // -----------------------------------------------------------------------
+
+    @Override
+    public UserScheduleAvailabilityDTO checkUserAvailability(
+            String requestedStartTimeIso, int durationMinutes, String instituteId, String vendorUserId) {
+
+        Map<String, Object> cfg = oAuthService.getValidConfigMap(instituteId, vendorUserId);
+        String token = (String) cfg.get("accessToken");
+        String domain = (String) cfg.getOrDefault("domain", "zoho.com");
+        String userId = (String) cfg.get("zohoUserId");
+        String apiBase = ZohoOAuthService.buildApiBase(domain);
+
+        // Parse requested window
+        long requestedStartMs = java.time.OffsetDateTime.parse(requestedStartTimeIso)
+                .toInstant().toEpochMilli();
+        long requestedEndMs = requestedStartMs + (long) durationMinutes * 60_000L;
+
+        // Fetch upcoming sessions (paginate — stop once startTime is past our window)
+        String url = apiBase + "/api/v2/" + userId + "/sessions.json?listtype=upcoming&index=1&count=50";
+        log.info("[Zoho Availability] Fetching upcoming sessions for userId={}", userId);
+
+        JsonNode response = webClientBuilder.build()
+                .get().uri(url)
+                .header("Authorization", "Zoho-oauthtoken " + token)
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class).map(body -> {
+                            log.error("[Zoho Availability] API failed: {}", body);
+                            return new VacademyException("Zoho sessions list error: " + body);
+                        }))
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        List<UserScheduleAvailabilityDTO.ConflictingSessionDTO> conflicts = new ArrayList<>();
+
+        if (response != null && !response.isNull()) {
+            JsonNode sessions = response.isArray() ? response
+                    : response.has("sessions") ? response.get("sessions")
+                    : response;
+
+            if (sessions.isArray()) {
+                for (JsonNode s : sessions) {
+                    long sStart = s.path("startTimeMillisec").asLong(0);
+                    long duration = s.path("duration").asLong(0); // milliseconds
+                    long sEnd = sStart + duration;
+
+                    // Overlap: existing [sStart, sEnd] overlaps [requestedStart, requestedEnd]
+                    boolean overlaps = sStart < requestedEndMs && sEnd > requestedStartMs;
+                    if (overlaps) {
+                        conflicts.add(UserScheduleAvailabilityDTO.ConflictingSessionDTO.builder()
+                                .meetingKey(s.path("meetingKey").asText(null))
+                                .topic(s.path("topic").asText(null))
+                                .startTimeMillisec(sStart)
+                                .endTimeMillisec(sEnd)
+                                .build());
+                    }
+                }
+            }
+        }
+
+        return UserScheduleAvailabilityDTO.builder()
+                .available(conflicts.isEmpty())
+                .requestedStartTime(requestedStartTimeIso)
+                .requestedDurationMinutes(durationMinutes)
+                .conflicts(conflicts)
+                .build();
+    }
+
+    // -----------------------------------------------------------------------
     // Get recordings
     // GET /api/v2/{zohoUserId}/sessions/{meetingKey}/recordings.json
     // -----------------------------------------------------------------------

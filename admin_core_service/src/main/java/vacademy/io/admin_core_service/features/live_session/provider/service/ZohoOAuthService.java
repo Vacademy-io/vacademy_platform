@@ -112,14 +112,27 @@ public class ZohoOAuthService {
         configMap.put("zohoUserId", zohoUserId);
         configMap.put("domain", resolvedDomain);
 
-        // Upsert the mapping row
-        LiveSessionProviderConfig config = configRepository
-                .findByInstituteIdAndProviderAndStatusIn(
-                        instituteId, MeetingProvider.ZOHO_MEETING.name(), ACTIVE)
-                .orElse(LiveSessionProviderConfig.builder()
-                        .instituteId(instituteId)
-                        .provider(MeetingProvider.ZOHO_MEETING.name())
-                        .build());
+        // Upsert: per-organizer record if vendorUserId is set, else institute-wide.
+        boolean hasVendorUser = suppliedZohoUserId != null && !suppliedZohoUserId.isBlank();
+        LiveSessionProviderConfig config;
+        if (hasVendorUser) {
+            config = configRepository
+                    .findByInstituteIdAndProviderAndVendorUserIdAndStatusIn(
+                            instituteId, MeetingProvider.ZOHO_MEETING.name(), suppliedZohoUserId, ACTIVE)
+                    .orElse(LiveSessionProviderConfig.builder()
+                            .instituteId(instituteId)
+                            .provider(MeetingProvider.ZOHO_MEETING.name())
+                            .vendorUserId(suppliedZohoUserId)
+                            .build());
+        } else {
+            config = configRepository
+                    .findByInstituteIdAndProviderAndStatusIn(
+                            instituteId, MeetingProvider.ZOHO_MEETING.name(), ACTIVE)
+                    .orElse(LiveSessionProviderConfig.builder()
+                            .instituteId(instituteId)
+                            .provider(MeetingProvider.ZOHO_MEETING.name())
+                            .build());
+        }
 
         config.setConfigJson(toJson(configMap));
         config.setStatus("ACTIVE");
@@ -128,32 +141,54 @@ public class ZohoOAuthService {
     }
 
     /**
-     * Returns the configJson map with a guaranteed valid (non-expired) access
-     * token.
-     * Refreshes automatically if near expiry.
+     * Returns a valid configMap for the institute-wide credential.
+     * Backward-compatible — delegates to the overload with vendorUserId=null.
      */
     public Map<String, Object> getValidConfigMap(String instituteId) {
-        LiveSessionProviderConfig config = configRepository
-                .findByInstituteIdAndProviderAndStatusIn(
-                        instituteId, MeetingProvider.ZOHO_MEETING.name(), ACTIVE)
-                .orElseThrow(() -> new VacademyException(
-                        "Zoho Meeting not connected for institute: " + instituteId));
+        return getValidConfigMap(instituteId, null);
+    }
 
+    /**
+     * Returns a valid configMap, preferring the per-organizer credential when
+     * vendorUserId is non-null. Falls back to the institute-wide credential
+     * (vendorUserId IS NULL) when no personal config exists.
+     */
+    public Map<String, Object> getValidConfigMap(String instituteId, String vendorUserId) {
+        LiveSessionProviderConfig config = resolveConfig(instituteId, vendorUserId);
         Map<String, Object> configMap = fromJson(config.getConfigJson());
         long nowEpoch = Instant.now().getEpochSecond();
         Object expiresAtObj = configMap.get("tokenExpiresAt");
         long expiresAt = expiresAtObj instanceof Number ? ((Number) expiresAtObj).longValue() : 0L;
-        boolean expired = (expiresAt - nowEpoch) < TOKEN_BUFFER_SECONDS;
 
-        if (expired) {
+        if ((expiresAt - nowEpoch) < TOKEN_BUFFER_SECONDS) {
             String refreshToken = (String) configMap.get("refreshToken");
             if (refreshToken == null || refreshToken.isBlank()) {
                 throw new VacademyException(
-                        "Zoho access token expired and no refresh token available for institute: " + instituteId);
+                        "Zoho access token expired and no refresh token for institute: " + instituteId);
             }
             configMap = refreshAccessToken(config, configMap);
         }
         return configMap;
+    }
+
+    /**
+     * Resolves the best available credential:
+     * 1. Per-organizer record (vendorUserId match) if it exists.
+     * 2. Institute-wide record (vendorUserId IS NULL) as fallback.
+     */
+    private LiveSessionProviderConfig resolveConfig(String instituteId, String vendorUserId) {
+        String provider = MeetingProvider.ZOHO_MEETING.name();
+        if (vendorUserId != null && !vendorUserId.isBlank()) {
+            return configRepository
+                    .findByInstituteIdAndProviderAndVendorUserIdAndStatusIn(instituteId, provider, vendorUserId, ACTIVE)
+                    .or(() -> configRepository.findByInstituteIdAndProviderAndStatusIn(instituteId, provider, ACTIVE))
+                    .orElseThrow(() -> new VacademyException(
+                            "Zoho Meeting not connected for institute: " + instituteId));
+        }
+        return configRepository
+                .findByInstituteIdAndProviderAndStatusIn(instituteId, provider, ACTIVE)
+                .orElseThrow(() -> new VacademyException(
+                        "Zoho Meeting not connected for institute: " + instituteId));
     }
 
     /** Check if Zoho Meeting is connected for an institute */

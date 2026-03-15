@@ -10,6 +10,8 @@ import vacademy.io.admin_core_service.features.live_session.provider.service.Liv
 import vacademy.io.common.meeting.dto.CreateMeetingResponseDTO;
 import vacademy.io.common.meeting.dto.MeetingAttendeeDTO;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
+import vacademy.io.common.meeting.dto.ParticipantJoinLinkDTO;
+import vacademy.io.common.meeting.dto.UserScheduleAvailabilityDTO;
 
 import java.util.List;
 import java.util.Map;
@@ -113,5 +115,52 @@ public class LiveSessionProviderController {
             @RequestParam String scheduleId,
             @RequestParam String instituteId) {
         return ResponseEntity.ok(providerService.getAttendance(scheduleId, instituteId));
+    }
+
+    /**
+     * GET /admin-core/live-session/provider/meeting/session-links?scheduleId=
+     *
+     * Returns the stored joinUrl (participants) and hostUrl (organizer) for a
+     * schedule. The hostUrl is a pre-signed Zoho startLink — opens directly
+     * without a name/email form. Open either URL in a new browser tab.
+     */
+    @GetMapping("/meeting/session-links")
+    public ResponseEntity<Map<String, String>> getSessionLinks(
+            @RequestParam String scheduleId) {
+        return ResponseEntity.ok(providerService.getSessionLinks(scheduleId));
+    }
+
+    /**
+     * POST /admin-core/live-session/provider/meeting/participant-join-link
+     * ?scheduleId=&instituteId=&participantName=&participantEmail=
+     *
+     * Registers the participant with the provider and returns a join link
+     * pre-filled with their name/email.
+     */
+    @PostMapping("/meeting/participant-join-link")
+    public ResponseEntity<ParticipantJoinLinkDTO> getParticipantJoinLink(
+            @RequestParam String scheduleId,
+            @RequestParam String instituteId,
+            @RequestParam String participantName,
+            @RequestParam String participantEmail) {
+        return ResponseEntity.ok(providerService.getParticipantJoinLink(
+                scheduleId, participantName, participantEmail, instituteId));
+    }
+
+    /**
+     * GET /admin-core/live-session/provider/meeting/availability
+     * ?instituteId=&vendorUserId=&startTime=&durationMinutes=
+     *
+     * Checks whether the organizer has any conflicting sessions in the requested
+     * time window. Call this before creating a meeting to alert the user.
+     */
+    @GetMapping("/meeting/availability")
+    public ResponseEntity<UserScheduleAvailabilityDTO> checkUserAvailability(
+            @RequestParam String instituteId,
+            @RequestParam(required = false) String vendorUserId,
+            @RequestParam String startTime,
+            @RequestParam int durationMinutes) {
+        return ResponseEntity.ok(providerService.checkUserAvailability(
+                startTime, durationMinutes, instituteId, vendorUserId));
     }
 }

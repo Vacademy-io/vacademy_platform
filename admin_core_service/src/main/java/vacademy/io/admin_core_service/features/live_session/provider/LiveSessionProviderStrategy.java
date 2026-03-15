@@ -4,6 +4,8 @@ import vacademy.io.common.meeting.dto.CreateMeetingRequestDTO;
 import vacademy.io.common.meeting.dto.CreateMeetingResponseDTO;
 import vacademy.io.common.meeting.dto.MeetingAttendeeDTO;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
+import vacademy.io.common.meeting.dto.ParticipantJoinLinkDTO;
+import vacademy.io.common.meeting.dto.UserScheduleAvailabilityDTO;
 
 import java.util.List;
 
@@ -18,11 +20,15 @@ public interface LiveSessionProviderStrategy {
 
     /**
      * Create a meeting on the provider platform.
-     * The providerConfig map contains the stored credentials (clientId, tokens,
-     * etc.)
-     * for the institute, fetched from live_session_provider_config table.
      */
     CreateMeetingResponseDTO createMeeting(CreateMeetingRequestDTO request, String instituteId);
+
+    /**
+     * Register a participant with the provider and return a unique join link
+     * pre-filled with their name/email so they skip the guest form.
+     */
+    ParticipantJoinLinkDTO getParticipantJoinLink(String providerMeetingId, String participantName,
+            String participantEmail, String instituteId);
 
     /**
      * Fetch all recordings for a given provider meeting ID.
@@ -31,9 +37,16 @@ public interface LiveSessionProviderStrategy {
 
     /**
      * Fetch attendee report for a given provider meeting ID.
-     * Returns one entry per attendee with join/leave times.
      */
     List<MeetingAttendeeDTO> getAttendance(String providerMeetingId, String instituteId);
+
+    /**
+     * Check whether the organizer (vendorUserId) has any conflicting sessions in
+     * the requested time window. Pass null for vendorUserId to use the
+     * institute-wide credential.
+     */
+    UserScheduleAvailabilityDTO checkUserAvailability(
+            String requestedStartTimeIso, int durationMinutes, String instituteId, String vendorUserId);
 
     /**
      * Connect and authenticate an institute with the provider (OAuth, API keys).

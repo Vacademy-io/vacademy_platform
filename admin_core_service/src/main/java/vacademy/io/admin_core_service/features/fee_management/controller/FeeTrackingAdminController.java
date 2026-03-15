@@ -237,7 +237,7 @@ public class FeeTrackingAdminController {
      * @param invoiceId the invoice/receipt ID
      * @return JSON with download_url, invoice_number, file_name
      */
-    @GetMapping("/receipt/{invoiceId}/download")
+    @GetMapping("/receipt/{invoiceId}/download-url")
     public ResponseEntity<?> downloadReceiptPdf(@PathVariable("invoiceId") String invoiceId) {
         Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
         if (invoice == null) {
@@ -250,7 +250,7 @@ public class FeeTrackingAdminController {
                     .body(Map.of("error", "PDF not available for this receipt"));
         }
 
-        String signedUrl = mediaService.getFileUrlById(pdfFileId);
+        String signedUrl = mediaService.getFilePublicUrlById(pdfFileId);
         if (!StringUtils.hasText(signedUrl)) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to generate download URL"));

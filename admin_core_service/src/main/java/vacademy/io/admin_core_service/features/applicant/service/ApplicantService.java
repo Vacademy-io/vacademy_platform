@@ -894,54 +894,23 @@ public class ApplicantService {
                         }
 
                         // 4. Setup Lead Tracking (Audience Response)
-                        // Because we proved the child is NEW, we create a fresh AudienceResponse
-                        // specific to this child
-                        boolean isDirectApplication = "ADMISSION".equals(workflowType)
-                                        || "INSTITUTE".equals(request.getSource());
-
-                        if (isDirectApplication) {
-                                // Direct path: no Audience campaign required
-                                String sourceType = "ADMISSION".equals(workflowType)
-                                                ? "MANUAL_ADMISSION"
-                                                : "DIRECT_APPLICATION";
-                                audienceResponse = AudienceResponse.builder()
-                                                .audienceId(null) // No campaign needed
-                                                .userId(parentUser.getId())
-                                                .studentUserId(childUser != null ? childUser.getId() : null) // Link to
-                                                                                                             // exact
-                                                                                                             // child
-                                                .sourceType(sourceType)
-                                                .sourceId(request.getSourceId())
-                                                .enquiryId(null)
-                                                .parentName(getFormDataString(request.getFormData(), "parent_name"))
-                                                .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
-                                                .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
-                                                .overallStatus("ADMISSION".equals(workflowType) ? "ADMISSION"
-                                                                : "APPLICATION")
-                                                .build();
-                        } else {
-                                // Campaign-linked Application
-                                Audience audience = audienceRepository
-                                                .findByInstituteIdAndSessionId(request.getInstituteId(),
-                                                                request.getSessionId())
-                                                .orElseThrow(() -> new VacademyException(
-                                                                "No audience campaign found for this session. Please contact admin."));
-
-                                audienceResponse = AudienceResponse.builder()
-                                                .audienceId(audience.getId())
-                                                .userId(parentUser.getId())
-                                                .studentUserId(childUser != null ? childUser.getId() : null) // Link to
-                                                                                                             // exact
-                                                                                                             // child
-                                                .sourceType("DIRECT_APPLICATION")
-                                                .sourceId(request.getSourceId())
-                                                .enquiryId(null) // Skip Enquiry
-                                                .parentName(getFormDataString(request.getFormData(), "parent_name"))
-                                                .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
-                                                .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
-                                                .overallStatus("APPLICATION")
-                                                .build();
-                        }
+                        // Create a fresh AudienceResponse directly from form data.
+                        // No audience campaign lookup needed — audienceId is nullable.
+                        String sourceType = "ADMISSION".equals(workflowType)
+                                        ? "MANUAL_ADMISSION"
+                                        : "DIRECT_APPLICATION";
+                        audienceResponse = AudienceResponse.builder()
+                                        .audienceId(null) // No campaign required
+                                        .userId(parentUser.getId())
+                                        .studentUserId(childUser != null ? childUser.getId() : null)
+                                        .sourceType(sourceType)
+                                        .sourceId(request.getSourceId())
+                                        .enquiryId(null)
+                                        .parentName(getFormDataString(request.getFormData(), "parent_name"))
+                                        .parentEmail(getFormDataString(request.getFormData(), "parent_email"))
+                                        .parentMobile(getFormDataString(request.getFormData(), "parent_phone"))
+                                        .overallStatus("ADMISSION".equals(workflowType) ? "ADMISSION" : "APPLICATION")
+                                        .build();
                         audienceResponse = audienceResponseRepository.save(audienceResponse);
                 }
 
@@ -2128,10 +2097,17 @@ public class ApplicantService {
                                         ? session.getSession().getSessionName()
                                         : "Session";
 
+                        String workflowType = applicant.getWorkflowType();
+                        String emailTypeLabel = "ADMISSION".equalsIgnoreCase(workflowType) ? "Admission"
+                                        : "Application";
+                        NotificationEventType eventType = "ADMISSION".equalsIgnoreCase(workflowType)
+                                        ? NotificationEventType.ADMISSION_FORM_SUBMISSION
+                                        : NotificationEventType.APPLICATION_FORM_SUBMISSION;
+
                         // Try to fetch template from notification_event_config
                         Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
                                         .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
-                                                        NotificationEventType.APPLICATION_FORM_SUBMISSION,
+                                                        eventType,
                                                         NotificationSourceType.APPLICATION_STAGE,
                                                         firstStage.getId().toString(),
                                                         NotificationTemplateType.EMAIL);
@@ -2165,23 +2141,37 @@ public class ApplicantService {
                                                 parentUser.getEmail());
                         } else {
                                 // Send default email
-                                logger.info("No custom template found, using default application confirmation email");
+                                logger.info("No custom template found, using default {} confirmation email",
+                                                emailTypeLabel.toLowerCase());
 
-                                String defaultEmailBody = buildDefaultApplicationEmailBody(
-                                                parentUser != null ? parentUser.getFullName() : "Parent",
-                                                childUser != null ? childUser.getFullName() : "Student",
-                                                sessionName,
-                                                applicant.getTrackingId(),
-                                                submissionTime,
-                                                username,
-                                                password,
-                                                portalUrl,
-                                                instituteName);
+                                String emailBody;
+                                if ("ADMISSION".equals(workflowType)) {
+                                        emailBody = buildDefaultAdmissionEmailBody(
+                                                        parentUser != null ? parentUser.getFullName() : "Parent",
+                                                        childUser != null ? childUser.getFullName() : "Student",
+                                                        instituteName,
+                                                        portalUrl,
+                                                        portalUrl, // Using portalUrl for loginUrl as well
+                                                        username,
+                                                        password);
+                                } else {
+                                        emailBody = buildDefaultApplicationEmailBody(
+                                                        "Application",
+                                                        parentUser != null ? parentUser.getFullName() : "Parent",
+                                                        childUser != null ? childUser.getFullName() : "Student",
+                                                        sessionName,
+                                                        applicant.getTrackingId(),
+                                                        submissionTime,
+                                                        username,
+                                                        password,
+                                                        portalUrl,
+                                                        instituteName);
+                                }
 
                                 GenericEmailRequest emailRequest = new GenericEmailRequest();
                                 emailRequest.setTo(parentUser.getEmail());
-                                emailRequest.setSubject("Application Submitted Successfully - " + sessionName);
-                                emailRequest.setBody(defaultEmailBody);
+                                emailRequest.setSubject(emailTypeLabel + " Submitted Successfully - " + sessionName);
+                                emailRequest.setBody(emailBody);
 
                                 notificationService.sendGenericHtmlMail(emailRequest, instituteId);
                                 logger.info("Sent default application confirmation email to: {}",
@@ -2199,6 +2189,7 @@ public class ApplicantService {
          * Build default HTML email body for application confirmation
          */
         private String buildDefaultApplicationEmailBody(
+                        String emailTypeLabel,
                         String parentName,
                         String childName,
                         String sessionName,
@@ -2232,14 +2223,15 @@ public class ApplicantService {
                                 "<body>" +
                                 "<div class='container'>" +
                                 "<div class='header'>" +
-                                "<h2>Application Submitted Successfully!</h2>" +
+                                "<h2>" + emailTypeLabel + " Submitted Successfully!</h2>" +
                                 "</div>" +
                                 "<div class='content'>" +
                                 "<p>Dear <strong>" + parentName + "</strong>,</p>" +
-                                "<p>Thank you for submitting the application for <strong>" + childName
+                                "<p>Thank you for submitting the " + emailTypeLabel.toLowerCase() + " for <strong>"
+                                + childName
                                 + "</strong> to <strong>" + sessionName + "</strong>.</p>" +
                                 "<div class='detail-section'>" +
-                                "<h3>Application Details</h3>" +
+                                "<h3>" + emailTypeLabel + " Details</h3>" +
                                 "<p><span class='detail-label'>Tracking ID:</span> <span class='detail-value'>"
                                 + trackingId + "</span></p>" +
                                 "<p><span class='detail-label'>Student Name:</span> <span class='detail-value'>"
@@ -2264,8 +2256,10 @@ public class ApplicantService {
                                 "</div>" +
                                 "<div class='detail-section'>" +
                                 "<h3>Next Steps</h3>" +
-                                "<p>We will review your application and contact you shortly with the next steps.</p>" +
-                                "<p>You can track your application status by logging into the portal using the credentials above.</p>"
+                                "<p>We will review your " + emailTypeLabel.toLowerCase()
+                                + " and contact you shortly with the next steps.</p>" +
+                                "<p>You can track your " + emailTypeLabel.toLowerCase()
+                                + " status by logging into the portal using the credentials above.</p>"
                                 +
                                 "</div>" +
                                 "<p>If you have any questions, please don't hesitate to contact us.</p>" +
@@ -2274,9 +2268,80 @@ public class ApplicantService {
                                 "<div class='footer'>" +
                                 "<p>This is an automated email. Please do not reply to this message.</p>" +
                                 "</div>" +
-                                "</div>" +
                                 "</body>" +
                                 "</html>";
         }
 
+        /**
+         * Build default HTML email body for admission confirmation
+         */
+        private String buildDefaultAdmissionEmailBody(
+                        String parentName,
+                        String childName,
+                        String instituteName,
+                        String websiteUrl,
+                        String loginUrl,
+                        String username,
+                        String password) {
+
+                return "<!DOCTYPE html>" +
+                                "<html>" +
+                                "<head>" +
+                                "<style>" +
+                                "body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #2c3e50; background-color: #f4f7f6; }"
+                                +
+                                ".container { max-width: 650px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }"
+                                +
+                                ".header { background: linear-gradient(135deg, #FFB75E 0%, #ED8F03 100%); color: white; padding: 30px 20px; text-align: center; }"
+                                +
+                                ".header h2 { margin: 0; font-size: 28px; letter-spacing: 1px; }" +
+                                ".content { padding: 40px 30px; }" +
+                                ".welcome-msg { font-size: 18px; color: #34495e; margin-bottom: 25px; text-align: center; }"
+                                +
+                                ".credentials-box { background-color: #f8f9fa; border-left: 5px solid #ED8F03; padding: 25px; margin: 30px 0; border-radius: 0 8px 8px 0; }"
+                                +
+                                ".credentials-box h3 { margin-top: 0; color: #ED8F03; }" +
+                                ".cred-row { margin: 10px 0; font-size: 16px; }" +
+                                ".cred-val { font-family: monospace; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 18px; }"
+                                +
+                                ".button { display: inline-block; padding: 14px 35px; background-color: #ED8F03; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; text-transform: uppercase; font-size: 14px; transition: background 0.3s; }"
+                                +
+                                ".button:hover { background-color: #d67d02; }" +
+                                ".footer { background-color: #2c3e50; text-align: center; padding: 25px; color: #a8b2bd; font-size: 13px; }"
+                                +
+                                "</style>" +
+                                "</head>" +
+                                "<body>" +
+                                "<div class='container'>" +
+                                "<div class='header'>" +
+                                "<h2>Admission Confirmed! 🎉</h2>" +
+                                "<p style='margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;'>Welcome to "
+                                + instituteName + "</p>" +
+                                "</div>" +
+                                "<div class='content'>" +
+                                "<p class='welcome-msg'>Dear <strong>" + parentName + "</strong>,</p>" +
+                                "<p>We are absolutely thrilled to officially welcome <strong>" + childName
+                                + "</strong> to our institute!</p>" +
+                                "<p>Your admission process has been successfully completed. To help you get started, access fee schedules, and view academic updates, we have set up your permanent Parent Portal account.</p>"
+                                +
+                                "<div class='credentials-box'>" +
+                                "<h3>Your Portal Credentials</h3>" +
+                                "<div class='cred-row'>Username: <span class='cred-val'>" + username + "</span></div>" +
+                                "<div class='cred-row'>Password: <span class='cred-val'>" + password + "</span></div>" +
+                                "</div>" +
+                                "<div style='text-align: center; margin: 40px 0;'>" +
+                                "<a href='" + loginUrl + "' class='button'>Login to Parent Portal</a>" +
+                                "</div>" +
+                                "<p>If you have any questions before classes begin, please visit our <a href='"
+                                + websiteUrl
+                                + "' style='color: #ED8F03;'>website</a> or reach out to our administration team.</p>" +
+                                "</div>" +
+                                "<div class='footer'>" +
+                                "<p>You are receiving this email because you have successfully enrolled at "
+                                + instituteName + ".</p>" +
+                                "</div>" +
+                                "</div>" +
+                                "</body>" +
+                                "</html>";
+        }
 }

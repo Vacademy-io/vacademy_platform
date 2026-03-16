@@ -36,12 +36,13 @@ public class ApplicantPublicController {
 
     /**
      * Submit application form - handles both pre-filled (from enquiry) and manual
-     * (direct) submissions
+     * (direct) submissions. workflowType is hardcoded to APPLICATION on the backend.
      */
     @PostMapping("/apply")
     public ResponseEntity<ApplyResponseDTO> submitApplication(@RequestBody ApplyRequestDTO request) {
         logger.info("Request to submit application. InstituteId: {}, Source: {}, SourceId: {}, EnquiryId: {}",
                 request.getInstituteId(), request.getSource(), request.getSourceId(), request.getEnquiryId());
+        request.setWorkflowType("APPLICATION");
         ApplyResponseDTO response = applicantService.submitApplication(request);
         return ResponseEntity.ok(response);
     }

@@ -11,7 +11,8 @@ import java.util.Date;
 import java.util.List;
 
 @Repository
-public interface StudentFeePaymentRepository extends JpaRepository<StudentFeePayment, String>, JpaSpecificationExecutor<StudentFeePayment> {
+public interface StudentFeePaymentRepository extends JpaRepository<StudentFeePayment, String>,
+        JpaSpecificationExecutor<StudentFeePayment> {
 
     // Fetch all bills for a plan
     List<StudentFeePayment> findByUserPlanId(String userPlanId);

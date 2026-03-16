@@ -19,6 +19,8 @@ import java.util.Optional;
 public interface SessionScheduleRepository extends JpaRepository<SessionSchedule, String> {
     List<SessionSchedule> findBySessionId(String sessionId);
 
+    List<SessionSchedule> findByProviderMeetingId(String providerMeetingId);
+
     @Transactional
     void deleteBySessionId(String sessionId);
 

@@ -53,6 +53,22 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
                 request.getVendorUserId());
     }
 
+    @Override
+    public vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig connectSdkProvider(
+            vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO request) {
+        String domain = (request.getDomain() != null && !request.getDomain().isBlank())
+                ? request.getDomain()
+                : "zoho.com";
+        return oAuthService.connectSdkZoho(
+                request.getInstituteId(),
+                request.getClientId(),
+                request.getClientSecret(),
+                request.getAuthorizationCode(),
+                request.getRedirectUri(),
+                domain,
+                request.getPresenterZuid());
+    }
+
     // -----------------------------------------------------------------------
     // Create meeting
     // POST /api/v2/{zohoUserId}/sessions.json
@@ -61,9 +77,77 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
     @Override
     public CreateMeetingResponseDTO createMeeting(CreateMeetingRequestDTO request, String instituteId) {
         Map<String, Object> cfg = oAuthService.getValidConfigMap(instituteId);
-        String token = (String) cfg.get("accessToken");
         String domain = (String) cfg.getOrDefault("domain", "zoho.com");
-        String userId = (String) cfg.get("zohoUserId");
+
+        // Use SDK endpoint when SDK credentials are present
+        if (cfg.containsKey("sdkClientId")) {
+            return createSdkMeeting(request, instituteId, cfg, domain);
+        }
+        return createRegularMeeting(request, instituteId, cfg, domain);
+    }
+
+    /**
+     * Creates a session via Zoho Meeting SDK API (embedded/iframe capable).
+     * POST /meeting/api/v2/{orgId}/sdk/session
+     */
+    private CreateMeetingResponseDTO createSdkMeeting(CreateMeetingRequestDTO request, String instituteId,
+            Map<String, Object> cfg, String domain) {
+        Map<String, Object> sdkCfg = oAuthService.getSdkValidConfigMap(instituteId);
+        String sdkToken = (String) sdkCfg.get("sdkAccessToken");
+        String orgId = resolveOrgId(cfg); // org-level ZSOID
+        String apiBase = ZohoOAuthService.buildApiBase(domain);
+
+        if (orgId == null || orgId.isBlank()) {
+            throw new VacademyException("Zoho org ID not found in config for institute: " + instituteId);
+        }
+
+        String presenterZuid = (String) sdkCfg.getOrDefault("presenterZuid", cfg.get("presenterZuid"));
+        if (presenterZuid == null || presenterZuid.isBlank()) {
+            throw new VacademyException("presenterZuid not configured for SDK sessions — re-connect SDK credentials");
+        }
+
+        Map<String, Object> sessionBody = new HashMap<>();
+        sessionBody.put("topic", request.getTopic());
+        sessionBody.put("agenda", request.getAgenda() != null ? request.getAgenda() : "");
+        sessionBody.put("duration",
+                request.getDurationMinutes() > 0 ? request.getDurationMinutes() * 60000L : 3600000L);
+        sessionBody.put("timezone", "Asia/Calcutta");
+        sessionBody.put("presenter", Long.parseLong(presenterZuid));
+
+        String formattedTime = formatZohoTime(request.getStartTime());
+        sessionBody.put("startTime", formattedTime);
+
+        String url = apiBase + "/meeting/api/v2/" + orgId + "/sdk/session";
+        log.info("[Zoho SDK] Creating SDK session for institute={}, orgId={}, presenter={}", instituteId, orgId,
+                presenterZuid);
+
+        JsonNode response = webClientBuilder.build()
+                .post().uri(url)
+                .header("Authorization", "Zoho-oauthtoken " + sdkToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("session", sessionBody))
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        clientResponse -> clientResponse.bodyToMono(String.class)
+                                .map(body -> {
+                                    log.error("[Zoho SDK] Error response: HTTP {} - {}", clientResponse.statusCode(),
+                                            body);
+                                    return new VacademyException("Zoho SDK error: " + body);
+                                }))
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        return parseCreateMeetingResponse(response);
+    }
+
+    /**
+     * Creates a session via the regular Zoho Meeting API.
+     * POST /api/v2/{zohoUserId}/sessions.json
+     */
+    private CreateMeetingResponseDTO createRegularMeeting(CreateMeetingRequestDTO request, String instituteId,
+            Map<String, Object> cfg, String domain) {
+        String token = (String) cfg.get("accessToken");
+        String userId = resolveOrgId(cfg);
         String apiBase = ZohoOAuthService.buildApiBase(domain);
 
         if (userId == null || userId.isBlank()) {
@@ -73,18 +157,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         Map<String, Object> sessionBody = new HashMap<>();
         sessionBody.put("topic", request.getTopic());
         sessionBody.put("agenda", request.getAgenda() != null ? request.getAgenda() : "");
-
-        String formattedTime = request.getStartTime();
-        try {
-            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
-                    .ofPattern("MMM dd, yyyy hh:mm a", java.util.Locale.ENGLISH);
-            java.time.LocalDateTime localDateTime = java.time.OffsetDateTime.parse(request.getStartTime())
-                    .toLocalDateTime();
-            formattedTime = localDateTime.format(formatter);
-        } catch (Exception e) {
-            log.warn("Could not format time: {}", request.getStartTime());
-        }
-        sessionBody.put("startTime", formattedTime);
+        sessionBody.put("startTime", formatZohoTime(request.getStartTime()));
         sessionBody.put("duration",
                 request.getDurationMinutes() > 0 ? request.getDurationMinutes() * 60000L : 3600000L);
         sessionBody.put("timezone", "Asia/Calcutta");
@@ -115,6 +188,144 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         return parseCreateMeetingResponse(response);
     }
 
+    private String formatZohoTime(String isoStartTime) {
+        try {
+            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter
+                    .ofPattern("MMM dd, yyyy hh:mm a", java.util.Locale.ENGLISH);
+            java.time.LocalDateTime localDateTime = java.time.OffsetDateTime.parse(isoStartTime).toLocalDateTime();
+            return localDateTime.format(formatter);
+        } catch (Exception e) {
+            log.warn("Could not format time: {}", isoStartTime);
+            return isoStartTime;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Participant join link
+    // POST /api/v2/{zohoUserId}/sessions/{meetingKey}/participant.json
+    // -----------------------------------------------------------------------
+
+    @Override
+    public ParticipantJoinLinkDTO getParticipantJoinLink(String providerMeetingId, String participantName,
+            String participantEmail, String instituteId) {
+        Map<String, Object> cfg = oAuthService.getValidConfigMap(instituteId);
+        String token = (String) cfg.get("accessToken");
+        String domain = (String) cfg.getOrDefault("domain", "zoho.com");
+        String userId = resolveOrgId(cfg);
+        String apiBase = ZohoOAuthService.buildApiBase(domain);
+
+        String url = apiBase + "/api/v2/" + userId + "/sessions/" + providerMeetingId + "/participant.json";
+
+        Map<String, Object> participantBody = new HashMap<>();
+        participantBody.put("name", participantName);
+        participantBody.put("email", participantEmail);
+
+        log.info("[Zoho] Registering participant {} for meeting {}", participantEmail, providerMeetingId);
+
+        JsonNode response = webClientBuilder.build()
+                .post().uri(url)
+                .header("Authorization", "Zoho-oauthtoken " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("participant", participantBody))
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class).map(body -> {
+                            log.error("[Zoho] Participant register failed: {}", body);
+                            return new VacademyException("Zoho participant error: " + body);
+                        }))
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        if (response == null) {
+            throw new VacademyException("Null response from Zoho participant register API");
+        }
+
+        JsonNode firstElement = response.isArray() && response.size() > 0 ? response.get(0) : response;
+        JsonNode participantNode = firstElement.path("participant");
+        String joinLink = participantNode.path("joinLink").asText(null);
+        if (joinLink == null || joinLink.isBlank()) {
+            joinLink = firstElement.path("joinLink").asText(null);
+        }
+
+        return ParticipantJoinLinkDTO.builder()
+                .joinLink(joinLink)
+                .participantName(participantName)
+                .participantEmail(participantEmail)
+                .providerMeetingId(providerMeetingId)
+                .build();
+    }
+
+    // -----------------------------------------------------------------------
+    // User schedule availability
+    // GET /api/v2/{zohoUserId}/sessions.json?listtype=upcoming
+    // -----------------------------------------------------------------------
+
+    @Override
+    public UserScheduleAvailabilityDTO checkUserAvailability(
+            String requestedStartTimeIso, int durationMinutes, String instituteId, String vendorUserId) {
+
+        Map<String, Object> cfg = oAuthService.getValidConfigMap(instituteId, vendorUserId);
+        String token = (String) cfg.get("accessToken");
+        String domain = (String) cfg.getOrDefault("domain", "zoho.com");
+        String userId = resolveOrgId(cfg);
+        String apiBase = ZohoOAuthService.buildApiBase(domain);
+
+        // Parse requested window
+        long requestedStartMs = java.time.OffsetDateTime.parse(requestedStartTimeIso)
+                .toInstant().toEpochMilli();
+        long requestedEndMs = requestedStartMs + (long) durationMinutes * 60_000L;
+
+        // Fetch upcoming sessions (paginate — stop once startTime is past our window)
+        String url = apiBase + "/api/v2/" + userId + "/sessions.json?listtype=upcoming&index=1&count=50";
+        log.info("[Zoho Availability] Fetching upcoming sessions for userId={}", userId);
+
+        JsonNode response = webClientBuilder.build()
+                .get().uri(url)
+                .header("Authorization", "Zoho-oauthtoken " + token)
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class).map(body -> {
+                            log.error("[Zoho Availability] API failed: {}", body);
+                            return new VacademyException("Zoho sessions list error: " + body);
+                        }))
+                .bodyToMono(JsonNode.class)
+                .block();
+
+        List<UserScheduleAvailabilityDTO.ConflictingSessionDTO> conflicts = new ArrayList<>();
+
+        if (response != null && !response.isNull()) {
+            JsonNode sessions = response.isArray() ? response
+                    : response.has("sessions") ? response.get("sessions")
+                    : response;
+
+            if (sessions.isArray()) {
+                for (JsonNode s : sessions) {
+                    long sStart = s.path("startTimeMillisec").asLong(0);
+                    long duration = s.path("duration").asLong(0); // milliseconds
+                    long sEnd = sStart + duration;
+
+                    // Overlap: existing [sStart, sEnd] overlaps [requestedStart, requestedEnd]
+                    boolean overlaps = sStart < requestedEndMs && sEnd > requestedStartMs;
+                    if (overlaps) {
+                        conflicts.add(UserScheduleAvailabilityDTO.ConflictingSessionDTO.builder()
+                                .meetingKey(s.path("meetingKey").asText(null))
+                                .topic(s.path("topic").asText(null))
+                                .startTimeMillisec(sStart)
+                                .endTimeMillisec(sEnd)
+                                .build());
+                    }
+                }
+            }
+        }
+
+        return UserScheduleAvailabilityDTO.builder()
+                .available(conflicts.isEmpty())
+                .requestedStartTime(requestedStartTimeIso)
+                .requestedDurationMinutes(durationMinutes)
+                .conflicts(conflicts)
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Get recordings
     // GET /api/v2/{zohoUserId}/sessions/{meetingKey}/recordings.json
@@ -125,7 +336,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         Map<String, Object> cfg = oAuthService.getValidConfigMap(instituteId);
         String token = (String) cfg.get("accessToken");
         String domain = (String) cfg.getOrDefault("domain", "zoho.com");
-        String userId = (String) cfg.get("zohoUserId");
+        String userId = resolveOrgId(cfg);
         String apiBase = ZohoOAuthService.buildApiBase(domain);
 
         // Correct Zoho Recording API:
@@ -159,7 +370,7 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
         Map<String, Object> cfg = oAuthService.getValidConfigMap(instituteId);
         String token = (String) cfg.get("accessToken");
         String domain = (String) cfg.getOrDefault("domain", "zoho.com");
-        String userId = (String) cfg.get("zohoUserId");
+        String userId = resolveOrgId(cfg);
         String apiBase = ZohoOAuthService.buildApiBase(domain);
 
         String url = apiBase + "/api/v2/" + userId + "/participant/" + providerMeetingId + ".json?index=1&count=100";
@@ -176,6 +387,22 @@ public class ZohoMeetingManager implements LiveSessionProviderStrategy {
                 .block();
 
         return parseAttendeesResponse(response);
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    /**
+     * Returns zohoOrgId if explicitly set in config (preferred for all API paths),
+     * falls back to zohoUserId for backward compatibility.
+     */
+    private String resolveOrgId(Map<String, Object> cfg) {
+        Object orgId = cfg.get("zohoOrgId");
+        if (orgId != null && !orgId.toString().isBlank()) {
+            return orgId.toString();
+        }
+        return (String) cfg.get("zohoUserId");
     }
 
     // -----------------------------------------------------------------------

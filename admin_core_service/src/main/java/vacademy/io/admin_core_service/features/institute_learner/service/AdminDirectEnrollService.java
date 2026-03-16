@@ -22,10 +22,14 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.learner.dto.SubOrgEnrollRequestDTO;
+import vacademy.io.admin_core_service.features.learner.dto.SubOrgEnrollResponseDTO;
+import vacademy.io.admin_core_service.features.learner.service.SubOrgLearnerService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.dto.ManualPaymentDTO;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
@@ -63,8 +67,52 @@ public class AdminDirectEnrollService {
     @Autowired
     private DynamicNotificationService dynamicNotificationService;
 
+    @Autowired
+    private SubOrgLearnerService subOrgLearnerService;
+
     @Transactional
-    public LearnerEnrollResponseDTO adminEnrollLearner(LearnerEnrollRequestDTO request) {
+    public LearnerEnrollResponseDTO adminEnrollLearner(LearnerEnrollRequestDTO request, CustomUserDetails admin) {
+        // If subOrgId is present, delegate to SubOrgLearnerService for each package session
+        if (StringUtils.hasText(request.getSubOrgId())) {
+            return adminEnrollLearnerToSubOrg(request, admin);
+        }
+        return adminEnrollLearnerDirect(request);
+    }
+
+    /**
+     * Enroll learner through sub-org flow — delegates to SubOrgLearnerService
+     * for seat validation, UserPlan creation, and student_sub_org entry.
+     */
+    private LearnerEnrollResponseDTO adminEnrollLearnerToSubOrg(LearnerEnrollRequestDTO request, CustomUserDetails admin) {
+        LearnerPackageSessionsEnrollDTO enrollDTO = request.getLearnerPackageSessionEnroll();
+        List<String> packageSessionIds = enrollDTO.getPackageSessionIds();
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            throw new VacademyException("packageSessionIds are required");
+        }
+
+        SubOrgEnrollResponseDTO lastResponse = null;
+        for (String packageSessionId : packageSessionIds) {
+            SubOrgEnrollRequestDTO subOrgRequest = SubOrgEnrollRequestDTO.builder()
+                    .user(request.getUser())
+                    .packageSessionId(packageSessionId)
+                    .subOrgId(request.getSubOrgId())
+                    .instituteId(request.getInstituteId())
+                    .enrolledDate(enrollDTO.getStartDate() != null ? enrollDTO.getStartDate() : new Date())
+                    .status("ACTIVE")
+                    .commaSeparatedOrgRoles("LEARNER")
+                    .customFieldValues(enrollDTO.getCustomFieldValues())
+                    .build();
+            lastResponse = subOrgLearnerService.enrollLearnerToSubOrg(subOrgRequest, admin);
+        }
+
+        LearnerEnrollResponseDTO response = new LearnerEnrollResponseDTO();
+        if (lastResponse != null) {
+            response.setUser(lastResponse.getUser());
+        }
+        return response;
+    }
+
+    private LearnerEnrollResponseDTO adminEnrollLearnerDirect(LearnerEnrollRequestDTO request) {
         UserDTO user = createUserOrGetExistingUser(request.getUser(),request.getInstituteId());
         LearnerPackageSessionsEnrollDTO enrollDTO = request.getLearnerPackageSessionEnroll();
         String instituteId = request.getInstituteId();

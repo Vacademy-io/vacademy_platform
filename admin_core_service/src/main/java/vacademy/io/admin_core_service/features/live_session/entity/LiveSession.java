@@ -33,7 +33,8 @@ import java.util.Date;
         @ColumnResult(name = "meetingLink", type = String.class),
         @ColumnResult(name = "learnerButtonConfig", type = String.class),
         @ColumnResult(name = "defaultClassLink", type = String.class),
-        @ColumnResult(name = "defaultClassName", type = String.class)
+        @ColumnResult(name = "defaultClassName", type = String.class),
+        @ColumnResult(name = "linkType", type = String.class)
 }))
 public class LiveSession {
 
@@ -81,6 +82,10 @@ public class LiveSession {
 
     @Column(name = "source_id")
     private String sourceId;
+
+    /** JSON config for BBB meetings (record, muteOnStart, webcamsOnlyForModerator, guestPolicy) */
+    @Column(name = "bbb_config_json", columnDefinition = "text")
+    private String bbbConfigJson;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

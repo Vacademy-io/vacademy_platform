@@ -26,6 +26,10 @@ public class BulkAssignOptionsDTO {
     @Builder.Default
     private boolean notifyLearners = true;
 
+    /** Whether to send credentials (registration email) to new users. Default: true */
+    @Builder.Default
+    private boolean sendCredentials = true;
+
     /** Optional external transaction reference */
     private String transactionId;
 

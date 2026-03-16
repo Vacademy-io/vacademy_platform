@@ -18,8 +18,7 @@ import java.util.Date;
  * providers.
  */
 @Entity
-@Table(name = "institute_live_session_provider_mapping", uniqueConstraints = @UniqueConstraint(columnNames = {
-        "institute_id", "provider" }))
+@Table(name = "institute_live_session_provider_mapping")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -32,8 +31,8 @@ public class LiveSessionProviderConfig {
     @Column(name = "id", nullable = false, unique = true)
     private String id;
 
-    /** Institute that owns this provider config */
-    @Column(name = "institute_id", nullable = false)
+    /** Institute that owns this provider config. NULL for platform-wide providers (e.g. BBB). */
+    @Column(name = "institute_id")
     private String instituteId;
 
     /**
@@ -64,6 +63,14 @@ public class LiveSessionProviderConfig {
      * "clientSecret": "..."
      * }
      */
+    /**
+     * Optional: Zoho / provider user ID of the individual organizer.
+     * NULL means this is the institute-wide fallback credential used for
+     * any organizer that does not have their own personal config.
+     */
+    @Column(name = "vendor_user_id", length = 100)
+    private String vendorUserId;
+
     @Column(name = "config_json", columnDefinition = "TEXT", nullable = false)
     private String configJson;
 

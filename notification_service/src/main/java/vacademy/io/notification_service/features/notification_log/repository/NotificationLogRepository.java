@@ -34,6 +34,20 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             String notificationType         // "WHATSAPP_OUTGOING"
     );
 
+    @Query(value = """
+            SELECT * FROM notification_log
+            WHERE channel_id = :channelId
+              AND notification_type = :notificationType
+              AND body LIKE CONCAT('%', :provider, '%')
+            ORDER BY notification_date DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<NotificationLog> findLatestOutgoingByChannelIdAndProvider(
+            @Param("channelId") String channelId,
+            @Param("notificationType") String notificationType,
+            @Param("provider") String provider
+    );
+
     // Debug method: Find any logs for a recipient (for debugging)
     Optional<NotificationLog> findTopByChannelIdOrderByNotificationDateDesc(String channelId);
 

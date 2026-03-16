@@ -19,6 +19,8 @@ import vacademy.io.common.meeting.dto.CreateMeetingRequestDTO;
 import vacademy.io.common.meeting.dto.CreateMeetingResponseDTO;
 import vacademy.io.common.meeting.dto.MeetingAttendeeDTO;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
+import vacademy.io.common.meeting.dto.ParticipantJoinLinkDTO;
+import vacademy.io.common.meeting.dto.UserScheduleAvailabilityDTO;
 import vacademy.io.common.meeting.enums.MeetingProvider;
 
 import java.util.List;
@@ -51,8 +53,17 @@ public class LiveSessionProviderService {
         return providerFactory.getStrategy(normalizedProvider).connectProvider(request);
     }
 
+    public LiveSessionProviderConfig connectSdkProvider(String providerName, ProviderConnectRequestDTO request) {
+        String normalizedProvider = MeetingProvider.fromString(providerName).name();
+        return providerFactory.getStrategy(normalizedProvider).connectSdkProvider(request);
+    }
+
     public boolean isProviderConnected(String instituteId, String providerName) {
         String normalizedProvider = MeetingProvider.fromString(providerName).name();
+        // For BBB, check Vacademy-level config (instituteId IS NULL)
+        if (MeetingProvider.BBB_MEETING.name().equals(normalizedProvider)) {
+            return configRepository.findByProviderAndStatusIn(normalizedProvider, ACTIVE).isPresent();
+        }
         return configRepository.existsByInstituteIdAndProviderAndStatusIn(instituteId, normalizedProvider, ACTIVE);
     }
 
@@ -95,6 +106,9 @@ public class LiveSessionProviderService {
                 .durationMinutes(request.getDurationMinutes())
                 .timezone(request.getTimezone())
                 .hostEmail(request.getHostEmail())
+                .sessionId(request.getSessionId())
+                .scheduleId(request.getScheduleId())
+                .bbbConfig(request.getBbbConfig())
                 .build();
 
         CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
@@ -103,7 +117,11 @@ public class LiveSessionProviderService {
         if (request.getScheduleId() != null) {
             scheduleRepository.findById(request.getScheduleId()).ifPresent(schedule -> {
                 schedule.setCustomMeetingLink(response.getJoinUrl()); // learner join URL
-                schedule.setLinkType(providerName);
+                // Only set linkType if not already set — preserve the frontend-friendly
+                // value (e.g. "bbb") instead of overwriting with enum name ("BBB_MEETING")
+                if (schedule.getLinkType() == null || schedule.getLinkType().isBlank()) {
+                    schedule.setLinkType(providerName);
+                }
                 schedule.setProviderMeetingId(response.getProviderMeetingId());
                 schedule.setProviderHostUrl(response.getHostUrl());
                 scheduleRepository.save(schedule);
@@ -111,7 +129,9 @@ public class LiveSessionProviderService {
                 if (schedule.getSessionId() != null) {
                     sessionRepository.findById(schedule.getSessionId()).ifPresent(session -> {
                         session.setDefaultMeetLink(response.getJoinUrl());
-                        session.setLinkType(providerName);
+                        if (session.getLinkType() == null || session.getLinkType().isBlank()) {
+                            session.setLinkType(providerName);
+                        }
                         sessionRepository.save(session);
                     });
                 }
@@ -130,8 +150,8 @@ public class LiveSessionProviderService {
 
     public List<MeetingRecordingDTO> getRecordings(String scheduleId, String instituteId) {
         SessionSchedule schedule = getScheduleOrThrow(scheduleId);
-        List<MeetingRecordingDTO> recordings = providerFactory.getStrategy(schedule.getLinkType())
-                .getRecordings(schedule.getProviderMeetingId(), instituteId);
+        LiveSessionProviderStrategy strategy = getStrategyForSchedule(schedule);
+        List<MeetingRecordingDTO> recordings = strategy.getRecordings(schedule.getProviderMeetingId(), instituteId);
         try {
             schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
             schedule.setLastRecordingSyncAt(new java.util.Date());
@@ -144,8 +164,59 @@ public class LiveSessionProviderService {
 
     public List<MeetingAttendeeDTO> getAttendance(String scheduleId, String instituteId) {
         SessionSchedule schedule = getScheduleOrThrow(scheduleId);
+        LiveSessionProviderStrategy strategy = getStrategyForSchedule(schedule);
+        return strategy.getAttendance(schedule.getProviderMeetingId(), instituteId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Participant join link
+    // -----------------------------------------------------------------------
+
+    public ParticipantJoinLinkDTO getParticipantJoinLink(String scheduleId, String participantName,
+            String participantEmail, String instituteId) {
+        SessionSchedule schedule = getScheduleOrThrow(scheduleId);
         return providerFactory.getStrategy(schedule.getLinkType())
-                .getAttendance(schedule.getProviderMeetingId(), instituteId);
+                .getParticipantJoinLink(schedule.getProviderMeetingId(), participantName, participantEmail, instituteId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Session links (open in new tab)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Returns the stored join URL (for participants) and host URL (for the
+     * organizer) for a given schedule. The host URL is a pre-signed Zoho startLink
+     * that opens the meeting directly without a name/email form. The join URL is
+     * the standard Zoho joinLink — Zoho will still prompt participants for their
+     * name and email (platform limitation).
+     */
+    public Map<String, String> getSessionLinks(String scheduleId) {
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
+        Map<String, String> links = new java.util.HashMap<>();
+        if (schedule.getCustomMeetingLink() != null)
+            links.put("joinUrl", schedule.getCustomMeetingLink());
+        if (schedule.getProviderHostUrl() != null)
+            links.put("hostUrl", schedule.getProviderHostUrl());
+        if (schedule.getProviderMeetingId() != null)
+            links.put("providerMeetingId", schedule.getProviderMeetingId());
+        return links;
+    }
+
+    // -----------------------------------------------------------------------
+    // Schedule availability check
+    // -----------------------------------------------------------------------
+
+    public UserScheduleAvailabilityDTO checkUserAvailability(
+            String requestedStartTimeIso, int durationMinutes, String instituteId, String vendorUserId) {
+        List<LiveSessionProviderConfig> configs = configRepository
+                .findByInstituteIdAndStatusIn(instituteId, ACTIVE);
+        if (configs.isEmpty()) {
+            throw new VacademyException("No live session provider connected for institute: " + instituteId);
+        }
+        String providerName = configs.get(0).getProvider();
+        return providerFactory.getStrategy(providerName)
+                .checkUserAvailability(requestedStartTimeIso, durationMinutes, instituteId, vendorUserId);
     }
 
     // -----------------------------------------------------------------------
@@ -163,6 +234,21 @@ public class LiveSessionProviderService {
                     "No live session provider connected for institute: " + request.getInstituteId());
         }
         return configs.get(0).getProvider();
+    }
+
+    /**
+     * Resolve the provider strategy from schedule's linkType.
+     * linkType may be a provider alias ("bbb", "zoho") or a non-provider value
+     * ("YOUTUBE", "ZOOM", "RECORDED") — the latter throws a clear error.
+     */
+    private LiveSessionProviderStrategy getStrategyForSchedule(SessionSchedule schedule) {
+        try {
+            return providerFactory.getStrategy(schedule.getLinkType());
+        } catch (IllegalArgumentException e) {
+            throw new VacademyException(
+                    "Schedule " + schedule.getId() + " has linkType '" + schedule.getLinkType()
+                            + "' which is not a managed provider. Recordings/attendance are only available for provider-managed sessions.");
+        }
     }
 
     private SessionSchedule getScheduleOrThrow(String scheduleId) {

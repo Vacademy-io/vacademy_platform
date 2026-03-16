@@ -45,7 +45,7 @@ public class InstituteStudentController {
     public ResponseEntity<LearnerEnrollResponseDTO> adminEnrollLearner(
             @RequestAttribute("user") CustomUserDetails admin,
             @RequestBody LearnerEnrollRequestDTO request) {
-        return ResponseEntity.ok(adminDirectEnrollService.adminEnrollLearner(request));
+        return ResponseEntity.ok(adminDirectEnrollService.adminEnrollLearner(request, admin));
     }
 
 }

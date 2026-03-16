@@ -2098,8 +2098,11 @@ public class ApplicantService {
                                         : "Session";
 
                         String workflowType = applicant.getWorkflowType();
-                        String emailTypeLabel = "ADMISSION".equalsIgnoreCase(workflowType) ? "Admission" : "Application";
-                        NotificationEventType eventType = "ADMISSION".equalsIgnoreCase(workflowType) ? NotificationEventType.ADMISSION_FORM_SUBMISSION : NotificationEventType.APPLICATION_FORM_SUBMISSION;
+                        String emailTypeLabel = "ADMISSION".equalsIgnoreCase(workflowType) ? "Admission"
+                                        : "Application";
+                        NotificationEventType eventType = "ADMISSION".equalsIgnoreCase(workflowType)
+                                        ? NotificationEventType.ADMISSION_FORM_SUBMISSION
+                                        : NotificationEventType.APPLICATION_FORM_SUBMISSION;
 
                         // Try to fetch template from notification_event_config
                         Optional<NotificationEventConfig> configOpt = notificationEventConfigRepository
@@ -2138,28 +2141,29 @@ public class ApplicantService {
                                                 parentUser.getEmail());
                         } else {
                                 // Send default email
-                                logger.info("No custom template found, using default {} confirmation email", emailTypeLabel.toLowerCase());
+                                logger.info("No custom template found, using default {} confirmation email",
+                                                emailTypeLabel.toLowerCase());
 
                                 String emailBody;
                                 if ("ADMISSION".equals(workflowType)) {
                                         emailBody = buildDefaultAdmissionEmailBody(
                                                         parentUser != null ? parentUser.getFullName() : "Parent",
                                                         childUser != null ? childUser.getFullName() : "Student",
-                                                        instituteName, 
-                                                        portalUrl, 
+                                                        instituteName,
+                                                        portalUrl,
                                                         portalUrl, // Using portalUrl for loginUrl as well
-                                                        username, 
+                                                        username,
                                                         password);
                                 } else {
                                         emailBody = buildDefaultApplicationEmailBody(
-                                                        "Application", 
-                                                        parentUser != null ? parentUser.getFullName() : "Parent", 
+                                                        "Application",
+                                                        parentUser != null ? parentUser.getFullName() : "Parent",
                                                         childUser != null ? childUser.getFullName() : "Student",
-                                                        sessionName, 
-                                                        applicant.getTrackingId(), 
+                                                        sessionName,
+                                                        applicant.getTrackingId(),
                                                         submissionTime,
-                                                        username, 
-                                                        password, 
+                                                        username,
+                                                        password,
                                                         portalUrl,
                                                         instituteName);
                                 }
@@ -2223,7 +2227,8 @@ public class ApplicantService {
                                 "</div>" +
                                 "<div class='content'>" +
                                 "<p>Dear <strong>" + parentName + "</strong>,</p>" +
-                                "<p>Thank you for submitting the " + emailTypeLabel.toLowerCase() + " for <strong>" + childName
+                                "<p>Thank you for submitting the " + emailTypeLabel.toLowerCase() + " for <strong>"
+                                + childName
                                 + "</strong> to <strong>" + sessionName + "</strong>.</p>" +
                                 "<div class='detail-section'>" +
                                 "<h3>" + emailTypeLabel + " Details</h3>" +
@@ -2251,8 +2256,10 @@ public class ApplicantService {
                                 "</div>" +
                                 "<div class='detail-section'>" +
                                 "<h3>Next Steps</h3>" +
-                                "<p>We will review your " + emailTypeLabel.toLowerCase() + " and contact you shortly with the next steps.</p>" +
-                                "<p>You can track your " + emailTypeLabel.toLowerCase() + " status by logging into the portal using the credentials above.</p>"
+                                "<p>We will review your " + emailTypeLabel.toLowerCase()
+                                + " and contact you shortly with the next steps.</p>" +
+                                "<p>You can track your " + emailTypeLabel.toLowerCase()
+                                + " status by logging into the portal using the credentials above.</p>"
                                 +
                                 "</div>" +
                                 "<p>If you have any questions, please don't hesitate to contact us.</p>" +
@@ -2281,31 +2288,42 @@ public class ApplicantService {
                                 "<html>" +
                                 "<head>" +
                                 "<style>" +
-                                "body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #2c3e50; background-color: #f4f7f6; }" +
-                                ".container { max-width: 650px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }" +
-                                ".header { background: linear-gradient(135deg, #FFB75E 0%, #ED8F03 100%); color: white; padding: 30px 20px; text-align: center; }" +
+                                "body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #2c3e50; background-color: #f4f7f6; }"
+                                +
+                                ".container { max-width: 650px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }"
+                                +
+                                ".header { background: linear-gradient(135deg, #FFB75E 0%, #ED8F03 100%); color: white; padding: 30px 20px; text-align: center; }"
+                                +
                                 ".header h2 { margin: 0; font-size: 28px; letter-spacing: 1px; }" +
                                 ".content { padding: 40px 30px; }" +
-                                ".welcome-msg { font-size: 18px; color: #34495e; margin-bottom: 25px; text-align: center; }" +
-                                ".credentials-box { background-color: #f8f9fa; border-left: 5px solid #ED8F03; padding: 25px; margin: 30px 0; border-radius: 0 8px 8px 0; }" +
+                                ".welcome-msg { font-size: 18px; color: #34495e; margin-bottom: 25px; text-align: center; }"
+                                +
+                                ".credentials-box { background-color: #f8f9fa; border-left: 5px solid #ED8F03; padding: 25px; margin: 30px 0; border-radius: 0 8px 8px 0; }"
+                                +
                                 ".credentials-box h3 { margin-top: 0; color: #ED8F03; }" +
                                 ".cred-row { margin: 10px 0; font-size: 16px; }" +
-                                ".cred-val { font-family: monospace; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 18px; }" +
-                                ".button { display: inline-block; padding: 14px 35px; background-color: #ED8F03; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; text-transform: uppercase; font-size: 14px; transition: background 0.3s; }" +
+                                ".cred-val { font-family: monospace; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 18px; }"
+                                +
+                                ".button { display: inline-block; padding: 14px 35px; background-color: #ED8F03; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; text-transform: uppercase; font-size: 14px; transition: background 0.3s; }"
+                                +
                                 ".button:hover { background-color: #d67d02; }" +
-                                ".footer { background-color: #2c3e50; text-align: center; padding: 25px; color: #a8b2bd; font-size: 13px; }" +
+                                ".footer { background-color: #2c3e50; text-align: center; padding: 25px; color: #a8b2bd; font-size: 13px; }"
+                                +
                                 "</style>" +
                                 "</head>" +
                                 "<body>" +
                                 "<div class='container'>" +
                                 "<div class='header'>" +
                                 "<h2>Admission Confirmed! 🎉</h2>" +
-                                "<p style='margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;'>Welcome to " + instituteName + "</p>" +
+                                "<p style='margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;'>Welcome to "
+                                + instituteName + "</p>" +
                                 "</div>" +
                                 "<div class='content'>" +
                                 "<p class='welcome-msg'>Dear <strong>" + parentName + "</strong>,</p>" +
-                                "<p>We are absolutely thrilled to officially welcome <strong>" + childName + "</strong> to our institute!</p>" +
-                                "<p>Your admission process has been successfully completed. To help you get started, access fee schedules, and view academic updates, we have set up your permanent Parent Portal account.</p>" +
+                                "<p>We are absolutely thrilled to officially welcome <strong>" + childName
+                                + "</strong> to our institute!</p>" +
+                                "<p>Your admission process has been successfully completed. To help you get started, access fee schedules, and view academic updates, we have set up your permanent Parent Portal account.</p>"
+                                +
                                 "<div class='credentials-box'>" +
                                 "<h3>Your Portal Credentials</h3>" +
                                 "<div class='cred-row'>Username: <span class='cred-val'>" + username + "</span></div>" +
@@ -2314,10 +2332,13 @@ public class ApplicantService {
                                 "<div style='text-align: center; margin: 40px 0;'>" +
                                 "<a href='" + loginUrl + "' class='button'>Login to Parent Portal</a>" +
                                 "</div>" +
-                                "<p>If you have any questions before classes begin, please visit our <a href='" + websiteUrl + "' style='color: #ED8F03;'>website</a> or reach out to our administration team.</p>" +
+                                "<p>If you have any questions before classes begin, please visit our <a href='"
+                                + websiteUrl
+                                + "' style='color: #ED8F03;'>website</a> or reach out to our administration team.</p>" +
                                 "</div>" +
                                 "<div class='footer'>" +
-                                "<p>You are receiving this email because you have successfully enrolled at " + instituteName + ".</p>" +
+                                "<p>You are receiving this email because you have successfully enrolled at "
+                                + instituteName + ".</p>" +
                                 "</div>" +
                                 "</div>" +
                                 "</body>" +

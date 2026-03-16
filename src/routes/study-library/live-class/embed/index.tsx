@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
@@ -18,6 +18,10 @@ import { SessionDetailsResponse } from "../-types/types";
 import { useLiveSessions } from "../-hooks/useLiveSessions";
 import { getAllPackageSessionIds } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { DefaultClassCard } from "../-components/DefaultClassCard";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { BASE_URL } from "@/constants/urls";
+import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 
 const LearnerButtonConfigSchema = z.object({
   text: z.string(),
@@ -86,6 +90,37 @@ function EmbedComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId || null);
+
+  // BBB join URL state
+  const [bbbJoinUrl, setBbbJoinUrl] = useState<string | null>(null);
+  const [bbbLoading, setBbbLoading] = useState(false);
+  const bbbFetchedRef = useRef(false);
+
+  // Auto-fetch BBB join URL when session is identified as BBB
+  useEffect(() => {
+    if (!sessionId || bbbFetchedRef.current) return;
+    const lt = fetchedSessionDetails?.linkType;
+    if (lt !== LinkType.BBB_MEETING && lt !== "bbb") return;
+
+    bbbFetchedRef.current = true;
+    setBbbLoading(true);
+
+    authenticatedAxiosInstance
+      .get(`${BASE_URL}/admin-core-service/live-sessions/provider/meeting/join`, {
+        params: { scheduleId: sessionId, role: "VIEWER" },
+      })
+      .then((response) => {
+        setBbbJoinUrl(response.data.joinUrl);
+      })
+      .catch((err) => {
+        console.error("Failed to get BBB join URL:", err);
+        toast.error("Failed to join video class. Please try again.");
+        bbbFetchedRef.current = false; // allow retry
+      })
+      .finally(() => {
+        setBbbLoading(false);
+      });
+  }, [sessionId, fetchedSessionDetails?.linkType]);
 
   // If safety modal is disabled, we are "verified" by default.
   const [isSafetyVerified, setIsSafetyVerified] = useState(
@@ -178,13 +213,53 @@ function EmbedComponent() {
   };
 
   const renderEmbeddedSession = () => {
-    // Fixed typo: "Embeded" -> "Embedded"
-    if (!sessionDetails?.defaultMeetLink) return null;
-
-    // Check link type - default to YouTube if we have a videoUrl but no valid linkType
+    // Check link type first — BBB sessions may not have a defaultMeetLink
     const linkType =
-      sessionDetails.linkType ||
-      (videoUrl ? LinkType.YOUTUBE : LinkType.UNKNOWN);
+      sessionDetails?.linkType ||
+      (videoUrl ? LinkType.YOUTUBE : undefined);
+
+    // Handle BBB early — room is auto-created, no defaultMeetLink needed
+    if (linkType === LinkType.BBB_MEETING || linkType === "bbb") {
+      if (bbbLoading) {
+        return <DashboardLoader />;
+      }
+
+      if (bbbJoinUrl) {
+        return (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-8">
+            <div className="text-center space-y-3">
+              <h3 className="text-lg font-semibold">Live Class is Ready</h3>
+              <p className="text-sm text-muted-foreground">
+                {Capacitor.getPlatform() === "web"
+                  ? "Click below to join the video class in a new window."
+                  : "Tap below to join the video class."}
+              </p>
+              <Button
+                onClick={() => {
+                  if (Capacitor.isNativePlatform()) {
+                    Browser.open({ url: bbbJoinUrl, presentationStyle: "fullscreen" });
+                  } else {
+                    window.open(bbbJoinUrl, "_blank", "noopener,noreferrer");
+                  }
+                }}
+                className="gap-2"
+              >
+                <ArrowSquareOut size={18} />
+                Join Live Class
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex items-center justify-center p-8">
+          <DashboardLoader />
+        </div>
+      );
+    }
+
+    if (!sessionDetails?.defaultMeetLink) return null;
 
     // --- YouTube & recorded YouTube links ---
     if (
@@ -309,7 +384,13 @@ function EmbedComponent() {
     );
   }
 
-  if (!sessionDetails?.defaultMeetLink) {
+  // BBB sessions may not have a defaultMeetLink — the room is auto-created on join
+  const isBbbSession = sessionDetails?.linkType === LinkType.BBB_MEETING ||
+    sessionDetails?.linkType === "bbb" ||
+    fetchedSessionDetails?.linkType === LinkType.BBB_MEETING ||
+    fetchedSessionDetails?.linkType === "bbb";
+
+  if (!sessionDetails?.defaultMeetLink && !isBbbSession) {
     if ((sessions as any)?.defaultDayConfig?.defaultClassLink) {
       return (
         <LayoutContainer>

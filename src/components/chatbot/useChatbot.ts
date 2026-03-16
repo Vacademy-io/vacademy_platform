@@ -39,6 +39,7 @@ export const useChatbot = () => {
   const [isInitializing, setIsInitializing] = useState(false);
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isCreditsExhausted, setIsCreditsExhausted] = useState(false);
   const [isSessionClosed, setIsSessionClosed] = useState(false);
 
   // Ref to scroll to bottom
@@ -365,6 +366,27 @@ export const useChatbot = () => {
         try {
           const messageData: MessageEvent = JSON.parse(event.data);
 
+          // Check for credits exhausted error in message data
+          if (
+            (messageData as any).type === "ERROR" &&
+            (messageData as any).code === 402
+          ) {
+            setIsCreditsExhausted(true);
+            setIsWaitingForResponse(false);
+            setIsLoading(false);
+            setAiStatus("idle");
+
+            const creditsMessage: ChatMessage = {
+              id: Date.now(),
+              role: "assistant",
+              content:
+                "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
+              timestamp: Date.now(),
+            };
+            setMessages((prev) => [...prev, creditsMessage]);
+            return;
+          }
+
           // Skip tool_call and tool_result messages
           if (
             messageData.type === "tool_call" ||
@@ -419,6 +441,33 @@ export const useChatbot = () => {
       });
 
       eventSource.addEventListener("error", (event) => {
+        // Check if this is a structured error event with data (e.g. credits exhausted)
+        try {
+          const errorEvent = event as MessageEvent;
+          if (errorEvent.data) {
+            const errorData = JSON.parse(errorEvent.data);
+            if (errorData.type === "ERROR" && errorData.code === 402) {
+              console.error("Credits exhausted (402):", errorData.message);
+              setIsCreditsExhausted(true);
+              setIsWaitingForResponse(false);
+              setIsLoading(false);
+              setAiStatus("idle");
+
+              const creditsMessage: ChatMessage = {
+                id: Date.now(),
+                role: "assistant",
+                content:
+                  "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
+                timestamp: Date.now(),
+              };
+              setMessages((prev) => [...prev, creditsMessage]);
+              return;
+            }
+          }
+        } catch {
+          // Not a JSON error event, handle as regular SSE error below
+        }
+
         console.error("SSE Error event:", event);
         console.error("EventSource readyState:", eventSource.readyState);
         console.error("EventSource url:", eventSource.url);
@@ -528,6 +577,18 @@ export const useChatbot = () => {
   const sendMessage = async (content: string, intent?: MessageIntent) => {
     if (!content.trim() || !sessionId) return;
 
+    if (isCreditsExhausted) {
+      const creditsMessage: ChatMessage = {
+        id: Date.now(),
+        role: "assistant",
+        content:
+          "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, creditsMessage]);
+      return;
+    }
+
     const newMessage: ChatMessage = {
       id: Date.now(),
       role: "user",
@@ -546,16 +607,31 @@ export const useChatbot = () => {
       // Response will come through SSE
     } catch (error) {
       console.error("Failed to send message:", error);
-      setHasError(true);
-      const errorMessage: ChatMessage = {
-        id: Date.now(),
-        role: "assistant",
-        content:
-          "I'm sorry, I encountered an error while processing your request. Please try again.",
-        timestamp: Date.now(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      setAiStatus("idle");
+
+      // Check for 402 credits exhausted
+      if (axios.isAxiosError(error) && error.response?.status === 402) {
+        setIsCreditsExhausted(true);
+        const creditsMsg: ChatMessage = {
+          id: Date.now(),
+          role: "assistant",
+          content:
+            "Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.",
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, creditsMsg]);
+        setAiStatus("idle");
+      } else {
+        setHasError(true);
+        const errorMessage: ChatMessage = {
+          id: Date.now(),
+          role: "assistant",
+          content:
+            "I'm sorry, I encountered an error while processing your request. Please try again.",
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        setAiStatus("idle");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -616,6 +692,7 @@ export const useChatbot = () => {
     setIsInitializing(false);
     setIsWaitingForResponse(false);
     setHasError(false);
+    setIsCreditsExhausted(false);
     setIsSessionClosed(false);
 
     // Initialize new session
@@ -672,6 +749,7 @@ export const useChatbot = () => {
     sessionId,
     isWaitingForResponse,
     hasError,
+    isCreditsExhausted,
     isSessionClosed,
     isInitializing,
   };

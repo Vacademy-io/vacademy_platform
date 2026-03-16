@@ -150,6 +150,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     chatbotSettings,
     instituteName,
     hasError,
+    isCreditsExhausted,
     isSessionClosed,
     isInitializing,
     sessionId,
@@ -792,7 +793,13 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                       </div>
                     )}
 
-                    {hasError && (
+                    {isCreditsExhausted && (
+                      <div className="w-full bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 text-center text-sm text-amber-800">
+                        Your OpenRouter credits have been exhausted. Please recharge your credits to continue using the AI assistant.
+                      </div>
+                    )}
+
+                    {hasError && !isCreditsExhausted && (
                       <div className="w-full bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-2 text-center text-sm text-destructive">
                         An error occurred, please start new
                       </div>

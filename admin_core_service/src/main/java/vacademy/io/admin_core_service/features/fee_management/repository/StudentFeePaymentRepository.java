@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.fee_management.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -10,7 +11,7 @@ import java.util.Date;
 import java.util.List;
 
 @Repository
-public interface StudentFeePaymentRepository extends JpaRepository<StudentFeePayment, String> {
+public interface StudentFeePaymentRepository extends JpaRepository<StudentFeePayment, String>, JpaSpecificationExecutor<StudentFeePayment> {
 
     // Fetch all bills for a plan
     List<StudentFeePayment> findByUserPlanId(String userPlanId);

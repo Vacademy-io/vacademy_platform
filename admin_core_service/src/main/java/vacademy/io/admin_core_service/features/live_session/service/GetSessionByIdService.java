@@ -219,8 +219,6 @@ public class GetSessionByIdService {
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
                         .allowRewind(p.getAllowRewind())
                         .timezone(p.getTimezone())
-                        .providerHostUrl(p.getProviderHostUrl())
-                        .providerMeetingId(p.getProviderMeetingId())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }
@@ -266,8 +264,6 @@ public class GetSessionByIdService {
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
                         .allowRewind(p.getAllowRewind())
                         .timezone(p.getTimezone())
-                        .providerHostUrl(p.getProviderHostUrl())
-                        .providerMeetingId(p.getProviderMeetingId())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }

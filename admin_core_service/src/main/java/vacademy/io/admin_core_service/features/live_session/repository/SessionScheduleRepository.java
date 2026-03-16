@@ -101,10 +101,6 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
 
         String getTimezone();
 
-        String getProviderHostUrl();
-
-        String getProviderMeetingId();
-
     }
 
     @Query(value = """
@@ -194,9 +190,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                     ss.thumbnail_file_id AS scheduleThumbnailFileId,  -- NEW
                     ss.daily_attendance AS dailyAttendance,           -- NEW
                     s.allow_play_pause As allowPlayPause,
-                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
-                    ss.provider_host_url AS providerHostUrl,
-                    ss.provider_meeting_id AS providerMeetingId
+                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
                 FROM session_schedules ss
                 JOIN live_session s ON ss.session_id = s.id
                 WHERE ss.id = :scheduleId

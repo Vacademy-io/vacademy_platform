@@ -11,6 +11,10 @@ import { SessionStreamingServiceType } from "@/routes/register/live-class/-types
 import { getAllPackageSessionIds } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { useMarkAttendance } from "./-hooks/useMarkAttendance";
 import { toast } from "sonner";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { BASE_URL } from "@/constants/urls";
+import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Calendar,
@@ -19,8 +23,6 @@ import {
   MapPin,
   Users,
   ArrowSquareOut,
-  X,
-  FunnelSimple,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +31,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
   Pagination,
   PaginationContent,
@@ -48,6 +49,7 @@ import { getUserTimezone } from "@/hooks/use-server-time";
 import { DefaultClassCard } from "./-components/DefaultClassCard";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { SessionFilter, FilterChangePayload } from "@/components/common/session-filter";
 export const Route = createFileRoute("/study-library/live-class/")({
   component: RouteComponent,
 });
@@ -66,18 +68,26 @@ function RouteComponent() {
   } | null>(null);
 
 
-  // Filter states
+  // Filter states — updated by SessionFilter via onFilterChange callback
   const [startDateFilter, setStartDateFilter] = useState<string>("");
   const [endDateFilter, setEndDateFilter] = useState<string>("");
+  // Mirrors the active filterType returned from SessionFilter (used for display/labels)
+  const [activeFilterType, setActiveFilterType] = useState<FilterChangePayload["filterType"]>("none");
   const [apiPage, setApiPage] = useState<number>(0);
   const [upcomingPage, setUpcomingPage] = useState<number>(0); // Client-side pagination for upcoming sessions
   const SESSIONS_PER_PAGE = 5;
 
-  const clearFilters = () => {
-    setStartDateFilter("");
-    setEndDateFilter("");
+  /**
+   * Called by SessionFilter whenever the user picks or clears a filter.
+   * The parent's only job here is to store the dates and reset pagination.
+   */
+  const handleFilterChange = useCallback(({ filterType, startDate, endDate }: FilterChangePayload) => {
+    setActiveFilterType(filterType);
+    setStartDateFilter(startDate);
+    setEndDateFilter(endDate);
+    setUpcomingPage(0);
     setApiPage(0);
-  };
+  }, []);
 
 
   // Helper function to format date as YYYY-MM-DD
@@ -262,6 +272,35 @@ function RouteComponent() {
         // Navigate to live session
         const streamingType = session.session_streaming_service_type?.toLowerCase();
         if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
+      // Helper to navigate/open based on session type
+      const isBbb = session.link_type === "bbb" || session.link_type === "BBB_MEETING";
+
+      const openSession = async () => {
+        if (isBbb) {
+          // BBB: fetch join URL and open directly (skip embed page)
+          try {
+            const response = await authenticatedAxiosInstance.get(
+              `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/join`,
+              { params: { scheduleId: session.schedule_id, role: "VIEWER" } }
+            );
+            const joinUrl = response.data?.joinUrl;
+            if (joinUrl) {
+              if (Capacitor.isNativePlatform()) {
+                Browser.open({ url: joinUrl, presentationStyle: "fullscreen" });
+              } else {
+                window.open(joinUrl, "_blank", "noopener,noreferrer");
+              }
+            } else {
+              toast.error("Failed to get video class URL");
+            }
+          } catch (err) {
+            console.error("Failed to get BBB join URL:", err);
+            toast.error("Failed to join video class. Please try again.");
+          }
+        } else if (
+          session.session_streaming_service_type ===
+          SessionStreamingServiceType.EMBED
+        ) {
           (navigate as any)({
             to: "/study-library/live-class/embed",
             search: {
@@ -273,6 +312,18 @@ function RouteComponent() {
           const joinLink = (session as any).custom_meeting_link || (session as any).customMeetingLink || session.meeting_link;
           window.open(joinLink, "_blank", "noopener,noreferrer");
         }
+      };
+
+      try {
+        // Mark attendance only when directly joining live session
+        await markAttendance({
+          sessionId: session.session_id,
+          scheduleId: session.schedule_id,
+          userSourceType: "USER",
+          userSourceId: "",
+          details: "Joined live class directly",
+        });
+        await openSession();
       } catch (error) {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
@@ -291,6 +342,8 @@ function RouteComponent() {
           const joinLink = (session as any).custom_meeting_link || (session as any).customMeetingLink || session.meeting_link;
           window.open(joinLink, "_blank", "noopener,noreferrer");
         }
+        // Still proceed even if attendance marking fails
+        await openSession();
       }
     } else {
       // This should not happen, but add a fallback
@@ -614,6 +667,7 @@ function RouteComponent() {
                     : (session.session_streaming_service_type?.toLowerCase() === SessionStreamingServiceType.EMBED.toLowerCase())
                       ? "Join Session"
                       : "Join Session"}
+                    : "Join Session"}
               </Button>
             )}
           </div>
@@ -766,6 +820,7 @@ function RouteComponent() {
                                 {(session.session_streaming_service_type?.toLowerCase() === SessionStreamingServiceType.EMBED.toLowerCase())
                                   ? "Join"
                                   : "Join"}
+                                Join
                               </Button>
                             )}
                           </div>
@@ -1208,86 +1263,41 @@ function RouteComponent() {
 
               {/* Upcoming Sessions Section */}
               <div>
-                <div className="flex items-center justify-between mb-4">
+                {/* Row 1: Title + SessionFilter (reusable component) */}
+                <div className="flex items-center justify-between mb-1">
                   <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
                     Upcoming {getTerminology(ContentTerms.Session, SystemTerms.Session)}s
                   </h2>
-                  {(() => {
-                    const filteredUpcomingSessions =
-                      filterSessions(upcomingSessions);
-                    return (
-                      filteredUpcomingSessions.length > 0 && (
-                        <span className="text-sm text-neutral-600 dark:text-neutral-300">
-                          {filteredUpcomingSessions.length} session
-                          {filteredUpcomingSessions.length !== 1
-                            ? "s"
-                            : ""}{" "}
-                          found
+
+                  {/* Drop-in SessionFilter — all state, dropdown, and animation live inside it */}
+                  <SessionFilter
+                    onFilterChange={handleFilterChange}
+                    alignment="right"
+                  />
+                </div>
+
+                {/* Row 2: Session count subtitle */}
+                {(() => {
+                  const filteredUpcomingSessions = filterSessions(upcomingSessions);
+                  return (
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                      {filteredUpcomingSessions.length > 0
+                        ? `${filteredUpcomingSessions.length} session${filteredUpcomingSessions.length !== 1 ? "s" : ""} found`
+                        : "No sessions found"}
+                      {activeFilterType !== "none" && (
+                        <span className="ml-1 text-primary-500 font-medium">
+                          · {activeFilterType === "custom" && startDateFilter && endDateFilter
+                            ? `${startDateFilter.split("-").reverse().join("/")} - ${endDateFilter.split("-").reverse().join("/")}`
+                            : activeFilterType === "1day" ? "1 Day"
+                              : activeFilterType === "3days" ? "3 Days"
+                                : activeFilterType === "7days" ? "7 Days"
+                                  : activeFilterType === "15days" ? "15 Days"
+                                    : ""}
                         </span>
-                      )
-                    );
-                  })()}
-                </div>
-
-                {/* Filters Section - Below Upcoming Sessions title */}
-                <div className="p-2 sm:p-4 bg-gradient-to-r from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/60 border border-neutral-200 dark:border-neutral-800 rounded-lg mb-4">
-                  <div className="flex items-center justify-between gap-2 mb-2 sm:mb-4">
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      <FunnelSimple
-                        size={16}
-                        className="text-neutral-600 dark:text-neutral-300 sm:w-[18px] sm:h-[18px]"
-                      />
-                      <h3 className="text-sm sm:text-lg font-semibold text-neutral-800 dark:text-neutral-100">
-                        Filters
-                      </h3>
-                    </div>
-                    {(startDateFilter || endDateFilter) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={clearFilters}
-                        className="border-red-300 dark:border-red-900 text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/20 hover:border-red-400 dark:hover:border-red-800 h-7 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
-                      >
-                        <X size={12} className="mr-0.5 sm:mr-1 sm:w-[14px] sm:h-[14px]" />
-                        <span className="hidden xs:inline">Clear </span>Filters
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                    <div>
-                      <label className="block text-[10px] sm:text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-1 sm:mb-2">
-                        Start Date
-                      </label>
-                      <Input
-                        type="date"
-                        value={startDateFilter}
-                        min={formatDateToISO(new Date())}
-                        onChange={(e) => {
-                          setStartDateFilter(e.target.value);
-                          setApiPage(0);
-                        }}
-                        className="w-full text-xs sm:text-sm h-8 sm:h-10"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] sm:text-sm font-medium text-neutral-700 dark:text-neutral-200 mb-1 sm:mb-2">
-                        End Date
-                      </label>
-                      <Input
-                        type="date"
-                        value={endDateFilter}
-                        min={startDateFilter || formatDateToISO(new Date())}
-                        onChange={(e) => {
-                          setEndDateFilter(e.target.value);
-                          setApiPage(0);
-                        }}
-                        className="w-full text-xs sm:text-sm h-8 sm:h-10"
-                      />
-                    </div>
-                  </div>
-                </div>
+                      )}
+                    </p>
+                  );
+                })()}
                 {(() => {
                   const filteredUpcomingSessions =
                     filterSessions(upcomingSessions);

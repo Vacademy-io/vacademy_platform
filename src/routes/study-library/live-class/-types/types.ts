@@ -61,6 +61,7 @@ export interface SessionDetails {
   meeting_link: string;
   session_streaming_service_type: string;
   timezone: string;
+  link_type?: string;
   learner_button_config?: LearnerButtonConfig | null;
   default_class_link?: string | null;
   custom_meeting_link?: string | null;

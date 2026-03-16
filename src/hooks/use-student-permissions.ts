@@ -14,7 +14,7 @@ export function useStudentPermissions() {
   });
 
   const permissions: StudentPermissions = settings?.permissions || {
-    canViewProfile: false,
+    canViewProfile: true,
     canEditProfile: false,
     canDeleteProfile: false,
     canViewFiles: false,

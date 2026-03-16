@@ -1,9 +1,21 @@
 /* Catalogue Design Tokens - Clean, minimal design system */
 @import './styles/catalogue-tokens.css';
+/* Catalogue Color Themes & Border Radius Variants */
+@import './styles/catalogue-themes.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Column layout: override the CSS custom property on mobile so the
+   var(--catalogue-grid-cols) used in the inline style collapses to 1 column.
+   CSS custom properties cascade normally, so a stylesheet rule overrides an
+   inline-style definition of the same custom property. */
+@media (max-width: 640px) {
+  .grid-layout-responsive {
+    --catalogue-grid-cols: 1fr !important;
+  }
+}
 
 @layer base {
   :root {

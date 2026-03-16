@@ -154,9 +154,10 @@ const HeroSectionPlaceholder: React.FC<{
                   </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-base sm:text-lg text-gray-600 leading-relaxed line-clamp-3">
-                    {heroDescription}
-                  </p>
+                  <div
+                    className="text-base sm:text-lg text-gray-600 leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: heroDescription }}
+                  />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
@@ -180,9 +181,10 @@ const HeroSectionPlaceholder: React.FC<{
                   </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-base sm:text-lg text-gray-600 line-clamp-3">
-                    {heroDescription}
-                  </p>
+                  <div
+                    className="text-base sm:text-lg text-gray-600"
+                    dangerouslySetInnerHTML={{ __html: heroDescription }}
+                  />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
@@ -233,6 +235,7 @@ const HeroSectionWithState: React.FC<{
 }) => {
   const navigate = useNavigate();
   const [resolvedImageUrl, setResolvedImageUrl] = useState<string>(heroImage);
+  const [resolvedBgUrl, setResolvedBgUrl] = useState<string | null>(heroBackgroundImage || null);
 
   // Resolve image URLs
   useEffect(() => {
@@ -258,7 +261,8 @@ const HeroSectionWithState: React.FC<{
         if (isMounted) setResolvedImageUrl(resolvedUrl);
       }
       if (!isBackgroundImagePlaceholder && heroBackgroundImage) {
-        await resolveImageUrl(heroBackgroundImage);
+        const resolvedBg = await resolveImageUrl(heroBackgroundImage);
+        if (isMounted) setResolvedBgUrl(resolvedBg);
       }
     };
 
@@ -274,10 +278,19 @@ const HeroSectionWithState: React.FC<{
     }
   };
 
+  const hasBgImage = !!(resolvedBgUrl && !isBackgroundImagePlaceholder);
+
   return (
     <section
-      className={`w-full py-8 md:py-12 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden bg-gray-50`}
-      style={{ textAlign }}
+      className={`w-full py-8 md:py-12 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden ${hasBgImage ? '' : 'bg-gray-50'}`}
+      style={{
+        textAlign,
+        ...(hasBgImage ? {
+          backgroundImage: `url(${resolvedBgUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        } : {}),
+      }}
     >
       {/* Compact container padding */}
       <div className="w-full px-4 sm:px-6 lg:px-8">
@@ -292,9 +305,10 @@ const HeroSectionWithState: React.FC<{
                   </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-base sm:text-lg text-gray-600 leading-relaxed line-clamp-3">
-                    {heroDescription}
-                  </p>
+                  <div
+                    className="text-base sm:text-lg text-gray-600 leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: heroDescription }}
+                  />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
@@ -332,9 +346,10 @@ const HeroSectionWithState: React.FC<{
                   </h1>
                 )}
                 {heroDescription && (
-                  <p className="text-base sm:text-lg text-gray-600 line-clamp-3">
-                    {heroDescription}
-                  </p>
+                  <div
+                    className="text-base sm:text-lg text-gray-600"
+                    dangerouslySetInnerHTML={{ __html: heroDescription }}
+                  />
                 )}
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button

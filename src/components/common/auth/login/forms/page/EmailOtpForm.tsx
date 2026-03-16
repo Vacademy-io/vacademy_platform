@@ -18,7 +18,14 @@ import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { MyInput } from "@/components/design-system/input";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, ArrowLeft, RefreshCw, Shield, CheckCircle2, AlertTriangle } from "lucide-react";
+import {
+  Mail,
+  ArrowLeft,
+  RefreshCw,
+  Shield,
+  CheckCircle2,
+  AlertTriangle,
+} from "lucide-react";
 
 import { TokenKey } from "@/constants/auth/tokens";
 import {
@@ -154,7 +161,7 @@ export function EmailLogin({
             duration: 5000,
             description:
               "Please try again or contact support if the issue persists.",
-          }
+          },
         );
       } else {
         // Generic error fallback
@@ -180,20 +187,56 @@ export function EmailLogin({
         // Store tokens
         await setTokenInStorage(
           TokenKey.accessToken,
-          response.data.accessToken
+          response.data.accessToken,
         );
         await setTokenInStorage(
           TokenKey.refreshToken,
-          response.data.refreshToken
+          response.data.refreshToken,
         );
 
         // Decode token to get user data
         const decodedData = await getTokenDecodedData(
-          response.data.accessToken
+          response.data.accessToken,
         );
         const authorities = decodedData?.authorities;
         const userId = decodedData?.user;
         const authorityKeys = authorities ? Object.keys(authorities) : [];
+
+        // Check if user has PARENT role by examining authorities
+        let isParent = false;
+        const allRoles: string[] = [];
+
+        if (authorities && typeof authorities === "object") {
+          for (const [, instAuthority] of Object.entries(authorities)) {
+            if (instAuthority && typeof instAuthority === "object") {
+              const instRoles = (instAuthority as { roles?: string[] }).roles;
+              if (Array.isArray(instRoles)) {
+                allRoles.push(...instRoles);
+              }
+            }
+          }
+        }
+
+        const upperRoles = allRoles.map((r) => r.toUpperCase());
+        isParent = upperRoles.includes("PARENT");
+
+        console.log("[EmailLogin] Token decoded:", {
+          user: userId,
+          authorities: authorities,
+          allRoles: allRoles,
+          upperRoles: upperRoles,
+          isParent: isParent,
+        });
+
+        // Redirect parent users to parent portal
+        if (isParent) {
+          console.log(
+            "[EmailLogin] ✅ PARENT role detected - redirecting to /parent",
+          );
+          setIsLoading(false);
+          navigate({ to: "/parent" });
+          return;
+        }
 
         if (authorityKeys.length > 1) {
           navigate({
@@ -342,7 +385,7 @@ export function EmailLogin({
 
   const handleOtpKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
-    index: number
+    index: number,
   ) => {
     const currentValue = otpForm.getValues().otp[index];
 
@@ -385,7 +428,8 @@ export function EmailLogin({
                       Email Login Temporarily Unavailable
                     </h4>
                     <p className="text-amber-700 text-sm mt-1">
-                      Please use username and password to login. We apologize for the inconvenience.
+                      Please use username and password to login. We apologize
+                      for the inconvenience.
                     </p>
                   </div>
                 </div>

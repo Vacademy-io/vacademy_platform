@@ -20,6 +20,7 @@ export interface ChatbotContextType {
   chatbotSettings: ChatbotSettingsData;
   instituteName: string;
   hasError: boolean;
+  isCreditsExhausted: boolean;
   isSessionClosed: boolean;
   isInitializing: boolean;
   sessionId: string | null;

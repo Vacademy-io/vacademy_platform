@@ -605,6 +605,7 @@ export const SCHOOL_ENROLL = `${BASE_URL}/admin-core-service/v1/school/enroll`;
 
 // Default payment option (open)
 export const GET_DEFAULT_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/open/v1/payment-option/default-payment-option`;
+export const GET_INSTITUTE_VENDORS = `${BASE_URL}/admin-core-service/open/v1/institute/payment-setting/vendors`;
 
 // Fee Management - CPO CRUD
 export const CREATE_CPO = `${BASE_URL}/admin-core-service/v1/fee-management/cpo`;

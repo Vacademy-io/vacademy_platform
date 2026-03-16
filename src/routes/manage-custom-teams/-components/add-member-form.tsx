@@ -23,7 +23,7 @@ import {
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
 import {
     Select,
     SelectContent,
@@ -32,10 +32,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { fetchBatchesSummary, fetchCourseBatches } from '../../admin-package-management/-services/package-service';
+import { fetchPaginatedBatches } from '../../admin-package-management/-services/package-service';
 import { useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
+import { useDebounce } from 'use-debounce';
 
 const memberSchema = z.object({
     fullName: z.string().min(1, 'Full Name is required'),
@@ -61,8 +61,11 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
     const [customRoleName, setCustomRoleName] = useState('');
 
     // Multi-select package sessions
-    const [expandedPackageId, setExpandedPackageId] = useState<string | null>(null);
     const [selectedPackageSessionIds, setSelectedPackageSessionIds] = useState<string[]>([]);
+    const [sessionSearch, setSessionSearch] = useState('');
+    const [debouncedSessionSearch] = useDebounce(sessionSearch, 300);
+    const [sessionPage, setSessionPage] = useState(0);
+    const SESSION_PAGE_SIZE = 10;
 
     const form = useForm<MemberFormValues>({
         resolver: zodResolver(memberSchema),
@@ -95,20 +98,16 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
 
     const instituteId = getCurrentInstituteId();
 
-    // Fetch Packages Summary
-    const { data: packagesSummary } = useQuery({
-        queryKey: ['packages-summary'],
-        queryFn: () => fetchBatchesSummary(['ACTIVE']),
+    // Fetch paginated package sessions
+    const { data: paginatedSessions, isLoading: isLoadingSessions } = useQuery({
+        queryKey: ['paginated-sessions', debouncedSessionSearch, sessionPage],
+        queryFn: () => fetchPaginatedBatches({
+            page: sessionPage,
+            size: SESSION_PAGE_SIZE,
+            search: debouncedSessionSearch || undefined,
+            statuses: ['ACTIVE'],
+        }),
         enabled: open,
-    });
-
-    // Fetch Sessions for expanded package
-    const { data: packageSessions = [], isLoading: isLoadingSessions } = useQuery<
-        PackageSessionDTO[]
-    >({
-        queryKey: ['package-sessions', expandedPackageId],
-        queryFn: () => fetchCourseBatches(expandedPackageId!),
-        enabled: !!expandedPackageId,
     });
 
     const togglePackageSession = (id: string) => {
@@ -181,7 +180,8 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
             queryClient.invalidateQueries({ queryKey: ['custom-teams'] });
             reset();
             setSelectedPackageSessionIds([]);
-            setExpandedPackageId(null);
+            setSessionSearch('');
+            setSessionPage(0);
             setIsCustomRole(false);
             setCustomRoleName('');
             onOpenChange(false);
@@ -368,118 +368,87 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                                 </p>
 
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    {/* Package Sessions multi-select */}
+                                    {/* Package Sessions multi-select with search + pagination */}
                                     <div className="space-y-2 md:col-span-2">
                                         <Label>Package Sessions</Label>
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                            <Input
+                                                placeholder="Search package sessions..."
+                                                value={sessionSearch}
+                                                onChange={(e) => {
+                                                    setSessionSearch(e.target.value);
+                                                    setSessionPage(0);
+                                                }}
+                                                className="pl-9"
+                                            />
+                                        </div>
                                         <div className="rounded-md border">
                                             <ScrollArea className="h-[250px] p-3">
-                                                {packagesSummary?.packages?.length === 0 && (
+                                                {isLoadingSessions ? (
+                                                    <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                        Loading sessions...
+                                                    </div>
+                                                ) : !paginatedSessions?.content?.length ? (
                                                     <p className="py-8 text-center text-sm text-muted-foreground">
-                                                        No packages found.
+                                                        No package sessions found.
                                                     </p>
-                                                )}
-                                                {packagesSummary?.packages?.map(
-                                                    (pkg: { id: string; name: string }) => (
-                                                        <div key={pkg.id} className="mb-2">
-                                                            <button
-                                                                type="button"
-                                                                className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium hover:bg-muted"
-                                                                onClick={() =>
-                                                                    setExpandedPackageId(
-                                                                        expandedPackageId ===
-                                                                            pkg.id
-                                                                            ? null
-                                                                            : pkg.id
-                                                                    )
-                                                                }
+                                                ) : (
+                                                    paginatedSessions.content.map((ps) => {
+                                                        const packageName = ps.package_dto?.package_name || '';
+                                                        const levelName = ps.level?.level_name || '';
+                                                        const sessionName = ps.session?.session_name || '';
+                                                        const display = [packageName, levelName, sessionName]
+                                                            .filter(Boolean)
+                                                            .join(' - ');
+                                                        return (
+                                                            <label
+                                                                key={ps.id}
+                                                                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
                                                             >
-                                                                <span>{pkg.name}</span>
-                                                                <ChevronRight
-                                                                    className={`h-4 w-4 transition-transform ${
-                                                                        expandedPackageId ===
-                                                                        pkg.id
-                                                                            ? 'rotate-90'
-                                                                            : ''
-                                                                    }`}
+                                                                <Checkbox
+                                                                    checked={selectedPackageSessionIds.includes(ps.id)}
+                                                                    onCheckedChange={() => togglePackageSession(ps.id)}
                                                                 />
-                                                            </button>
-                                                            {expandedPackageId === pkg.id && (
-                                                                <div className="ml-4 mt-1 space-y-1">
-                                                                    {isLoadingSessions ? (
-                                                                        <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-                                                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                                                            Loading sessions...
-                                                                        </div>
-                                                                    ) : packageSessions.length ===
-                                                                      0 ? (
-                                                                        <p className="py-2 text-sm text-muted-foreground">
-                                                                            No sessions
-                                                                            available.
-                                                                        </p>
-                                                                    ) : (
-                                                                        packageSessions.map(
-                                                                            (ps) => {
-                                                                                const packageName =
-                                                                                    ps
-                                                                                        .package_dto
-                                                                                        ?.package_name ||
-                                                                                    '';
-                                                                                const levelName =
-                                                                                    ps.level
-                                                                                        ?.level_name ||
-                                                                                    '';
-                                                                                const sessionName =
-                                                                                    ps.session
-                                                                                        ?.session_name ||
-                                                                                    '';
-                                                                                const display = [
-                                                                                    packageName,
-                                                                                    levelName,
-                                                                                    sessionName,
-                                                                                ]
-                                                                                    .filter(
-                                                                                        Boolean
-                                                                                    )
-                                                                                    .join(
-                                                                                        ' - '
-                                                                                    );
-                                                                                return (
-                                                                                    <label
-                                                                                        key={
-                                                                                            ps.id
-                                                                                        }
-                                                                                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
-                                                                                    >
-                                                                                        <Checkbox
-                                                                                            checked={selectedPackageSessionIds.includes(
-                                                                                                ps.id
-                                                                                            )}
-                                                                                            onCheckedChange={() =>
-                                                                                                togglePackageSession(
-                                                                                                    ps.id
-                                                                                                )
-                                                                                            }
-                                                                                        />
-                                                                                        <span>
-                                                                                            {display ||
-                                                                                                ps.id}
-                                                                                        </span>
-                                                                                    </label>
-                                                                                );
-                                                                            }
-                                                                        )
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )
+                                                                <span>{display || ps.id}</span>
+                                                            </label>
+                                                        );
+                                                    })
                                                 )}
                                             </ScrollArea>
+                                            {/* Pagination controls */}
+                                            {paginatedSessions && paginatedSessions.total_pages > 1 && (
+                                                <div className="flex items-center justify-between border-t px-3 py-2">
+                                                    <span className="text-xs text-muted-foreground">
+                                                        Page {sessionPage + 1} of {paginatedSessions.total_pages} ({paginatedSessions.total_elements} total)
+                                                    </span>
+                                                    <div className="flex gap-1">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            disabled={!paginatedSessions.has_previous}
+                                                            onClick={() => setSessionPage((p) => p - 1)}
+                                                        >
+                                                            <ChevronLeft className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            disabled={!paginatedSessions.has_next}
+                                                            onClick={() => setSessionPage((p) => p + 1)}
+                                                        >
+                                                            <ChevronRight className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                         {selectedPackageSessionIds.length > 0 && (
                                             <p className="text-xs text-muted-foreground">
-                                                {selectedPackageSessionIds.length} session(s)
-                                                selected
+                                                {selectedPackageSessionIds.length} session(s) selected
                                             </p>
                                         )}
                                     </div>

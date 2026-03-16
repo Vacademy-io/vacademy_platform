@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -41,6 +41,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { GET_INSTITUTE_VENDORS } from '@/constants/urls';
 
 // Step 1 schema: Sub-Org details
 const step1Schema = z.object({
@@ -121,6 +123,26 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         queryFn: () => fetchCourseBatches(expandedPackageId!),
         enabled: !!expandedPackageId,
     });
+
+    // Fetch payment vendors for institute
+    const { data: vendorsList = [] } = useQuery<{ vendor: string; vendor_id: string }[]>({
+        queryKey: ['institute-vendors', instituteId],
+        queryFn: async () => {
+            const response = await authenticatedAxiosInstance.get(
+                `${GET_INSTITUTE_VENDORS}?instituteId=${instituteId}`
+            );
+            return response.data;
+        },
+        enabled: open && !!instituteId,
+    });
+
+    // Auto-select vendor when there's exactly one
+    useEffect(() => {
+        if (vendorsList.length === 1) {
+            step3Form.setValue('vendor', vendorsList[0].vendor);
+            step3Form.setValue('vendorId', vendorsList[0].vendor_id);
+        }
+    }, [vendorsList]);
 
     // Mutation for subscription flow
     const subscriptionMutation = useMutation({
@@ -582,11 +604,38 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                             </Select>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Vendor</Label>
-                                            <Input
-                                                {...step3Form.register('vendor')}
-                                                placeholder="e.g. RAZORPAY"
-                                            />
+                                            <Label>Payment Vendor</Label>
+                                            {vendorsList.length === 0 ? (
+                                                <p className="text-sm text-amber-600">
+                                                    No payment vendor configured. Please link a payment vendor in Settings first.
+                                                </p>
+                                            ) : vendorsList.length === 1 ? (
+                                                <Input
+                                                    value={vendorsList[0].vendor}
+                                                    disabled
+                                                    className="bg-muted"
+                                                />
+                                            ) : (
+                                                <Select
+                                                    value={step3Form.watch('vendor') || ''}
+                                                    onValueChange={(v) => {
+                                                        const selected = vendorsList.find(vl => vl.vendor === v);
+                                                        step3Form.setValue('vendor', v);
+                                                        step3Form.setValue('vendorId', selected?.vendor_id || v);
+                                                    }}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select payment vendor" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {vendorsList.map((v) => (
+                                                            <SelectItem key={v.vendor} value={v.vendor}>
+                                                                {v.vendor}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
                                         </div>
                                     </>
                                 )}

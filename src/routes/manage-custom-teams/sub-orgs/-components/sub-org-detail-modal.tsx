@@ -16,12 +16,13 @@ import {
     type SubOrgAdminsResponse,
 } from '@/routes/manage-students/students-list/-services/sub-org-service';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { Copy, Link2, BookOpen, ShieldCheck } from 'lucide-react';
+import { Copy, Link2, BookOpen, ShieldCheck, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 
 interface SubOrgDetailModalProps {
     open: boolean;
@@ -86,67 +87,84 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                     Invite Link
                                 </h3>
                                 {subscriptionStatus?.invite_code ? (
-                                    <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-3">
-                                        <div className="flex-1 space-y-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs text-muted-foreground">
-                                                    Code:
-                                                </span>
-                                                <code className="rounded bg-white px-2 py-0.5 text-sm font-mono">
-                                                    {subscriptionStatus.invite_code}
-                                                </code>
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 w-6 p-0"
-                                                    onClick={() =>
-                                                        copyToClipboard(
-                                                            subscriptionStatus.invite_code,
-                                                            'Invite code'
-                                                        )
+                                    <div className="space-y-2 rounded-md border bg-muted/50 p-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-medium text-muted-foreground">
+                                                Invite Link
+                                            </span>
+                                            {subscriptionStatus.org_user_plan_status && (
+                                                <Badge
+                                                    variant={
+                                                        subscriptionStatus.org_user_plan_status ===
+                                                        'ACTIVE'
+                                                            ? 'default'
+                                                            : 'secondary'
                                                     }
                                                 >
-                                                    <Copy className="h-3 w-3" />
-                                                </Button>
-                                            </div>
-                                            {subscriptionStatus.short_url && (
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-muted-foreground">
-                                                        URL:
-                                                    </span>
-                                                    <span className="max-w-[300px] truncate text-xs text-primary">
-                                                        {subscriptionStatus.short_url}
-                                                    </span>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-6 w-6 p-0"
-                                                        onClick={() =>
-                                                            copyToClipboard(
-                                                                subscriptionStatus.short_url,
-                                                                'Invite URL'
-                                                            )
-                                                        }
-                                                    >
-                                                        <Copy className="h-3 w-3" />
-                                                    </Button>
-                                                </div>
+                                                    {subscriptionStatus.org_user_plan_status}
+                                                </Badge>
                                             )}
                                         </div>
-                                        {subscriptionStatus.org_user_plan_status && (
-                                            <Badge
-                                                variant={
-                                                    subscriptionStatus.org_user_plan_status ===
-                                                    'ACTIVE'
-                                                        ? 'default'
-                                                        : 'secondary'
+                                        {/* Full invite link */}
+                                        <div className="flex items-center gap-2 rounded bg-white p-2">
+                                            <span className="min-w-0 flex-1 truncate text-xs font-mono text-primary select-all">
+                                                {subscriptionStatus.short_url ||
+                                                    createInviteLink(subscriptionStatus.invite_code)}
+                                            </span>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 shrink-0 gap-1 px-2"
+                                                onClick={() =>
+                                                    copyToClipboard(
+                                                        subscriptionStatus.short_url ||
+                                                            createInviteLink(subscriptionStatus.invite_code),
+                                                        'Invite link'
+                                                    )
                                                 }
                                             >
-                                                {subscriptionStatus.org_user_plan_status}
-                                            </Badge>
-                                        )}
+                                                <Copy className="h-3 w-3" />
+                                                Copy
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 shrink-0 gap-1 px-2"
+                                                onClick={() =>
+                                                    window.open(
+                                                        subscriptionStatus.short_url ||
+                                                            createInviteLink(subscriptionStatus.invite_code),
+                                                        '_blank'
+                                                    )
+                                                }
+                                            >
+                                                <ExternalLink className="h-3 w-3" />
+                                                Open
+                                            </Button>
+                                        </div>
+                                        {/* Invite code (secondary) */}
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <span>Code:</span>
+                                            <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs">
+                                                {subscriptionStatus.invite_code}
+                                            </code>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-5 w-5 p-0"
+                                                onClick={() =>
+                                                    copyToClipboard(
+                                                        subscriptionStatus.invite_code,
+                                                        'Invite code'
+                                                    )
+                                                }
+                                            >
+                                                <Copy className="h-3 w-3" />
+                                            </Button>
+                                        </div>
                                     </div>
                                 ) : (
                                     <p className="text-sm text-muted-foreground">

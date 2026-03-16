@@ -261,7 +261,7 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                             {/* Add User Section */}
                             <AddUserToSubOrgSection
                                 subOrgId={subOrgId}
-                                instituteId={instituteId}
+                                instituteId={instituteId || ''}
                                 scopedInvites={scopedInvites}
                             />
                         </div>

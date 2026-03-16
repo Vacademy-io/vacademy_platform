@@ -104,6 +104,18 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         return configRepository.save(config);
     }
 
+    @Override
+    public ParticipantJoinLinkDTO getParticipantJoinLink(String providerMeetingId, String participantName,
+            String participantEmail, String instituteId) {
+        String joinUrl = buildJoinUrlForUser(providerMeetingId, participantName, participantEmail, "VIEWER", instituteId);
+        return ParticipantJoinLinkDTO.builder()
+                .joinLink(joinUrl)
+                .participantName(participantName)
+                .participantEmail(participantEmail)
+                .providerMeetingId(providerMeetingId)
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Create meeting
     // -----------------------------------------------------------------------

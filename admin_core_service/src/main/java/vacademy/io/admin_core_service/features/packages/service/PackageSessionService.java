@@ -203,6 +203,13 @@ public class PackageSessionService {
         return packageRepository.findAllById(ids);
     }
 
+    /**
+     * Returns all child package sessions whose parent_id matches the given package session ID.
+     */
+    public List<PackageSession> findChildPackageSessions(String parentPackageSessionId) {
+        return packageRepository.findByParentId(parentPackageSessionId);
+    }
+
     public void addInvitedPackageSessionForPackage(PackageEntity packageEntity) {
         Session session = new Session();
         Level level = new Level();

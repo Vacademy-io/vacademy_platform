@@ -118,7 +118,7 @@ function RegistrationListPageInner({
     // Status options for filter
     const statusOptions: MyFilterOption[] = [
         { id: 'PENDING', name: 'Pending' },
-        { id: 'COMPLETED', name: 'Completed' },
+        { id: 'ADMISSION_COMPLETED', name: 'Completed' },
         { id: 'REJECTED', name: 'Rejected' },
         { id: 'ADMITTED', name: 'Admitted' },
     ];

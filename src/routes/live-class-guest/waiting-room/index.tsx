@@ -82,48 +82,29 @@ function GuestWaitingRoomComponent() {
                 details: "Guest joined live class from waiting room",
               });
 
-              if (
-                sessionDetails.sessionStreamingServiceType ===
-                SessionStreamingServiceType.EMBED
-              ) {
+              const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+              if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
                 navigate({
                   to: "/live-class-guest/embed",
                   search: { sessionId },
                 });
               } else {
-                window.open(
-                  sessionDetails.defaultMeetLink,
-                  "_blank",
-                  "noopener,noreferrer"
-                );
-                // Navigate back to registration page
-                navigate({
-                  to: "/register/live-class",
-                  search: { sessionId: sessionDetails.sessionId },
-                });
+                const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+                window.open(joinLink, "_blank", "noopener,noreferrer");
               }
             } catch (error) {
               console.error("Failed to mark attendance:", error);
               toast.error("Failed to mark attendance");
               // Still proceed with redirection
-              if (
-                sessionDetails.sessionStreamingServiceType ===
-                SessionStreamingServiceType.EMBED
-              ) {
+              const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+              if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
                 navigate({
                   to: "/live-class-guest/embed",
                   search: { sessionId },
                 });
               } else {
-                window.open(
-                  sessionDetails.defaultMeetLink,
-                  "_blank",
-                  "noopener,noreferrer"
-                );
-                navigate({
-                  to: "/register/live-class",
-                  search: { sessionId: sessionDetails.sessionId },
-                });
+                const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+                window.open(joinLink, "_blank", "noopener,noreferrer");
               }
             }
           }
@@ -197,48 +178,29 @@ function GuestWaitingRoomComponent() {
                         details: "Guest joined live class from waiting room",
                       });
 
-                      if (
-                        sessionDetails.sessionStreamingServiceType ===
-                        SessionStreamingServiceType.EMBED
-                      ) {
+                      const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+                      if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
                         navigate({
                           to: "/live-class-guest/embed",
                           search: { sessionId },
                         });
                       } else {
-                        window.open(
-                          sessionDetails.defaultMeetLink,
-                          "_blank",
-                          "noopener,noreferrer"
-                        );
-                        // Navigate back to registration page
-                        navigate({
-                          to: "/register/live-class",
-                          search: { sessionId: sessionDetails.sessionId },
-                        });
+                        const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+                        window.open(joinLink, "_blank", "noopener,noreferrer");
                       }
                     } catch (error) {
                       console.error("Failed to mark attendance:", error);
                       toast.error("Failed to mark attendance");
                       // Still proceed with redirection
-                      if (
-                        sessionDetails.sessionStreamingServiceType ===
-                        SessionStreamingServiceType.EMBED
-                      ) {
+                      const streamingType = sessionDetails.sessionStreamingServiceType?.toLowerCase();
+                      if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
                         navigate({
                           to: "/live-class-guest/embed",
                           search: { sessionId },
                         });
                       } else {
-                        window.open(
-                          sessionDetails.defaultMeetLink,
-                          "_blank",
-                          "noopener,noreferrer"
-                        );
-                        navigate({
-                          to: "/register/live-class",
-                          search: { sessionId: sessionDetails.sessionId },
-                        });
+                        const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+                        window.open(joinLink, "_blank", "noopener,noreferrer");
                       }
                     }
                   }

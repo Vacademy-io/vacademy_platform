@@ -9,6 +9,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer";
+import ZohoEmbedPlayer from "./-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { toast } from "sonner";
@@ -213,6 +214,7 @@ function EmbedComponent() {
   };
 
   const renderEmbeddedSession = () => {
+    console.log("[LearnerEmbed] Session details:", sessionDetails);
     // Check link type first — BBB sessions may not have a defaultMeetLink
     const linkType =
       sessionDetails?.linkType ||
@@ -360,6 +362,54 @@ function EmbedComponent() {
               </Button>
             </div>
           )}
+        </div>
+      );
+    }
+
+    // --- Zoho links ---
+    if (
+      linkType === LinkType.ZOHO ||
+      linkType === LinkType.ZOHO_MEETING ||
+      linkType === LinkType.ZOHO_RECORDED
+    ) {
+      const zohoUrl = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      return (
+        <div className="w-full h-full flex flex-col gap-4">
+          <ZohoEmbedPlayer
+            meetingUrl={zohoUrl}
+            scheduleId={sessionDetails.scheduleId}
+            instituteId={sessionDetails.instituteId}
+          />
+          {learnerButtonConfig?.visible && (
+            <div className="flex justify-end w-full mt-2">
+              <Button
+                variant="default"
+                size="sm"
+                className="h-9 px-6 text-sm font-medium shadow-sm hover:shadow transition-all duration-200 rounded-full"
+                style={{
+                  backgroundColor: learnerButtonConfig.background_color,
+                  color: learnerButtonConfig.text_color,
+                  border: `1px solid ${learnerButtonConfig.background_color}20`,
+                }}
+                onClick={() => window.open(learnerButtonConfig.url, "_blank")}
+              >
+                <span>{learnerButtonConfig.text}</span>
+                <ArrowSquareOut size={14} weight="bold" className="ml-2 opacity-90" />
+              </Button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Check if embedding is enabled — if not, open the link in a new tab
+    if (sessionDetails.sessionStreamingServiceType &&
+      sessionDetails.sessionStreamingServiceType.toLowerCase() !== "embed") {
+      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      window.open(joinLink, "_blank", "noopener,noreferrer");
+      return (
+        <div className="flex flex-col items-center justify-center p-8 h-full">
+          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
         </div>
       );
     }

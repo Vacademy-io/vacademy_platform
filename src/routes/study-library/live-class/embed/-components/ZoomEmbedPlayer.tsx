@@ -7,7 +7,7 @@ const ZoomEmbedPlayer: React.FC<ZoomEmbedPlayerProps> = ({
   recordingUrl = "https://zoom.us/rec/play/YOUR_RECORDING_ID",
 }) => {
   return (
-    <div className="relative w-full h-full bg-black">
+    <div className="relative w-full h-full flex-1 min-h-[400px] bg-black rounded-lg overflow-hidden">
       {/* Zoom iframe */}
       <iframe
         src={recordingUrl}

@@ -99,8 +99,9 @@ function WaitingRoomComponent() {
             to: "/study-library/live-class/embed",
             search: { sessionId },
           });
-        } else if (sessionDetails.defaultMeetLink) {
-          window.location.href = sessionDetails.defaultMeetLink;
+        } else {
+          const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+          window.open(joinLink, "_blank", "noopener,noreferrer");
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);
@@ -114,13 +115,9 @@ function WaitingRoomComponent() {
             to: "/study-library/live-class/embed",
             search: { sessionId },
           });
-        } else if (sessionDetails.defaultMeetLink) {
-          window.open(
-            sessionDetails.defaultMeetLink,
-            "_blank",
-            "noopener,noreferrer"
-          );
-          navigate({ to: "/study-library/live-class" });
+        } else {
+          const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+          window.open(joinLink, "_blank", "noopener,noreferrer");
         }
       }
     }

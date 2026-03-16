@@ -309,7 +309,8 @@ function RouteComponent() {
             },
           });
         } else {
-          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+          const joinLink = (session as any).custom_meeting_link || (session as any).customMeetingLink || session.meeting_link;
+          window.open(joinLink, "_blank", "noopener,noreferrer");
         }
       };
 
@@ -326,6 +327,21 @@ function RouteComponent() {
       } catch (error) {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
+
+        // Still proceed with navigation even if attendance marking fails
+        const streamingType = session.session_streaming_service_type?.toLowerCase();
+        if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
+          (navigate as any)({
+            to: "/study-library/live-class/embed",
+            search: {
+              sessionId: session.schedule_id,
+              learnerButtonConfig: session.learner_button_config ?? undefined,
+            },
+          });
+        } else {
+          const joinLink = (session as any).custom_meeting_link || (session as any).customMeetingLink || session.meeting_link;
+          window.open(joinLink, "_blank", "noopener,noreferrer");
+        }
         // Still proceed even if attendance marking fails
         await openSession();
       }
@@ -362,10 +378,6 @@ function RouteComponent() {
 
   // Helper function to determine if a session is currently live (in waiting room or active)
   const isSessionLive = useCallback((session: SessionDetails) => {
-    // We access currentTime here just to ensure this function (and dependents) updating
-    // But we still use new Date() for the most precise check at moment of execution
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _tick = currentTime;
     const now = new Date();
 
     let sessionStart, sessionEnd, waitingRoomStart;
@@ -652,7 +664,9 @@ function RouteComponent() {
                   ? "Not Started"
                   : isInWaitingRoom
                     ? "Join Waiting Room"
-                    : "Join Session"}
+                    : (session.session_streaming_service_type?.toLowerCase() === SessionStreamingServiceType.EMBED.toLowerCase())
+                      ? "Join Session"
+                      : "Join Session"}
               </Button>
             )}
           </div>
@@ -721,9 +735,9 @@ function RouteComponent() {
       sessions?.upcoming_sessions?.includes(session)
     );
 
-    const isToday = selectedDayData.date.toDateString() === new Date().toDateString();
-    const defaultDayConfig = (sessions as any)?.defaultDayConfig;
-    const showDefaultClass = isToday && defaultDayConfig?.defaultClassLink && liveSessions.length === 0;
+    // const defaultDayConfig = (sessions as any)?.defaultDayConfig;
+    // const isToday = selectedDayData.date.toDateString() === new Date().toDateString();
+    // const showDefaultClass = isToday && defaultDayConfig?.defaultClassLink && liveSessions.length === 0;
 
     return (
       <Dialog open={dayModalOpen} onOpenChange={setDayModalOpen}>
@@ -802,6 +816,9 @@ function RouteComponent() {
                                 }}
                               >
                                 <ArrowSquareOut size={14} className="mr-1" />
+                                {(session.session_streaming_service_type?.toLowerCase() === SessionStreamingServiceType.EMBED.toLowerCase())
+                                  ? "Join"
+                                  : "Join"}
                                 Join
                               </Button>
                             )}

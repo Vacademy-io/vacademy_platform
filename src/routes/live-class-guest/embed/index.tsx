@@ -5,6 +5,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEmbedPlayer";
+import ZohoEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { BASE_URL } from "@/constants/urls";
 import axios from "axios";
@@ -85,7 +86,15 @@ function GuestEmbedComponent() {
   };
 
   const renderEmbededSession = () => {
-    if (!sessionDetails?.linkType) return null;
+    console.log("[GuestEmbed] Session details:", sessionDetails);
+
+    if (!sessionDetails) return null;
+
+    console.log("[GuestEmbed] Session detail keys:", Object.keys(sessionDetails));
+
+    const linkType = sessionDetails.linkType?.toLowerCase();
+
+    if (!linkType) return null;
 
     // ----- BBB (live video class) -----
     if (isBbb) {
@@ -112,8 +121,8 @@ function GuestEmbedComponent() {
 
     // ----- YouTube (live or recorded) -----
     if (
-      sessionDetails.linkType === LinkType.YOUTUBE ||
-      sessionDetails.linkType === LinkType.YOUTUBE_RECORDED
+      linkType === LinkType.YOUTUBE ||
+      linkType === LinkType.YOUTUBE_RECORDED
     ) {
       const videoId = extractYouTubeVideoId(
         sessionDetails.customMeetingLink ?? sessionDetails.defaultMeetLink
@@ -136,7 +145,7 @@ function GuestEmbedComponent() {
       const allowRewind = sessionDetails.allowRewind === "true";
 
       // Check if this is a live session (not recorded)
-      const isLive = sessionDetails.linkType === LinkType.YOUTUBE;
+      const isLive = linkType === LinkType.YOUTUBE;
       const sessionStartTime = convertSessionTimeToUserTimezone(
         sessionDetails.meetingDate,
         sessionDetails.scheduleStartTime,
@@ -160,10 +169,37 @@ function GuestEmbedComponent() {
 
     // ----- Zoom (live or recorded) -----
     if (
-      sessionDetails.linkType === LinkType.ZOOM_RECORDED ||
-      sessionDetails.linkType === LinkType.ZOOM
+      linkType === LinkType.ZOOM_RECORDED ||
+      linkType === LinkType.ZOOM
     ) {
       return <ZoomEmbedPlayer recordingUrl={sessionDetails.defaultMeetLink} />;
+    }
+
+    // ----- Zoho -----
+    if (
+      linkType === LinkType.ZOHO ||
+      linkType === LinkType.ZOHO_MEETING ||
+      linkType === LinkType.ZOHO_RECORDED
+    ) {
+      const zohoUrl = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      return (
+        <ZohoEmbedPlayer
+          providerHostUrl={sessionDetails.providerHostUrl}
+          meetingUrl={zohoUrl}
+        />
+      );
+    }
+
+    // Check if embedding is enabled — if not, open the link in a new tab
+    if (sessionDetails.sessionStreamingServiceType &&
+      sessionDetails.sessionStreamingServiceType.toLowerCase() !== "embed") {
+      const joinLink = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
+      window.open(joinLink, "_blank", "noopener,noreferrer");
+      return (
+        <div className="flex flex-col items-center justify-center p-12 h-screen bg-white">
+          <p className="mt-4 text-neutral-600">Opening meeting link in a new tab...</p>
+        </div>
+      );
     }
 
     // TODO: handle Google Meet etc.

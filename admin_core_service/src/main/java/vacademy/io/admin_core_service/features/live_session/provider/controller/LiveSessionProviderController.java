@@ -41,6 +41,7 @@ public class LiveSessionProviderController {
     private final LiveSessionLogsRepository liveSessionLogsRepository;
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository liveSessionRepository;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private final vacademy.io.common.media.service.FileService fileService;
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -248,6 +249,110 @@ public class LiveSessionProviderController {
             }
         } catch (Exception e) {
             log.warn("[BBB Callback] Failed to update schedule for scheduleId={}: {}", scheduleId, e.getMessage());
+        }
+
+        return ResponseEntity.ok("OK");
+    }
+
+    // -----------------------------------------------------------------------
+    // BBB Recording upload — called by BBB post-publish script
+    // -----------------------------------------------------------------------
+
+    /**
+     * POST /admin-core-service/live-sessions/provider/meeting/recording/init-upload
+     * ?meetingId=xxx&fileName=recording.mp4&fileType=video/mp4
+     *
+     * Called by the BBB post-publish script to get a presigned S3 upload URL.
+     * No auth required — server-to-server from BBB.
+     * Simple secret check via X-BBB-Secret header.
+     */
+    @PostMapping("/meeting/recording/init-upload")
+    public ResponseEntity<Map<String, String>> initRecordingUpload(
+            @RequestParam String meetingId,
+            @RequestParam String fileName,
+            @RequestParam(defaultValue = "video/mp4") String fileType,
+            @RequestHeader(value = "X-BBB-Secret", required = false) String bbbSecret) {
+
+        // Validate BBB secret
+        if (!bbbMeetingManager.validateBbbSecret(bbbSecret)) {
+            log.warn("[BBB Recording] Invalid secret for meetingId={}", meetingId);
+            return ResponseEntity.status(403).body(Map.of("error", "Invalid BBB secret"));
+        }
+
+        log.info("[BBB Recording] Init upload for meetingId={}, fileName={}", meetingId, fileName);
+
+        Map<String, String> presigned = fileService.getPresignedUploadUrl(
+                fileName, fileType, "BBB_RECORDING", meetingId);
+
+        return ResponseEntity.ok(Map.of(
+                "fileId", presigned.get("id"),
+                "uploadUrl", presigned.get("url")));
+    }
+
+    /**
+     * POST /admin-core-service/live-sessions/provider/meeting/recording/complete
+     * Body: { "meetingId": "...", "fileId": "...", "recordingId": "...",
+     *         "durationSeconds": 3600, "startTime": "2026-03-15T10:00:00Z" }
+     *
+     * Called by the BBB post-publish script after the recording MP4 has been
+     * uploaded to S3 via the presigned URL. Saves the fileId and metadata
+     * into session_schedule.provider_recordings_json.
+     */
+    @PostMapping("/meeting/recording/complete")
+    public ResponseEntity<String> completeRecordingUpload(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "X-BBB-Secret", required = false) String bbbSecret) {
+
+        if (!bbbMeetingManager.validateBbbSecret(bbbSecret)) {
+            log.warn("[BBB Recording] Invalid secret for complete request");
+            return ResponseEntity.status(403).body("Invalid BBB secret");
+        }
+
+        String meetingId = (String) body.get("meetingId");
+        String fileId = (String) body.get("fileId");
+        String recordingId = (String) body.getOrDefault("recordingId", meetingId);
+        long durationSeconds = body.containsKey("durationSeconds")
+                ? ((Number) body.get("durationSeconds")).longValue() : 0;
+        String startTime = (String) body.getOrDefault("startTime", java.time.Instant.now().toString());
+
+        log.info("[BBB Recording] Complete upload: meetingId={}, fileId={}, duration={}s",
+                meetingId, fileId, durationSeconds);
+
+        // Find schedule by providerMeetingId
+        List<SessionSchedule> schedules = scheduleRepository.findByProviderMeetingId(meetingId);
+        if (schedules.isEmpty()) {
+            log.warn("[BBB Recording] No schedule found for meetingId={}", meetingId);
+            return ResponseEntity.ok("No schedule found — recording registered but not linked");
+        }
+
+        // Build recording entry
+        MeetingRecordingDTO recording = MeetingRecordingDTO.builder()
+                .recordingId(recordingId)
+                .fileId(fileId)
+                .durationSeconds(durationSeconds)
+                .startTime(startTime)
+                .providerMeetingId(meetingId)
+                .build();
+
+        for (SessionSchedule schedule : schedules) {
+            try {
+                // Merge with existing recordings (if any)
+                List<MeetingRecordingDTO> recordings = new java.util.ArrayList<>();
+                if (schedule.getProviderRecordingsJson() != null
+                        && !schedule.getProviderRecordingsJson().isBlank()) {
+                    recordings = objectMapper.readValue(schedule.getProviderRecordingsJson(),
+                            new com.fasterxml.jackson.core.type.TypeReference<List<MeetingRecordingDTO>>() {});
+                    recordings = new java.util.ArrayList<>(recordings);
+                }
+                recordings.add(recording);
+                schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
+                schedule.setLastRecordingSyncAt(new java.util.Date());
+                scheduleRepository.save(schedule);
+                log.info("[BBB Recording] Saved recording for scheduleId={}", schedule.getId());
+            } catch (Exception e) {
+                log.error("[BBB Recording] Failed to save for scheduleId={}: {}",
+                        schedule.getId(), e.getMessage());
+            }
         }
 
         return ResponseEntity.ok("OK");

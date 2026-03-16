@@ -399,6 +399,25 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         }
     }
 
+    /**
+     * Validates a BBB secret sent by the post-publish script.
+     * Compares against the stored BBB config secret.
+     */
+    public boolean validateBbbSecret(String secret) {
+        if (secret == null || secret.isBlank()) return false;
+        try {
+            var config = configRepository.findByProviderAndStatusIn(
+                    MeetingProvider.BBB_MEETING.name(), ACTIVE);
+            if (config.isEmpty()) return false;
+            Map<String, Object> cfg = objectMapper.readValue(config.get().getConfigJson(),
+                    new TypeReference<Map<String, Object>>() {});
+            return secret.equals(cfg.get("secret"));
+        } catch (Exception e) {
+            log.warn("[BBB] Failed to validate secret: {}", e.getMessage());
+            return false;
+        }
+    }
+
     private static boolean boolOrDefault(Map<String, Object> map, String key, boolean defaultValue) {
         if (!map.containsKey(key)) return defaultValue;
         Object val = map.get(key);

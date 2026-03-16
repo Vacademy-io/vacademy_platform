@@ -86,7 +86,8 @@ public class GetLiveSessionService {
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                 p.getDefaultClassLink(),
-                p.getDefaultClassName()
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
     }
 
@@ -113,7 +114,8 @@ public class GetLiveSessionService {
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                 p.getDefaultClassLink(),
-                p.getDefaultClassName()
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
         // Group by date
@@ -152,7 +154,8 @@ public class GetLiveSessionService {
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                 p.getDefaultClassLink(),
-                p.getDefaultClassName()
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
         // Group by date
@@ -232,7 +235,8 @@ public class GetLiveSessionService {
                         p.getTimezone(),
                         deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                         p.getDefaultClassLink(),
-                        p.getDefaultClassName()
+                        p.getDefaultClassName(),
+                        p.getLinkType()
                 );
                 uniqueSessions.put(sessionId, dto);
             }
@@ -265,7 +269,8 @@ public class GetLiveSessionService {
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                 p.getDefaultClassLink(),
-                p.getDefaultClassName()
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
         // Group by date
@@ -304,7 +309,8 @@ public class GetLiveSessionService {
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                 p.getDefaultClassLink(),
-                p.getDefaultClassName()
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
         // Group by date
@@ -350,7 +356,8 @@ public class GetLiveSessionService {
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                 p.getDefaultClassLink(),
-                p.getDefaultClassName()
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
                 // Group by date
@@ -394,7 +401,8 @@ public class GetLiveSessionService {
                 p.getTimezone(),
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                 p.getDefaultClassLink(),
-                p.getDefaultClassName()
+                p.getDefaultClassName(),
+                p.getLinkType()
             ))
             .collect(Collectors.toList());
         

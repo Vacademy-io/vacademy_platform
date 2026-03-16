@@ -9,9 +9,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
+import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
+import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSubOrg;
+import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
+import vacademy.io.admin_core_service.features.institute_learner.enums.StudentSubOrgLinkType;
+import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSubOrgRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
@@ -96,6 +106,21 @@ public class LearnerEnrollRequestService {
     @Autowired
     private LearnerInvitationLinkService learnerInvitationLinkService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
+
+    @Autowired
+    private FacultyService facultyService;
+
+    @Autowired
+    private StudentSubOrgRepository studentSubOrgRepository;
+
+    @Autowired
+    private InstituteStudentRepository instituteStudentRepository;
+
+    @Autowired
+    private StudentSessionInstituteGroupMappingRepository ssigmRepository;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         return recordLearnerRequest(learnerEnrollRequestDTO, Map.of());
@@ -125,7 +150,14 @@ public class LearnerEnrollRequestService {
         String userPlanSource = UserPlanSourceEnum.USER.name();
         String subOrgId = null;
 
-        if (enrollDTO.getPackageSessionIds() != null && enrollDTO.getPackageSessionIds().size() == 1) {
+        // B2B: Detect SUB_ORG invite (org-level purchase by sub-org admin)
+        if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
+                && enrollInvite.getSubOrgId() != null) {
+            log.info("Detected SUB_ORG invite purchase. Invite={}, SubOrg={}",
+                    enrollInvite.getId(), enrollInvite.getSubOrgId());
+            userPlanSource = UserPlanSourceEnum.SUB_ORG.name();
+            subOrgId = enrollInvite.getSubOrgId();
+        } else if (enrollDTO.getPackageSessionIds() != null && enrollDTO.getPackageSessionIds().size() == 1) {
             // Fetch the package session to check isOrgAssociated
             List<PackageSession> packageSessions = packageSessionRepository
                     .findPackageSessionsByIds(enrollDTO.getPackageSessionIds());
@@ -223,6 +255,16 @@ public class LearnerEnrollRequestService {
                 userPlanSource,
                 subOrgId);
 
+        // B2B: After org-level UserPlan creation, create scoped FREE invites
+        // For FREE plans (status=ACTIVE), do it now. For PAID plans, webhook handles it.
+        if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
+                && enrollInvite.getSubOrgId() != null
+                && UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+            log.info("SUB_ORG FREE plan activated. Creating scoped free invites for sub-org={}",
+                    enrollInvite.getSubOrgId());
+            subOrgSubscriptionService.createScopedFreeInvites(enrollInvite, userPlan, paymentPlan);
+        }
+
         LearnerEnrollResponseDTO response;
         response = enrollLearnerToBatch(
                 learnerEnrollRequestDTO,
@@ -231,6 +273,18 @@ public class LearnerEnrollRequestService {
                 paymentOption,
                 userPlan,
                 extraData);
+
+        // B2B: Post-processing for SUB_ORG invite enrollment
+        // Creates ROOT_ADMIN mappings, StudentSubOrg entry, and faculty mappings
+        if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
+                && enrollInvite.getSubOrgId() != null) {
+            postProcessSubOrgEnrollment(
+                    learnerEnrollRequestDTO.getUser(),
+                    enrollDTO.getPackageSessionIds(),
+                    enrollInvite,
+                    userPlan);
+        }
+
         // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)
         // For PAID enrollments, notifications will be sent after webhook confirms
         // payment
@@ -373,6 +427,83 @@ public class LearnerEnrollRequestService {
                     enrollInvite);
         } catch (Exception e) {
             log.error("Error sending referral invitation email", e);
+        }
+    }
+
+    /**
+     * Post-process SUB_ORG invite enrollment:
+     * 1. Update SSIGM entries to ROOT_ADMIN role + set subOrg
+     * 2. Create StudentSubOrg junction entry
+     * 3. Create faculty mappings for admin portal access
+     */
+    private void postProcessSubOrgEnrollment(
+            UserDTO user,
+            List<String> packageSessionIds,
+            EnrollInvite enrollInvite,
+            UserPlan userPlan) {
+        String subOrgId = enrollInvite.getSubOrgId();
+        String userId = user.getId();
+
+        try {
+            // 1. Update created SSIGM entries: set ROOT_ADMIN role and subOrg
+            List<StudentSessionInstituteGroupMapping> mappings =
+                    ssigmRepository.findByUserPlanIdAndStatus(userPlan.getId(), "ACTIVE");
+            if (mappings.isEmpty()) {
+                // For PAID plans, mappings may be in INVITED status
+                mappings = ssigmRepository.findByUserPlanIdAndStatus(userPlan.getId(), "INVITED");
+            }
+
+            Institute subOrgInstitute = instituteRepository.findById(subOrgId).orElse(null);
+
+            for (StudentSessionInstituteGroupMapping mapping : mappings) {
+                mapping.setCommaSeparatedOrgRoles("ROOT_ADMIN");
+                if (subOrgInstitute != null) {
+                    mapping.setSubOrg(subOrgInstitute);
+                }
+                ssigmRepository.save(mapping);
+            }
+            log.info("Updated {} SSIGM entries with ROOT_ADMIN role for sub-org={}", mappings.size(), subOrgId);
+
+            // 2. Create StudentSubOrg junction entry
+            Optional<StudentSubOrg> existingEntry = studentSubOrgRepository.findByUserIdAndSubOrgId(userId, subOrgId);
+            if (existingEntry.isEmpty()) {
+                List<Student> students = instituteStudentRepository.findByUserId(userId);
+                String studentId = students.isEmpty() ? userId : students.get(0).getId();
+                StudentSubOrg studentSubOrg = new StudentSubOrg(
+                        studentId,
+                        userId,
+                        subOrgInstitute,
+                        StudentSubOrgLinkType.DIRECT.name());
+                studentSubOrgRepository.save(studentSubOrg);
+                log.info("Created StudentSubOrg entry for user={} sub-org={}", userId, subOrgId);
+            }
+
+            // 3. Create faculty mappings for each package session (admin portal access)
+            for (String packageSessionId : packageSessionIds) {
+                try {
+                    AddUserAccessDTO accessDTO = AddUserAccessDTO.builder()
+                            .userId(userId)
+                            .packageSessionId(packageSessionId)
+                            .name(user.getFullName())
+                            .status("ACTIVE")
+                            .userType("ROOT_ADMIN")
+                            .accessType("PackageSession")
+                            .accessId(packageSessionId)
+                            .accessPermission("FULL")
+                            .linkageType("SUB_ORG")
+                            .suborgId(subOrgId)
+                            .build();
+                    facultyService.grantUserAccess(accessDTO);
+                    log.info("Created faculty mapping for user={} packageSession={} sub-org={}",
+                            userId, packageSessionId, subOrgId);
+                } catch (Exception e) {
+                    log.error("Failed to create faculty mapping for packageSession={}: {}",
+                            packageSessionId, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error in postProcessSubOrgEnrollment for user={} sub-org={}: {}",
+                    userId, subOrgId, e.getMessage(), e);
         }
     }
 

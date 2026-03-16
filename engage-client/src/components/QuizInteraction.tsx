@@ -289,7 +289,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
       <Card className="w-full max-w-2xl mx-auto glassmorphism-container my-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-red-900/30 to-orange-900/20 rounded-2xl pointer-events-none" />
         <CardHeader className="p-4 relative z-10">
-          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto">
+          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto [&_*]:![color:inherit] [&_*]:!bg-transparent">
              <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question")} />
           </CardTitle>
         </CardHeader>
@@ -315,7 +315,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
         <div className="absolute inset-0 bg-gradient-to-r from-yellow-900/20 to-amber-900/15 rounded-2xl pointer-events-none" />
         
         <CardHeader className="p-4 relative z-10">
-          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto">
+          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto [&_*]:![color:inherit] [&_*]:!bg-transparent">
              <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question Submitted")} />
           </CardTitle>
           <CardDescription className="text-white/70">You have used all your attempts.</CardDescription>
@@ -344,7 +344,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
       
       <CardHeader className="p-4 relative z-10">
         <div className="flex items-start justify-between gap-4">
-          <CardTitle className="text-lg font-semibold text-white max-h-[30vh] overflow-y-auto flex-1">
+          <CardTitle className="text-lg font-semibold text-white max-h-[30vh] overflow-y-auto flex-1 [&_*]:![color:inherit] [&_*]:!bg-transparent">
             <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question")} />
           </CardTitle>
           {/* Countdown Timer */}
@@ -378,7 +378,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                       disabled={!canAttempt || isSubmitting}
                       className="size-4"
                     />
-                    <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
+                    <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer [&_*]:![color:inherit] [&_*]:!bg-transparent`}
                       dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
                     />
                   </div>
@@ -405,7 +405,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                       id={`option-${option.id}`}
                       className="size-4 border-slate-400 data-[state=checked]:border-primary data-[state=checked]:text-primary focus:ring-primary"
                     />
-                    <span className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
+                    <span className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer [&_*]:![color:inherit] [&_*]:!bg-transparent`}
                       dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
                     />
                   </label>

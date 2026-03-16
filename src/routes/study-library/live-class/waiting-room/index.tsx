@@ -9,7 +9,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { CountdownTimer } from "./-components/CountdownTimer";
 import { getPublicUrl } from "@/services/upload_file";
 import { BackgroundMusic } from "./-components/BackgroundMusic";
-import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
+import { SessionStreamingServiceType, LinkType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { toast } from "sonner";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
@@ -79,7 +79,9 @@ function WaitingRoomComponent() {
     }
 
     // Check if current time is >= session start time
-    if (now >= sessionStartInUserTimezone && sessionDetails.defaultMeetLink) {
+    // BBB sessions may not have a defaultMeetLink (room is auto-created on join)
+    const isBbb = sessionDetails.linkType === LinkType.BBB_MEETING || sessionDetails.linkType === "bbb";
+    if (now >= sessionStartInUserTimezone && (sessionDetails.defaultMeetLink || isBbb)) {
       try {
         await markAttendance({
           sessionId: sessionDetails.sessionId,
@@ -90,29 +92,29 @@ function WaitingRoomComponent() {
         });
         if (
           sessionDetails.sessionStreamingServiceType ===
-          SessionStreamingServiceType.EMBED
+            SessionStreamingServiceType.EMBED ||
+          isBbb
         ) {
           navigate({
             to: "/study-library/live-class/embed",
             search: { sessionId },
           });
-        } else {
+        } else if (sessionDetails.defaultMeetLink) {
           window.location.href = sessionDetails.defaultMeetLink;
-
-          // navigate({ to: "/study-library/live-class" });
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
         if (
           sessionDetails.sessionStreamingServiceType ===
-          SessionStreamingServiceType.EMBED
+            SessionStreamingServiceType.EMBED ||
+          isBbb
         ) {
           navigate({
             to: "/study-library/live-class/embed",
             search: { sessionId },
           });
-        } else {
+        } else if (sessionDetails.defaultMeetLink) {
           window.open(
             sessionDetails.defaultMeetLink,
             "_blank",

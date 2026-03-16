@@ -62,6 +62,10 @@ export const PaymentGatewayWrapper = ({
       // Cashfree doesn't need gateway keys - uses paymentSessionId from backend
       return <>{children}</>;
 
+    case "FREE":
+      // FREE invites don't need any payment gateway
+      return <>{children}</>;
+
     case "PAYPAL":
       // TODO: Implement PayPal wrapper
       console.warn("PayPal integration not yet implemented");

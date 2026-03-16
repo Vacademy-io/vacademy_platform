@@ -11,6 +11,10 @@ import { SessionStreamingServiceType } from "@/routes/register/live-class/-types
 import { getAllPackageSessionIds } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { useMarkAttendance } from "./-hooks/useMarkAttendance";
 import { toast } from "sonner";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { BASE_URL } from "@/constants/urls";
+import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Calendar,
@@ -255,6 +259,47 @@ function RouteComponent() {
 
     // If live class has started, proceed to live session
     if (isLiveClassStarted) {
+      // Helper to navigate/open based on session type
+      const isBbb = session.link_type === "bbb" || session.link_type === "BBB_MEETING";
+
+      const openSession = async () => {
+        if (isBbb) {
+          // BBB: fetch join URL and open directly (skip embed page)
+          try {
+            const response = await authenticatedAxiosInstance.get(
+              `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/join`,
+              { params: { scheduleId: session.schedule_id, role: "VIEWER" } }
+            );
+            const joinUrl = response.data?.joinUrl;
+            if (joinUrl) {
+              if (Capacitor.isNativePlatform()) {
+                Browser.open({ url: joinUrl, presentationStyle: "fullscreen" });
+              } else {
+                window.open(joinUrl, "_blank", "noopener,noreferrer");
+              }
+            } else {
+              toast.error("Failed to get video class URL");
+            }
+          } catch (err) {
+            console.error("Failed to get BBB join URL:", err);
+            toast.error("Failed to join video class. Please try again.");
+          }
+        } else if (
+          session.session_streaming_service_type ===
+          SessionStreamingServiceType.EMBED
+        ) {
+          (navigate as any)({
+            to: "/study-library/live-class/embed",
+            search: {
+              sessionId: session.schedule_id,
+              learnerButtonConfig: session.learner_button_config ?? undefined,
+            },
+          });
+        } else {
+          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+        }
+      };
+
       try {
         // Mark attendance only when directly joining live session
         await markAttendance({
@@ -264,41 +309,12 @@ function RouteComponent() {
           userSourceId: "",
           details: "Joined live class directly",
         });
-
-        // Navigate to live session
-        if (
-          session.session_streaming_service_type ===
-          SessionStreamingServiceType.EMBED
-        ) {
-          (navigate as any)({
-            to: "/study-library/live-class/embed",
-            search: {
-              sessionId: session.schedule_id,
-              learnerButtonConfig: session.learner_button_config ?? undefined,
-            },
-          });
-        } else {
-          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
-        }
+        await openSession();
       } catch (error) {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
-
-        // Still proceed with navigation even if attendance marking fails
-        if (
-          session.session_streaming_service_type ===
-          SessionStreamingServiceType.EMBED
-        ) {
-          (navigate as any)({
-            to: "/study-library/live-class/embed",
-            search: {
-              sessionId: session.schedule_id,
-              learnerButtonConfig: session.learner_button_config ?? undefined,
-            },
-          });
-        } else {
-          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
-        }
+        // Still proceed even if attendance marking fails
+        await openSession();
       }
     } else {
       // This should not happen, but add a fallback

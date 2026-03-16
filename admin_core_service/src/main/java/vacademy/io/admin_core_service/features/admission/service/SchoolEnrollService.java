@@ -193,7 +193,8 @@ public class SchoolEnrollService {
                         studentFeePaymentIds = studentFeePaymentGenerationService.generateFeeBills(
                                         userPlan.getId(),
                                         request.getCpoId(),
-                                        createdUser.getId());
+                                        createdUser.getId(),
+                                        request.getInstituteId());
                         log.info("Generated {} fee bills from CPO: {}", studentFeePaymentIds.size(),
                                         request.getCpoId());
                 }

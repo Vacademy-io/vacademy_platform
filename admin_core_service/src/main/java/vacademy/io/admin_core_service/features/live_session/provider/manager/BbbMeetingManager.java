@@ -132,6 +132,7 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         String instituteName = "Vacademy";
         String themeColor = null;
         String logoUrl = null;
+        String learnerBaseUrl = null;
         if (instituteId != null) {
             try {
                 Institute institute = instituteRepository.findById(instituteId).orElse(null);
@@ -144,6 +145,12 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
                     }
                     if (institute.getLogoFileId() != null && !institute.getLogoFileId().isBlank()) {
                         logoUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(institute.getLogoFileId());
+                    }
+                    if (institute.getLearnerPortalBaseUrl() != null && !institute.getLearnerPortalBaseUrl().isBlank()) {
+                        learnerBaseUrl = institute.getLearnerPortalBaseUrl();
+                        if (!learnerBaseUrl.startsWith("http")) {
+                            learnerBaseUrl = "https://" + learnerBaseUrl;
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -189,6 +196,12 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         // Whitelabeling: metadata for client-side branding
         params.put("meta_bbb-origin-server-name", instituteName);
         params.put("meta_bbb-origin", instituteName);
+
+        // Redirect students back to learner app when meeting ends (instead of BBB page)
+        if (learnerBaseUrl != null) {
+            params.put("logoutURL", learnerBaseUrl + "/study-library/live-class");
+            params.put("meetingEndedURL", learnerBaseUrl + "/study-library/live-class");
+        }
 
         if (request.getDurationMinutes() > 0) {
             params.put("duration", String.valueOf(request.getDurationMinutes()));

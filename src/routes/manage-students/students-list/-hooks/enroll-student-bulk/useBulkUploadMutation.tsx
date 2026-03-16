@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { STUDENT_CSV_UPLOAD_URL } from '@/constants/urls';
 import axios from 'axios';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { getSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
 
 interface SubmitBulkUploadParams {
     data: SchemaFields[];
@@ -33,6 +34,10 @@ const submitBulkUploadData = async ({
     formData.append('bulkUploadInitRequest', JSON.stringify(bulkUploadInitRequest));
     formData.append('packageSessionId', packageSessionId);
     formData.append('notify', notify.toString());
+    const subOrgId = getSelectedSubOrgId();
+    if (subOrgId) {
+        formData.append('subOrgId', subOrgId);
+    }
     // Convert data to CSV and append as file
     const csvContent = Papa.unparse(data);
     const csvFile = new File([csvContent], 'students.csv', { type: 'text/csv' });

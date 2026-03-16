@@ -8,6 +8,10 @@ import {
     ROLES_BASE,
     INVITE_USERS_URL,
     GET_SUB_ORGS,
+    CREATE_SUB_ORG_WITH_SUBSCRIPTION,
+    GET_SUB_ORG_SCOPED_INVITES,
+    GET_SUB_ORG_SEAT_USAGE,
+    GET_SUB_ORG_SUBSCRIPTION_STATUS,
 } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
@@ -184,6 +188,95 @@ export const deleteCustomRole = async (roleId: string) => {
     const response = await authenticatedAxiosInstance({
         method: 'DELETE',
         url: `${ROLES_BASE}/${instituteId}/roles/${roleId}`,
+    });
+    return response.data;
+};
+
+// --- Sub-Org Subscription APIs ---
+
+export interface CreateSubOrgSubscriptionRequest {
+    sub_org_details: {
+        institute_name: string;
+        email: string;
+        phone: string;
+        institute_logo_file_id?: string;
+    };
+    package_session_ids: string[];
+    payment_type: 'SUBSCRIPTION' | 'ONE_TIME' | 'FREE';
+    actual_price?: number;
+    elevated_price?: number;
+    currency?: string;
+    member_count: number;
+    validity_in_days: number;
+    vendor?: string;
+    vendor_id?: string;
+}
+
+export interface CreateSubOrgSubscriptionResponse {
+    sub_org_id: string;
+    enroll_invite_id: string;
+    invite_code: string;
+    short_url: string;
+}
+
+export interface SeatUsage {
+    package_session_id: string;
+    package_name: string;
+    used_seats: number;
+    total_seats: number;
+}
+
+export interface SubOrgSubscriptionStatus {
+    sub_org_id: string;
+    org_user_plan_status: string;
+    seat_usages: SeatUsage[];
+    invite_code: string;
+    short_url: string;
+}
+
+export const createSubOrgWithSubscription = async (
+    data: CreateSubOrgSubscriptionRequest
+): Promise<CreateSubOrgSubscriptionResponse> => {
+    const parentInstituteId = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: CREATE_SUB_ORG_WITH_SUBSCRIPTION,
+        params: { parentInstituteId },
+        data,
+    });
+    return response.data;
+};
+
+export const getScopedInvites = async (subOrgId: string) => {
+    const instituteId = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_SUB_ORG_SCOPED_INVITES,
+        params: { subOrgId, instituteId },
+    });
+    return response.data;
+};
+
+export const getSeatUsage = async (
+    subOrgId: string,
+    packageSessionId: string
+): Promise<SeatUsage> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_SUB_ORG_SEAT_USAGE,
+        params: { subOrgId, packageSessionId },
+    });
+    return response.data;
+};
+
+export const getSubscriptionStatus = async (
+    subOrgId: string
+): Promise<SubOrgSubscriptionStatus> => {
+    const instituteId = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_SUB_ORG_SUBSCRIPTION_STATUS,
+        params: { subOrgId, instituteId },
     });
     return response.data;
 };

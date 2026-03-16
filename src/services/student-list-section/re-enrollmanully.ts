@@ -3,6 +3,7 @@ import { ENROLL_STUDENT_MANUALLY } from '@/constants/urls';
 import { EnrollStudentRequest } from '@/types/students/type-enroll-student-manually';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { getSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
 
 export const reEnrollStudent = async ({ formData }: EnrollStudentRequest): Promise<string> => {
     try {
@@ -47,6 +48,7 @@ export const reEnrollStudent = async ({ formData }: EnrollStudentRequest): Promi
                 roles: ['STUDENT'],
             },
             institute_id: INSTITUTE_ID,
+            sub_org_id: getSelectedSubOrgId() || undefined,
             learner_package_session_enroll: {
                 package_session_ids: formData.stepThreeData?.invite?.package_session_ids || [],
                 enroll_invite_id: formData.stepThreeData?.invite?.id || '',

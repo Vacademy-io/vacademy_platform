@@ -16,7 +16,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
     grantUserAccess,
-    getSubOrgs,
     inviteUser,
     createCustomRole,
     getAllRoles,
@@ -24,7 +23,7 @@ import {
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { ChevronRight, Loader2 } from 'lucide-react';
 import {
     Select,
     SelectContent,
@@ -33,21 +32,17 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { fetchBatchesSummary, fetchCourseBatches, fetchEnrollInvites } from '../../admin-package-management/-services/package-service';
+import { fetchBatchesSummary, fetchCourseBatches } from '../../admin-package-management/-services/package-service';
 import { useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
 
 const memberSchema = z.object({
     fullName: z.string().min(1, 'Full Name is required'),
     email: z.string().email('Invalid email address'),
     mobileNumber: z.string().min(10, 'Phone must be at least 10 digits'),
-    roleId: z.string().optional(), // Made optional - will validate conditionally
+    roleId: z.string().optional(),
     hasFacultyAssigned: z.boolean().default(false),
-    packageId: z.string().optional(),
-    packageSessionId: z.string().optional(),
-    enrollInviteId: z.string().optional(),
-    subOrgId: z.string().optional(),
     linkageType: z.enum(['DIRECT', 'INHERITED', 'PARTNERSHIP']).optional(),
     accessPermission: z.string().default('FULL'),
 });
@@ -62,10 +57,12 @@ interface AddMemberFormProps {
 
 export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormProps) {
     const queryClient = useQueryClient();
-    const [selectedPackageId, setSelectedPackageId] = useState<string | undefined>(undefined);
-    const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
     const [isCustomRole, setIsCustomRole] = useState(false);
     const [customRoleName, setCustomRoleName] = useState('');
+
+    // Multi-select package sessions
+    const [expandedPackageId, setExpandedPackageId] = useState<string | null>(null);
+    const [selectedPackageSessionIds, setSelectedPackageSessionIds] = useState<string[]>([]);
 
     const form = useForm<MemberFormValues>({
         resolver: zodResolver(memberSchema),
@@ -82,12 +79,11 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
         handleSubmit,
         control,
         reset,
-        watch,
         setValue,
         formState: { errors },
     } = form;
 
-    const hasFacultyAssigned = watch('hasFacultyAssigned');
+    const hasFacultyAssigned = form.watch('hasFacultyAssigned');
 
     // Fetch Roles
     const { data: roles = [] } = useQuery({
@@ -99,112 +95,83 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
 
     const instituteId = getCurrentInstituteId();
 
-    // Fetch SubOrgs
-    const { data: subOrgsData } = useQuery({
-        queryKey: ['sub-orgs-list', instituteId],
-        queryFn: () => getSubOrgs(instituteId),
-        staleTime: 1000 * 60 * 5,
-        enabled: open && !!instituteId,
-        refetchOnMount: 'always',
-    });
-
-    const subOrgs = Array.isArray(subOrgsData) ? subOrgsData : (subOrgsData as any)?.content || [];
-
-    // Fetch Packages Summary for Access Mapping (same as admin-package-management)
+    // Fetch Packages Summary
     const { data: packagesSummary } = useQuery({
         queryKey: ['packages-summary'],
         queryFn: () => fetchBatchesSummary(['ACTIVE']),
         enabled: open,
     });
 
-    // Fetch Sessions if Package Selected - returns PackageSessionDTO[]
-    const { data: packageSessions = [], isLoading: isLoadingSessions } = useQuery({
-        queryKey: ['package-sessions', selectedPackageId],
-        queryFn: () => fetchCourseBatches(selectedPackageId!),
-        enabled: !!selectedPackageId,
+    // Fetch Sessions for expanded package
+    const { data: packageSessions = [], isLoading: isLoadingSessions } = useQuery<
+        PackageSessionDTO[]
+    >({
+        queryKey: ['package-sessions', expandedPackageId],
+        queryFn: () => fetchCourseBatches(expandedPackageId!),
+        enabled: !!expandedPackageId,
     });
 
-    // Fetch Enroll Invites if Session Selected
-    const { data: enrollInvitesData, isLoading: isLoadingInvites } = useQuery({
-        queryKey: ['enroll-invites', selectedSessionId],
-        queryFn: () => fetchEnrollInvites(selectedSessionId!),
-        enabled: !!selectedSessionId,
-    });
-
-    const enrollInvites = enrollInvitesData?.content || [];
+    const togglePackageSession = (id: string) => {
+        setSelectedPackageSessionIds((prev) =>
+            prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+        );
+    };
 
     const mutation = useMutation({
         mutationFn: async (data: MemberFormValues) => {
-            // Determine the role name and roleId
             let roleName: string;
             let roleId: string | undefined;
 
             if (isCustomRole) {
-                // Use custom role name
                 roleName = customRoleName;
             } else {
-                // Find the selected role from the dropdown
                 const selectedRole = roles.find((r: any) => r.id === data.roleId);
                 roleName = selectedRole?.name || data.roleId;
-                roleId = data.roleId; // Already have the roleId from dropdown
+                roleId = data.roleId;
             }
 
             // STEP 1: Invite user with the role name
-            // This creates the user and assigns the role(s)
             const inviteResponse = await inviteUser({
                 email: data.email,
                 full_name: data.fullName,
-                roles: [roleName], // Role name for user invitation
+                roles: [roleName],
                 root_user: false,
             });
 
-            // Extract the created userId from the response
             const userId = inviteResponse.userId || inviteResponse.id || inviteResponse.user?.id;
-
             if (!userId) {
                 throw new Error('Failed to create user - no userId returned');
             }
 
-            // STEP 2: Create custom role if "Custom" was selected
+            // STEP 2: Create custom role if needed
             if (isCustomRole) {
                 const permissionIds = hasFacultyAssigned ? ['109'] : [];
                 const roleResponse = await createCustomRole({ name: customRoleName, permissionIds });
                 roleId = roleResponse.id || roleResponse.roleId;
-
                 if (!roleId) {
                     throw new Error('Failed to create role - no roleId returned');
                 }
             }
 
-            // STEP 3: Grant additional access if package/session/invite is selected
-            // Only call grantUserAccess if specific access mapping is needed
-            if (data.packageId || data.packageSessionId || data.enrollInviteId) {
-                let accessType = 'INSTITUTE';
-                let accessId = 'INSTITUTE';
-
-                if (data.enrollInviteId) {
-                    accessType = 'ENROLL_INVITE';
-                    accessId = data.enrollInviteId;
-                } else if (data.packageSessionId) {
-                    accessType = 'PACKAGE_SESSION';
-                    accessId = data.packageSessionId;
-                } else if (data.packageId) {
-                    accessType = 'PACKAGE';
-                    accessId = data.packageId;
-                }
-
-                await grantUserAccess({
-                    user_id: userId,
-                    status: 'ACTIVE',
-                    name: data.fullName,
-                    user_type: 'ROLE', // Always 'ROLE' as specified
-                    type_id: roleId!, // Use the roleId (from existing role or newly created)
-                    access_type: accessType,
-                    access_id: accessId,
-                    access_permission: data.accessPermission,
-                    linkage_type: (data.linkageType?.toUpperCase() || 'DIRECT') as 'DIRECT' | 'INHERITED' | 'PARTNERSHIP',
-                    suborg_id: data.subOrgId,
-                });
+            // STEP 3: Grant access for each selected package session
+            if (selectedPackageSessionIds.length > 0 && roleId) {
+                const accessPromises = selectedPackageSessionIds.map((psId) =>
+                    grantUserAccess({
+                        user_id: userId,
+                        status: 'ACTIVE',
+                        name: data.fullName,
+                        user_type: 'ROLE',
+                        type_id: roleId!,
+                        access_type: 'PACKAGE_SESSION',
+                        access_id: psId,
+                        access_permission: data.accessPermission,
+                        linkage_type: (data.linkageType?.toUpperCase() || 'DIRECT') as
+                            | 'DIRECT'
+                            | 'INHERITED'
+                            | 'PARTNERSHIP',
+                    })
+                );
+                await Promise.all(accessPromises);
             }
 
             return { userId, roleId, success: true };
@@ -213,8 +180,10 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
             toast.success('Member added successfully');
             queryClient.invalidateQueries({ queryKey: ['custom-teams'] });
             reset();
-            setSelectedPackageId(undefined);
-            setSelectedSessionId(undefined);
+            setSelectedPackageSessionIds([]);
+            setExpandedPackageId(null);
+            setIsCustomRole(false);
+            setCustomRoleName('');
             onOpenChange(false);
             if (onSuccess) onSuccess();
         },
@@ -224,12 +193,8 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
     });
 
     const onSubmit = (data: MemberFormValues) => {
-        // Validate: either roleId must be set OR customRole must be selected with a name
         if (!isCustomRole && !data.roleId) {
-            form.setError('roleId', {
-                type: 'manual',
-                message: 'Role is required',
-            });
+            form.setError('roleId', { type: 'manual', message: 'Role is required' });
             return;
         }
         if (isCustomRole && !customRoleName.trim()) {
@@ -254,7 +219,9 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                             {/* User Details Section */}
                             <div className="space-y-4">
-                                <h3 className="text-sm font-semibold text-gray-700">User Details</h3>
+                                <h3 className="text-sm font-semibold text-gray-700">
+                                    User Details
+                                </h3>
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div className="space-y-2">
                                         <Label htmlFor="fullName">Full Name *</Label>
@@ -264,7 +231,9 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                                             placeholder="John Doe"
                                         />
                                         {errors.fullName && (
-                                            <p className="text-xs text-red-500">{errors.fullName.message}</p>
+                                            <p className="text-xs text-red-500">
+                                                {errors.fullName.message}
+                                            </p>
                                         )}
                                     </div>
 
@@ -277,7 +246,9 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                                             placeholder="john@example.com"
                                         />
                                         {errors.email && (
-                                            <p className="text-xs text-red-500">{errors.email.message}</p>
+                                            <p className="text-xs text-red-500">
+                                                {errors.email.message}
+                                            </p>
                                         )}
                                     </div>
 
@@ -324,7 +295,9 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                                                                     </SelectItem>
                                                                 ))}
                                                                 <SelectItem value="CUSTOM">
-                                                                    <span className="font-semibold text-blue-600">+ Custom Role</span>
+                                                                    <span className="font-semibold text-blue-600">
+                                                                        + Custom Role
+                                                                    </span>
                                                                 </SelectItem>
                                                             </ScrollArea>
                                                         </SelectContent>
@@ -336,7 +309,9 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                                                 <Input
                                                     id="customRole"
                                                     value={customRoleName}
-                                                    onChange={(e) => setCustomRoleName(e.target.value)}
+                                                    onChange={(e) =>
+                                                        setCustomRoleName(e.target.value)
+                                                    }
                                                     placeholder="Enter custom role name"
                                                     className="flex-1"
                                                 />
@@ -355,7 +330,9 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                                             </div>
                                         )}
                                         {errors.roleId && (
-                                            <p className="text-xs text-red-500">{errors.roleId.message}</p>
+                                            <p className="text-xs text-red-500">
+                                                {errors.roleId.message}
+                                            </p>
                                         )}
                                     </div>
                                 </div>
@@ -372,169 +349,139 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                                             />
                                         )}
                                     />
-                                    <Label htmlFor="hasFacultyAssigned" className="cursor-pointer font-normal">
+                                    <Label
+                                        htmlFor="hasFacultyAssigned"
+                                        className="cursor-pointer font-normal"
+                                    >
                                         Has Faculty Assigned Permission?
                                     </Label>
                                 </div>
                             </div>
 
-                            {/* Access Mapping Section */}
+                            {/* Access Mapping Section - Multi-select Package Sessions */}
                             <div className="space-y-4 border-t pt-4">
-                                <h3 className="text-sm font-semibold text-gray-700">User Access Mapping</h3>
+                                <h3 className="text-sm font-semibold text-gray-700">
+                                    User Access Mapping
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                    Select one or more package sessions to grant access to.
+                                </p>
+
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <Label>Package</Label>
-                                        <Controller
-                                            control={control}
-                                            name="packageId"
-                                            render={({ field }) => (
-                                                <Select
-                                                    onValueChange={(val) => {
-                                                        field.onChange(val);
-                                                        setSelectedPackageId(val);
-                                                        setValue('packageSessionId', '');
-                                                        setValue('enrollInviteId', '');
-                                                        setSelectedSessionId(undefined);
-                                                    }}
-                                                    value={field.value}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select Package" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <ScrollArea className="h-[200px]">
-                                                            {packagesSummary?.packages?.map((pkg: any) => (
-                                                                <SelectItem key={pkg.id} value={pkg.id}>
-                                                                    {pkg.name}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </ScrollArea>
-                                                    </SelectContent>
-                                                </Select>
-                                            )}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label>PackageSession</Label>
-                                        <Controller
-                                            control={control}
-                                            name="packageSessionId"
-                                            render={({ field }) => (
-                                                <Select
-                                                    onValueChange={(val) => {
-                                                        field.onChange(val);
-                                                        setSelectedSessionId(val);
-                                                        setValue('enrollInviteId', '');
-                                                    }}
-                                                    value={field.value}
-                                                    disabled={!selectedPackageId || isLoadingSessions}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder={isLoadingSessions ? "Loading..." : "Select Session"} />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <ScrollArea className="h-[200px]">
-                                                            {packageSessions.length > 0 ? (
-                                                                packageSessions.map((session: any) => {
-                                                                    const packageName = session.package_dto?.package_name || 'Unknown Package';
-                                                                    const levelName = session.level?.level_name || '';
-                                                                    const sessionName = session.session?.session_name || '';
-                                                                    const displayName = `${packageName}${levelName ? ` - ${levelName}` : ''}${sessionName ? ` - ${sessionName}` : ''}`;
-
-                                                                    return (
-                                                                        <SelectItem
-                                                                            key={session.id}
-                                                                            value={session.id}
-                                                                        >
-                                                                            {displayName}
-                                                                        </SelectItem>
-                                                                    );
-                                                                })
-                                                            ) : (
-                                                                <div className="p-2 text-center text-xs text-gray-500">
-                                                                    {selectedPackageId ? 'No sessions found' : 'Select a package first'}
-                                                                </div>
-                                                            )}
-                                                        </ScrollArea>
-                                                    </SelectContent>
-                                                </Select>
-                                            )}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label>Enroll Invite (Optional)</Label>
-                                        <Controller
-                                            control={control}
-                                            name="enrollInviteId"
-                                            render={({ field }) => (
-                                                <Select
-                                                    onValueChange={field.onChange}
-                                                    value={field.value}
-                                                    disabled={!selectedSessionId || isLoadingInvites}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder={isLoadingInvites ? "Loading..." : "Select Invite"} />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <ScrollArea className="h-[200px]">
-                                                            {enrollInvites.length > 0 ? (
-                                                                enrollInvites.map((invite: any) => (
-                                                                    <SelectItem key={invite.id} value={invite.id}>
-                                                                        {invite.name || invite.id}
-                                                                    </SelectItem>
-                                                                ))
-                                                            ) : (
-                                                                <div className="p-2 text-center text-xs text-gray-500">
-                                                                    {selectedSessionId ? 'No invites found' : 'Select a session first'}
-                                                                </div>
-                                                            )}
-                                                        </ScrollArea>
-                                                    </SelectContent>
-                                                </Select>
-                                            )}
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label>Sub-Organization (Optional)</Label>
-                                        <Controller
-                                            control={control}
-                                            name="subOrgId"
-                                            render={({ field }) => (
-                                                <Select onValueChange={field.onChange} value={field.value}>
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select Sub-Org" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <ScrollArea className="h-[200px]">
-                                                            {subOrgs.map((org: any) => (
-                                                                <SelectItem
-                                                                    key={org.sub_org_id || org.suborgId || org.subOrgId || org.suborg_id || org.id}
-                                                                    value={org.sub_org_id || org.suborgId || org.subOrgId || org.suborg_id || org.id}
-                                                                >
-                                                                    <div className="flex items-center gap-2">
-                                                                        <Avatar className="h-6 w-6">
-                                                                            <AvatarImage src={org.institute_logo_file_id || org.logo} />
-                                                                            <AvatarFallback className="text-[10px]">{String(org.name || org.institute_name || org.instituteName || org.subOrgName || 'U').charAt(0).toUpperCase()}</AvatarFallback>
-                                                                        </Avatar>
-                                                                        <div className="flex flex-col text-left">
-                                                                            <span className="font-medium text-sm leading-tight">{org.name || org.institute_name || org.instituteName || org.subOrgName || 'Unknown'}</span>
-                                                                            {(org.email || org.phone) && (
-                                                                                <span className="text-[10px] text-gray-500 leading-tight">
-                                                                                    {org.email}{org.email && org.phone ? ' • ' : ''}{org.phone}
-                                                                                </span>
-                                                                            )}
+                                    {/* Package Sessions multi-select */}
+                                    <div className="space-y-2 md:col-span-2">
+                                        <Label>Package Sessions</Label>
+                                        <div className="rounded-md border">
+                                            <ScrollArea className="h-[250px] p-3">
+                                                {packagesSummary?.packages?.length === 0 && (
+                                                    <p className="py-8 text-center text-sm text-muted-foreground">
+                                                        No packages found.
+                                                    </p>
+                                                )}
+                                                {packagesSummary?.packages?.map(
+                                                    (pkg: { id: string; name: string }) => (
+                                                        <div key={pkg.id} className="mb-2">
+                                                            <button
+                                                                type="button"
+                                                                className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium hover:bg-muted"
+                                                                onClick={() =>
+                                                                    setExpandedPackageId(
+                                                                        expandedPackageId ===
+                                                                            pkg.id
+                                                                            ? null
+                                                                            : pkg.id
+                                                                    )
+                                                                }
+                                                            >
+                                                                <span>{pkg.name}</span>
+                                                                <ChevronRight
+                                                                    className={`h-4 w-4 transition-transform ${
+                                                                        expandedPackageId ===
+                                                                        pkg.id
+                                                                            ? 'rotate-90'
+                                                                            : ''
+                                                                    }`}
+                                                                />
+                                                            </button>
+                                                            {expandedPackageId === pkg.id && (
+                                                                <div className="ml-4 mt-1 space-y-1">
+                                                                    {isLoadingSessions ? (
+                                                                        <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                                            Loading sessions...
                                                                         </div>
-                                                                    </div>
-                                                                </SelectItem>
-                                                            ))}
-                                                        </ScrollArea>
-                                                    </SelectContent>
-                                                </Select>
-                                            )}
-                                        />
+                                                                    ) : packageSessions.length ===
+                                                                      0 ? (
+                                                                        <p className="py-2 text-sm text-muted-foreground">
+                                                                            No sessions
+                                                                            available.
+                                                                        </p>
+                                                                    ) : (
+                                                                        packageSessions.map(
+                                                                            (ps) => {
+                                                                                const packageName =
+                                                                                    ps
+                                                                                        .package_dto
+                                                                                        ?.package_name ||
+                                                                                    '';
+                                                                                const levelName =
+                                                                                    ps.level
+                                                                                        ?.level_name ||
+                                                                                    '';
+                                                                                const sessionName =
+                                                                                    ps.session
+                                                                                        ?.session_name ||
+                                                                                    '';
+                                                                                const display = [
+                                                                                    packageName,
+                                                                                    levelName,
+                                                                                    sessionName,
+                                                                                ]
+                                                                                    .filter(
+                                                                                        Boolean
+                                                                                    )
+                                                                                    .join(
+                                                                                        ' - '
+                                                                                    );
+                                                                                return (
+                                                                                    <label
+                                                                                        key={
+                                                                                            ps.id
+                                                                                        }
+                                                                                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
+                                                                                    >
+                                                                                        <Checkbox
+                                                                                            checked={selectedPackageSessionIds.includes(
+                                                                                                ps.id
+                                                                                            )}
+                                                                                            onCheckedChange={() =>
+                                                                                                togglePackageSession(
+                                                                                                    ps.id
+                                                                                                )
+                                                                                            }
+                                                                                        />
+                                                                                        <span>
+                                                                                            {display ||
+                                                                                                ps.id}
+                                                                                        </span>
+                                                                                    </label>
+                                                                                );
+                                                                            }
+                                                                        )
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )
+                                                )}
+                                            </ScrollArea>
+                                        </div>
+                                        {selectedPackageSessionIds.length > 0 && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {selectedPackageSessionIds.length} session(s)
+                                                selected
+                                            </p>
+                                        )}
                                     </div>
 
                                     <div className="space-y-2">
@@ -543,14 +490,23 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                                             control={control}
                                             name="linkageType"
                                             render={({ field }) => (
-                                                <Select onValueChange={field.onChange} value={field.value}>
+                                                <Select
+                                                    onValueChange={field.onChange}
+                                                    value={field.value}
+                                                >
                                                     <SelectTrigger>
                                                         <SelectValue placeholder="Select Linkage Type" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="DIRECT">Direct</SelectItem>
-                                                        <SelectItem value="INHERITED">Inherited</SelectItem>
-                                                        <SelectItem value="PARTNERSHIP">Partnership</SelectItem>
+                                                        <SelectItem value="DIRECT">
+                                                            Direct
+                                                        </SelectItem>
+                                                        <SelectItem value="INHERITED">
+                                                            Inherited
+                                                        </SelectItem>
+                                                        <SelectItem value="PARTNERSHIP">
+                                                            Partnership
+                                                        </SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             )}
@@ -576,7 +532,9 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                         onClick={handleSubmit(onSubmit)}
                         disabled={mutation.isPending}
                     >
-                        {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {mutation.isPending && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        )}
                         Add Member
                     </Button>
                 </DialogFooter>

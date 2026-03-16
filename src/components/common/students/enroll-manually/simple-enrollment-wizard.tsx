@@ -8,6 +8,7 @@ import { CircleNotch, CheckCircle, CurrencyInr, BookOpen, UserPlus, ShoppingCart
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useMemo } from 'react';
 import { useDebounce } from 'use-debounce';
+import { getAccessiblePackageFilters } from '@/lib/auth/facultyAccessUtils';
 
 // Simplified Item Card Component
 const ItemCard = ({ item, isSelected, onClick }: any) => (
@@ -111,6 +112,9 @@ export const SimpleEnrollmentWizard = () => {
         };
     }, [instituteDetails]);
 
+    // Sub-org admin: only show package sessions they have access to
+    const accessibleFilters = useMemo(() => getAccessiblePackageFilters(), []);
+
     const [filteredItems, setFilteredItems] = useState<any[]>([]);
 
     useEffect(() => {
@@ -153,12 +157,20 @@ export const SimpleEnrollmentWizard = () => {
                     enroll_invite_id: pkg.enroll_invite_id || pkg.enrollInviteId || apiFirstOption?.enroll_invite_id || apiFirstOption?.enrollInviteId || storeFirstOption?.enroll_invite_id || ''
                 };
             });
-            setFilteredItems(normalized);
+            const accessFiltered = accessibleFilters?.package_session_ids?.length
+                ? normalized.filter((item: any) => accessibleFilters.package_session_ids.includes(item.package_session_id))
+                : normalized;
+            setFilteredItems(accessFiltered);
         } else if (instituteDetails?.batches_for_sessions && debouncedQuery) {
             // Fallback to local filtering if no results from search (or search is empty)
-            const candidates = instituteDetails.batches_for_sessions.filter(b =>
+            let candidates = instituteDetails.batches_for_sessions.filter(b =>
                 b.package_dto.package_name.toLowerCase().includes(debouncedQuery.toLowerCase())
             );
+
+            // Sub-org admin: restrict to accessible package sessions
+            if (accessibleFilters?.package_session_ids?.length) {
+                candidates = candidates.filter(b => accessibleFilters.package_session_ids.includes(b.id));
+            }
 
             const final = candidates.filter((batch) => {
                 const matchesLevel = levelFilter === 'all' || batch.level?.id === levelFilter;
@@ -185,7 +197,7 @@ export const SimpleEnrollmentWizard = () => {
         } else {
             setFilteredItems([]);
         }
-    }, [instituteDetails, debouncedQuery, searchResults, levelFilter, sessionFilter]);
+    }, [instituteDetails, debouncedQuery, searchResults, levelFilter, sessionFilter, accessibleFilters]);
 
     const enrollMutation = useMutation({
         mutationFn: async () => {

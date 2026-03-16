@@ -5,6 +5,7 @@ import { EnrollStudentRequest } from '@/types/students/type-enroll-student-manua
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
+import { getSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
 
 type EnrollStudentResponse = string;
 
@@ -85,6 +86,7 @@ export const enrollStudent = async ({
                 start_date: formData.stepThreeData?.start_date || new Date().toISOString(),
             },
             learner_extra_details: learnerExtraDetails,
+            sub_org_id: getSelectedSubOrgId() || undefined,
         };
 
         const response = await authenticatedAxiosInstance.post(

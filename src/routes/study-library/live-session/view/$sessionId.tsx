@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
 import { getSessionBySessionId } from '../-services/utils';
 import type { SessionBySessionIdResponse } from '../-services/utils';
@@ -155,7 +156,7 @@ function ViewLiveSession() {
     const handleJoinAsHost = useCallback(async (scheduleId: string) => {
         try {
             const response = await authenticatedAxiosInstance.get(
-                '/admin-core-service/live-sessions/provider/meeting/join',
+                `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/join`,
                 { params: { scheduleId, role: 'MODERATOR' } }
             );
             const joinUrl = response.data?.joinUrl;
@@ -464,6 +465,39 @@ function ViewLiveSession() {
                                                         <Copy className="size-3.5 text-muted-foreground" />
                                                     </MyButton>
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {isBbbSession && !isRecurring && groupedSchedules.length > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                                    <MonitorPlay className="size-3.5 text-primary" />
+                                                    BBB Meeting
+                                                </div>
+                                                {groupedSchedules.flatMap(day => day.sessions).map((session) => (
+                                                    <div key={session.id} className="flex items-center justify-between rounded-md border bg-muted/20 p-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex items-center gap-2 text-sm">
+                                                                <Timer className="size-4 text-primary" />
+                                                                <span className="font-medium">{session.time}</span>
+                                                            </div>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {session.duration} mins
+                                                            </span>
+                                                            {session.status === 'live' && (
+                                                                <Badge variant="default" className="bg-green-500 text-white text-xs">
+                                                                    Live
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleJoinAsHost(session.id)}
+                                                            className="text-xs font-medium text-primary hover:underline"
+                                                        >
+                                                            Start as Host →
+                                                        </button>
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
                                     </div>

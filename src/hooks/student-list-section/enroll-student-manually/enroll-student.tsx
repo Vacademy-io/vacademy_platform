@@ -10,7 +10,7 @@ import {
     StepFiveData,
 } from '@/schemas/student/student-list/schema-enroll-students-manually';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-
+import { getSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 
 interface EnrollStudentParams {
@@ -82,6 +82,7 @@ export const useEnrollStudent = () => {
                     roles: ['STUDENT'],
                 },
                 institute_id: INSTITUTE_ID,
+                sub_org_id: getSelectedSubOrgId() || undefined,
                 learner_package_session_enroll: {
                     package_session_ids: stepThreeData?.invite?.package_session_ids || [],
                     enroll_invite_id: stepThreeData?.invite?.id || '',

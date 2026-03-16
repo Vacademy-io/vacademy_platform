@@ -570,6 +570,10 @@ export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/fa
 export const GET_ALL_FACULTY_V2 = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const CREATE_SUB_ORG = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create`;
 export const GET_SUB_ORGS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all`;
+export const CREATE_SUB_ORG_WITH_SUBSCRIPTION = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create-with-subscription`;
+export const GET_SUB_ORG_SCOPED_INVITES = `${BASE_URL}/admin-core-service/institute/v1/sub-org/scoped-invites`;
+export const GET_SUB_ORG_SEAT_USAGE = `${BASE_URL}/admin-core-service/institute/v1/sub-org/seat-usage`;
+export const GET_SUB_ORG_SUBSCRIPTION_STATUS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/subscription-status`;
 
 // Custom Roles (Auth Service) - use auth-service/v1 to match other auth endpoints and avoid CORS
 // GET /auth-service/v1/institute/{instituteId}/roles, POST for create

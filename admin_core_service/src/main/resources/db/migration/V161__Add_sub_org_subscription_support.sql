@@ -2,7 +2,7 @@
 -- 1. Add sub_org_id to enroll_invite table
 ALTER TABLE enroll_invite ADD COLUMN IF NOT EXISTS sub_org_id VARCHAR(255);
 ALTER TABLE enroll_invite ADD CONSTRAINT fk_enroll_invite_sub_org
-    FOREIGN KEY (sub_org_id) REFERENCES institute(id);
+    FOREIGN KEY (sub_org_id) REFERENCES institutes(id);
 CREATE INDEX IF NOT EXISTS idx_enroll_invite_sub_org_id ON enroll_invite(sub_org_id);
 
 -- 2. Create student_sub_org junction table (many-to-many student <-> sub-org)
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS student_sub_org (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
     CONSTRAINT fk_student_sub_org_student FOREIGN KEY (student_id) REFERENCES student(id),
-    CONSTRAINT fk_student_sub_org_institute FOREIGN KEY (sub_org_id) REFERENCES institute(id),
+    CONSTRAINT fk_student_sub_org_institute FOREIGN KEY (sub_org_id) REFERENCES institutes(id),
     CONSTRAINT uq_student_sub_org_user_suborg UNIQUE (user_id, sub_org_id)
 );
 CREATE INDEX IF NOT EXISTS idx_student_sub_org_user ON student_sub_org(user_id);

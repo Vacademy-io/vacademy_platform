@@ -289,8 +289,8 @@ function EmbedComponent() {
         <div className="w-full h-full flex flex-col gap-4">
           <ZohoEmbedPlayer
             meetingUrl={zohoUrl}
-            providerMeetingId={sessionDetails.providerMeetingId}
-            providerEmbedToken={sessionDetails.providerEmbedToken}
+            scheduleId={sessionDetails.scheduleId}
+            instituteId={sessionDetails.instituteId}
           />
           {learnerButtonConfig?.visible && (
             <div className="flex justify-end w-full mt-2">

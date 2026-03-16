@@ -114,13 +114,9 @@ function GuestEmbedComponent() {
       linkType === LinkType.ZOHO_RECORDED
     ) {
       const zohoUrl = sessionDetails.customMeetingLink || sessionDetails.defaultMeetLink;
-      return (
-        <ZohoEmbedPlayer
-          meetingUrl={zohoUrl}
-          providerMeetingId={sessionDetails.providerMeetingId}
-          providerEmbedToken={sessionDetails.providerEmbedToken}
-        />
-      );
+      // Guest embed has no auth — participant join link API unavailable.
+      // ZohoEmbedPlayer falls back to a "Join Meeting" button.
+      return <ZohoEmbedPlayer meetingUrl={zohoUrl} />;
     }
 
     // Check if embedding is enabled — if not, open the link in a new tab

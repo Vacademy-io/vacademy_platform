@@ -270,19 +270,32 @@ function RouteComponent() {
               `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/join`,
               { params: { scheduleId: session.schedule_id, role: "VIEWER" } }
             );
-            const joinUrl = response.data?.joinUrl;
-            if (joinUrl) {
-              if (Capacitor.isNativePlatform()) {
-                Browser.open({ url: joinUrl, presentationStyle: "fullscreen" });
-              } else {
-                window.open(joinUrl, "_blank", "noopener,noreferrer");
-              }
-            } else {
-              toast.error("Failed to get video class URL");
+
+            // Backend returns { error: "Meeting has ended" } if meeting was force-ended
+            if (response.data?.error) {
+              toast.error("This class has ended.");
+              return;
             }
-          } catch (err) {
+
+            const joinUrl = response.data?.joinUrl;
+            if (!joinUrl) {
+              toast.error("Failed to get video class URL");
+              return;
+            }
+
+            if (Capacitor.isNativePlatform()) {
+              Browser.open({ url: joinUrl, presentationStyle: "fullscreen" });
+            } else {
+              window.open(joinUrl, "_blank", "noopener,noreferrer");
+            }
+          } catch (err: any) {
             console.error("Failed to get BBB join URL:", err);
-            toast.error("Failed to join video class. Please try again.");
+            const errMsg = err?.response?.data?.message || err?.response?.data?.error || "";
+            if (errMsg.toLowerCase().includes("ended") || errMsg.toLowerCase().includes("not found")) {
+              toast.error("This class has ended.");
+            } else {
+              toast.error("Failed to join video class. Please try again.");
+            }
           }
         } else if (
           session.session_streaming_service_type ===
@@ -521,7 +534,7 @@ function RouteComponent() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-            {isLive && session.meeting_link && (
+            {isLive && (session.meeting_link || session.link_type === "bbb" || session.link_type === "BBB_MEETING") && (
               <Button
                 variant="default"
                 size="sm"
@@ -627,7 +640,7 @@ function RouteComponent() {
             </div>
           </div>
           <div className="space-y-2">
-            {isLive && session.meeting_link && (
+            {isLive && (session.meeting_link || session.link_type === "bbb" || session.link_type === "BBB_MEETING") && (
               <Button
                 variant="default"
                 size="sm"
@@ -779,7 +792,7 @@ function RouteComponent() {
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-2 shrink-0 ml-4">
-                            {session.meeting_link && (
+                            {(session.meeting_link || session.link_type === "bbb" || session.link_type === "BBB_MEETING") && (
                               <Button
                                 size="sm"
                                 className="bg-danger-600 hover:bg-danger-700 text-white"

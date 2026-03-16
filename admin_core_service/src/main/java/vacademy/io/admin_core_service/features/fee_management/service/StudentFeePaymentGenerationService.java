@@ -47,8 +47,8 @@ public class StudentFeePaymentGenerationService {
      * @return List of created StudentFeePayment IDs
      */
     @Transactional
-    public List<String> generateFeeBills(String userPlanId, String cpoId, String userId) {
-        log.info("Generating fee bills for UserPlan: {}, CPO: {}, User: {}", userPlanId, cpoId, userId);
+    public List<String> generateFeeBills(String userPlanId, String cpoId, String userId, String instituteId) {
+        log.info("Generating fee bills for UserPlan: {}, CPO: {}, User: {}, Institute: {}", userPlanId, cpoId, userId, instituteId);
 
         // Step 1: Fetch all FeeTypes for this CPO
         List<FeeType> feeTypes = feeTypeRepository.findByCpoId(cpoId);
@@ -81,6 +81,7 @@ public class StudentFeePaymentGenerationService {
                     payment.setAmountExpected(afv.getAmount());
                     payment.setAmountPaid(BigDecimal.ZERO);
                     payment.setStatus("PENDING");
+                    payment.setInstituteId(instituteId);
 
                     StudentFeePayment saved = studentFeePaymentRepository.save(payment);
                     createdPaymentIds.add(saved.getId());
@@ -97,6 +98,7 @@ public class StudentFeePaymentGenerationService {
                         payment.setAmountPaid(BigDecimal.ZERO);
                         payment.setDueDate(Date.valueOf(installment.getDueDate()));
                         payment.setStatus("PENDING");
+                        payment.setInstituteId(instituteId);
 
                         StudentFeePayment saved = studentFeePaymentRepository.save(payment);
                         createdPaymentIds.add(saved.getId());

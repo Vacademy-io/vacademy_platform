@@ -37,6 +37,13 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment;
+import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
+import vacademy.io.admin_core_service.features.fee_management.repository.AftInstallmentRepository;
+import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.common.auth.dto.UserDTO;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -53,6 +60,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final PackageRepository packageRepository;
     private final ObjectMapper objectMapper;
     private final CustomFieldValueService customFieldValueService;
+    private final StudentFeePaymentRepository studentFeePaymentRepository;
+    private final AftInstallmentRepository aftInstallmentRepository;
+    private final AuthService authService;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -81,6 +91,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return fetchPackageLMSSetting(params);
             case "upsertUserCustomField":
                 return upsertUserCustomField(params);
+            case "getUpcomingFeeInstallments":
+                return getUpcomingFeeInstallments(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -918,4 +930,163 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             return Map.of("error", e.getMessage());
         }
     }
+
+    // ---------------------------------------------------------------------------
+    // Fee Installment Reminder — used by wf_fee_installment_reminder workflow
+    // ---------------------------------------------------------------------------
+
+    private static final int[] REMINDER_DAYS = {7, 3, 0, -3};
+    private static final int FEE_DAYS_BEFORE_WINDOW = 8;
+    private static final int FEE_DAYS_AFTER_WINDOW  = 4;
+    private static final List<String> FEE_PENDING_STATUSES = List.of("PENDING", "PARTIAL_PAID");
+
+    /**
+     * Scans student_fee_payment for installments whose due date falls within the
+     * reminder window, resolves each to a reminderType, fetches user/parent, and
+     * returns a feePaymentList ready for the SEND_EMAIL workflow node.
+     */
+    private Map<String, Object> getUpcomingFeeInstallments(Map<String, Object> params) {
+        try {
+            int daysBeforeWindow = params.containsKey("daysBeforeWindow")
+                    ? Integer.parseInt(String.valueOf(params.get("daysBeforeWindow")))
+                    : FEE_DAYS_BEFORE_WINDOW;
+            int daysAfterWindow = params.containsKey("daysAfterWindow")
+                    ? Integer.parseInt(String.valueOf(params.get("daysAfterWindow")))
+                    : FEE_DAYS_AFTER_WINDOW;
+
+            String filterInstituteId = params.containsKey("instituteId")
+                    ? String.valueOf(params.get("instituteId")) : null;
+
+            Calendar cal = Calendar.getInstance();
+            cal.add(Calendar.DAY_OF_YEAR, -daysAfterWindow);
+            Date windowStart = cal.getTime();
+            cal = Calendar.getInstance();
+            cal.add(Calendar.DAY_OF_YEAR, daysBeforeWindow);
+            Date windowEnd = cal.getTime();
+
+            log.info("[FeeReminder] Scanning payments between {} and {}", windowStart, windowEnd);
+
+            List<StudentFeePayment> payments =
+                    studentFeePaymentRepository.findPendingPaymentsInWindow(FEE_PENDING_STATUSES, windowStart, windowEnd);
+
+            if (payments.isEmpty()) {
+                log.info("[FeeReminder] No pending payments in window.");
+                return Map.of("feePaymentList", List.of());
+            }
+
+            // Optionally filter by institute
+            if (filterInstituteId != null && !filterInstituteId.isBlank()) {
+                payments = payments.stream()
+                        .filter(p -> filterInstituteId.equals(p.getInstituteId()))
+                        .collect(Collectors.toList());
+            }
+
+            // Batch fetch installments
+            List<String> installmentIds = payments.stream().map(StudentFeePayment::getIId)
+                    .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+            Map<String, AftInstallment> installmentMap = installmentIds.isEmpty() ? Map.of()
+                    : aftInstallmentRepository.findAllById(installmentIds).stream()
+                            .collect(Collectors.toMap(AftInstallment::getId, i -> i));
+
+            // Batch fetch users
+            List<String> userIds = payments.stream().map(StudentFeePayment::getUserId)
+                    .distinct().collect(Collectors.toList());
+            Map<String, UserDTO> userMap = new HashMap<>();
+            try {
+                authService.getUsersFromAuthServiceByUserIds(userIds)
+                        .forEach(u -> userMap.put(u.getId(), u));
+            } catch (Exception e) {
+                log.error("[FeeReminder] Failed to fetch users: {}", e.getMessage(), e);
+            }
+
+            // Fetch parents not yet in userMap
+            List<String> parentIds = userMap.values().stream()
+                    .map(UserDTO::getLinkedParentId)
+                    .filter(pid -> pid != null && !pid.isBlank() && !userMap.containsKey(pid))
+                    .distinct().collect(Collectors.toList());
+            if (!parentIds.isEmpty()) {
+                try {
+                    authService.getUsersFromAuthServiceByUserIds(parentIds)
+                            .forEach(p -> userMap.put(p.getId(), p));
+                } catch (Exception e) {
+                    log.error("[FeeReminder] Failed to fetch parents: {}", e.getMessage(), e);
+                }
+            }
+
+            List<Map<String, Object>> feePaymentList = new ArrayList<>();
+            java.time.LocalDate today = java.time.LocalDate.now();
+
+            for (StudentFeePayment payment : payments) {
+                if (payment.getDueDate() == null) continue;
+
+                java.time.LocalDate dueDate = payment.getDueDate().toInstant()
+                        .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+                long daysDiff = java.time.temporal.ChronoUnit.DAYS.between(today, dueDate);
+
+                String reminderType = resolveReminderType(daysDiff);
+                if (reminderType == null) continue;
+
+                UserDTO user      = userMap.get(payment.getUserId());
+                String studentName  = user != null && user.getFullName()      != null ? user.getFullName()      : "";
+                String studentEmail = user != null && user.getEmail()          != null ? user.getEmail()          : "";
+                String studentPhone = user != null && user.getMobileNumber()   != null ? user.getMobileNumber()   : "";
+
+                // Prefer parent as recipient if linked
+                UserDTO recipient = user;
+                if (user != null && user.getLinkedParentId() != null && !user.getLinkedParentId().isBlank()) {
+                    UserDTO parent = userMap.get(user.getLinkedParentId());
+                    if (parent != null) recipient = parent;
+                }
+                String recipientEmail = recipient != null && recipient.getEmail()        != null ? recipient.getEmail()        : studentEmail;
+                String recipientName  = recipient != null && recipient.getFullName()     != null ? recipient.getFullName()     : studentName;
+                String recipientPhone = recipient != null && recipient.getMobileNumber() != null ? recipient.getMobileNumber() : studentPhone;
+
+                java.math.BigDecimal amountPaid = payment.getAmountPaid() != null
+                        ? payment.getAmountPaid() : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal remaining  = payment.getAmountExpected().subtract(amountPaid);
+
+                AftInstallment installment = installmentMap.get(payment.getIId());
+
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("email",              recipientEmail);
+                item.put("recipientName",      recipientName);
+                item.put("studentName",        studentName);
+                item.put("mobileNumber",       recipientPhone);
+                item.put("installmentNumber",  installment != null ? installment.getInstallmentNumber() : "");
+                item.put("remainingAmount",    remaining.toPlainString());
+                item.put("amountExpected",     payment.getAmountExpected().toPlainString());
+                item.put("amountPaid",         amountPaid.toPlainString());
+                item.put("dueDate",            dueDate.toString());
+                item.put("daysDifference",     String.valueOf(daysDiff));
+                item.put("reminderType",       reminderType);
+                item.put("userId",             payment.getUserId());
+                item.put("studentFeePaymentId", payment.getId());
+                item.put("instituteId",        payment.getInstituteId() != null ? payment.getInstituteId() : "");
+                feePaymentList.add(item);
+            }
+
+            log.info("[FeeReminder] {} eligible payments resolved for reminders.", feePaymentList.size());
+            return Map.of("feePaymentList", feePaymentList);
+
+        } catch (Exception e) {
+            log.error("[FeeReminder] Error in getUpcomingFeeInstallments", e);
+            return Map.of("error", e.getMessage(), "feePaymentList", List.of());
+        }
+    }
+
+    private String resolveReminderType(long daysDiff) {
+        for (int d : REMINDER_DAYS) {
+            if (daysDiff == d) {
+                return switch (d) {
+                    case  7 -> "7_DAYS_BEFORE";
+                    case  3 -> "3_DAYS_BEFORE";
+                    case  0 -> "ON_DUE_DATE";
+                    case -3 -> "3_DAYS_AFTER";
+                    default -> null;
+                };
+            }
+        }
+        return null;
+    }
 }
+

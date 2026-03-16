@@ -34,7 +34,9 @@ import vacademy.io.admin_core_service.features.notification_service.service.Noti
 import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 
 import java.text.ParseException;
@@ -85,6 +87,9 @@ public class AdmissionService {
 
     @Autowired
     private EnquiryRepository enquiryRepository;
+
+    @Autowired
+    private InstituteRepository instituteRepository;
 
     @Autowired
     private vacademy.io.admin_core_service.features.admission.service.AdmissionPipelineService admissionPipelineService;
@@ -817,22 +822,30 @@ public class AdmissionService {
             }
 
             if (!sentViaTemplate) {
-                // FALLBACK DEFAULT EMAIL
-                logger.info("No Admission Template found configuration. Sending Default Fallback Email.");
-                String body = "Dear " + parent.getFullName() + ",<br><br>" +
-                        "Welcome to Vacademy! Your admission for <b>" + child.getFullName() + "</b> is confirmed.<br>";
+                // FALLBACK DEFAULT STYLED EMAIL
+                logger.info("No Admission Template found. Sending Default Styled Fallback Email.");
 
-                if (sendCreds && password != null) {
-                    body += "<br>Here are your login credentials:<br>" +
-                            "Username: " + parent.getEmail() + "<br>" +
-                            "Password: " + password + "<br>";
-                }
+                // Fetch institute name for personalization
+                Institute institute = instituteRepository.findById(instituteId).orElse(null);
+                String instituteName = (institute != null && institute.getInstituteName() != null)
+                        ? institute.getInstituteName() : "Vacademy";
+                String portalUrl = "https://learner-portal.vacademy.io";
 
-                body += "<br>Regards,<br>Team Vacademy";
+                String username = (sendCreds && password != null) ? parent.getUsername() : "";
+                String pwd = (sendCreds && password != null) ? password : "";
+
+                String body = buildDefaultAdmissionEmailBody(
+                        parent.getFullName(),
+                        child != null ? child.getFullName() : "Student",
+                        instituteName,
+                        portalUrl,
+                        portalUrl,
+                        username,
+                        pwd);
 
                 GenericEmailRequest emailReq = new GenericEmailRequest();
                 emailReq.setTo(parent.getEmail());
-                emailReq.setSubject("Admission Confirmation - Vacademy");
+                emailReq.setSubject("Admission Confirmed! Welcome to " + instituteName);
                 emailReq.setBody(body);
                 notificationService.sendGenericHtmlMail(emailReq, instituteId);
             }
@@ -855,5 +868,64 @@ public class AdmissionService {
             sb.append(last.trim());
         }
         return sb.length() > 0 ? sb.toString() : "";
+    }
+
+    /**
+     * Build default styled HTML email body for admission confirmation
+     */
+    private String buildDefaultAdmissionEmailBody(
+            String parentName,
+            String childName,
+            String instituteName,
+            String websiteUrl,
+            String loginUrl,
+            String username,
+            String password) {
+
+        return "<!DOCTYPE html>" +
+                "<html>" +
+                "<head>" +
+                "<style>" +
+                "body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #2c3e50; background-color: #f4f7f6; }" +
+                ".container { max-width: 650px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }" +
+                ".header { background: linear-gradient(135deg, #FFB75E 0%, #ED8F03 100%); color: white; padding: 30px 20px; text-align: center; }" +
+                ".header h2 { margin: 0; font-size: 28px; letter-spacing: 1px; }" +
+                ".content { padding: 40px 30px; }" +
+                ".welcome-msg { font-size: 18px; color: #34495e; margin-bottom: 25px; text-align: center; }" +
+                ".credentials-box { background-color: #f8f9fa; border-left: 5px solid #ED8F03; padding: 25px; margin: 30px 0; border-radius: 0 8px 8px 0; }" +
+                ".credentials-box h3 { margin-top: 0; color: #ED8F03; }" +
+                ".cred-row { margin: 10px 0; font-size: 16px; }" +
+                ".cred-val { font-family: monospace; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 18px; }" +
+                ".button { display: inline-block; padding: 14px 35px; background-color: #ED8F03; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; text-transform: uppercase; font-size: 14px; }" +
+                ".footer { background-color: #2c3e50; text-align: center; padding: 25px; color: #a8b2bd; font-size: 13px; }" +
+                "</style>" +
+                "</head>" +
+                "<body>" +
+                "<div class='container'>" +
+                "<div class='header'>" +
+                "<h2>Admission Confirmed! \uD83C\uDF89</h2>" +
+                "<p style='margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;'>Welcome to " + instituteName + "</p>" +
+                "</div>" +
+                "<div class='content'>" +
+                "<p class='welcome-msg'>Dear <strong>" + parentName + "</strong>,</p>" +
+                "<p>We are absolutely thrilled to officially welcome <strong>" + childName + "</strong> to our institute!</p>" +
+                "<p>Your admission process has been successfully completed. To help you get started, access fee schedules, and view academic updates, we have set up your permanent Parent Portal account.</p>" +
+                ((!username.isEmpty()) ?
+                "<div class='credentials-box'>" +
+                "<h3>Your Portal Credentials</h3>" +
+                "<div class='cred-row'>Username: <span class='cred-val'>" + username + "</span></div>" +
+                "<div class='cred-row'>Password: <span class='cred-val'>" + password + "</span></div>" +
+                "</div>" +
+                "<div style='text-align: center; margin: 40px 0;'>" +
+                "<a href='" + loginUrl + "' class='button'>Login to Parent Portal</a>" +
+                "</div>" : "") +
+                "<p>If you have any questions, please visit our <a href='" + websiteUrl + "' style='color: #ED8F03;'>website</a> or reach out to our administration team.</p>" +
+                "</div>" +
+                "<div class='footer'>" +
+                "<p>You are receiving this email because you have successfully enrolled at " + instituteName + ".</p>" +
+                "</div>" +
+                "</div>" +
+                "</body>" +
+                "</html>";
     }
 }

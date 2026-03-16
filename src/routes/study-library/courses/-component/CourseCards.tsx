@@ -165,27 +165,27 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
     return (
         <Card className={cn(
-            "course-card group relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-lg flex flex-col w-full max-w-full animate-fade-in-up border-border/60 bg-card/50 hover:bg-card",
+            "course-card group relative overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:shadow-sm flex flex-col w-full max-w-full animate-fade-in-up border-border/60 bg-card/50 hover:bg-card",
             // Vibrant Styles - Flat Pastel
-            !isCompleted && "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
+            !isCompleted && "[.ui-vibrant_&]:bg-slate-50 dark:[.ui-vibrant_&]:bg-slate-900/30",
             !isCompleted && "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
 
             // Completed Styles
-            isCompleted && "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20",
+            isCompleted && "[.ui-vibrant_&]:bg-emerald-50 dark:[.ui-vibrant_&]:bg-emerald-950/30",
             isCompleted && "[.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30",
 
-            "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:hover:shadow-xl"
+            "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:hover:shadow-md"
         )}>
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg pointer-events-none"></div>
 
             {/* Image Container */}
             {(loadingImage || courseImageUrl) && (
-                <div className="relative w-full h-40 sm:h-48 lg:h-52 bg-muted flex items-center justify-center overflow-hidden rounded-t-lg course-card-image border-b">
+                <div className="relative w-full h-36 sm:h-40 lg:h-44 bg-muted flex items-center justify-center overflow-hidden rounded-t-lg course-card-image border-b">
                     {courseImageUrl && (
                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors duration-300 flex items-center justify-center z-10">
                             <div className={cn(
-                                "bg-background/90 backdrop-blur-sm rounded-full p-3 transform scale-75 opacity-0 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 shadow-xl",
+                                "bg-background/90 backdrop-blur-sm rounded-full p-3 transform scale-75 opacity-0 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300 shadow-md",
                                 "[.ui-vibrant_&]:bg-white/90 [.ui-vibrant_&]:text-indigo-600 dark:[.ui-vibrant_&]:text-indigo-300"
                             )}>
                                 <Play

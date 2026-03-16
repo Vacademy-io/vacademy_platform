@@ -519,9 +519,9 @@ const CourseCatalougePage: React.FC = () => {
           className="w-full"
         >
           {/* Tab Navigation */}
-          <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm mb-3">
+          <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md mb-3">
             <div className="p-2 sm:p-3">
-              <TabsList className="bg-gray-50 dark:bg-neutral-900 justify-start p-0.5 w-full grid grid-cols-3 gap-0.5 sm:w-auto sm:flex sm:flex-row">
+              <TabsList className="bg-muted/50 dark:bg-neutral-900 justify-start p-0.5 w-full grid grid-cols-3 gap-0.5 sm:w-auto sm:flex sm:flex-row">
                 {visibleTabs.map((t) => (
                   <TabsTrigger
                     key={t.value}

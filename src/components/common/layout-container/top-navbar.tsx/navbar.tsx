@@ -164,7 +164,7 @@ export function Navbar() {
     );
     // Return a simplified navbar without role-dependent features
     return (
-      <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap">
+      <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap">
         <LogoutSidebar />
 
         {/* Left Section */}
@@ -252,7 +252,7 @@ export function Navbar() {
 
   return (
     <div
-      className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-[60px] items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap ${isIOS ? "mt-10" : ""}`}
+      className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap ${isIOS ? "mt-10" : ""}`}
     >
       <LogoutSidebar />
 

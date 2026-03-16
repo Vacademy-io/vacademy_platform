@@ -53,14 +53,31 @@ function EmbedComponent() {
   const { setNavHeading } = useNavHeadingStore();
   const navigate = useNavigate();
   const [batchIds, setBatchIds] = useState<string[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = checking
+
+  // Check authentication status
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { getTokenFromStorage } = await import("@/lib/auth/sessionUtility");
+        const { TokenKey } = await import("@/constants/auth/tokens");
+        const token = await getTokenFromStorage(TokenKey.accessToken);
+        setIsAuthenticated(!!token);
+      } catch {
+        setIsAuthenticated(false);
+      }
+    };
+    checkAuth();
+  }, []);
 
   useEffect(() => {
+    if (isAuthenticated !== true) return;
     const fetchBatchIds = async () => {
       const ids = await getAllPackageSessionIds();
       setBatchIds(ids);
     };
     fetchBatchIds();
-  }, []);
+  }, [isAuthenticated]);
 
   const { data: sessions } = useLiveSessions(batchIds);
 
@@ -420,6 +437,33 @@ function EmbedComponent() {
       </div>
     );
   };
+
+  // Auth check: show loading while checking, then login prompt if unauthenticated
+  if (isAuthenticated === null) return <DashboardLoader />;
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center space-y-4 p-8 max-w-md">
+          <div className="mx-auto w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-800">Login Required</h2>
+          <p className="text-gray-600">
+            Please log in to attend this session. This is a private session and requires authentication.
+          </p>
+          <Button
+            onClick={() => navigate({ to: "/login" })}
+            className="mt-4"
+          >
+            Go to Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading && sessionId) return <DashboardLoader />;
 

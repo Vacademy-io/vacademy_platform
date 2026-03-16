@@ -368,18 +368,18 @@ export function DashboardComponent() {
         />
       </Helmet>
 
-      <div className="relative z-10 space-y-6 p-4 sm:p-6 lg:p-8 mx-auto w-full max-w-7xl animate-in fade-in duration-500">
+      <div className="relative z-10 space-y-4 p-3 sm:p-4 lg:p-6 mx-auto w-full max-w-7xl animate-in fade-in duration-500">
         {/* Header Section */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="flex items-center space-x-4">
-            <Avatar className="h-14 w-14 sm:h-16 sm:w-16 border-2 border-background shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex items-center space-x-3">
+            <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border-2 border-background shadow-sm">
               <AvatarImage src="" />
-              <AvatarFallback className="bg-primary/10 text-primary text-xl font-semibold">
+              <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">
                 {username?.charAt(0)?.toUpperCase() || "U"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
                 {isLoading ? (
                   <Skeleton className="h-8 w-48" />
                 ) : (
@@ -434,7 +434,7 @@ export function DashboardComponent() {
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
           <>
             {/* Stats and Widgets Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {[
                 {
                   id: "coursesStat" as const,
@@ -455,8 +455,8 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/courses" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-sky-50/50 [.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:bg-sky-950/20 dark:[.ui-vibrant_&]:border-sky-800/30"
-                      iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-white/90 dark:[.ui-vibrant_&]:bg-sky-500/10"
+                      className="[.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50"
+                      iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-sky-100 dark:[.ui-vibrant_&]:bg-sky-500/20"
                     />
                   ),
                 },
@@ -476,8 +476,8 @@ export function DashboardComponent() {
                         navigate({ to: "/learning-centre/attendance" })
                       }
                       isLoading={isLoadingAttendance}
-                      className="[.ui-vibrant_&]:bg-emerald-50/50 [.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:bg-emerald-950/20 dark:[.ui-vibrant_&]:border-emerald-800/30"
-                      iconClassName="[.ui-vibrant_&]:text-emerald-600 dark:[.ui-vibrant_&]:text-emerald-300 [.ui-vibrant_&]:bg-white/90 dark:[.ui-vibrant_&]:bg-emerald-500/10"
+                      className="[.ui-vibrant_&]:bg-emerald-50 [.ui-vibrant_&]:border-emerald-200 dark:[.ui-vibrant_&]:bg-emerald-950/30 dark:[.ui-vibrant_&]:border-emerald-800/50"
+                      iconClassName="[.ui-vibrant_&]:text-emerald-600 dark:[.ui-vibrant_&]:text-emerald-300 [.ui-vibrant_&]:bg-emerald-100 dark:[.ui-vibrant_&]:bg-emerald-500/20"
                     />
                   ),
                 },
@@ -493,8 +493,8 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/live-class" })
                       }
                       isLoading={isLoadingLiveSessions}
-                      className="[.ui-vibrant_&]:bg-rose-50/50 [.ui-vibrant_&]:border-rose-200/50 dark:[.ui-vibrant_&]:bg-rose-950/20 dark:[.ui-vibrant_&]:border-rose-800/30"
-                      iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-white/90 dark:[.ui-vibrant_&]:bg-rose-500/10"
+                      className="[.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50"
+                      iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-rose-100 dark:[.ui-vibrant_&]:bg-rose-500/20"
                     />
                   ),
                 },
@@ -514,8 +514,8 @@ export function DashboardComponent() {
                         navigate({ to: "/assessment/examination" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-amber-50/50 [.ui-vibrant_&]:border-amber-200/50 dark:[.ui-vibrant_&]:bg-amber-950/20 dark:[.ui-vibrant_&]:border-amber-800/30"
-                      iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-white/90 dark:[.ui-vibrant_&]:bg-amber-500/10"
+                      className="[.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50"
+                      iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-amber-100 dark:[.ui-vibrant_&]:bg-amber-500/20"
                     />
                   ),
                 },
@@ -560,8 +560,8 @@ export function DashboardComponent() {
                   render: customWidget ? (
                     <Card
                       className={cn(
-                        "shadow-sm hover:shadow-md transition-shadow",
-                        "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
+                        "transition-shadow",
+                        "[.ui-vibrant_&]:border-primary/20",
                         "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
                       )}
                     >
@@ -641,7 +641,7 @@ export function DashboardComponent() {
               <div className="flex flex-wrap items-center justify-center gap-3 mt-4 pb-12 px-4">
                 {isWidgetVisible("myMembership") && (
                   <Button
-                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
+                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
                     onClick={async () => {
                       sessionStorage.setItem("levelFilter", "rent");
                       const details = await Preferences.get({ key: "InstituteDetails" });
@@ -656,7 +656,7 @@ export function DashboardComponent() {
                 )}
                 {isWidgetVisible("myBooks") && (
                   <Button
-                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-md flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
+                    className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
                     onClick={async () => {
                       sessionStorage.setItem("levelFilter", "buy");
                       const details = await Preferences.get({ key: "InstituteDetails" });
@@ -679,7 +679,7 @@ export function DashboardComponent() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Hero Section */}
               <div className="lg:col-span-8">
-                <Card className="h-full overflow-hidden border-0 shadow-lg relative bg-white">
+                <Card className="h-full overflow-hidden border-0 shadow-sm relative bg-white">
                   <CardContent className="p-0 relative h-full flex items-center justify-center min-h-[300px]">
                     <img
                       src="/yoga-dashboard.png"
@@ -692,7 +692,7 @@ export function DashboardComponent() {
 
               {/* Attendance Section */}
               <div className="lg:col-span-4 space-y-6">
-                <Card className="shadow-lg">
+                <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center justify-between text-base">
                       <div className="flex items-center gap-2">
@@ -771,7 +771,7 @@ export function DashboardComponent() {
                   </CardContent>
                 </Card>
 
-                <Card className="shadow-md">
+                <Card>
                   <CardContent className="p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
@@ -795,7 +795,7 @@ export function DashboardComponent() {
             </div>
 
             {/* Live Classes Section */}
-            <Card className="shadow-lg">
+            <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-600 dark:text-green-400">

@@ -68,7 +68,7 @@ export const LayoutContainer = ({
                 }}
             >
                 <Navbar />
-                <div className={cn("m-4 md:m-7 max-w-full overflow-x-hidden", className)}>
+                <div className={cn("m-3 md:m-5 max-w-full overflow-x-hidden", className)}>
                     {children}
                 </div>
             </SidebarInset>

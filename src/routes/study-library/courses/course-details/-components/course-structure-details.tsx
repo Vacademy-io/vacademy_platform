@@ -2558,7 +2558,7 @@ export const CourseStructureDetails = ({
             {studyLibraryData?.map((subject) => (
               <Card
                 key={subject.id}
-                className="group h-full hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-1 bg-white"
+                className="group h-full hover:shadow-sm transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-0.5 bg-white"
                 onClick={() => {
                   setSelectedSubjectId(subject.id);
                 }}
@@ -2605,7 +2605,7 @@ export const CourseStructureDetails = ({
             {(subjectModulesMap[selectedSubjectId] || []).map((m) => (
               <Card
                 key={m.module.id}
-                className="group h-full hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-1 bg-white"
+                className="group h-full hover:shadow-sm transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-0.5 bg-white"
                 onClick={() => {
                   setSelectedModuleId(m.module.id);
                 }}
@@ -2669,7 +2669,7 @@ export const CourseStructureDetails = ({
                         "group h-full transition-all duration-300 overflow-hidden border-neutral-200 bg-white",
                         isChapterLocked
                           ? "opacity-70 bg-neutral-50 cursor-not-allowed"
-                          : "hover:shadow-lg cursor-pointer hover:border-primary-300/50 transform hover:-translate-y-1"
+                          : "hover:shadow-sm cursor-pointer hover:border-primary-300/50 transform hover:-translate-y-0.5"
                       )}
                       onClick={async () => {
                         if (isChapterLocked) return;

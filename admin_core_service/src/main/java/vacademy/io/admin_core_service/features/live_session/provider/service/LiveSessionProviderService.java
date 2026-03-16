@@ -19,6 +19,8 @@ import vacademy.io.common.meeting.dto.CreateMeetingRequestDTO;
 import vacademy.io.common.meeting.dto.CreateMeetingResponseDTO;
 import vacademy.io.common.meeting.dto.MeetingAttendeeDTO;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
+import vacademy.io.common.meeting.dto.ParticipantJoinLinkDTO;
+import vacademy.io.common.meeting.dto.UserScheduleAvailabilityDTO;
 import vacademy.io.common.meeting.enums.MeetingProvider;
 
 import java.util.List;
@@ -49,6 +51,11 @@ public class LiveSessionProviderService {
     public LiveSessionProviderConfig connectProvider(String providerName, ProviderConnectRequestDTO request) {
         String normalizedProvider = MeetingProvider.fromString(providerName).name();
         return providerFactory.getStrategy(normalizedProvider).connectProvider(request);
+    }
+
+    public LiveSessionProviderConfig connectSdkProvider(String providerName, ProviderConnectRequestDTO request) {
+        String normalizedProvider = MeetingProvider.fromString(providerName).name();
+        return providerFactory.getStrategy(normalizedProvider).connectSdkProvider(request);
     }
 
     public boolean isProviderConnected(String instituteId, String providerName) {
@@ -159,6 +166,57 @@ public class LiveSessionProviderService {
         SessionSchedule schedule = getScheduleOrThrow(scheduleId);
         LiveSessionProviderStrategy strategy = getStrategyForSchedule(schedule);
         return strategy.getAttendance(schedule.getProviderMeetingId(), instituteId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Participant join link
+    // -----------------------------------------------------------------------
+
+    public ParticipantJoinLinkDTO getParticipantJoinLink(String scheduleId, String participantName,
+            String participantEmail, String instituteId) {
+        SessionSchedule schedule = getScheduleOrThrow(scheduleId);
+        return providerFactory.getStrategy(schedule.getLinkType())
+                .getParticipantJoinLink(schedule.getProviderMeetingId(), participantName, participantEmail, instituteId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Session links (open in new tab)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Returns the stored join URL (for participants) and host URL (for the
+     * organizer) for a given schedule. The host URL is a pre-signed Zoho startLink
+     * that opens the meeting directly without a name/email form. The join URL is
+     * the standard Zoho joinLink — Zoho will still prompt participants for their
+     * name and email (platform limitation).
+     */
+    public Map<String, String> getSessionLinks(String scheduleId) {
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
+        Map<String, String> links = new java.util.HashMap<>();
+        if (schedule.getCustomMeetingLink() != null)
+            links.put("joinUrl", schedule.getCustomMeetingLink());
+        if (schedule.getProviderHostUrl() != null)
+            links.put("hostUrl", schedule.getProviderHostUrl());
+        if (schedule.getProviderMeetingId() != null)
+            links.put("providerMeetingId", schedule.getProviderMeetingId());
+        return links;
+    }
+
+    // -----------------------------------------------------------------------
+    // Schedule availability check
+    // -----------------------------------------------------------------------
+
+    public UserScheduleAvailabilityDTO checkUserAvailability(
+            String requestedStartTimeIso, int durationMinutes, String instituteId, String vendorUserId) {
+        List<LiveSessionProviderConfig> configs = configRepository
+                .findByInstituteIdAndStatusIn(instituteId, ACTIVE);
+        if (configs.isEmpty()) {
+            throw new VacademyException("No live session provider connected for institute: " + instituteId);
+        }
+        String providerName = configs.get(0).getProvider();
+        return providerFactory.getStrategy(providerName)
+                .checkUserAvailability(requestedStartTimeIso, durationMinutes, instituteId, vendorUserId);
     }
 
     // -----------------------------------------------------------------------

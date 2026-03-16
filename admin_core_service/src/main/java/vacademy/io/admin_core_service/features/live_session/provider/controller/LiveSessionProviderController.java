@@ -50,6 +50,25 @@ public class LiveSessionProviderController {
     }
 
     /**
+     * One-time Zoho SDK OAuth setup for an institute (Server-based Application).
+     * Merges SDK credentials into the existing provider config — regular meeting
+     * credentials are preserved.
+     *
+     * POST /admin-core/live-session/provider/connect/{providerName}/sdk
+     *
+     * Body fields used: clientId (sdkClientId), clientSecret (sdkClientSecret),
+     * authorizationCode, redirectUri, domain, presenterZuid
+     */
+    @PostMapping("/connect/{providerName}/sdk")
+    public ResponseEntity<LiveSessionProviderConfig> connectSdkProvider(
+            @PathVariable String providerName,
+            @RequestBody ProviderConnectRequestDTO request) {
+        LiveSessionProviderConfig config = providerService.connectSdkProvider(providerName, request);
+        config.setConfigJson(null); // mask secrets
+        return ResponseEntity.ok(config);
+    }
+
+    /**
      * GET /admin-core/live-session/provider/status?instituteId=xxx
      */
     @GetMapping("/status")

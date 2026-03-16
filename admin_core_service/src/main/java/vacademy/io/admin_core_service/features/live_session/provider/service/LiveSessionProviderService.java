@@ -53,6 +53,11 @@ public class LiveSessionProviderService {
         return providerFactory.getStrategy(normalizedProvider).connectProvider(request);
     }
 
+    public LiveSessionProviderConfig connectSdkProvider(String providerName, ProviderConnectRequestDTO request) {
+        String normalizedProvider = MeetingProvider.fromString(providerName).name();
+        return providerFactory.getStrategy(normalizedProvider).connectSdkProvider(request);
+    }
+
     public boolean isProviderConnected(String instituteId, String providerName) {
         String normalizedProvider = MeetingProvider.fromString(providerName).name();
         return configRepository.existsByInstituteIdAndProviderAndStatusIn(instituteId, normalizedProvider, ACTIVE);

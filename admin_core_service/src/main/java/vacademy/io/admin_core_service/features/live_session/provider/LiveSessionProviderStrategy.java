@@ -55,6 +55,16 @@ public interface LiveSessionProviderStrategy {
             vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO request);
 
     /**
+     * Connect and authenticate an institute with the provider's SDK (if supported).
+     * Only providers that support an embedded/SDK flow need to override this.
+     */
+    default vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig connectSdkProvider(
+            vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO request) {
+        throw new vacademy.io.common.exceptions.VacademyException(
+                "SDK connect not supported for provider: " + getProviderName());
+    }
+
+    /**
      * Returns the provider name (for logging/validation).
      */
     String getProviderName();

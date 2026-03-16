@@ -176,7 +176,7 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         params.put("muteOnStart", String.valueOf(muteOnStart));
         params.put("webcamsOnlyForModerator", String.valueOf(webcamsOnlyForMod));
         params.put("guestPolicy", guestPolicy);
-        params.put("welcome", "Welcome to <b>" + instituteName + "</b> Live Class!");
+        params.put("welcome", "");
 
         // Institute branding
         if (logoUrl != null) {
@@ -218,17 +218,43 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         String checksum = sha256("create" + queryString + secret);
         String url = apiUrl + "/create?" + queryString + "&checksum=" + checksum;
 
-        // Use URI.create() to prevent WebClient from re-encoding the already-encoded query string
-        String xmlResponse = webClientBuilder.build()
-                .get().uri(URI.create(url))
-                .retrieve()
-                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
-                        resp -> resp.bodyToMono(String.class).map(body -> {
-                            log.error("[BBB] Create meeting failed: {}", body);
-                            return new VacademyException("BBB create meeting error: " + body);
-                        }))
-                .bodyToMono(String.class)
-                .block();
+        // Build XML body with custom presentation (institute logo as slide, replaces BBB default)
+        String xmlBody = null;
+        if (logoUrl != null) {
+            xmlBody = "<?xml version='1.0' encoding='UTF-8'?>"
+                    + "<modules><module name='presentation'>"
+                    + "<document url='" + logoUrl + "' filename='welcome.png'/>"
+                    + "</module></modules>";
+        }
+
+        // Use POST with XML body if we have a custom presentation, otherwise GET
+        String xmlResponse;
+        if (xmlBody != null) {
+            final String body = xmlBody;
+            xmlResponse = webClientBuilder.build()
+                    .post().uri(URI.create(url))
+                    .header("Content-Type", "application/xml")
+                    .bodyValue(body)
+                    .retrieve()
+                    .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                            resp -> resp.bodyToMono(String.class).map(respBody -> {
+                                log.error("[BBB] Create meeting failed: {}", respBody);
+                                return new VacademyException("BBB create meeting error: " + respBody);
+                            }))
+                    .bodyToMono(String.class)
+                    .block();
+        } else {
+            xmlResponse = webClientBuilder.build()
+                    .get().uri(URI.create(url))
+                    .retrieve()
+                    .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                            resp -> resp.bodyToMono(String.class).map(respBody -> {
+                                log.error("[BBB] Create meeting failed: {}", respBody);
+                                return new VacademyException("BBB create meeting error: " + respBody);
+                            }))
+                    .bodyToMono(String.class)
+                    .block();
+        }
 
         Document doc = parseXml(xmlResponse);
         String returnCode = getXmlText(doc, "returncode");

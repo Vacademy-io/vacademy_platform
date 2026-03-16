@@ -147,7 +147,8 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                     ss.daily_attendance AS dailyAttendance,           -- NEW
                     s.allow_rewind AS allowRewind,
                     s.allow_play_pause AS allowPlayPause,
-                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
+                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+                    ss.provider_recordings_json AS providerRecordingsJson
                 FROM live_session s
                 LEFT JOIN session_schedules ss ON s.id = ss.session_id
                 WHERE s.id = :sessionId

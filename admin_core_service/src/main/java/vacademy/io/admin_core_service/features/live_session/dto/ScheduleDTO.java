@@ -46,4 +46,5 @@ public interface ScheduleDTO {
     Boolean getAllowRewind();
     Boolean getAllowPlayPause();
     Boolean getDailyAttendance();
+    String getProviderRecordingsJson();
 }

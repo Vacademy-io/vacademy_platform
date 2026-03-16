@@ -84,6 +84,7 @@ public class GetSessionByIdService {
                 item.setMeetingDate(schedule.getMeetingDate());
                 item.setTimezone(schedule.getTimezone());
                 item.setDailyAttendance(schedule.getDailyAttendance());
+                item.setProviderRecordingsJson(schedule.getProviderRecordingsJson());
                 addedSchedules.add(item);
             }
         }

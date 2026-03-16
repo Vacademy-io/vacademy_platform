@@ -72,6 +72,7 @@ public class CustomUserDetails extends User implements UserDetails {
     public CustomUserDetails(UserServiceDTO user) {
         // Set the username from the provided User object
         this.setUsername(user.getUsername());
+        this.setFullName(user.getFullName());
         this.password = "";
         this.userId = user.getUserId();
         this.setRootUser(user.isRootUser());

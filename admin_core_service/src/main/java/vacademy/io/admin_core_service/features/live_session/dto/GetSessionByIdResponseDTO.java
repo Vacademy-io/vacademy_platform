@@ -59,6 +59,7 @@ public class GetSessionByIdResponseDTO {
         private LocalDate meetingDate;
         private String timezone;
         private Boolean dailyAttendance;
+        private String providerRecordingsJson;
     }
 
     @Getter

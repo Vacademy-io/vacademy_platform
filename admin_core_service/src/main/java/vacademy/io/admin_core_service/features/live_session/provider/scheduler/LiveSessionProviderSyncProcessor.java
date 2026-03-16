@@ -54,15 +54,12 @@ public class LiveSessionProviderSyncProcessor {
 
     public void syncAll() {
         for (MeetingProvider provider : MeetingProvider.values()) {
-            // BBB server is started/stopped on demand — skip hourly sync.
-            // Attendance is tracked at join time; recordings are fetched via end callback.
-            if (provider == MeetingProvider.BBB_MEETING) {
-                log.debug("[Sync] Skipping BBB_MEETING — attendance tracked at join time");
-                continue;
-            }
             try {
                 syncRecordingsForProvider(provider.name());
-                syncAttendanceForProvider(provider.name());
+                // BBB attendance is tracked at join time — skip attendance sync for BBB
+                if (provider != MeetingProvider.BBB_MEETING) {
+                    syncAttendanceForProvider(provider.name());
+                }
             } catch (Exception e) {
                 log.error("[Sync] Error for provider {}: {}", provider.name(), e.getMessage(), e);
             }
@@ -75,7 +72,11 @@ public class LiveSessionProviderSyncProcessor {
 
     private void syncRecordingsForProvider(String providerName) {
         Date oneHourAgo = Date.from(Instant.now().minusSeconds(3600));
-        List<SessionSchedule> schedules = scheduleRepository.findNeedingRecordingSync(providerName, oneHourAgo);
+        // link_type may be stored as 'bbb' or 'BBB_MEETING', 'ZOHO_MEETING' etc.
+        String altName = providerName;
+        if ("BBB_MEETING".equals(providerName)) altName = "bbb";
+        else if ("ZOHO_MEETING".equals(providerName)) altName = "zoho";
+        List<SessionSchedule> schedules = scheduleRepository.findNeedingRecordingSync(providerName, altName, oneHourAgo);
 
         log.info("[Sync] {} schedules needing recording sync for {}", schedules.size(), providerName);
         LiveSessionProviderStrategy strategy = getStrategyOrSkip(providerName);
@@ -104,7 +105,10 @@ public class LiveSessionProviderSyncProcessor {
 
     private void syncAttendanceForProvider(String providerName) {
         Date oneHourAgo = Date.from(Instant.now().minusSeconds(3600));
-        List<SessionSchedule> schedules = scheduleRepository.findNeedingAttendanceSync(providerName, oneHourAgo);
+        String altName = providerName;
+        if ("BBB_MEETING".equals(providerName)) altName = "bbb";
+        else if ("ZOHO_MEETING".equals(providerName)) altName = "zoho";
+        List<SessionSchedule> schedules = scheduleRepository.findNeedingAttendanceSync(providerName, altName, oneHourAgo);
 
         log.info("[Sync] {} schedules needing attendance sync for {}", schedules.size(), providerName);
         LiveSessionProviderStrategy strategy = getStrategyOrSkip(providerName);

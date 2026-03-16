@@ -381,13 +381,15 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
      */
     @Query(value = """
                 SELECT ss.* FROM session_schedules ss
+                JOIN live_session ls ON ls.id = ss.session_id
                 WHERE ss.provider_meeting_id IS NOT NULL
-                  AND ss.link_type = :provider
+                  AND (ls.link_type = :provider OR ls.link_type = :providerAlt)
                   AND ss.status != 'DELETED'
                   AND (ss.last_attendance_sync_at IS NULL OR ss.last_attendance_sync_at < :before)
             """, nativeQuery = true)
     List<SessionSchedule> findNeedingAttendanceSync(
             @Param("provider") String provider,
+            @Param("providerAlt") String providerAlt,
             @Param("before") java.util.Date before);
 
     /**
@@ -397,8 +399,9 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
      */
     @Query(value = """
                 SELECT ss.* FROM session_schedules ss
+                JOIN live_session ls ON ls.id = ss.session_id
                 WHERE ss.provider_meeting_id IS NOT NULL
-                  AND ss.link_type = :provider
+                  AND (ls.link_type = :provider OR ls.link_type = :providerAlt)
                   AND ss.status != 'DELETED'
                   AND (ss.last_recording_sync_at IS NULL OR ss.last_recording_sync_at < :before)
                   AND (
@@ -408,6 +411,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             """, nativeQuery = true)
     List<SessionSchedule> findNeedingRecordingSync(
             @Param("provider") String provider,
+            @Param("providerAlt") String providerAlt,
             @Param("before") java.util.Date before);
 
     /**

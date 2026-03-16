@@ -7,6 +7,7 @@ import json
 
 from ..config import get_settings
 from ..ports.llm_client import OutlineLLMClient
+from ..core.exceptions import PaymentRequiredError
 
 
 class OpenRouterOutlineLLMClient(OutlineLLMClient):
@@ -155,6 +156,15 @@ class OpenRouterOutlineLLMClient(OutlineLLMClient):
                     return content
                     
             except httpx.HTTPStatusError as exc:
+                # HTTP 402 Payment Required is fatal — no fallback model will help
+                # if the API key has insufficient credits. Raise immediately.
+                if exc.response.status_code == 402:
+                    raise PaymentRequiredError(
+                        "OpenRouter API returned 402 Payment Required. "
+                        "The configured API key has insufficient credits or the "
+                        "free-tier quota has been exhausted. Please top up your "
+                        "OpenRouter account or configure a valid API key."
+                    ) from exc
                 last_error = exc
                 # If this is not the last model, continue to next
                 if model_to_use != models_to_try[-1]:

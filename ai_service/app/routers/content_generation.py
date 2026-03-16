@@ -3,10 +3,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 import uuid
+import json
 
 from ..dependencies import get_course_outline_service
 from ..schemas.content_generation import ContentGenerationRequest
 from ..services.course_outline_service import CourseOutlineGenerationService
+from ..core.exceptions import PaymentRequiredError
 
 
 router = APIRouter(prefix="/course", tags=["content-generation"])
@@ -41,15 +43,23 @@ async def generate_content_from_coursetree(
     request_id = str(uuid.uuid4())
 
     async def event_generator():
-        async for event in service.generate_content_from_coursetree(
-            course_tree=payload.course_tree,
-            request_id=request_id,
-            institute_id=payload.institute_id,
-            user_id=payload.user_id,
-            language=payload.language,
-        ):
-            # Format as SSE: "data: <content>\n\n"
-            yield f"data: {event}\n\n"
+        try:
+            async for event in service.generate_content_from_coursetree(
+                course_tree=payload.course_tree,
+                request_id=request_id,
+                institute_id=payload.institute_id,
+                user_id=payload.user_id,
+                language=payload.language,
+            ):
+                # Format as SSE: "data: <content>\n\n"
+                yield f"data: {event}\n\n"
+        except PaymentRequiredError as exc:
+            error_payload = json.dumps({
+                "type": "ERROR",
+                "code": 402,
+                "message": str(exc),
+            })
+            yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(
         event_generator(),

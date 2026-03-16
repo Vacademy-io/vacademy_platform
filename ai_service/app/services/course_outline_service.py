@@ -17,6 +17,7 @@ from .api_key_resolver import ApiKeyResolver
 from .token_usage_service import TokenUsageService
 from .institute_settings_service import InstituteSettingsService
 from ..models.ai_token_usage import ApiProvider, RequestType
+from ..core.exceptions import PaymentRequiredError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -392,6 +393,9 @@ class CourseOutlineGenerationService:
                     "explanation": outline_response.explanation if 'outline_response' in locals() else "Error occurred"
                 })
 
+        except PaymentRequiredError:
+            # Re-raise so the router can return a proper 402 response to the caller
+            raise
         except Exception as e:
             yield f"[Error] Failed to generate outline: {str(e)}"
 
@@ -664,6 +668,9 @@ class CourseOutlineGenerationService:
 
             logger.info("All 'todo' content generation tasks have completed.")
             
+        except PaymentRequiredError:
+            # Re-raise so the router can return a proper 402 response to the caller
+            raise
         except Exception as e:
             logger.error(f"Exception in content generation from coursetree: {str(e)}")
             yield json.dumps({

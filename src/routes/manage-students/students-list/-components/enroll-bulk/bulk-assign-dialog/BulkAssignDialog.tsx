@@ -35,6 +35,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess }: BulkAssignDi
     const [options, setOptions] = useState<BulkEnrollOptions>({
         duplicateHandling: 'SKIP',
         notifyLearners: true,
+        sendCredentials: true,
     });
     const [previewResponse, setPreviewResponse] = useState<BulkAssignResponse | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,6 +67,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess }: BulkAssignDi
             options: {
                 duplicate_handling: options.duplicateHandling,
                 notify_learners: options.notifyLearners,
+                send_credentials: options.sendCredentials,
                 dry_run: dryRun,
             },
         };
@@ -105,7 +107,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess }: BulkAssignDi
         setStep(0);
         setSelectedLearners([]);
         setSelectedPackageSessions([]);
-        setOptions({ duplicateHandling: 'SKIP', notifyLearners: true });
+        setOptions({ duplicateHandling: 'SKIP', notifyLearners: true, sendCredentials: true });
         setPreviewResponse(null);
         onOpenChange(false);
     };

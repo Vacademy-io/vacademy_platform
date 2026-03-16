@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -5,21 +6,33 @@ import {
     DialogTitle,
     DialogDescription,
 } from '@/components/ui/dialog';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     getSubscriptionStatus,
     getScopedInvites,
+    addSubOrgMember,
+    getAllRoles,
     type SubOrgSubscriptionStatus,
+    type AddSubOrgMemberRequest,
 } from '../../-services/custom-team-services';
 import {
     fetchSubOrgAdmins,
     type SubOrgAdminsResponse,
 } from '@/routes/manage-students/students-list/-services/sub-org-service';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { Copy, Link2, BookOpen, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Copy, Link2, BookOpen, ShieldCheck, ExternalLink, UserPlus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
@@ -244,11 +257,242 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
 
                             {/* Admins Section */}
                             <SubOrgAdminsSection subOrgId={subOrgId} />
+
+                            {/* Add User Section */}
+                            <AddUserToSubOrgSection
+                                subOrgId={subOrgId}
+                                instituteId={instituteId}
+                                scopedInvites={scopedInvites}
+                            />
                         </div>
                     </ScrollArea>
                 )}
             </DialogContent>
         </Dialog>
+    );
+}
+
+function AddUserToSubOrgSection({
+    subOrgId,
+    instituteId,
+    scopedInvites,
+}: {
+    subOrgId: string;
+    instituteId: string;
+    scopedInvites: any[];
+}) {
+    const queryClient = useQueryClient();
+    const [showForm, setShowForm] = useState(false);
+    const [fullName, setFullName] = useState('');
+    const [email, setEmail] = useState('');
+    const [mobileNumber, setMobileNumber] = useState('');
+    const [selectedInviteId, setSelectedInviteId] = useState('');
+    const [selectedRoleId, setSelectedRoleId] = useState('');
+    const [subOrgRole, setSubOrgRole] = useState('ADMIN');
+
+    // Fetch roles from parent institute
+    const { data: roles = [] } = useQuery({
+        queryKey: ['roles'],
+        queryFn: getAllRoles,
+        staleTime: 1000 * 60 * 5,
+        enabled: showForm,
+    });
+
+    // Derive package_session_id from selected scoped invite
+    const selectedInvite = scopedInvites.find((inv: any) => inv.id === selectedInviteId);
+    const packageSessionId =
+        selectedInvite?.package_session_to_payment_options?.[0]?.package_session_id || '';
+
+    const mutation = useMutation({
+        mutationFn: addSubOrgMember,
+        onSuccess: (data) => {
+            toast.success(data.message || 'User added to sub-organization');
+            queryClient.invalidateQueries({ queryKey: ['sub-org-admins-detail', subOrgId] });
+            queryClient.invalidateQueries({
+                queryKey: ['sub-org-subscription-status', subOrgId],
+            });
+            resetForm();
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || 'Failed to add user');
+        },
+    });
+
+    const resetForm = () => {
+        setFullName('');
+        setEmail('');
+        setMobileNumber('');
+        setSelectedInviteId('');
+        setSelectedRoleId('');
+        setSubOrgRole('ADMIN');
+        setShowForm(false);
+    };
+
+    const handleSubmit = () => {
+        if (!fullName.trim()) {
+            toast.error('Full name is required');
+            return;
+        }
+        if (!email.trim()) {
+            toast.error('Email is required');
+            return;
+        }
+        if (!selectedInviteId) {
+            toast.error('Please select a scoped invite');
+            return;
+        }
+        if (!packageSessionId) {
+            toast.error('Selected invite has no package session');
+            return;
+        }
+        if (!selectedRoleId) {
+            toast.error('Please select a role');
+            return;
+        }
+
+        const selectedRole = roles.find((r: any) => r.id === selectedRoleId);
+        const roleName = selectedRole?.name || 'STUDENT';
+
+        const request: AddSubOrgMemberRequest = {
+            user: {
+                email: email.trim(),
+                full_name: fullName.trim(),
+                mobile_number: mobileNumber.trim() || undefined,
+                roles: [roleName],
+            },
+            package_session_id: packageSessionId,
+            sub_org_id: subOrgId,
+            institute_id: instituteId,
+            comma_separated_org_roles: subOrgRole,
+        };
+        mutation.mutate(request);
+    };
+
+    if (scopedInvites.length === 0) return null;
+
+    return (
+        <div className="space-y-2 border-t pt-4">
+            <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <UserPlus className="h-4 w-4" />
+                    Add User
+                </h3>
+                {!showForm && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowForm(true)}
+                    >
+                        <UserPlus className="mr-1 h-3 w-3" />
+                        Add User
+                    </Button>
+                )}
+            </div>
+
+            {showForm && (
+                <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                            <Label className="text-xs">Full Name *</Label>
+                            <Input
+                                value={fullName}
+                                onChange={(e) => setFullName(e.target.value)}
+                                placeholder="John Doe"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">Email *</Label>
+                            <Input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="john@example.com"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">Phone</Label>
+                            <Input
+                                value={mobileNumber}
+                                onChange={(e) => setMobileNumber(e.target.value)}
+                                placeholder="+91 1234567890"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">Scoped Invite *</Label>
+                            <Select
+                                value={selectedInviteId}
+                                onValueChange={setSelectedInviteId}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select invite" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {scopedInvites.map((inv: any) => (
+                                        <SelectItem key={inv.id} value={inv.id}>
+                                            {inv.name || inv.invite_name || `Invite ${inv.invite_code}`}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">Institute Role *</Label>
+                            <Select
+                                value={selectedRoleId}
+                                onValueChange={setSelectedRoleId}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select role" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {roles.map((role: any) => (
+                                        <SelectItem key={role.id} value={role.id}>
+                                            {role.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">Sub-Org Role *</Label>
+                            <Select value={subOrgRole} onValueChange={setSubOrgRole}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ADMIN">Admin</SelectItem>
+                                    <SelectItem value="LEARNER">Learner</SelectItem>
+                                    <SelectItem value="ROOT_ADMIN">Root Admin</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={resetForm}
+                            disabled={mutation.isPending}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleSubmit}
+                            disabled={mutation.isPending}
+                        >
+                            {mutation.isPending && (
+                                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                            )}
+                            Add User
+                        </Button>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
 

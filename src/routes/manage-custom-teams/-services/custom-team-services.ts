@@ -12,6 +12,7 @@ import {
     GET_SUB_ORG_SCOPED_INVITES,
     GET_SUB_ORG_SEAT_USAGE,
     GET_SUB_ORG_SUBSCRIPTION_STATUS,
+    ADD_SUB_ORG_MEMBER,
 } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
@@ -42,8 +43,8 @@ export interface FacultyFilterRequest {
 
 export interface CreateSubOrgRequest {
     institute_name: string;
-    email: string;
-    phone: string;
+    email?: string;
+    phone?: string;
     description?: string;
     institute_logo_file_id?: string;
 }
@@ -197,8 +198,8 @@ export const deleteCustomRole = async (roleId: string) => {
 export interface CreateSubOrgSubscriptionRequest {
     sub_org_details: {
         institute_name: string;
-        email: string;
-        phone: string;
+        email?: string;
+        phone?: string;
         institute_logo_file_id?: string;
     };
     package_session_ids: string[];
@@ -277,6 +278,43 @@ export const getSubscriptionStatus = async (
         method: 'GET',
         url: GET_SUB_ORG_SUBSCRIPTION_STATUS,
         params: { subOrgId, instituteId },
+    });
+    return response.data;
+};
+
+// --- Add User to Sub-Org ---
+
+export interface AddSubOrgMemberRequest {
+    user: {
+        email: string;
+        full_name: string;
+        mobile_number?: string;
+        roles: string[];
+    };
+    package_session_id: string;
+    sub_org_id: string;
+    institute_id: string;
+    comma_separated_org_roles: string;
+    status?: string;
+}
+
+export interface AddSubOrgMemberResponse {
+    user: {
+        id: string;
+        email: string;
+        full_name: string;
+    };
+    mapping_id: string;
+    message: string;
+}
+
+export const addSubOrgMember = async (
+    data: AddSubOrgMemberRequest
+): Promise<AddSubOrgMemberResponse> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: ADD_SUB_ORG_MEMBER,
+        data,
     });
     return response.data;
 };

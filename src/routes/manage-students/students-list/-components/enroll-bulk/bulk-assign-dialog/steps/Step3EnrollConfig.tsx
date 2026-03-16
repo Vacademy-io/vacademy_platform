@@ -127,6 +127,24 @@ export const Step3EnrollConfig = ({
                         />
                     </div>
 
+                    {/* Send credentials */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <Label className="text-sm font-medium text-neutral-700">
+                                Send Credentials
+                            </Label>
+                            <p className="text-xs text-neutral-400">
+                                Send registration email with login credentials to new students
+                            </p>
+                        </div>
+                        <Switch
+                            checked={options.sendCredentials}
+                            onCheckedChange={(v) =>
+                                onOptionsChange({ ...options, sendCredentials: v })
+                            }
+                        />
+                    </div>
+
                     {/* Duplicate handling */}
                     <div>
                         <Label className="mb-1 text-sm font-medium text-neutral-700">

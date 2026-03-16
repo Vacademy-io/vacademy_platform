@@ -11,6 +11,7 @@ export interface AssignmentItem {
 export interface AssignOptions {
     duplicate_handling?: 'SKIP' | 'ERROR' | 'RE_ENROLL';
     notify_learners?: boolean;
+    send_credentials?: boolean;
     transaction_id?: string;
     dry_run?: boolean;
 }
@@ -221,6 +222,7 @@ export interface SelectedPackageSession {
 export interface BulkEnrollOptions {
     duplicateHandling: 'SKIP' | 'ERROR' | 'RE_ENROLL';
     notifyLearners: boolean;
+    sendCredentials: boolean;
 }
 
 /** Full 4-step wizard state */

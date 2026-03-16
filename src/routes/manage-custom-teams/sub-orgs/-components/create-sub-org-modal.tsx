@@ -26,7 +26,6 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import PhoneInputField from '@/components/design-system/phone-input-field';
 import {
     fetchBatchesSummary,
     fetchCourseBatches,
@@ -47,8 +46,6 @@ import { GET_INSTITUTE_VENDORS } from '@/constants/urls';
 // Step 1 schema: Sub-Org details
 const step1Schema = z.object({
     instituteName: z.string().min(1, 'Name is required'),
-    email: z.string().email('Invalid email address'),
-    phone: z.string().min(10, 'Phone must be at least 10 digits'),
     instituteLogoFileId: z.string().optional(),
 });
 
@@ -94,7 +91,6 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     // Step 1 form
     const step1Form = useForm<Step1Values>({
         resolver: zodResolver(step1Schema),
-        defaultValues: { phone: '' },
     });
 
     // Step 3 form
@@ -244,8 +240,6 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         if (!step1Data) return;
         simpleMutation.mutate({
             institute_name: step1Data.instituteName,
-            email: step1Data.email,
-            phone: step1Data.phone,
             institute_logo_file_id: step1Data.instituteLogoFileId,
         });
     };
@@ -255,8 +249,6 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         const request: CreateSubOrgSubscriptionRequest = {
             sub_org_details: {
                 institute_name: step1Data.instituteName,
-                email: step1Data.email,
-                phone: step1Data.phone,
                 institute_logo_file_id: step1Data.instituteLogoFileId,
             },
             package_session_ids: selectedPackageSessionIds,
@@ -381,30 +373,6 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                             {step1Form.formState.errors.instituteName.message}
                                         </p>
                                     )}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="email">Email</Label>
-                                    <Input
-                                        id="email"
-                                        type="email"
-                                        {...step1Form.register('email')}
-                                        placeholder="admin@suborg.com"
-                                    />
-                                    {step1Form.formState.errors.email && (
-                                        <p className="text-sm text-destructive">
-                                            {step1Form.formState.errors.email.message}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="sm:col-span-2">
-                                    <PhoneInputField
-                                        label="Phone"
-                                        name="phone"
-                                        placeholder="123 456 7890"
-                                        control={step1Form.control}
-                                        country="in"
-                                        required
-                                    />
                                 </div>
                             </div>
                             <DialogFooter className="gap-2 sm:gap-0">
@@ -676,8 +644,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                             <div className="rounded-md border bg-muted/50 p-3 text-sm">
                                 <p className="font-medium">Summary</p>
                                 <p>
-                                    Organization: {step1Data?.instituteName} ({step1Data?.email}
-                                    )
+                                    Organization: {step1Data?.instituteName}
                                 </p>
                                 <p>
                                     Package Sessions: {selectedPackageSessionIds.length} selected

@@ -6,6 +6,8 @@ import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
+import { BASE_URL } from "@/constants/urls";
+import axios from "axios";
 
 import { useState } from "react";
 import { SafetyWarningModal } from "@/components/common/safety/safety-warning-modal";
@@ -39,8 +41,74 @@ function GuestEmbedComponent() {
     return match ? match[1] : null;
   };
 
+  const [bbbJoining, setBbbJoining] = useState(false);
+  const [bbbError, setBbbError] = useState<string | null>(null);
+
+  const handleBbbGuestJoin = async () => {
+    if (!sessionDetails) return;
+    setBbbJoining(true);
+    setBbbError(null);
+    try {
+      const response = await axios.get(
+        `${BASE_URL}/admin-core-service/live-session/guest/bbb-join`,
+        {
+          params: {
+            scheduleId: sessionDetails.scheduleId,
+            guestName: "Guest",
+          },
+        }
+      );
+      if (response.data?.error) {
+        setBbbError(response.data.error);
+        return;
+      }
+      const joinUrl = response.data?.joinUrl;
+      if (!joinUrl) {
+        setBbbError("Failed to get video class URL");
+        return;
+      }
+      window.open(joinUrl, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      const errMsg =
+        err?.response?.data?.error || err?.response?.data?.message || "";
+      if (
+        errMsg.toLowerCase().includes("ended") ||
+        errMsg.toLowerCase().includes("not started")
+      ) {
+        setBbbError("This class has not started yet or has ended.");
+      } else {
+        setBbbError("Failed to join video class. Please try again.");
+      }
+    } finally {
+      setBbbJoining(false);
+    }
+  };
+
   const renderEmbededSession = () => {
     if (!sessionDetails?.linkType) return null;
+
+    // ----- BBB (live video class) -----
+    if (isBbb) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-4 p-8">
+          {bbbError && (
+            <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700 text-center">
+              {bbbError}
+            </div>
+          )}
+          <button
+            onClick={handleBbbGuestJoin}
+            disabled={bbbJoining}
+            className="px-8 py-4 bg-primary-500 text-white rounded-lg text-lg font-semibold hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {bbbJoining ? "Joining..." : "Join Live Class"}
+          </button>
+          <p className="text-sm text-gray-500">
+            Click to join the live video class in a new window
+          </p>
+        </div>
+      );
+    }
 
     // ----- YouTube (live or recorded) -----
     if (
@@ -112,7 +180,11 @@ function GuestEmbedComponent() {
     );
   }
 
-  if (!sessionDetails?.defaultMeetLink) {
+  const isBbb =
+    sessionDetails?.linkType === "bbb" ||
+    sessionDetails?.linkType === LinkType.BBB_MEETING;
+
+  if (!sessionDetails?.defaultMeetLink && !isBbb) {
     return (
       <div className="p-4 border border-yellow-200 rounded-lg bg-yellow-50 text-yellow-700">
         No meeting link available for this session.

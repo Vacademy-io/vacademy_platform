@@ -7,6 +7,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Safe area insets for Capacitor (iOS notch, Android cutout, home indicator) */
+html, body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
 /* Column layout: override the CSS custom property on mobile so the
    var(--catalogue-grid-cols) used in the inline style collapses to 1 column.
    CSS custom properties cascade normally, so a stylesheet rule overrides an

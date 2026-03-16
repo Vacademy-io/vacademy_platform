@@ -4,10 +4,11 @@ let mermaidInitialized = false;
 
 export const initializeMermaid = () => {
     if (!mermaidInitialized) {
-        mermaid.initialize({ 
+        mermaid.initialize({
             startOnLoad: false,
             theme: 'default',
             securityLevel: 'loose',
+            suppressErrorRendering: true,
             fontFamily: 'inherit',
             flowchart: {
                 useMaxWidth: true,

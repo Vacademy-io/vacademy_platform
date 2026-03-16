@@ -103,7 +103,9 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
 
         String getTimezone();
 
-        String getProviderMeetingId(); // Zoho/provider meeting key stored on session_schedules
+        String getProviderHostUrl();
+
+        String getProviderMeetingId();
 
     }
 
@@ -195,6 +197,7 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                     ss.daily_attendance AS dailyAttendance,           -- NEW
                     s.allow_play_pause As allowPlayPause,
                     COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+                    ss.provider_host_url AS providerHostUrl,
                     ss.provider_meeting_id AS providerMeetingId
                 FROM session_schedules ss
                 JOIN live_session s ON ss.session_id = s.id

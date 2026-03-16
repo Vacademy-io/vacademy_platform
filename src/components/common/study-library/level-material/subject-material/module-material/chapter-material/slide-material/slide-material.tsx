@@ -935,49 +935,32 @@ export const SlideMaterial = () => {
 
   return (
     <div className="flex h-full w-full flex-col bg-white" ref={selectionRef}>
-      {/* Compact Professional Header */}
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-neutral-200 bg-white">
-        <div className="flex items-center gap-3 px-3 py-2 sm:px-4 sm:py-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-1 h-6 bg-primary-500 rounded-full"></div>
-            <div className="flex flex-col min-w-0">
-              <h3 className="text-sm sm:text-base font-semibold text-neutral-900 leading-tight animate-in fade-in slide-in-from-left-4 duration-500">
-                {heading || "No content"}
-              </h3>
-              <p className="text-xs font-medium text-neutral-500 uppercase tracking-wide animate-in fade-in slide-in-from-left-4 duration-500 delay-75">
-                Course Details
-              </p>
-            </div>
-          </div>
-        </div>
+      {/* Compact Header */}
+      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-neutral-100 bg-white px-3 py-1.5 sm:px-4">
+        <h3 className="text-xs sm:text-sm font-medium text-neutral-700 leading-tight truncate min-w-0 flex-1">
+          {heading || "No content"}
+        </h3>
 
-        <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 pr-3 sm:pr-4 flex-wrap">
-          {/* Slide navigation */}
-          <div className="flex items-center gap-2">
-            <MyButton
-              scale="medium"
-              buttonType="secondary"
-              onClick={goToPrev}
-              disabled={!canGoPrev}
-              aria-label="Previous slide"
-              className="flex items-center justify-center gap-0 sm:gap-2 px-0 py-0 sm:px-3 sm:py-2 w-8 h-8 sm:w-auto sm:h-auto min-w-0 font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
-            >
-              <CaretLeft size={16} />
-              <span className="hidden sm:inline text-sm">Previous</span>
-            </MyButton>
-            <MyButton
-              scale="medium"
-              buttonType="secondary"
-              onClick={goToNext}
-              disabled={!canGoNext}
-              aria-label="Next slide"
-              className="flex items-center justify-center gap-0 sm:gap-2 px-0 py-0 sm:px-3 sm:py-2 w-8 h-8 sm:w-auto sm:h-auto min-w-0 font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
-            >
-              <span className="hidden sm:inline text-sm">Next</span>
-              <CaretRight size={16} />
-            </MyButton>
-          </div>
-          <div className="hidden sm:block h-6 w-px bg-neutral-200"></div>
+        <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={goToPrev}
+            disabled={!canGoPrev}
+            aria-label="Previous slide"
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-40 transition-colors"
+          >
+            <CaretLeft size={12} />
+            <span className="hidden md:inline">Prev</span>
+          </button>
+          <button
+            onClick={goToNext}
+            disabled={!canGoNext}
+            aria-label="Next slide"
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 hover:border-neutral-300 disabled:opacity-40 transition-colors"
+          >
+            <span className="hidden md:inline">Next</span>
+            <CaretRight size={12} />
+          </button>
+          <div className="h-4 w-px bg-neutral-200"></div>
           <AskDoubtButton />
         </div>
       </div>
@@ -1032,7 +1015,7 @@ export const SlideMaterial = () => {
       {/* Mobile bottom navigation */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40">
         <div className="pointer-events-none absolute -top-3 left-0 right-0 h-3 bg-gradient-to-t from-white to-transparent"></div>
-        <div className="bg-white border-t border-neutral-200 shadow-[0_-8px_20px_-12px_rgba(0,0,0,0.25)] px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+10px)]">
+        <div className="bg-white border-t border-neutral-100 shadow-[0_-2px_8px_-2px_rgba(0,0,0,0.08)] px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+10px)]">
           <div className="flex items-center gap-2">
             <MyButton
               scale="large"
@@ -1041,9 +1024,9 @@ export const SlideMaterial = () => {
               onClick={goToPrev}
               disabled={!canGoPrev}
               aria-label="Previous slide"
-              className="flex items-center justify-center font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
+              className="flex items-center justify-center font-medium transition-all duration-200 bg-white border border-neutral-200 hover:border-primary-300 rounded-lg hover:bg-primary-50/50 disabled:opacity-50"
             >
-              <span className="text-base">{"<"}</span>
+              <CaretLeft size={18} />
             </MyButton>
 
             <div className="flex-1 flex justify-center">
@@ -1057,9 +1040,9 @@ export const SlideMaterial = () => {
               onClick={goToNext}
               disabled={!canGoNext}
               aria-label="Next slide"
-              className="flex items-center justify-center font-medium transition-all duration-300 bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50 disabled:opacity-50"
+              className="flex items-center justify-center font-medium transition-all duration-200 bg-white border border-neutral-200 hover:border-primary-300 rounded-lg hover:bg-primary-50/50 disabled:opacity-50"
             >
-              <span className="text-base">{">"}</span>
+              <CaretRight size={18} />
             </MyButton>
           </div>
         </div>
@@ -1081,25 +1064,15 @@ const AskDoubtButton = () => {
   }, []);
   if (!enabled) return null;
   return (
-    <div className="animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
-      <MyButton
-        scale="medium"
-        onClick={() => {
-          const { openSidebar } = useDoubtSidebarStore.getState();
-          openSidebar();
-        }}
-        className="flex items-center gap-2 px-3 py-2 font-medium transition-all duration-300 hover:scale-[1.02] bg-white border border-neutral-300 hover:border-primary-400 rounded-lg backdrop-blur-sm hover:bg-primary-50"
-        buttonType="secondary"
-      >
-        <span className="text-neutral-700 font-medium text-sm">Doubts</span>
-        <div className="relative">
-          <ChatText
-            size={16}
-            className="text-neutral-600 transition-all duration-300 group-hover:text-primary-600"
-          />
-          <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
-        </div>
-      </MyButton>
-    </div>
+    <button
+      onClick={() => {
+        const { openSidebar } = useDoubtSidebarStore.getState();
+        openSidebar();
+      }}
+      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
+    >
+      <ChatText size={12} className="text-neutral-500" />
+      <span>Doubts</span>
+    </button>
   );
 };

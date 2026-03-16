@@ -558,196 +558,90 @@ const SlideItem = ({
           >
             <div
               className={`
-                flex w-full items-center gap-2 rounded-lg px-3 py-2 min-h-[68px]
-                transition-all duration-200 ease-in-out will-change-transform will-change-opacity
+                flex w-full items-center gap-2 rounded-md px-2 py-2
+                transition-all duration-150
                 ${
                   isActive
-                    ? "text-primary-700 bg-primary-50 shadow-md"
-                    : "bg-white text-gray-700 hover:bg-gray-50 hover:shadow-sm"
+                    ? "text-primary-700 bg-primary-50 border border-primary-200/60"
+                    : "bg-white text-gray-700 hover:bg-gray-50 border border-transparent"
                 }
               `}
             >
-              <div className="flex flex-1 items-center gap-2 min-w-0">
-                {/* Slide Number */}
-                <div
-                  className={`
-                    flex w-6 h-6 items-center justify-center rounded-md text-sm font-bold transition-all duration-200
-                    ${
-                      isActive
-                        ? "bg-primary-500 text-white"
-                        : "bg-gray-100 text-gray-500 group-hover/slide:bg-gray-200"
-                    }
-                  `}
-                >
-                  {index + 1}
-                </div>
+              {/* Slide Number */}
+              <div
+                className={`
+                  flex w-5 h-5 shrink-0 items-center justify-center rounded text-[11px] font-bold
+                  ${
+                    isActive
+                      ? "bg-primary-500 text-white"
+                      : "bg-gray-100 text-gray-400"
+                  }
+                `}
+              >
+                {index + 1}
+              </div>
 
-                {/* Icon */}
-                <div className="shrink-0">{getIcon(slide, "3.5")}</div>
+              {/* Icon */}
+              <div className="shrink-0">{getIcon(slide, "3.5")}</div>
 
-                {/* Content area - compact layout */}
-                <div className="min-w-0 flex-1 space-y-1">
-                  {/* Title - allow up to two lines for readability */}
-                  <div className="flex items-start gap-1.5">
-                    <h4 className="flex-1 text-sm font-semibold leading-snug line-clamp-2">
-                      {getSlideTitle()}
-                    </h4>
-                    {isLocked ? (
-                      <LockedBadge size="sm" unlockMessage={unlockMessage} />
-                    ) : (
-                      getStatusBadge()
-                    )}
-                  </div>
-
-                  {/* Type and content details */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[11px] leading-tight truncate">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded px-1 py-0.5 ${typeColors.bg} ${typeColors.text}`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${typeColors.dot}`}
-                          ></span>
-                          {slide.source_type === "VIDEO" &&
-                          mediaKind === "audio"
-                            ? "Audio"
-                            : getSlideTypeDisplay(slide)}
-                        </span>
-                      </p>
-                      {/* Content details (duration/pages) */}
-                      {getContentDetails(slide) && (
-                        <p
-                          className={`text-[11px] leading-tight ${typeColors.detailText}`}
-                        >
-                          {getContentDetails(slide)}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Progress section - more compact */}
-                    {slide.percentage_completed != null && (
-                      <div className="flex items-center gap-1">
-                        <div className="relative w-10 h-1 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className={`absolute left-0 top-0 h-full rounded-full transition-all duration-300 ${
-                              isCompleted
-                                ? "bg-gradient-to-r from-success-400 to-success-500"
-                                : isActive
-                                ? "bg-gradient-to-r from-primary-400 to-primary-600"
-                                : "bg-gradient-to-r from-blue-400 to-blue-500"
-                            }`}
-                            style={{
-                              width: `${Math.min(
-                                slide.percentage_completed > 100
-                                  ? 100
-                                  : slide.percentage_completed,
-                                100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-
-                        <span
-                          className={`text-[11px] font-semibold min-w-[22px] text-right transition-colors duration-200 ${
-                            isCompleted
-                              ? "text-success-600"
-                              : isActive
-                              ? "text-primary-600"
-                              : "text-blue-500"
-                          }`}
-                        >
-                          {slide.percentage_completed > 100
-                            ? 100
-                            : slide.percentage_completed.toFixed(0)}
-                          %
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Ask Doubt Button - appears on hover */}
-                {canAskDoubt && (
-                  <div className="flex items-center justify-center w-6 h-6 opacity-0 group-hover/slide:opacity-100 transition-opacity duration-200">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={handleDoubtClick}
-                            className="flex items-center justify-center w-5 h-5 rounded-md bg-white hover:bg-gray-50 border border-gray-200 hover:border-gray-300 transition-all duration-200"
-                          >
-                            <ChatText
-                              className="w-2.5 h-2.5 text-gray-600"
-                              weight="duotone"
-                            />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent
-                          side="left"
-                          className="bg-gray-900 text-white text-xs px-2 py-1"
-                        >
-                          Ask Doubt
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                )}
-
-                {/* Status indicator */}
-                <div className="shrink-0">
-                  <div
-                    className={`p-0.5 rounded-md transition-all duration-200 ${
-                      isActive ? statusDetails.bgColor : "hover:bg-gray-50"
-                    }`}
-                  >
-                    <StatusIcon
-                      className={`w-3 h-3 transition-colors duration-200 ${statusDetails.color}`}
-                      weight="duotone"
-                    />
-                  </div>
+              {/* Title + type on one compact block */}
+              <div className="min-w-0 flex-1">
+                <h4 className="text-[13px] font-medium leading-tight truncate">
+                  {getSlideTitle()}
+                </h4>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${typeColors.text}`}>
+                    <span className={`w-1 h-1 rounded-full ${typeColors.dot}`}></span>
+                    {slide.source_type === "VIDEO" && mediaKind === "audio"
+                      ? "Audio"
+                      : getSlideTypeDisplay(slide)}
+                  </span>
+                  {getContentDetails(slide) && (
+                    <span className="text-[10px] text-gray-400">
+                      {getContentDetails(slide)}
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {/* Right side: progress or status */}
+              <div className="shrink-0 flex items-center gap-1">
+                {isLocked ? (
+                  <LockedBadge size="sm" unlockMessage={unlockMessage} />
+                ) : slide.percentage_completed != null ? (
+                  <span
+                    className={`text-[10px] font-semibold ${
+                      isCompleted
+                        ? "text-success-600"
+                        : isActive
+                        ? "text-primary-600"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    {Math.min(slide.percentage_completed > 100 ? 100 : Math.round(slide.percentage_completed), 100)}%
+                  </span>
+                ) : null}
+                {!isLocked && (
+                  <StatusIcon
+                    className={`w-3.5 h-3.5 ${statusDetails.color}`}
+                    weight="duotone"
+                  />
+                )}
+              </div>
             </div>
-            {/* Subtle divider for list rhythm */}
-            <div className="mx-2 h-px bg-gray-100" />
           </div>
         </TooltipTrigger>
         <TooltipContent
           side="right"
-          className="max-w-xs border border-gray-300 bg-white/95 text-gray-700 shadow-lg backdrop-blur-sm z-[9999]"
-          sideOffset={8}
+          className="max-w-[220px] border border-gray-200 bg-white text-gray-700 shadow-sm z-[9999] px-2.5 py-1.5"
+          sideOffset={4}
         >
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <StatusIcon
-                className={`w-3.5 h-3.5 ${statusDetails.color}`}
-                weight="duotone"
-              />
-              <p className="font-semibold text-xs">{statusDetails.label}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="font-medium text-xs">{getSlideTitle()}</p>
-              <p className="text-xs text-gray-500">
-                {getSlideTypeDisplay(slide)}
-              </p>
-              {getContentDetails(slide) && (
-                <p className="text-xs text-gray-400 font-medium">
-                  {getContentDetails(slide)}
-                </p>
-              )}
-              <p className="text-xs text-gray-400 leading-relaxed">
-                {statusDetails.description}
-              </p>
-              {slide.percentage_completed != null && (
-                <div className="pt-1 border-t border-gray-200">
-                  <p className="text-xs text-gray-500">
-                    Progress: {slide.percentage_completed.toFixed(0)}%
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <p className="font-medium text-xs leading-snug">{getSlideTitle()}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">
+            {getSlideTypeDisplay(slide)}
+            {getContentDetails(slide) && ` · ${getContentDetails(slide)}`}
+            {slide.percentage_completed != null && ` · ${slide.percentage_completed.toFixed(0)}%`}
+          </p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

@@ -14,7 +14,7 @@ export const NonCollapsibleItem = ({ icon, title, to, onClick }: SidebarItemProp
                 asChild
                 isActive={isActive}
                 tooltip={title}
-                size="lg"
+                size="default"
             >
                 <Link to={to} onClick={onClick}>
                     {icon && React.createElement(icon, {

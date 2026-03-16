@@ -1826,15 +1826,7 @@ export const CourseDetailsPage = () => {
         courseTitle={form.getValues("courseData").title}
       />
 
-      <div className="min-h-screen bg-gradient-to-br from-gray-50/80 via-white to-primary-50/20 relative w-full max-w-full">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-32 md:w-64 h-32 md:h-64 bg-gradient-to-br from-primary-100/20 to-transparent rounded-full blur-3xl animate-gentle-pulse"></div>
-          <div
-            className="absolute bottom-1/3 right-1/3 w-40 md:w-80 h-40 md:h-80 bg-gradient-to-br from-primary-50/30 to-transparent rounded-full blur-3xl animate-gentle-pulse"
-            style={{ animationDelay: "2s" }}
-          ></div>
-        </div>
+      <div className="min-h-screen bg-background relative w-full max-w-full">
 
         {/* Course Header */}
         <CourseHeader

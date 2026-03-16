@@ -186,57 +186,17 @@ html, body {
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
-  /* Navbar tweaks: stronger separator and playful indicator */
-  .ui-vibrant .navbar .w-1.h-6 {
-    box-shadow: 0 1px 0 hsl(var(--primary-400) / 0.25);
-  }
+  /* Navbar tweaks */
   .ui-vibrant .navbar .text-base {
     letter-spacing: 0.1px;
   }
-  .ui-vibrant .navbar h1,
-  .ui-vibrant .navbar .text-base {
-    font-size: 1.125rem !important;
-    line-height: 1.6rem !important;
-  }
 
   /* Sidebar tiles: clearer solid backgrounds */
-  .ui-vibrant .sidebar-content .border {
-    border-width: 2px !important;
-  }
   .ui-vibrant .sidebar-content .bg-primary-50 {
     background-color: hsl(var(--primary-100)) !important;
   }
   .ui-vibrant .sidebar-content .hover\:bg-primary-50:hover {
     background-color: hsl(var(--primary-200)) !important;
-  }
-  /* Add secondary/tertiary options in vibrant sidebar */
-  .ui-vibrant .sidebar-content .bg-secondary-50 {
-    background-color: hsl(var(--secondary-100)) !important;
-  }
-  .ui-vibrant .sidebar-content .hover\:bg-secondary-50:hover {
-    background-color: hsl(var(--secondary-200)) !important;
-  }
-  .ui-vibrant .sidebar-content .bg-tertiary-50 {
-    background-color: hsl(var(--tertiary-100)) !important;
-  }
-  .ui-vibrant .sidebar-content .hover\:bg-tertiary-50:hover {
-    background-color: hsl(var(--tertiary-200)) !important;
-  }
-
-  /* Sidebar/menu typography bump for kids */
-  .ui-vibrant .sidebar-content {
-    font-size: 1rem;
-  }
-  .ui-vibrant .sidebar-content a,
-  .ui-vibrant .sidebar-content button,
-  .ui-vibrant .sidebar-content .text-xs,
-  .ui-vibrant .sidebar-content .text-sm {
-    font-size: 1rem !important;
-    line-height: 1.5rem !important;
-  }
-  .ui-vibrant .sidebar-content .text-base {
-    font-size: 1.125rem !important;
-    line-height: 1.6rem !important;
   }
 
   /* Course cards and common cards */
@@ -246,19 +206,10 @@ html, body {
     border-color: hsl(var(--primary-100)) !important;
   }
 
-  /* Course card title and headings bump */
-  .ui-vibrant h3.text-base,
-  .ui-vibrant h3.text-lg,
+  /* Vibrant course card title styling */
   .ui-vibrant .course-card-title,
   .ui-vibrant .course-title {
-    font-size: 1.125rem !important;
-    line-height: 1.6rem !important;
     letter-spacing: 0.1px;
-  }
-  .ui-vibrant .course-card-subtitle,
-  .ui-vibrant p.text-sm {
-    font-size: 1rem !important;
-    line-height: 1.5rem !important;
   }
 
   /* Vibrant accents for course catalog */
@@ -293,15 +244,7 @@ html, body {
     border-color: hsl(var(--primary-200));
   }
 
-  /* Global small text bumps for better readability */
-  .ui-vibrant .text-xs {
-    font-size: 0.875rem !important;
-    line-height: 1.25rem !important;
-  }
-  .ui-vibrant .text-sm {
-    font-size: 1rem !important;
-    line-height: 1.5rem !important;
-  }
+  /* Vibrant text: keep default sizes for clean UI */
 
   /* ================= Dashboard vibrant enhancements ================ */
   /* 1) Solid primary stat cards with contrasting text */
@@ -324,18 +267,7 @@ html, body {
     color: hsl(var(--primary-foreground)) !important;
   }
 
-  /* 2) Larger icons and text for kids */
-  .ui-vibrant .stat-card-icon svg {
-    width: 32px !important;
-    height: 32px !important;
-  }
-  .ui-vibrant .stat-card-inner .text-xl {
-    font-size: 1.5rem !important;
-    line-height: 1.85rem !important;
-  }
-  .ui-vibrant .stat-card-inner .text-xs {
-    font-size: 0.95rem !important;
-  }
+  /* 2) Vibrant stat card sizing - keep compact */
 
   /* 3) Continue learning card accents */
   .ui-vibrant .continue-learning-card {
@@ -501,42 +433,16 @@ html, body {
     animation-fill-mode: both;
   }
 
-  /* ================= Playful page backgrounds (vibrant) ================ */
-  .ui-vibrant .dashboard-container {
-    /* Soft dotted pattern using theme tints; very light for readability */
-    background-image: radial-gradient(
-        hsl(var(--primary-50)) 1px,
-        transparent 1px
-      ),
-      radial-gradient(hsl(var(--info-50)) 1px, transparent 1px);
-    background-size: 24px 24px, 32px 32px;
-    background-position: 0 0, 12px 12px;
-  }
+  /* Vibrant dashboard: clean background */
 
-  /* ================= Global rounding in vibrant ================= */
-  .ui-vibrant .rounded,
-  .ui-vibrant .rounded-md,
-  .ui-vibrant .rounded-lg,
-  .ui-vibrant .rounded-xl,
-  .ui-vibrant .rounded-2xl,
-  .ui-vibrant .card,
-  .ui-vibrant .Card,
-  .ui-vibrant .stat-card-inner,
-  .ui-vibrant .continue-learning-card,
-  .ui-vibrant .live-session-card {
-    border-radius: 8px !important;
-  }
+  /* Vibrant rounding: use Tailwind defaults */
 
-  /* ================= Buttons: playful bottom outline ================= */
-  .ui-vibrant button,
+  /* ================= Buttons: subtle vibrant style ================= */
+  .ui-vibrant button.bg-primary-500,
   .ui-vibrant .btn,
   .ui-vibrant .my-button {
     position: relative;
-    box-shadow: inset 0 -1.5px 0 hsl(var(--primary-300));
     transition: transform 120ms ease, box-shadow 120ms ease;
-    border-radius: 10px; /* match global radius */
-    outline: 0.5px solid hsl(var(--border));
-    outline-offset: 0;
   }
 
   /* Vibrant chips using secondary and tertiary palettes */
@@ -560,19 +466,7 @@ html, body {
     color: hsl(var(--text-primary)) !important;
     border-color: hsl(var(--tertiary-400)) !important;
   }
-  .ui-vibrant button:hover,
-  .ui-vibrant .btn:hover,
-  .ui-vibrant .my-button:hover {
-    box-shadow: inset 0 -6px 0 hsl(var(--primary-500));
-    transform: translateY(-1px);
-    outline: 1.5px solid hsl(var(--primary-300));
-  }
-  .ui-vibrant button:active,
-  .ui-vibrant .btn:active,
-  .ui-vibrant .my-button:active {
-    box-shadow: inset 0 -2px 0 hsl(var(--primary-300));
-    transform: translateY(0);
-  }
+  /* Vibrant button hover: keep subtle */
 
   /* Vibrant buttons using secondary/tertiary */
   .ui-vibrant .btn-secondary {
@@ -621,14 +515,10 @@ html, body {
   .ui-vibrant .sidebar-content [class*="hover:text-primary-"]:hover {
     color: hsl(var(--text-secondary)) !important;
   }
-  /* Sidebar outlines and shadows: more neutral */
-  .ui-vibrant .sidebar-content .border,
-  .ui-vibrant .sidebar-content [class*="border-primary-"] {
-    border-color: hsl(var(--border)) !important;
-  }
+  /* Sidebar shadows: subtle */
   .ui-vibrant .sidebar-content .shadow-sm,
   .ui-vibrant .sidebar-content .shadow {
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+    box-shadow: none !important;
   }
 }
 
@@ -709,7 +599,7 @@ html, body {
   /* ================= Card and interactive utilities ================= */
   /* Apply a consistent base for card-like surfaces */
   .card-base {
-    @apply bg-card text-card-foreground border rounded-[8px] shadow-sm transition;
+    @apply bg-card text-card-foreground border rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.04)] transition;
     border-color: hsl(var(--border));
   }
   /* Uniform interactive focus and hover states for cards */
@@ -717,7 +607,7 @@ html, body {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
   .card-hover {
-    @apply hover:shadow-md;
+    @apply hover:shadow-sm;
     border-color: hsl(var(--border));
   }
 

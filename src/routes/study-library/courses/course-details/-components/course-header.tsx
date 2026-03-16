@@ -15,7 +15,7 @@ interface CourseHeaderProps {
 
 export const CourseHeader = ({ courseData, showConfetti = false }: CourseHeaderProps) => {
     return (
-        <div className="relative w-full min-h-[220px] sm:min-h-[260px] lg:min-h-[340px] overflow-hidden rounded-xl shadow-lg ring-1 ring-black/5 bg-background">
+        <div className="relative w-full min-h-[220px] sm:min-h-[260px] lg:min-h-[340px] overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 bg-background">
             {/* Background Image or Neutral Fallback */}
             {!courseData.courseBannerMediaId ? (
                 <div className="absolute inset-0 z-0 bg-muted" />

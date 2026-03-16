@@ -215,14 +215,6 @@ function EmbedComponent() {
 
   const renderEmbeddedSession = () => {
     console.log("[LearnerEmbed] Session details:", sessionDetails);
-    // Fixed typo: "Embeded" -> "Embedded"
-    if (!sessionDetails?.defaultMeetLink) return null;
-
-    // Check link type - default to YouTube if we have a videoUrl but no valid linkType
-    const linkType = (
-      sessionDetails.linkType ||
-      (videoUrl ? LinkType.YOUTUBE : LinkType.UNKNOWN)
-    ).toLowerCase();
     // Check link type first — BBB sessions may not have a defaultMeetLink
     const linkType =
       sessionDetails?.linkType ||

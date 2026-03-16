@@ -259,19 +259,6 @@ function RouteComponent() {
 
     // If live class has started, proceed to live session
     if (isLiveClassStarted) {
-      try {
-        // Mark attendance only when directly joining live session
-        await markAttendance({
-          sessionId: session.session_id,
-          scheduleId: session.schedule_id,
-          userSourceType: "USER",
-          userSourceId: "",
-          details: "Joined live class directly",
-        });
-
-        // Navigate to live session
-        const streamingType = session.session_streaming_service_type?.toLowerCase();
-        if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
       // Helper to navigate/open based on session type
       const isBbb = session.link_type === "bbb" || session.link_type === "BBB_MEETING";
 
@@ -667,7 +654,6 @@ function RouteComponent() {
                     : (session.session_streaming_service_type?.toLowerCase() === SessionStreamingServiceType.EMBED.toLowerCase())
                       ? "Join Session"
                       : "Join Session"}
-                    : "Join Session"}
               </Button>
             )}
           </div>

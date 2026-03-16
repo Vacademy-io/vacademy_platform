@@ -138,7 +138,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
 
     // Auto-select vendor when there's exactly one
     useEffect(() => {
-        if (vendorsList.length === 1) {
+        if (vendorsList.length === 1 && vendorsList[0]) {
             step3Form.setValue('vendor', vendorsList[0].vendor);
             step3Form.setValue('vendorId', vendorsList[0].vendor_id);
         }
@@ -609,7 +609,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                                 <p className="text-sm text-amber-600">
                                                     No payment vendor configured. Please link a payment vendor in Settings first.
                                                 </p>
-                                            ) : vendorsList.length === 1 ? (
+                                            ) : vendorsList.length === 1 && vendorsList[0] ? (
                                                 <Input
                                                     value={vendorsList[0].vendor}
                                                     disabled

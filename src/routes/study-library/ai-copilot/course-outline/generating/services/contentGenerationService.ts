@@ -109,6 +109,11 @@ export async function generateContent(
             console.error('Status Text:', response.statusText);
             console.error('Error Body:', errorText);
 
+            // Special handling for 402 errors (credits exhausted)
+            if (response.status === 402) {
+                throw new Error('Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.');
+            }
+
             // Special handling for 500 errors
             if (response.status === 500) {
                 console.error('🔴 500 Internal Server Error - Backend issue detected');
@@ -192,6 +197,12 @@ export async function generateContent(
 
                         try {
                             const update = JSON.parse(data);
+
+                            // Check for credits exhausted error
+                            if (update.type === 'ERROR' && update.code === 402) {
+                                throw new Error('Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.');
+                            }
+
                             totalProcessed++;
 
                             if (update.type === 'SLIDE_CONTENT_UPDATE' || update.type === 'SLIDE_CONTENT_ERROR') {

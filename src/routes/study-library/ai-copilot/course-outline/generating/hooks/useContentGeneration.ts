@@ -961,7 +961,11 @@ export const useContentGeneration = (
                     if (typeof error === 'string') {
                         const lowerError = error.toLowerCase();
 
-                        if (lowerError.includes('500')) {
+                        if (lowerError.includes('openrouter credits')) {
+                            userFriendlyMessage = error;
+                        } else if (lowerError.includes('402')) {
+                            userFriendlyMessage = 'Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.';
+                        } else if (lowerError.includes('500')) {
                             console.error('🔴 500 error detected');
                             userFriendlyMessage = `Content generation encountered a server error (500). Try generating with fewer slides or contact support.`;
                         } else if (lowerError.includes('aborted') || lowerError.includes('abort')) {

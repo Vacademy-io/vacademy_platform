@@ -53,6 +53,11 @@ export async function generateCourseOutline(
         console.error('Status:', response.status);
         console.error('Status Text:', response.statusText);
         console.error('Error Body:', errorText);
+
+        if (response.status === 402) {
+            throw new Error('Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.');
+        }
+
         throw new Error(`HTTP ${response.status}: ${response.statusText}. ${errorText}`);
     }
 
@@ -83,6 +88,19 @@ export async function generateCourseOutline(
         for (const line of lines) {
             if (line.startsWith('data: ')) {
                 const data = line.slice(6);
+
+                // Check for error events (e.g. credits exhausted)
+                if (data.startsWith('{') && data.includes('"type"') && data.includes('"ERROR"')) {
+                    try {
+                        const errorData = JSON.parse(data);
+                        if (errorData.type === 'ERROR' && errorData.code === 402) {
+                            throw new Error('Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.');
+                        }
+                    } catch (e) {
+                        if (e instanceof Error && e.message.includes('OpenRouter credits')) throw e;
+                        // Not a valid error JSON, continue processing
+                    }
+                }
 
                 // Check if it's a progress message
                 if (data.startsWith('[Generating...]')) {

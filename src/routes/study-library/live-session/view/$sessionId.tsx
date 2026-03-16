@@ -117,6 +117,7 @@ function ViewLiveSession() {
     const [attendanceData, setAttendanceData] = useState<LiveSessionReport[] | null>(null);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
     const [selectedScheduleForAttendance, setSelectedScheduleForAttendance] = useState<string | null>(null);
+    const [recordingUrls, setRecordingUrls] = useState<Record<string, string>>({});
 
     useEffect(() => {
         const fetchSessionDetails = async () => {
@@ -251,9 +252,9 @@ function ViewLiveSession() {
             }
 
             let recordings: MeetingRecording[] = [];
-            if (schedule.provider_recordings_json) {
+            if (schedule.providerRecordingsJson) {
                 try {
-                    recordings = JSON.parse(schedule.provider_recordings_json);
+                    recordings = JSON.parse(schedule.providerRecordingsJson);
                 } catch {
                     // ignore parse errors
                 }
@@ -296,6 +297,28 @@ function ViewLiveSession() {
         });
         return recordings;
     }, [groupedSchedules]);
+
+    // Resolve fileId to public URLs for recordings that have no playbackUrl
+    useEffect(() => {
+        const resolve = async () => {
+            const toResolve = allRecordings.filter(
+                (rec) => !rec.playbackUrl && !rec.downloadUrl && rec.fileId
+            );
+            if (toResolve.length === 0) return;
+
+            const urls: Record<string, string> = {};
+            for (const rec of toResolve) {
+                try {
+                    const url = await getPublicUrl(rec.fileId!);
+                    urls[rec.fileId!] = url;
+                } catch {
+                    // ignore
+                }
+            }
+            setRecordingUrls((prev) => ({ ...prev, ...urls }));
+        };
+        resolve();
+    }, [allRecordings]);
 
     const formatDuration = (seconds: number) => {
         const hrs = Math.floor(seconds / 3600);
@@ -811,28 +834,36 @@ function ViewLiveSession() {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                {rec.playbackUrl && (
-                                                    <a
-                                                        href={rec.playbackUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
-                                                    >
-                                                        <Play className="size-3" />
-                                                        Play
-                                                    </a>
-                                                )}
-                                                {rec.downloadUrl && (
-                                                    <a
-                                                        href={rec.downloadUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50"
-                                                    >
-                                                        <Download className="size-3" />
-                                                        Download
-                                                    </a>
-                                                )}
+                                                {(() => {
+                                                    const url = rec.playbackUrl || (rec.fileId && recordingUrls[rec.fileId]) || null;
+                                                    if (!url) return (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            {rec.fileId ? 'Loading...' : 'No URL available'}
+                                                        </span>
+                                                    );
+                                                    return (
+                                                        <>
+                                                            <a
+                                                                href={url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
+                                                            >
+                                                                <Play className="size-3" />
+                                                                Play
+                                                            </a>
+                                                            <a
+                                                                href={url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50"
+                                                            >
+                                                                <Download className="size-3" />
+                                                                Download
+                                                            </a>
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
                                     ))}

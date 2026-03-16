@@ -128,7 +128,7 @@ export interface Schedule {
             text_color: string;
             visible: boolean;
         } | null;
-        provider_recordings_json?: string | null;
+        providerRecordingsJson?: string | null;
     }>;
 }
 

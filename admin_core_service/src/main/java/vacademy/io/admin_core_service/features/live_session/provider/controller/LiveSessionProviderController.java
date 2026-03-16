@@ -199,6 +199,8 @@ public class LiveSessionProviderController {
             @RequestParam int durationMinutes) {
         return ResponseEntity.ok(providerService.checkUserAvailability(
                 startTime, durationMinutes, instituteId, vendorUserId));
+    }
+
     // -----------------------------------------------------------------------
     // BBB Join — generates per-user join URL, auto-creates room if needed
     // -----------------------------------------------------------------------

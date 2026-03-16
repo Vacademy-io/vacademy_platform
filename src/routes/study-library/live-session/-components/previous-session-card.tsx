@@ -344,6 +344,19 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                     >
                         <span>View Attendance Report</span>
                     </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                        type="button"
+                        className="flex items-center gap-2 rounded-sm text-primary-500 transition-colors hover:text-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                        onClick={() => {
+                            navigate({
+                                to: '/study-library/live-session/view/$sessionId',
+                                params: { sessionId: session?.session_id || '' },
+                            });
+                        }}
+                    >
+                        <span>View Recordings</span>
+                    </button>
                 </div>
             </div>
 

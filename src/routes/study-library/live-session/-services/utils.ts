@@ -128,7 +128,18 @@ export interface Schedule {
             text_color: string;
             visible: boolean;
         } | null;
+        provider_recordings_json?: string | null;
     }>;
+}
+
+export interface MeetingRecording {
+    recordingId: string;
+    downloadUrl?: string;
+    playbackUrl?: string;
+    durationSeconds: number;
+    startTime?: string;
+    providerMeetingId?: string;
+    fileId?: string;
 }
 
 export interface NotificationAction {

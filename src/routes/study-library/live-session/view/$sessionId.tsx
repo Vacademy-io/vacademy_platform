@@ -2,8 +2,8 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
-import { getSessionBySessionId } from '../-services/utils';
-import type { SessionBySessionIdResponse } from '../-services/utils';
+import { getSessionBySessionId, getLiveSessionReport } from '../-services/utils';
+import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording } from '../-services/utils';
 import {
     CalendarRange,
     Timer,
@@ -20,6 +20,11 @@ import {
     Share2,
     List,
     Calendar as CalendarIcon,
+    Users,
+    Video,
+    Play,
+    Download,
+    Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SessionCalendarView } from '../-components/session-calendar-view';
@@ -90,6 +95,7 @@ interface GroupedSchedule {
             text_color: string;
             visible: boolean;
         } | null;
+        recordings?: MeetingRecording[];
     }>;
 }
 
@@ -108,6 +114,9 @@ function ViewLiveSession() {
 
     const { setSessionId, setIsEdit } = useLiveSessionStore();
     const { setSessionDetails } = useSessionDetailsStore();
+    const [attendanceData, setAttendanceData] = useState<LiveSessionReport[] | null>(null);
+    const [attendanceLoading, setAttendanceLoading] = useState(false);
+    const [selectedScheduleForAttendance, setSelectedScheduleForAttendance] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchSessionDetails = async () => {
@@ -185,6 +194,30 @@ function ViewLiveSession() {
         }
     };
 
+    const handleViewAttendance = useCallback(async (scheduleId: string) => {
+        if (selectedScheduleForAttendance === scheduleId && attendanceData) {
+            // Toggle off
+            setSelectedScheduleForAttendance(null);
+            setAttendanceData(null);
+            return;
+        }
+        setSelectedScheduleForAttendance(scheduleId);
+        setAttendanceLoading(true);
+        try {
+            const data = await getLiveSessionReport(
+                sessionId,
+                scheduleId,
+                sessionData?.schedule?.access_type || 'private'
+            );
+            setAttendanceData(data);
+        } catch (err) {
+            console.error('Failed to fetch attendance:', err);
+            toast.error('Failed to load attendance report');
+        } finally {
+            setAttendanceLoading(false);
+        }
+    }, [sessionId, sessionData, selectedScheduleForAttendance, attendanceData]);
+
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
         toast.success('Copied to clipboard');
@@ -217,6 +250,15 @@ function ViewLiveSession() {
                 status = 'upcoming';
             }
 
+            let recordings: MeetingRecording[] = [];
+            if (schedule.provider_recordings_json) {
+                try {
+                    recordings = JSON.parse(schedule.provider_recordings_json);
+                } catch {
+                    // ignore parse errors
+                }
+            }
+
             grouped.get(date)!.push({
                 time: schedule.startTime,
                 duration: schedule.duration,
@@ -227,6 +269,7 @@ function ViewLiveSession() {
                 default_class_link: schedule.default_class_link,
                 defaultClassName: schedule.default_class_name,
                 learner_button_config: schedule.learner_button_config,
+                recordings,
             });
         });
 
@@ -238,6 +281,28 @@ function ViewLiveSession() {
             }))
             .sort((a, b) => a.date.localeCompare(b.date));
     }, [sessionData]);
+
+    // Collect all recordings across all schedules
+    const allRecordings = useMemo(() => {
+        const recordings: Array<MeetingRecording & { date: string; scheduleId: string }> = [];
+        groupedSchedules.forEach((day) => {
+            day.sessions.forEach((session) => {
+                if (session.recordings && session.recordings.length > 0) {
+                    session.recordings.forEach((rec) => {
+                        recordings.push({ ...rec, date: day.date, scheduleId: session.id });
+                    });
+                }
+            });
+        });
+        return recordings;
+    }, [groupedSchedules]);
+
+    const formatDuration = (seconds: number) => {
+        const hrs = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        if (hrs > 0) return `${hrs}h ${mins}m`;
+        return `${mins}m`;
+    };
 
     const uniqueNotifications = useMemo(() => {
         if (!sessionData?.notifications?.addedNotificationActions) return [];
@@ -565,6 +630,212 @@ function ViewLiveSession() {
                                             ))}
                                         </TableBody>
                                     </Table>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* Attendance Section */}
+                        <Card className="overflow-hidden border-border/60 shadow-sm">
+                            <CardHeader className="bg-muted/40 px-6 py-4">
+                                <CardTitle className="flex items-center gap-3 text-lg font-semibold">
+                                    <div className="flex size-10 items-center justify-center rounded-xl bg-green-500/10 text-green-600 shadow-sm">
+                                        <Users className="size-5" />
+                                    </div>
+                                    Attendance
+                                </CardTitle>
+                                <CardDescription>
+                                    {isRecurring
+                                        ? 'Select a session date to view attendance'
+                                        : 'View attendance for this session'}
+                                </CardDescription>
+                            </CardHeader>
+                            <Separator />
+                            <CardContent className="p-6">
+                                {isRecurring ? (
+                                    <div className="space-y-3">
+                                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                            {groupedSchedules
+                                                .filter(day => day.sessions.some(s => s.status === 'past'))
+                                                .slice(0, 12)
+                                                .map((day) => {
+                                                    const firstSession = day.sessions[0];
+                                                    if (!firstSession) return null;
+                                                    const isSelected = selectedScheduleForAttendance === firstSession.id;
+                                                    return (
+                                                        <button
+                                                            key={firstSession.id}
+                                                            onClick={() => handleViewAttendance(firstSession.id)}
+                                                            className={cn(
+                                                                "flex items-center justify-between rounded-lg border p-3 text-left text-sm transition-all hover:bg-muted/50",
+                                                                isSelected && "border-primary bg-primary/5"
+                                                            )}
+                                                        >
+                                                            <div>
+                                                                <div className="font-medium">
+                                                                    {format(new Date(day.date), 'MMM d, yyyy')}
+                                                                </div>
+                                                                <div className="text-xs text-muted-foreground">
+                                                                    {firstSession.time} · {firstSession.duration} mins
+                                                                </div>
+                                                            </div>
+                                                            <Users className="size-4 text-muted-foreground" />
+                                                        </button>
+                                                    );
+                                                })}
+                                        </div>
+                                        {groupedSchedules.filter(day => day.sessions.some(s => s.status === 'past')).length === 0 && (
+                                            <p className="text-sm text-muted-foreground">No past sessions yet.</p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div>
+                                        {groupedSchedules.length > 0 && groupedSchedules[0]?.sessions[0] && (
+                                            <MyButton
+                                                onClick={() => handleViewAttendance(groupedSchedules[0]!.sessions[0]!.id)}
+                                                buttonType={selectedScheduleForAttendance ? 'secondary' : 'primary'}
+                                                scale="medium"
+                                            >
+                                                <Users className="mr-2 size-4" />
+                                                {selectedScheduleForAttendance ? 'Hide Attendance' : 'View Attendance'}
+                                            </MyButton>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Attendance Table */}
+                                {attendanceLoading && (
+                                    <div className="mt-4 flex items-center justify-center py-8">
+                                        <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                        <span className="ml-2 text-sm text-muted-foreground">Loading attendance...</span>
+                                    </div>
+                                )}
+                                {attendanceData && !attendanceLoading && (
+                                    <div className="mt-4 space-y-3">
+                                        <div className="flex items-center gap-4 text-sm">
+                                            <div className="flex items-center gap-2">
+                                                <div className="size-3 rounded-full bg-green-500" />
+                                                <span>Present: {attendanceData.filter(r => r.attendanceStatus === 'PRESENT').length}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="size-3 rounded-full bg-red-400" />
+                                                <span>Absent: {attendanceData.filter(r => r.attendanceStatus !== 'PRESENT').length}</span>
+                                            </div>
+                                            <div className="text-muted-foreground">
+                                                Total: {attendanceData.length}
+                                            </div>
+                                        </div>
+                                        <div className="max-h-[300px] overflow-auto rounded-md border">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow className="bg-muted/50">
+                                                        <TableHead className="pl-4">#</TableHead>
+                                                        <TableHead>Name</TableHead>
+                                                        <TableHead>Email</TableHead>
+                                                        <TableHead className="text-center">Status</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {attendanceData.map((report, idx) => (
+                                                        <TableRow key={report.studentId}>
+                                                            <TableCell className="pl-4 text-muted-foreground">{idx + 1}</TableCell>
+                                                            <TableCell className="font-medium">{report.fullName}</TableCell>
+                                                            <TableCell className="text-muted-foreground">{report.email}</TableCell>
+                                                            <TableCell className="text-center">
+                                                                <Badge
+                                                                    variant={report.attendanceStatus === 'PRESENT' ? 'default' : 'destructive'}
+                                                                    className={cn(
+                                                                        "text-xs",
+                                                                        report.attendanceStatus === 'PRESENT' && "bg-green-500"
+                                                                    )}
+                                                                >
+                                                                    {report.attendanceStatus === 'PRESENT' ? 'Present' : 'Absent'}
+                                                                </Badge>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Recordings Section */}
+                        {allRecordings.length > 0 && (
+                            <Card className="overflow-hidden border-border/60 shadow-sm">
+                                <CardHeader className="bg-muted/40 px-6 py-4">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="flex items-center gap-3 text-lg font-semibold">
+                                            <div className="flex size-10 items-center justify-center rounded-xl bg-red-500/10 text-red-600 shadow-sm">
+                                                <Video className="size-5" />
+                                            </div>
+                                            Recordings
+                                        </CardTitle>
+                                        <Badge variant="secondary" className="px-3 py-1 text-xs font-medium">
+                                            {allRecordings.length} recording{allRecordings.length !== 1 ? 's' : ''}
+                                        </Badge>
+                                    </div>
+                                </CardHeader>
+                                <Separator />
+                                <CardContent className="space-y-3 p-6">
+                                    {allRecordings.map((rec, idx) => (
+                                        <div
+                                            key={rec.recordingId || idx}
+                                            className="flex items-center justify-between rounded-lg border bg-card p-4 transition-all hover:bg-muted/30"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex size-10 items-center justify-center rounded-full bg-red-50 text-red-500">
+                                                    <Play className="size-4" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-medium">
+                                                        {isRecurring
+                                                            ? format(new Date(rec.date), 'MMM d, yyyy')
+                                                            : `Recording ${idx + 1}`}
+                                                    </div>
+                                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                        {rec.startTime && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Clock className="size-3" />
+                                                                {format(new Date(rec.startTime), 'p')}
+                                                            </span>
+                                                        )}
+                                                        {rec.durationSeconds > 0 && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Timer className="size-3" />
+                                                                {formatDuration(rec.durationSeconds)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {rec.playbackUrl && (
+                                                    <a
+                                                        href={rec.playbackUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
+                                                    >
+                                                        <Play className="size-3" />
+                                                        Play
+                                                    </a>
+                                                )}
+                                                {rec.downloadUrl && (
+                                                    <a
+                                                        href={rec.downloadUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50"
+                                                    >
+                                                        <Download className="size-3" />
+                                                        Download
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </CardContent>
                             </Card>
                         )}

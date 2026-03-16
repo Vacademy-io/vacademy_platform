@@ -363,6 +363,10 @@ export default function ScheduleStep2() {
     });
 
     const accessType = watch('accessType');
+    const rawPortalUrl = instituteDetails?.learner_portal_base_url;
+    const learnerBaseUrl = rawPortalUrl
+        ? (rawPortalUrl.startsWith('http') ? rawPortalUrl : `https://${rawPortalUrl}`)
+        : BASE_URL_LEARNER_DASHBOARD;
     useEffect(() => {
         if (isEditState) {
             if (accessType === AccessType.PUBLIC) {
@@ -379,11 +383,11 @@ export default function ScheduleStep2() {
                 form.setValue('fields', fields);
                 form.setValue(
                     'joinLink',
-                    `${BASE_URL_LEARNER_DASHBOARD}/register/live-class?sessionId=${sessionId}`
+                    `${learnerBaseUrl}/register/live-class?sessionId=${sessionId}`
                 );
             } else {
                 form.setValue('fields', []);
-                form.setValue('joinLink', `${BASE_URL_LEARNER_DASHBOARD}/study-library/live-class`);
+                form.setValue('joinLink', `${learnerBaseUrl}/study-library/live-class`);
             }
             return;
         }
@@ -397,13 +401,13 @@ export default function ScheduleStep2() {
             ]);
             form.setValue(
                 'joinLink',
-                `${BASE_URL_LEARNER_DASHBOARD}/register/live-class?sessionId=${sessionId}`
+                `${learnerBaseUrl}/register/live-class?sessionId=${sessionId}`
             );
         } else {
             form.setValue('fields', []);
-            form.setValue('joinLink', `${BASE_URL_LEARNER_DASHBOARD}/study-library/live-class`);
+            form.setValue('joinLink', `${learnerBaseUrl}/study-library/live-class`);
         }
-    }, [accessType]);
+    }, [accessType, learnerBaseUrl]);
     const {
         fields: beforeLiveFields,
         append: beforeLiveAppend,

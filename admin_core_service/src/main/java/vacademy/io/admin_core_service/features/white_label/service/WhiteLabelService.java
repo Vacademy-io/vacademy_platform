@@ -176,7 +176,6 @@ public class WhiteLabelService {
 
     @Transactional(readOnly = true)
     public WhiteLabelStatusResponse getStatus(CustomUserDetails user, String instituteId) {
-        assertInstituteAccess(user, instituteId);
 
         if (!cloudflareService.isEnabled()) {
             log.info("[WhiteLabel] getStatus called but Cloudflare is not configured on this deployment");

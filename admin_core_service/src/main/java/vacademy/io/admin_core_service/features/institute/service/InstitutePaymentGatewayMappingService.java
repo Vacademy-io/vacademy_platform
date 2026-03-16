@@ -120,6 +120,17 @@ public class InstitutePaymentGatewayMappingService {
      * @param instituteId The institute ID
      * @return VendorInfo containing vendor name and mapping ID (vendorId)
      */
+    /**
+     * Get all active payment gateway vendors configured for an institute.
+     */
+    public List<VendorInfo> getAllVendorsForInstitute(String instituteId) {
+        return institutePaymentGatewayMappingRepository
+                .findAllByInstituteIdAndStatusIn(instituteId, List.of(StatusEnum.ACTIVE.name()))
+                .stream()
+                .map(mapping -> new VendorInfo(mapping.getVendor(), mapping.getVendor()))
+                .toList();
+    }
+
     public VendorInfo getLatestVendorInfoForInstitute(String instituteId) {
         return institutePaymentGatewayMappingRepository
                 .findFirstByInstituteIdAndStatusInOrderByCreatedAtDesc(instituteId, List.of(StatusEnum.ACTIVE.name()))

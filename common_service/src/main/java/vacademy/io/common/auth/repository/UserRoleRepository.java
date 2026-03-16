@@ -112,4 +112,42 @@ public interface UserRoleRepository extends CrudRepository<UserRole, String> {
                         @Param("instituteId") String instituteId,
                         @Param("roleName") String roleName);
 
+        // ==================== Super Admin Queries ====================
+
+        @Query(value = """
+                        SELECT u.id, u.full_name, u.email, u.mobile_number,
+                               STRING_AGG(DISTINCT r.role_name, ',') AS roles,
+                               ur.status, u.last_login_time, u.created_at
+                        FROM users u
+                        JOIN user_role ur ON u.id = ur.user_id
+                        JOIN roles r ON ur.role_id = r.id
+                        WHERE ur.institute_id = :instituteId
+                          AND ur.status IN ('ACTIVE','INVITED')
+                          AND (:role IS NULL OR :role = '' OR r.role_name = :role)
+                          AND (:search IS NULL OR :search = ''
+                               OR LOWER(u.full_name) LIKE LOWER(CONCAT('%', :search, '%'))
+                               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
+                        GROUP BY u.id, u.full_name, u.email, u.mobile_number, ur.status, u.last_login_time, u.created_at
+                        ORDER BY u.created_at DESC
+                        LIMIT :size OFFSET :offset
+                        """, nativeQuery = true)
+        List<Object[]> findUsersByInstitutePaginated(@Param("instituteId") String instituteId,
+                        @Param("role") String role, @Param("search") String search,
+                        @Param("size") int size, @Param("offset") int offset);
+
+        @Query(value = """
+                        SELECT COUNT(DISTINCT u.id)
+                        FROM users u
+                        JOIN user_role ur ON u.id = ur.user_id
+                        JOIN roles r ON ur.role_id = r.id
+                        WHERE ur.institute_id = :instituteId
+                          AND ur.status IN ('ACTIVE','INVITED')
+                          AND (:role IS NULL OR :role = '' OR r.role_name = :role)
+                          AND (:search IS NULL OR :search = ''
+                               OR LOWER(u.full_name) LIKE LOWER(CONCAT('%', :search, '%'))
+                               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
+                        """, nativeQuery = true)
+        Long countUsersByInstitute(@Param("instituteId") String instituteId,
+                        @Param("role") String role, @Param("search") String search);
+
 }

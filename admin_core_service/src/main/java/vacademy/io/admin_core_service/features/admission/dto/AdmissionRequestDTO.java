@@ -29,6 +29,17 @@ public class AdmissionRequestDTO {
     private String sessionId;
     private String destinationPackageSessionId;
 
+    /**
+     * If provided, reuse the existing enquiry's audience_response instead of creating fresh entries.
+     */
+    private String enquiryId;
+
+    /**
+     * If provided (applicant UUID), reuse the existing application's audience_response
+     * and applicant instead of creating fresh entries.
+     */
+    private String applicationId;
+
     // === Screen 1: Student Details ===
     private String firstName;
     private String lastName;

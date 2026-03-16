@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -23,4 +25,6 @@ public class CreateMeetingRequestDTO {
     private String sessionId;
     /** Vacademy session_schedule id — used to link the provider meeting back */
     private String scheduleId;
+    /** BBB-specific meeting config (record, muteOnStart, webcamsOnlyForModerator, guestPolicy) */
+    private Map<String, Object> bbbConfig;
 }

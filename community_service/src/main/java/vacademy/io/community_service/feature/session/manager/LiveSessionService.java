@@ -3,6 +3,7 @@ package vacademy.io.community_service.feature.session.manager;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -26,7 +27,7 @@ import vacademy.io.community_service.feature.session.util.JsonUtils;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList; // Recommended for studentEmitters
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -58,6 +59,13 @@ public class LiveSessionService {
 
     @Autowired
     DeepSeekApiService deepSeekApiService;
+
+    @Autowired
+    LiveSessionPersistenceService persistenceService;
+
+    @Autowired
+    @Qualifier("broadcastExecutor")
+    private ExecutorService broadcastExecutor;
 
     public LiveSessionService() {
         heartbeatMonitor.scheduleAtFixedRate(this::checkInactiveParticipants, 0, 15, TimeUnit.SECONDS);
@@ -146,12 +154,8 @@ public class LiveSessionService {
     public LiveSessionDto createSession(CreateSessionDto createSessionDto) {
         LiveSessionDto session = new LiveSessionDto();
         session.setSessionId(UUID.randomUUID().toString());
-        // Assuming LiveSessionDto has a field: private List<SseEmitter> studentEmitters
-        // = new CopyOnWriteArrayList<>();
-        // If studentEmitters is initialized elsewhere (e.g. getter returning new
-        // ArrayList if null), ensure it's thread-safe
-        if (session.getStudentEmitters() == null) { // Defensive, depends on LiveSessionDto impl
-            session.setStudentEmitters(new CopyOnWriteArrayList<>()); // Explicitly use CopyOnWriteArrayList
+        if (session.getStudentEmitters() == null) {
+            session.setStudentEmitters(new ConcurrentHashMap<>());
         }
         session.setCanJoinInBetween(createSessionDto.getCanJoinInBetween());
         session.setAllowLearnerHandRaise(createSessionDto.getAllowLearnerHandRaise());
@@ -170,6 +174,36 @@ public class LiveSessionService {
         session.setSlides(getLinkedPresentation(createSessionDto));
         sessions.put(session.getSessionId(), session);
         inviteCodeToSessionId.put(session.getInviteCode(), session.getSessionId());
+
+        // Async DB persist
+        int mcqSlideCount = 0;
+        if (session.getSlides() != null && session.getSlides().getAddedSlides() != null) {
+            for (var slide : session.getSlides().getAddedSlides()) {
+                if (slide.getAddedQuestion() != null) {
+                    String qt = slide.getAddedQuestion().getQuestionType();
+                    if ("MCQS".equalsIgnoreCase(qt) || "MCQM".equalsIgnoreCase(qt)) mcqSlideCount++;
+                }
+            }
+        }
+        vacademy.io.community_service.feature.session.entity.LiveSessionRecord record =
+                vacademy.io.community_service.feature.session.entity.LiveSessionRecord.builder()
+                        .id(session.getSessionId())
+                        .presentationId(createSessionDto.getSourceId())
+                        .presentationTitle(session.getSlides() != null ? session.getSlides().getTitle() : null)
+                        .inviteCode(session.getInviteCode())
+                        .status(session.getSessionStatus())
+                        .canJoinInBetween(session.getCanJoinInBetween())
+                        .showResultsAtLastSlide(session.getShowResultsAtLastSlide())
+                        .defaultSecondsForQuestion(session.getDefaultSecondsForQuestion())
+                        .studentAttempts(session.getStudentAttempts())
+                        .pointsPerCorrectAnswer(session.getPointsPerCorrectAnswer())
+                        .negativeMarkingEnabled(session.getNegativeMarkingEnabled())
+                        .negativeMarksPerWrongAnswer(session.getNegativeMarksPerWrongAnswer())
+                        .totalMcqSlides(mcqSlideCount)
+                        .createdAt(session.getCreationTime())
+                        .build();
+        persistenceService.asyncSaveSession(record);
+
         return session;
     }
 
@@ -181,52 +215,36 @@ public class LiveSessionService {
      */
     private void sendSlideToStudents(LiveSessionDto session) {
         if (!"LIVE".equals(session.getSessionStatus()) || session.getCurrentSlideIndex() == null
-                || session.getStudentEmitters() == null) {
+                || session.getStudentEmitters() == null || session.getStudentEmitters().isEmpty()) {
             return;
         }
 
-        // Iterate over student emitters. CopyOnWriteArrayList handles concurrent
-        // modification safely for iteration.
-        // If not using CopyOnWriteArrayList, new
-        // ArrayList<>(session.getStudentEmitters()) creates a snapshot.
-        for (SseEmitter emitter : session.getStudentEmitters()) {
-            try {
-                SseEmitter.SseEventBuilder event = SseEmitter.event().name("session_event_learner")
-                        .id(UUID.randomUUID().toString())
-                        .data(Map.of("type", "CURRENT_SLIDE", "currentSlideIndex", session.getCurrentSlideIndex(),
-                                "totalSlides",
-                                (session.getSlides() != null && session.getSlides().getAddedSlides() != null)
-                                        ? session.getSlides().getAddedSlides().size()
-                                        : 0,
-                                "slideStartTimestamp",
-                                session.getSlideStartTimestamp() != null ? session.getSlideStartTimestamp() : 0L,
-                                "defaultSecondsForQuestion",
-                                session.getDefaultSecondsForQuestion() != null
-                                        ? session.getDefaultSecondsForQuestion()
-                                        : 0));
-                emitter.send(event);
-            } catch (IllegalStateException e) {
-                // This often means the emitter was already completed (client disconnected,
-                // timed out, etc.)
-                System.err.println("Error sending slide to a student emitter (already completed) for session "
-                        + session.getSessionId() + ": " + e.getMessage() + ". Emitter: " + emitter.toString());
-                // The emitter's own onError, onCompletion, or onTimeout handlers (set in
-                // addStudentEmitter)
-                // are responsible for cleaning it up from the session.getStudentEmitters()
-                // list.
-            } catch (IOException e) {
-                // For other network-related send issues
-                System.err.println("IOException sending slide to a student emitter for session "
-                        + session.getSessionId() + ": " + e.getMessage() + ". Emitter: " + emitter.toString());
-                // Spring's SseEmitter usually triggers onError for IOException during send,
-                // which should then call your studentEmitterCleanup.
-            } catch (Exception e) {
-                // Catch any other unexpected exceptions during send
-                System.err.println("Unexpected error sending slide to a student emitter for session "
-                        + session.getSessionId() + ": " + e.getClass().getName() + " - " + e.getMessage()
-                        + ". Emitter: " + emitter.toString());
+        // Snapshot the current emitter map so the broadcast thread works on a stable
+        // set even if students reconnect mid-broadcast.
+        final Map<String, SseEmitter> snapshot = new HashMap<>(session.getStudentEmitters());
+        final Map<String, Object> payload = Map.of(
+                "type", "CURRENT_SLIDE",
+                "currentSlideIndex", session.getCurrentSlideIndex(),
+                "totalSlides", (session.getSlides() != null && session.getSlides().getAddedSlides() != null)
+                        ? session.getSlides().getAddedSlides().size() : 0,
+                "slideStartTimestamp", session.getSlideStartTimestamp() != null ? session.getSlideStartTimestamp() : 0L,
+                "defaultSecondsForQuestion", session.getDefaultSecondsForQuestion() != null
+                        ? session.getDefaultSecondsForQuestion() : 0);
+
+        // Dispatch to broadcastExecutor so the teacher's HTTP request thread returns
+        // immediately (critical at 1000+ students where sequential iteration ≈ 1 sec).
+        broadcastExecutor.submit(() -> {
+            for (Map.Entry<String, SseEmitter> entry : snapshot.entrySet()) {
+                try {
+                    entry.getValue().send(SseEmitter.event()
+                            .name("session_event_learner")
+                            .id(UUID.randomUUID().toString())
+                            .data(payload));
+                } catch (IllegalStateException | IOException e) {
+                    // Emitter already closed — its onCompletion/onError handler removes it from the map.
+                }
             }
-        }
+        });
     }
 
     public void addStudentEmitter(String sessionId, SseEmitter emitter, String username) {
@@ -250,12 +268,16 @@ public class LiveSessionService {
             return;
         }
 
-        // Ensure studentEmitters list is initialized (important if using
-        // CopyOnWriteArrayList directly in DTO)
         if (session.getStudentEmitters() == null) {
-            session.setStudentEmitters(new CopyOnWriteArrayList<>());
+            session.setStudentEmitters(new ConcurrentHashMap<>());
         }
-        session.getStudentEmitters().add(emitter);
+        // Atomically replace old emitter. complete() is called OUTSIDE the map lock to
+        // avoid re-entrant ConcurrentHashMap bucket locking when the onCompletion
+        // callback fires synchronously and calls map.remove().
+        SseEmitter previousEmitter = session.getStudentEmitters().put(username, emitter);
+        if (previousEmitter != null) {
+            try { previousEmitter.complete(); } catch (Exception ignored) {}
+        }
         System.out.println("Student emitter added for " + username + " in session " + sessionId + ". Total emitters: "
                 + session.getStudentEmitters().size());
 
@@ -288,13 +310,15 @@ public class LiveSessionService {
         }
 
         Runnable studentEmitterCleanup = () -> {
-            boolean removed = session.getStudentEmitters().remove(emitter);
+            // Conditional remove: only remove if this exact emitter instance is still stored
+            // (prevents removing a newer emitter placed by a reconnect).
+            boolean removed = session.getStudentEmitters().remove(username, emitter);
             if (removed) {
                 System.out.println("Student emitter for " + username + " in session " + sessionId
                         + " removed. Remaining: " + session.getStudentEmitters().size());
             } else {
                 System.out.println("Student emitter for " + username + " in session " + sessionId
-                        + " already removed or not found for cleanup.");
+                        + " already replaced or removed (reconnect scenario).");
             }
             // Participant status to INACTIVE is handled by checkInactiveParticipants if no
             // new heartbeat/connection.
@@ -384,6 +408,10 @@ public class LiveSessionService {
             System.out.println("New participant " + participantDto.getUsername() + " added to session " + sessionId);
         }
         notifyTeacherAboutParticipants(session); // Notify teacher about new/rejoining participant
+
+        // Persist participant asynchronously (upsert handles rejoin case)
+        persistenceService.asyncUpsertParticipant(session.getSessionId(), participantDto);
+
         return session;
     }
 
@@ -509,6 +537,9 @@ public class LiveSessionService {
         session.setStartTime(new Date(System.currentTimeMillis()));
         sendSlideToStudents(session); // Notify students about the first slide
         notifyTeacherAboutParticipants(session); // Update teacher
+
+        persistenceService.asyncUpdateSessionStatus(session.getSessionId(), "LIVE", session.getStartTime(), null);
+
         return session;
     }
 
@@ -555,7 +586,7 @@ public class LiveSessionService {
                 "Session has ended.");
 
         if (session.getStudentEmitters() != null) {
-            session.getStudentEmitters().forEach(emitter -> {
+            session.getStudentEmitters().values().forEach(emitter -> {
                 try {
                     emitter.send(SseEmitter.event().name("session_event_learner").id(UUID.randomUUID().toString())
                             .data(endEventData));
@@ -578,8 +609,9 @@ public class LiveSessionService {
 
         sessionParticipantHeartbeats.remove(session.getSessionId());
         System.out.println("Session " + session.getSessionId() + " finished.");
-        // Session itself is removed by cleanupExpiredSessions later or can be removed
-        // here if desired
+
+        persistenceService.asyncUpdateSessionStatus(session.getSessionId(), "FINISHED", null, session.getEndTime());
+
         return session;
     }
 
@@ -603,7 +635,7 @@ public class LiveSessionService {
                 System.out.println("Cleaning up session: " + entry.getKey()
                         + (("FINISHED".equals(session.getSessionStatus())) ? " (already finished)" : " (expired)"));
                 if (session.getStudentEmitters() != null) {
-                    session.getStudentEmitters().forEach(emitter -> {
+                    session.getStudentEmitters().values().forEach(emitter -> {
                         try {
                             emitter.complete();
                         } catch (Exception e) {
@@ -706,6 +738,20 @@ public class LiveSessionService {
         System.out.println("Response recorded for user " + responseRequest.getUsername() + " for slide " + slideId
                 + " in session " + sessionId);
         scheduleTeacherResponseUpdateNotification(sessionId, slideId);
+
+        // Evaluate correctness and persist response asynchronously
+        PresentationSlideDto currentSlide = session.getSlides().getAddedSlides().stream()
+                .filter(s -> s.getId().equals(slideId)).findFirst().orElse(null);
+        Boolean isCorrect = (currentSlide != null)
+                ? evaluateResponse(participantResponse, currentSlide.getAddedQuestion()) : null;
+        persistenceService.asyncSaveResponse(
+                sessionId, slideId,
+                responseRequest.getUsername(),
+                responseRequest.getResponseType(),
+                responseRequest.getSelectedOptionIds(),
+                responseRequest.getTextAnswer(),
+                isCorrect,
+                responseRequest.getTimeToResponseMillis());
     }
 
     public List<AdminSlideResponseViewDto> getSlideResponses(String sessionId, String slideId) {
@@ -713,7 +759,8 @@ public class LiveSessionService {
         ObjectMapper objectMapper = new ObjectMapper();
 
         if (session == null) {
-            throw new VacademyException("Session not found: " + sessionId);
+            // Session no longer in memory — fall back to DB
+            return persistenceService.getSlideResponsesFromDb(sessionId, slideId);
         }
         if (session.getSlides() == null || session.getSlides().getAddedSlides() == null) {
             throw new VacademyException("No slides found in session " + sessionId);
@@ -871,42 +918,22 @@ public class LiveSessionService {
 
     private void sendUpdateSlideAnnouncementToStudents(LiveSessionDto session) {
         if (!"LIVE".equals(session.getSessionStatus()) || session.getCurrentSlideIndex() == null
-                || session.getStudentEmitters() == null) {
+                || session.getStudentEmitters() == null || session.getStudentEmitters().isEmpty()) {
             return;
         }
 
-        // Iterate over student emitters. CopyOnWriteArrayList handles concurrent
-        // modification safely for iteration.
-        // If not using CopyOnWriteArrayList, new
-        // ArrayList<>(session.getStudentEmitters()) creates a snapshot.
-        for (SseEmitter emitter : session.getStudentEmitters()) {
-            try {
-                SseEmitter.SseEventBuilder event = SseEmitter.event().name("update_slides")
-                        .id(UUID.randomUUID().toString()).data(Map.of("lastUpdated", DateUtil.getCurrentUtcTime()));
-                emitter.send(event);
-            } catch (IllegalStateException e) {
-                // This often means the emitter was already completed (client disconnected,
-                // timed out, etc.)
-                System.err.println(
-                        "Error sending UpdateSlideAnnouncement to a student emitter (already completed) for session "
-                                + session.getSessionId() + ": " + e.getMessage() + ". Emitter: " + emitter.toString());
-                // The emitter's own onError, onCompletion, or onTimeout handlers (set in
-                // addStudentEmitter)
-                // are responsible for cleaning it up from the session.getStudentEmitters()
-                // list.
-            } catch (IOException e) {
-                // For other network-related send issues
-                System.err.println("IOException sending UpdateSlideAnnouncement to a student emitter for session "
-                        + session.getSessionId() + ": " + e.getMessage() + ". Emitter: " + emitter.toString());
-                // Spring's SseEmitter usually triggers onError for IOException during send,
-                // which should then call your studentEmitterCleanup.
-            } catch (Exception e) {
-                // Catch any other unexpected exceptions during send
-                System.err.println("Unexpected error sending UpdateSlideAnnouncement to a student emitter for session "
-                        + session.getSessionId() + ": " + e.getClass().getName() + " - " + e.getMessage()
-                        + ". Emitter: " + emitter.toString());
+        final Map<String, SseEmitter> snapshot = new HashMap<>(session.getStudentEmitters());
+        broadcastExecutor.submit(() -> {
+            for (SseEmitter emitter : snapshot.values()) {
+                try {
+                    emitter.send(SseEmitter.event().name("update_slides")
+                            .id(UUID.randomUUID().toString())
+                            .data(Map.of("lastUpdated", DateUtil.getCurrentUtcTime())));
+                } catch (IllegalStateException | IOException e) {
+                    // Emitter already closed — cleanup handler removes it from the map.
+                }
             }
-        }
+        });
     }
 
     public LiveSessionDto sendParticipantNotifications(NotifyPresentationRequestDto notifyPresentationRequestDto) {
@@ -1239,7 +1266,8 @@ public class LiveSessionService {
         ObjectMapper objectMapper = new ObjectMapper();
 
         if (session == null) {
-            throw new VacademyException("Session not found: " + sessionId);
+            // Session no longer in memory — fall back to DB
+            return persistenceService.computeLeaderboardFromDb(sessionId);
         }
 
         int pointsPerCorrect = session.getPointsPerCorrectAnswer() != null ? session.getPointsPerCorrectAnswer() : 10;
@@ -1266,20 +1294,27 @@ public class LiveSessionService {
             return Collections.emptyList();
         }
 
-        // Gather all unique participant usernames from all slides
+        // Gather all unique participant usernames from all slides.
         Set<String> allUsernames = new LinkedHashSet<>();
-        // Map: slideId -> parsed SlideResponsesLogDto
-        Map<String, SlideResponsesLogDto> slideLogsMap = new HashMap<>();
+        // Pre-build: slideId -> (username -> latest ParticipantResponseDto)
+        // Avoids the O(N×M×R) triple-nested loop (1000 users × 20 slides × 1000 responses = 20M iterations).
+        // With the map, lookup per (user, slide) is O(1), reducing total work to O(M×R + N×M).
+        Map<String, Map<String, ParticipantResponseDto>> slideToUserLatest = new HashMap<>();
 
         for (PresentationSlideDto slide : mcqSlides) {
             String responsesJson = session.getSlideStatsJson().get(slide.getId());
             if (responsesJson != null) {
                 try {
                     SlideResponsesLogDto slideLog = objectMapper.readValue(responsesJson, SlideResponsesLogDto.class);
-                    slideLogsMap.put(slide.getId(), slideLog);
+                    // Iterate once to build username→latest map (responses are in append order,
+                    // so later put() calls overwrite with the most-recent response — same
+                    // semantics as the original "keep overwriting" inner loop).
+                    Map<String, ParticipantResponseDto> latestByUser = new HashMap<>();
                     for (ParticipantResponseDto r : slideLog.getResponses()) {
                         allUsernames.add(r.getUsername());
+                        latestByUser.put(r.getUsername(), r);
                     }
+                    slideToUserLatest.put(slide.getId(), latestByUser);
                 } catch (JsonProcessingException e) {
                     System.err.println("Error parsing slide responses for leaderboard, slide " + slide.getId() + ": "
                             + e.getMessage());
@@ -1294,7 +1329,8 @@ public class LiveSessionService {
             }
         }
 
-        // For each participant, compute score and total time across all MCQ slides
+        // For each participant, compute score and total time across all MCQ slides.
+        // Each (username, slideId) lookup is now O(1) via the pre-built map.
         List<LeaderboardEntryDto> entries = new ArrayList<>();
 
         for (String username : allUsernames) {
@@ -1305,20 +1341,13 @@ public class LiveSessionService {
             int unanswered = 0;
 
             for (PresentationSlideDto slide : mcqSlides) {
-                SlideResponsesLogDto slideLog = slideLogsMap.get(slide.getId());
-                if (slideLog == null) {
+                Map<String, ParticipantResponseDto> latestByUser = slideToUserLatest.get(slide.getId());
+                if (latestByUser == null) {
                     unanswered++;
                     continue;
                 }
 
-                // Find the LAST response by this user for this slide (in case of multiple
-                // attempts)
-                ParticipantResponseDto latestResponse = null;
-                for (ParticipantResponseDto r : slideLog.getResponses()) {
-                    if (username.equals(r.getUsername())) {
-                        latestResponse = r; // keep overwriting to get the last one
-                    }
-                }
+                ParticipantResponseDto latestResponse = latestByUser.get(username); // O(1)
 
                 if (latestResponse == null) {
                     unanswered++;

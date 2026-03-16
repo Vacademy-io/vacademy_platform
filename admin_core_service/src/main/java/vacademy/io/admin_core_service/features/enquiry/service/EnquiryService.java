@@ -26,6 +26,8 @@ import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
 import vacademy.io.admin_core_service.features.enquiry.entity.LinkedUsers;
 import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
 import vacademy.io.admin_core_service.features.enquiry.repository.LinkedUsersRepository;
+import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.common.auth.dto.ParentWithChildDTO;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -70,6 +72,9 @@ public class EnquiryService {
 
     @Autowired
     private CustomFieldRepository customFieldRepository;
+
+    @Autowired
+    private TimelineEventService timelineEventService;
 
     public AdminEnquiryDetailResponseDTO getAdminEnquiryDetails(String enquiryId) {
         // Step 1: Fetch the Enquiry itself
@@ -307,7 +312,8 @@ public class EnquiryService {
      * Null fields in the request are ignored (partial update semantics).
      */
     @Transactional
-    public BulkEnquiryStatusUpdateResponseDTO bulkUpdateEnquiryStatus(BulkEnquiryStatusUpdateRequestDTO request) {
+    public BulkEnquiryStatusUpdateResponseDTO bulkUpdateEnquiryStatus(BulkEnquiryStatusUpdateRequestDTO request,
+            CustomUserDetails user) {
         // Validate input
         if (CollectionUtils.isEmpty(request.getEnquiryIds())) {
             throw new VacademyException("enquiry_ids must not be empty");
@@ -349,6 +355,36 @@ public class EnquiryService {
 
         List<Enquiry> saved = enquiryRepository.saveAll(enquiries);
         int updatedCount = saved.size();
+
+        // Record in timeline for each updated enquiry
+        String actorId = (user != null) ? user.getUserId() : null;
+        String actorName = (user != null) ? user.getUsername() : "SYSTEM";
+
+        for (Enquiry enquiry : saved) {
+            Map<String, String> metadata = new HashMap<>();
+            StringBuilder desc = new StringBuilder("Updated: ");
+
+            if (StringUtils.hasText(request.getEnquiryStatus())) {
+                metadata.put("new_enquiry_status", request.getEnquiryStatus());
+                desc.append("Enquiry Status -> ").append(request.getEnquiryStatus()).append(". ");
+            }
+            if (StringUtils.hasText(request.getConversionStatus())) {
+                metadata.put("new_conversion_status", request.getConversionStatus());
+                desc.append("Conversion Status -> ").append(request.getConversionStatus());
+            }
+
+            timelineEventService.logEvent(
+                    "ENQUIRY",
+                    enquiry.getId().toString(),
+                    "STATUS_CHANGE",
+                    (user != null) ? "ADMIN" : "SYSTEM",
+                    actorId,
+                    actorName,
+                    "Enquiry Status Updated",
+                    desc.toString(),
+                    metadata);
+        }
+
         logger.info("Bulk updated {} enquiries. Status: {}, ConversionStatus: {}",
                 updatedCount, request.getEnquiryStatus(), request.getConversionStatus());
 
@@ -363,7 +399,7 @@ public class EnquiryService {
     // ─────────────────────────────────────────────────────────
 
     @Transactional
-    public String linkCounselorToSource(LinkCounselorDTO request) {
+    public String linkCounselorToSource(LinkCounselorDTO request, CustomUserDetails user) {
         // 1. Validate Input
         if (!StringUtils.hasText(request.getCounselorId()) ||
                 !StringUtils.hasText(request.getSourceId()) ||
@@ -418,6 +454,22 @@ public class EnquiryService {
 
             enquiry.setAssignedUserId(true);
             enquiryRepository.save(enquiry);
+
+            // Log timeline event for Enquiry
+            String actorId = (user != null) ? user.getUserId() : null;
+            String actorName = (user != null) ? user.getUsername() : "SYSTEM";
+            String cName = (assignedUser != null) ? assignedUser.getFullName() : request.getCounselorId();
+
+            timelineEventService.logEvent(
+                    "ENQUIRY",
+                    request.getSourceId(),
+                    "COUNSELOR_ASSIGNED",
+                    (user != null) ? "ADMIN" : "SYSTEM",
+                    actorId,
+                    actorName,
+                    "Counselor Assigned",
+                    "Assigned counselor: " + cName,
+                    Map.of("counselor_id", request.getCounselorId(), "counselor_name", cName));
         }
 
         return "Counselor linked successfully";

@@ -59,24 +59,26 @@ TOPIC_SHOT_PROFILES = {
     },
     "history": {
         "description": "History / Social Studies / Geography",
-        "preferred_shots": ["IMAGE_HERO", "IMAGE_SPLIT", "TIMELINE"],
+        "preferred_shots": ["IMAGE_HERO", "IMAGE_SPLIT", "ANIMATED_ASSET", "TIMELINE"],
         "image_ratio": 0.6,  # ~60% image shots for historical context
         "guidance": (
             "This is a HISTORY/GEOGRAPHY topic. Prioritize:\n"
             "- IMAGE_HERO shots with period-appropriate scenes\n"
             "- IMAGE_SPLIT for artifacts, maps, historical figures\n"
+            "- ANIMATED_ASSET for floating artifacts, tools, weapons, cultural objects\n"
             "- Timeline-style SVG for chronological events\n"
             "- Use rich, cinematic image prompts with era-specific details"
         ),
     },
     "science": {
         "description": "Biology / Chemistry / Physics / Earth Science",
-        "preferred_shots": ["IMAGE_SPLIT", "SVG_DIAGRAM", "TEXT_DIAGRAM"],
+        "preferred_shots": ["IMAGE_SPLIT", "ANIMATED_ASSET", "SVG_DIAGRAM", "TEXT_DIAGRAM"],
         "image_ratio": 0.35,  # ~35% images for specimens, experiments
         "guidance": (
             "This is a SCIENCE topic. Prioritize:\n"
             "- SVG diagrams for processes (cell division, circuits, etc.)\n"
             "- IMAGE_SPLIT for real-world specimens, lab setups\n"
+            "- ANIMATED_ASSET for molecules, cells, planets, organisms floating/moving\n"
             "- Mermaid diagrams for classification trees\n"
             "- Animated SVGs to show step-by-step processes\n"
             "- Use Vivus.js to draw scientific diagrams progressively"
@@ -109,13 +111,14 @@ TOPIC_SHOT_PROFILES = {
     },
     "general": {
         "description": "General / Mixed / Default",
-        "preferred_shots": ["IMAGE_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT"],
+        "preferred_shots": ["IMAGE_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT", "ANIMATED_ASSET"],
         "image_ratio": 0.3,
         "guidance": (
             "Use a balanced mix of shot types:\n"
             "- 1 IMAGE_HERO for the hook/opener\n"
             "- TEXT_DIAGRAM shots for core explanations\n"
-            "- IMAGE_SPLIT when a visual reference helps understanding"
+            "- IMAGE_SPLIT when a visual reference helps understanding\n"
+            "- ANIMATED_ASSET for floating illustrative objects when it adds visual interest"
         ),
     },
 }
@@ -173,6 +176,12 @@ Requirements:
 
 **RECAP MARKERS**: If the video covers 3+ distinct concepts, add `"needs_recap": true` on the beat AFTER the last concept, so the system can optionally insert a visual summary.
 
+**BEAT ENRICHMENT FIELDS** (include in every beat):
+- `emotion`: The emotional tone for this section — drives animation intensity and visual mood. One of: curiosity, surprise, awe, urgency, calm, excitement.
+- `pacing`: How fast the visuals should move. "slow" for contemplative/complex concepts, "normal" for standard explanation, "fast" for rapid-fire facts or energy bursts.
+- `transition_hint`: Suggested transition INTO this beat from the previous. "cut" for sharp topic changes, "crossfade" for smooth continuation, "zoom" for diving deeper into a concept.
+- `complexity_level`: Visual density for this section. "simple" = 1-2 elements on screen, "moderate" = 3-4 elements, "dense" = rich diagram or multi-part layout.
+
 JSON shape:
 {{
   "title": "...",
@@ -187,11 +196,15 @@ JSON shape:
     {{
       "label": "Hook",
       "summary": "...",
-      "visual_type": "IMAGE_HERO or IMAGE_SPLIT or TEXT_DIAGRAM or LOWER_THIRD",
+      "visual_type": "IMAGE_HERO or IMAGE_SPLIT or TEXT_DIAGRAM or LOWER_THIRD or ANIMATED_ASSET",
       "visual_idea": "Describe a key visual metaphor for this section",
       "image_prompt_hint": "Only if visual_type uses images: cinematic photo description, 16:9, no text/faces",
       "key_terms": ["term1", "term2"],
-      "needs_recap": false
+      "needs_recap": false,
+      "emotion": "curiosity | surprise | awe | urgency | calm | excitement",
+      "pacing": "slow | normal | fast",
+      "transition_hint": "cut | crossfade | zoom",
+      "complexity_level": "simple | moderate | dense"
     }}
   ],
   "cta": "...",
@@ -226,10 +239,64 @@ JSON shape:
 - Use IMAGE_SPLIT when explaining with a visual reference alongside text
 - Use TEXT_DIAGRAM for abstract concepts, math, code, processes, comparisons
 - Use LOWER_THIRD for vocabulary definitions (pairs with another shot type)
+- Use ANIMATED_ASSET for floating illustrative objects (molecules, tools, animals) with GSAP animation
 - For **coding** topics: prefer TEXT_DIAGRAM and code blocks over images
-- For **history** topics: prefer IMAGE_HERO and IMAGE_SPLIT over diagrams
+- For **history** topics: prefer IMAGE_HERO, IMAGE_SPLIT, and ANIMATED_ASSET over diagrams
+- For **science** topics: use ANIMATED_ASSET for molecules, cells, planets alongside SVG diagrams
 - For **math** topics: prefer TEXT_DIAGRAM with KaTeX equations, almost no images
 - For **science** topics: balanced mix of IMAGE_SPLIT and SVG diagrams
+"""
+
+# ---------------------------------------------------------------------------
+# Two-pass script review prompts (used in Premium/Ultra tiers)
+# ---------------------------------------------------------------------------
+SCRIPT_REVIEW_SYSTEM_PROMPT = (
+    "You are a senior educational content reviewer and narrative coach. "
+    "You receive a draft script and beat outline for an educational video, "
+    "and return an improved version. You preserve the JSON structure exactly. "
+    "Respond with JSON only — no commentary."
+)
+
+SCRIPT_REVIEW_USER_PROMPT_TEMPLATE = """Review and improve this educational video script. The output JSON must have the EXACT same keys as the input.
+
+**Draft script and beat outline (JSON):**
+```json
+{script_json}
+```
+
+**Improvement checklist — apply ALL that are relevant:**
+
+1. **Hook strength**: Is the opening sentence genuinely attention-grabbing? If it starts with "Today we'll learn…" or similar generic phrases, rewrite it with a surprising fact, a thought-provoking question, or a vivid "imagine you are…" scenario.
+
+2. **Transitions**: Check that each beat flows naturally into the next. Add bridging phrases ("Now that we understand X, let's see how it connects to Y…") where transitions feel abrupt.
+
+3. **Analogies & examples**: For every abstract concept, ensure there is at least one concrete, age-appropriate analogy or real-world example. Replace weak analogies with more vivid, memorable ones.
+
+4. **Pacing**: Check word count against the target duration (~130 words/minute). Trim fluff or expand thin sections.
+
+5. **Emotional arc**: Verify the beat `emotion` fields create a varied arc (not all "calm" or all "excitement"). Adjust if monotone.
+
+6. **Visual variety**: Check beat `visual_type` fields — ensure at least 3 different types are used across all beats. Adjust if too repetitive.
+
+7. **Key takeaway**: Ensure the `key_takeaway` is a single, memorable sentence a student could repeat from memory.
+
+8. **Common mistake**: Ensure `common_mistake` is a genuine, specific misconception (not a vague "students might find this hard").
+
+9. **Beat enrichment**: Verify all beats have meaningful `emotion`, `pacing`, `transition_hint`, and `complexity_level` values — not just defaults.
+
+Return the improved JSON with the same structure. Only modify content — do not add or remove keys.
+"""
+
+# ---------------------------------------------------------------------------
+# Segment context addon (appended to HTML generation user prompt for Standard+ tiers)
+# ---------------------------------------------------------------------------
+SEGMENT_CONTEXT_ADDON = """
+**SEGMENT CONTINUITY CONTEXT:**
+- Segment {seg_index} of {total_segments}.
+{prev_context}
+{next_context}
+{diversity_context}
+Ensure visual continuity with adjacent segments while keeping this segment self-contained.
 """
 
 # NOTE: Style guide prompts below are NOT actively used by the pipeline.
@@ -315,6 +382,7 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "</script>\n"
     "```\n"
     "Ken Burns options: `zoom-in`, `zoom-out`, `pan-left`, `pan-right`, `pan-up`, `zoom-pan-tl`\n"
+    "Ken Burns works best on shots 8-15 seconds. Below 6s the motion feels jarring. For very dense content, use `zoom-in` (slow, focused). For establishing shots, use `pan-left`/`pan-right` (wide, immersive).\n"
     "Gradient options: `gradient-bottom` (default), `gradient-top`, `gradient-full`, `gradient-center`\n\n"
     
     "**SHOT TYPE 2: IMAGE_SPLIT** — Image on one side, text on the other.\n"
@@ -495,6 +563,83 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "```\n"
     "Add `.eq-term` class to main variables, `.eq-sep` to operators/equals signs. Each term is its own `<span>`.\n\n"
 
+    "**SHOT TYPE 8: ANIMATED_ASSET** — Cutout images with transparent backgrounds, positioned absolutely, animated with GSAP.\n"
+    "USE FOR: Illustrating concepts with floating objects — molecules, planets, animals, tools, characters, historical artifacts.\n"
+    "Objects are individual AI-generated images with backgrounds removed. They animate independently using GSAP.\n"
+    "**IMPORTANT**: Image prompts for cutout assets MUST describe a SINGLE isolated object on a solid/plain background.\n"
+    "Add `data-cutout=\"true\"` to mark images for automatic background removal.\n"
+    "```html\n"
+    "<div style='position:relative; width:1920px; height:1080px; overflow:hidden;'>\n"
+    "  <h1 id='title' style='opacity:0; position:absolute; top:80px; left:100px;\n"
+    "      font-family:Montserrat,sans-serif; font-size:64px; font-weight:800;\n"
+    "      color:var(--text-color,#fff);'>\n"
+    "    The Water Cycle\n"
+    "  </h1>\n"
+    "\n"
+    "  <img id='cloud' class='generated-image'\n"
+    "       data-img-prompt='single white fluffy cumulus cloud, centered, studio lighting, isolated on solid dark blue background, no other objects, clean edges'\n"
+    "       data-cutout='true'\n"
+    "       src='placeholder.png'\n"
+    "       style='position:absolute; top:60px; right:100px; width:350px; opacity:0;' />\n"
+    "\n"
+    "  <img id='sun' class='generated-image'\n"
+    "       data-img-prompt='bright yellow sun with gentle rays, centered, cartoon illustration style, isolated on solid dark navy background, no other objects, clean edges'\n"
+    "       data-cutout='true'\n"
+    "       src='placeholder.png'\n"
+    "       style='position:absolute; top:30px; left:200px; width:200px; opacity:0;' />\n"
+    "\n"
+    "  <img id='droplet' class='generated-image'\n"
+    "       data-img-prompt='single blue water droplet, centered, realistic 3D render, isolated on solid white background, no other objects, clean edges'\n"
+    "       data-cutout='true'\n"
+    "       src='placeholder.png'\n"
+    "       style='position:absolute; top:250px; right:220px; width:60px; opacity:0;' />\n"
+    "\n"
+    "  <p id='caption' style='opacity:0; position:absolute; bottom:100px; left:100px; right:100px;\n"
+    "     font-family:Inter,sans-serif; font-size:28px; color:var(--text-color,#fff);'>\n"
+    "    Water evaporates, forms clouds, and falls back as rain.\n"
+    "  </p>\n"
+    "</div>\n"
+    "\n"
+    "<script>\n"
+    "fadeIn('#title', 0.5, 0);\n"
+    "// Sun scales up from center\n"
+    "gsap.fromTo('#sun',\n"
+    "  {scale: 0, opacity: 0},\n"
+    "  {scale: 1, opacity: 1, duration: 1.2, delay: 0.3, ease: 'back.out(1.7)'});\n"
+    "// Cloud floats in from right\n"
+    "gsap.fromTo('#cloud',\n"
+    "  {x: 300, opacity: 0},\n"
+    "  {x: 0, opacity: 1, duration: 1.5, delay: 0.8, ease: 'power2.out'});\n"
+    "// Droplet falls from cloud\n"
+    "gsap.fromTo('#droplet',\n"
+    "  {y: -30, opacity: 0},\n"
+    "  {y: 300, opacity: 1, duration: 2, delay: 2.5, ease: 'bounce.out'});\n"
+    "fadeIn('#caption', 0.6, 3.5);\n"
+    "</script>\n"
+    "```\n"
+    "**ANIMATED_ASSET rules**:\n"
+    "- Use `position:absolute` for ALL elements so they can be placed freely\n"
+    "- Image prompts MUST describe a SINGLE object on a SOLID, HIGH-CONTRAST background for clean cutout:\n"
+    "  Good: 'single red apple, centered, isolated on solid white background, studio lighting, no shadows on background'\n"
+    "  Good: 'one blue water molecule model, clean edges, centered on solid dark gray background, product photography'\n"
+    "  Bad: 'apples on a table in a kitchen' (complex background, cutout will have rough edges)\n"
+    "  Bad: 'cloud in the sky' (sky gradient makes cutout messy — say 'isolated on solid blue background' instead)\n"
+    "- ALWAYS end cutout image prompts with: 'isolated on solid [color] background, no other objects, clean edges'\n"
+    "- Choose background color that CONTRASTS with the object (white obj → dark bg, dark obj → white bg)\n"
+    "- Always include `data-cutout=\"true\"` on images that need background removal\n"
+    "- Use standard GSAP properties: `x`, `y`, `scale`, `rotation`, `opacity`\n"
+    "- Keep animations simple and purposeful: float-in, drop, scale-up, slide, gentle rotation\n"
+    "- **Easing**: Use `power2.out` (standard reveals), `expo.out` (grand entrances), `sine.inOut` (smooth loops). "
+    "Avoid `linear` (mechanical), `elastic` (bouncy/cheap). Use `bounce.out` only for playful/young audience content.\n"
+    "- **Hold state**: After entrance animation, objects must STAY VISIBLE during narration. "
+    "Don't animate out until the shot ends. Example: cloud floats in → stays put for 8s → shot transitions.\n"
+    "- **Density**: Max 3 elements animating simultaneously. Stagger reveals 300-500ms apart. "
+    "Too many moving things at once = visual chaos, reduced learning retention.\n"
+    "- **Z-index layering**: background assets (sky, landscape) z-index:1; mid-ground (tools, objects) z-index:5; "
+    "foreground (key item being discussed) z-index:10.\n"
+    "- Animations MUST sync with narration — use word timings to trigger object reveals when narrator mentions them\n"
+    "- Great for: science (molecules, cells, planets), history (artifacts, tools), nature (animals, plants)\n\n"
+
     "**📸 IMAGE PROMPT GUIDELINES (for data-img-prompt)**:\n"
     "Write descriptive, cinematic prompts (20-50 words) for AI image generation:\n"
     "- Specify style: 'realistic photograph', 'scientific illustration', 'infographic style', 'watercolor'\n"
@@ -594,7 +739,13 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "  <path d='M10,25 L150,25 M140,15 L160,25 L140,35' stroke='#dc2626' stroke-width='3' fill='none'/>\n"
     "</svg>\n"
     "<script>animateSVG('arrow', 60);</script>\n"
-    "```\n\n"
+    "```\n"
+    "**animateSVG speed parameter** (second argument = milliseconds per path frame):\n"
+    "- 35ms: Quick connector arrows, small icons\n"
+    "- 60ms: Medium arrows, simple shapes\n"
+    "- 100ms: Detailed diagrams, equations — deliberate 'handwriting' feel\n"
+    "- 150ms+: Very complex diagrams — slow, teacher-pacing\n"
+    "Higher number = slower, more deliberate drawing.\n\n"
     
     "**🔊 HOWLER.JS - SOUND EFFECTS (OPTIONAL BUT PROFESSIONAL)**:\n"
     "```javascript\n"
@@ -724,7 +875,72 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "Text-only shots are ONLY acceptable for Key Takeaway cards and LOWER_THIRD overlays.\n"
     "This is backed by cognitive science: learners retain 2x more when information is presented in both verbal and visual channels.\n\n"
 
-    "Output JSON with 2-4 'shots' per segment. Each shot: one concept, clean visual, annotations for key terms.\n"
+    "Output JSON with 2-4 'shots' per segment. Each shot: one concept, clean visual, annotations for key terms.\n\n"
+
+    "═══════════════ FEW-SHOT EXAMPLES ═══════════════\n\n"
+    "Below are 3 examples of excellent shot output. Study the HTML structure, animation patterns, and visual design:\n\n"
+
+    "**EXAMPLE 1 — IMAGE_HERO (Full-screen image with Ken Burns + text overlay)**:\n"
+    "```json\n"
+    '{"offsetSeconds": 0, "durationSeconds": 10, "start_word": "The ancient city", '
+    '"htmlStartX": 0, "htmlStartY": 0, "width": 1920, "height": 1080, "z": 10,\n'
+    ' "html": "<div style=\\"width:1920px;height:1080px;position:relative;overflow:hidden\\">'
+    '<img class=\\"generated-image ken-burns zoom-in gradient-bottom\\" '
+    'data-img-prompt=\\"Ancient Roman city at sunset, marble columns and cobblestone streets, '
+    'golden hour light, cinematic wide angle, 16:9\\" '
+    'style=\\"width:100%;height:100%;object-fit:cover\\" />'
+    '<div style=\\"position:absolute;bottom:100px;left:100px;right:100px\\">'
+    '<h1 id=\\"title\\" style=\\"font-family:Montserrat;font-weight:900;font-size:64px;'
+    'color:#ffffff;margin:0;opacity:0\\">The Rise of Rome</h1>'
+    '<p id=\\"subtitle\\" style=\\"font-family:Inter;font-size:28px;color:rgba(255,255,255,0.9);'
+    'margin-top:16px;opacity:0\\">From Village to Empire</p></div>'
+    '<script>gsap.from(\\"#title\\",{y:60,opacity:0,duration:1.2,delay:0.5,ease:\\"expo.out\\"});'
+    'gsap.from(\\"#subtitle\\",{y:40,opacity:0,duration:1,delay:1,ease:\\"power2.out\\"});<\\/script></div>"}\n'
+    "```\n\n"
+
+    "**EXAMPLE 2 — TEXT_DIAGRAM (Mermaid flowchart with progressive reveal)**:\n"
+    "```json\n"
+    '{"offsetSeconds": 10, "durationSeconds": 12, "start_word": "The process begins", '
+    '"htmlStartX": 0, "htmlStartY": 0, "width": 1920, "height": 1080, "z": 10,\n'
+    ' "html": "<div style=\\"display:flex;align-items:center;justify-content:center;'
+    'width:1920px;height:1080px;padding:80px\\">'
+    '<div style=\\"flex:1;padding-right:60px\\">'
+    '<h2 id=\\"heading\\" style=\\"font-family:Montserrat;font-weight:700;font-size:48px;'
+    'color:var(--text-color);margin:0 0 24px 0;opacity:0\\">How Photosynthesis Works</h2>'
+    '<p id=\\"desc\\" style=\\"font-family:Inter;font-size:24px;line-height:1.6;'
+    'color:var(--text-color);opacity:0\\">Plants convert sunlight into energy through a series of chemical reactions.</p></div>'
+    '<div id=\\"diagram\\" style=\\"flex:1;opacity:0\\">'
+    '<div class=\\"mermaid\\">%%{init: {\\x27theme\\x27: \\x27default\\x27}}%%\\n'
+    'graph TD\\n  A[Sunlight] --> B[Chlorophyll]\\n  B --> C[Water Split]\\n  C --> D[Glucose + O2]</div></div>'
+    '<script>gsap.from(\\"#heading\\",{x:-40,opacity:0,duration:0.8,delay:0.3});'
+    'gsap.from(\\"#desc\\",{x:-40,opacity:0,duration:0.8,delay:0.6});'
+    'gsap.from(\\"#diagram\\",{scale:0.9,opacity:0,duration:1,delay:1});<\\/script></div>"}\n'
+    "```\n\n"
+
+    "**EXAMPLE 3 — IMAGE_SPLIT (Image left + annotated text right)**:\n"
+    "```json\n"
+    '{"offsetSeconds": 22, "durationSeconds": 10, "start_word": "The heart pumps", '
+    '"htmlStartX": 0, "htmlStartY": 0, "width": 1920, "height": 1080, "z": 10,\n'
+    ' "html": "<div style=\\"display:flex;width:1920px;height:1080px\\">'
+    '<div style=\\"flex:1;position:relative;overflow:hidden\\">'
+    '<img class=\\"generated-image ken-burns zoom-out\\" '
+    'data-img-prompt=\\"Anatomical illustration of human heart, cross-section showing chambers, '
+    'clean white background, medical textbook style, 16:9\\" '
+    'style=\\"width:100%;height:100%;object-fit:cover\\" /></div>'
+    '<div style=\\"flex:1;display:flex;flex-direction:column;justify-content:center;padding:80px\\">'
+    '<h2 id=\\"title\\" style=\\"font-family:Montserrat;font-weight:700;font-size:44px;'
+    'color:var(--text-color);margin:0 0 32px 0;opacity:0\\">The Human Heart</h2>'
+    '<ul id=\\"points\\" style=\\"list-style:none;padding:0;margin:0\\">'
+    '<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
+    'padding:12px 0;border-bottom:1px solid rgba(0,0,0,0.1);opacity:0\\">4 chambers pump blood</li>'
+    '<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
+    'padding:12px 0;border-bottom:1px solid rgba(0,0,0,0.1);opacity:0\\">100,000 beats per day</li>'
+    '<li class=\\"point\\" style=\\"font-family:Inter;font-size:22px;color:var(--text-color);'
+    'padding:12px 0;opacity:0\\">Delivers oxygen to every cell</li></ul>'
+    '<script>gsap.from(\\"#title\\",{x:40,opacity:0,duration:0.8,delay:0.5});'
+    'gsap.from(\\".point\\",{x:30,opacity:0,duration:0.6,stagger:0.3,delay:1,ease:\\"power2.out\\"});<\\/script></div></div>"}\n'
+    "```\n\n"
+    "═══════════════ END EXAMPLES ═══════════════\n"
 )
 
 HTML_GENERATION_SYSTEM_PROMPT_CLASSIC = (
@@ -822,6 +1038,7 @@ Use a **variety of shot types** for visual engagement:
 6. **DATA_STORY**: Animated D3.js bar/line chart (use only when narration mentions actual numeric data)
 7. **PROCESS_STEPS**: Numbered nodes with Vivus connector arrows revealing one-by-one (algorithms, how-to, sequences)
 8. **EQUATION_BUILD**: KaTeX terms revealing sequentially with Rough Notation annotations (math/science formulas)
+9. **ANIMATED_ASSET**: Cutout images (transparent bg) positioned absolutely + animated with GSAP (floating objects, characters, illustrative elements)
 
 **EXAMPLE 1 — IMAGE_HERO SHOT (cinematic opening)**:
 ```html
@@ -905,10 +1122,11 @@ showThenAnnotate('#text', '#key', 'underline', '{annotation_color}', 0, 0.8);  /
 - 'highlight' - Marker highlight (use yellow: #fef08a)
 - 'box' - Box around content (use: {primary_color})
 
-**AI Images** (for IMAGE_HERO and IMAGE_SPLIT shots):
+**AI Images** (for IMAGE_HERO, IMAGE_SPLIT, and ANIMATED_ASSET shots):
 - Write cinematic prompts (20-50 words): style, subject, composition, lighting
 - AVOID: text in images, logos, human faces
-- Always add `data-ken-burns` attribute for motion
+- For IMAGE_HERO/IMAGE_SPLIT: always add `data-ken-burns` attribute for motion
+- For ANIMATED_ASSET cutouts: add `data-cutout="true"`, describe a SINGLE isolated object on a solid/plain background
 
 **DO NOT**:
 - Text flying in from sides, bouncing, or spinning
@@ -958,6 +1176,18 @@ setTimeout(() => annotate('#energy-term', {{type: 'underline', color: '{annotati
 - Supporting elements: Sync to word timings using the formula: `delay_ms = (word_time - shot_start) * 1000`
 - Annotations: Trigger slightly BEFORE the word is spoken (subtract 0.3s) so they're visible when heard
 - NEVER use delays longer than (shot_end - shot_start) seconds
+
+**⏸️ STRATEGIC PAUSES (what makes professional videos feel polished)**:
+- After showing a new concept (text + diagram), wait 1-1.5s before adding annotations — this gives the viewer time to read
+- After annotation, wait 0.5s before the next transition — prevents visual rush
+- Between staggered element reveals, use 300-500ms gaps — never reveal everything at once
+- If a shot is 12+ seconds, build the visual in 2-3 phases with pauses between, not one continuous animation
+- Think like Khan Academy: show → pause → annotate → pause → next element
+
+**🎯 ANIMATION SYNC TOLERANCE**:
+- Animations should trigger within ±200ms of word timing
+- If exact sync is impossible, show elements BEFORE they're mentioned (early by 0.3s) rather than after
+- Viewers perceive "slightly early" as natural; "slightly late" feels laggy and broken
 
 {topic_guidance}
 

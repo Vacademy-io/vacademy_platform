@@ -32,6 +32,9 @@ public class Option {
     @Column(name = "media_id")
     private String mediaId;
 
+    @Column(name = "option_order")
+    private Integer optionOrder;
+
     @Column(name = "created_on", insertable = false, updatable = false)
     private Timestamp createdOn;
 

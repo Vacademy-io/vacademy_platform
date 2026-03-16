@@ -14,4 +14,5 @@ public class LearnerEnrollRequestDTO {
     private String vendorId;
     private LearnerPackageSessionsEnrollDTO learnerPackageSessionEnroll;
     private LearnerExtraDetails learnerExtraDetails;
+    private String subOrgId;
 }

@@ -2,7 +2,9 @@ package vacademy.io.admin_core_service.features.enroll_invite.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.AssignCpoToPackageSessionDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
@@ -116,5 +118,17 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
             return Collections.emptyList();
         return repository.findByEnrollInviteIdsAndStatusWithPackageSession(enrollInviteIds,
                 List.of(StatusEnum.ACTIVE.name()));
+    }
+
+    @Transactional
+    public void assignCpoToPackageSession(String enrollInviteId, AssignCpoToPackageSessionDTO request) {
+        PackageSessionLearnerInvitationToPaymentOption bridge = repository
+                .findActiveByEnrollInviteIdAndPackageSessionId(enrollInviteId, request.getPackageSessionId())
+                .orElseThrow(() -> new VacademyException(
+                        "No active mapping found for enrollInviteId=" + enrollInviteId
+                                + " and packageSessionId=" + request.getPackageSessionId()));
+
+        bridge.setCpoId(request.getCpoId());
+        repository.save(bridge);
     }
 }

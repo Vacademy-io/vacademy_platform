@@ -120,6 +120,14 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
   const isMultipleChoice = questionData.question_type?.toUpperCase() === 'MCQM';
   const canAttempt = submissionCount < studentAttemptsAllowed && !isTimerExpired;
 
+  // Sort options deterministically by option_order so admin and participants always see the same order
+  const sortedOptions = [...questionData.options].sort((a, b) => {
+    if (a.option_order == null && b.option_order == null) return 0;
+    if (a.option_order == null) return 1;
+    if (b.option_order == null) return -1;
+    return a.option_order - b.option_order;
+  });
+
   // Timer logic
   useEffect(() => {
     // Clear previous timer
@@ -281,7 +289,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
       <Card className="w-full max-w-2xl mx-auto glassmorphism-container my-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-red-900/30 to-orange-900/20 rounded-2xl pointer-events-none" />
         <CardHeader className="p-4 relative z-10">
-          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto">
+          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto [&_*]:![color:inherit] [&_*]:!bg-transparent">
              <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question")} />
           </CardTitle>
         </CardHeader>
@@ -307,7 +315,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
         <div className="absolute inset-0 bg-gradient-to-r from-yellow-900/20 to-amber-900/15 rounded-2xl pointer-events-none" />
         
         <CardHeader className="p-4 relative z-10">
-          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto">
+          <CardTitle className="text-lg font-semibold text-white max-h-[25vh] overflow-y-auto [&_*]:![color:inherit] [&_*]:!bg-transparent">
              <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question Submitted")} />
           </CardTitle>
           <CardDescription className="text-white/70">You have used all your attempts.</CardDescription>
@@ -336,7 +344,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
       
       <CardHeader className="p-4 relative z-10">
         <div className="flex items-start justify-between gap-4">
-          <CardTitle className="text-lg font-semibold text-white max-h-[30vh] overflow-y-auto flex-1">
+          <CardTitle className="text-lg font-semibold text-white max-h-[30vh] overflow-y-auto flex-1 [&_*]:![color:inherit] [&_*]:!bg-transparent">
             <span dangerouslySetInnerHTML={createMarkup(questionData.text?.content || "Question")} />
           </CardTitle>
           {/* Countdown Timer */}
@@ -352,11 +360,11 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
       </CardHeader>
       <CardContent className="space-y-3 p-4 pt-0 max-h-[45vh] overflow-y-auto relative z-10">
         {currentQuestionCategory === 'multiple_choice' ? (
-          questionData.options.length > 0 ? (
+          sortedOptions.length > 0 ? (
             isMultipleChoice ? (
               // MCQM: plain div wrapper — Checkbox handles its own state; RadioGroup is semantically wrong here
               <div className="space-y-3">
-                {questionData.options.map((option: Option) => (
+                {sortedOptions.map((option: Option) => (
                   <div
                     key={option.id}
                     className={`flex items-center space-x-3 p-3 rounded-xl border transition-all duration-300 ease-out backdrop-blur-sm
@@ -370,7 +378,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                       disabled={!canAttempt || isSubmitting}
                       className="size-4"
                     />
-                    <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
+                    <Label htmlFor={`option-${option.id}`} className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer [&_*]:![color:inherit] [&_*]:!bg-transparent`}
                       dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
                     />
                   </div>
@@ -384,7 +392,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                 disabled={!canAttempt || isSubmitting}
                 className="space-y-3"
               >
-                {questionData.options.map((option: Option) => (
+                {sortedOptions.map((option: Option) => (
                   <label
                     key={option.id}
                     htmlFor={`option-${option.id}`}
@@ -397,7 +405,7 @@ export const QuizInteraction: React.FC<QuizInteractionProps> = ({
                       id={`option-${option.id}`}
                       className="size-4 border-slate-400 data-[state=checked]:border-primary data-[state=checked]:text-primary focus:ring-primary"
                     />
-                    <span className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer`}
+                    <span className={`flex-1 text-sm font-medium ${(!canAttempt || isSubmitting) ? 'text-white/50' : 'text-white'} cursor-pointer [&_*]:![color:inherit] [&_*]:!bg-transparent`}
                       dangerouslySetInnerHTML={createMarkup(option.text.content || `Option ${option.option_order || ''}`)}
                     />
                   </label>

@@ -73,7 +73,7 @@ public class Question {
     private AssessmentRichTextData explanationTextData;
 
     @OneToMany(mappedBy = "question", fetch = FetchType.LAZY)
-    @OrderBy("createdOn ASC")
+    @OrderBy("optionOrder ASC NULLS LAST, createdOn ASC")
     private List<Option> options = new ArrayList<>();
 
     public Question(QuestionDTO questionDTO) {

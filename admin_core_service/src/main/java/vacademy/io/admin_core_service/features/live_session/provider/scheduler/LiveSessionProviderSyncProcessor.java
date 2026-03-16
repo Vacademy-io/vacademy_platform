@@ -54,6 +54,12 @@ public class LiveSessionProviderSyncProcessor {
 
     public void syncAll() {
         for (MeetingProvider provider : MeetingProvider.values()) {
+            // BBB server is started/stopped on demand — skip hourly sync.
+            // Attendance is tracked at join time; recordings are fetched via end callback.
+            if (provider == MeetingProvider.BBB_MEETING) {
+                log.debug("[Sync] Skipping BBB_MEETING — attendance tracked at join time");
+                continue;
+            }
             try {
                 syncRecordingsForProvider(provider.name());
                 syncAttendanceForProvider(provider.name());

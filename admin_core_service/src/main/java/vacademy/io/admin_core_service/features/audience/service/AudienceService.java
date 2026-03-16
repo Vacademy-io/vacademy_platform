@@ -115,6 +115,9 @@ public class AudienceService {
     @Autowired
     private UserRoleRepository userRoleRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.admission.service.AdmissionPipelineService admissionPipelineService;
+
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
 
@@ -841,6 +844,16 @@ public class AudienceService {
                 }
             }
         }
+
+        // --- NEW: Record Enquiry in Pipeline ---
+        admissionPipelineService.recordEnquiry(
+                instituteId,
+                requestDTO.getDestinationPackageSessionId(),
+                parentUserId,
+                childUserId,
+                enquiryId != null ? enquiryId.toString() : null,
+                requestDTO.getSourceType()
+        );
 
         // STEP 9: Build and return response
         return SubmitLeadWithEnquiryResponseDTO.builder()
@@ -2464,7 +2477,7 @@ public class AudienceService {
 
         // Get credentials (username and password)
         // Get credentials (username and password)
-        String username = parentUser != null ? parentUser.getEmail() : "";
+        String username = parentUser != null ? parentUser.getUsername() : "";
         String password = "";
 
         if (parentUser != null) {

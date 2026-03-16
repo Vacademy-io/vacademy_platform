@@ -48,6 +48,18 @@ public class LiveSessionStep1RequestDTO {
 
     private LearnerButtonConfigDTO learnerButtonConfig;
 
+    private BbbConfigDTO bbbConfig;
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class BbbConfigDTO {
+        private Boolean record;
+        private Boolean autoStartRecording;
+        private Boolean muteOnStart;
+        private Boolean webcamsOnlyForModerator;
+        private String guestPolicy;
+    }
+
     @Data
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class ScheduleDTO {

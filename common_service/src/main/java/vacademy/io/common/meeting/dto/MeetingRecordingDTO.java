@@ -21,4 +21,6 @@ public class MeetingRecordingDTO {
     /** ISO-8601 string */
     private String startTime;
     private String providerMeetingId;
+    /** Vacademy media service file ID (set when recording is uploaded to S3) */
+    private String fileId;
 }

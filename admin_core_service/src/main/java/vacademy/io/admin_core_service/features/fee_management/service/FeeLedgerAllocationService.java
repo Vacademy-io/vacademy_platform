@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.fee_management.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAllocationLedger;
@@ -11,9 +12,12 @@ import vacademy.io.admin_core_service.features.fee_management.repository.Student
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 
+import vacademy.io.admin_core_service.features.fee_management.enums.AllocationScope;
+
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -27,6 +31,13 @@ public class FeeLedgerAllocationService {
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    private FeeAllocationEngine feeAllocationEngine;
+
+    @Autowired
+    @Lazy
+    private SchoolFeeReceiptService schoolFeeReceiptService;
 
     @Transactional
     public void allocatePayment(String paymentLogId, BigDecimal totalPaymentAmount, String userPlanId) {
@@ -78,8 +89,11 @@ public class FeeLedgerAllocationService {
         if (remainingAmount.compareTo(BigDecimal.ZERO) > 0) {
             log.warn("Payment Log {} had excess amount {} after paying all bills for UserPlan {}", paymentLogId,
                     remainingAmount, userPlanId);
-            // Optionally: create a dummy ledger entry for "OVERPAYMENT" or hold it in user
-            // wallet.
+            final BigDecimal excessAmount = remainingAmount;
+            paymentLogRepository.findById(paymentLogId).ifPresent(pl -> {
+                pl.setUnallocatedAmount(excessAmount.doubleValue());
+                paymentLogRepository.save(pl);
+            });
         }
     }
 
@@ -180,87 +194,123 @@ public class FeeLedgerAllocationService {
         if (remainingAmount.compareTo(BigDecimal.ZERO) > 0) {
             log.warn("[NEW FLOW] Payment Log {} had excess amount {} after paying all bills for UserPlan {}",
                     paymentLogId, remainingAmount, userPlanId);
+            final BigDecimal excessAmount = remainingAmount;
+            paymentLogRepository.findById(paymentLogId).ifPresent(pl -> {
+                pl.setUnallocatedAmount(excessAmount.doubleValue());
+                paymentLogRepository.save(pl);
+            });
         }
     }
 
     /**
-     * New entry point for the user-based offline/admin API:
-     *  - Takes userId + explicit amount
-     *  - Creates a NEW PaymentLog with status PAID
-     *  - Allocates that payment across all unpaid installments for the user
+     * Backward-compatible wrapper that defaults to ALL_DUES with no institute priority.
      */
     @Transactional
     public void allocatePaymentForUser(String userId, BigDecimal amount) {
+        allocatePaymentForUser(userId, amount, null, AllocationScope.ALL_DUES);
+    }
+
+    /**
+     * Entry point for the user-based offline/admin API with priority support.
+     * <p>
+     * Multi-pass allocation strategy:
+     * <ul>
+     *   <li>OVERDUE_ONLY  → 1st pass: overdue with priority, 2nd pass: ALL_DUES (fallback) on remaining</li>
+     *   <li>UPCOMING_ONLY → 1st pass: upcoming with priority, 2nd pass: ALL_DUES (fallback) on remaining</li>
+     *   <li>ALL_DUES      → single pass: overdue-first + upcoming, using priority if configured</li>
+     * </ul>
+     * The final ALL_DUES pass ensures no money is left unallocated when there are
+     * still unpaid bills, even if the institute only configured priority for one scope.
+     *
+     * @param userId      the student whose installments are to be updated
+     * @param amount      payment amount (must be &gt; 0)
+     * @param instituteId institute whose fee-type priority config to apply (nullable → fallback)
+     * @param scope       OVERDUE_ONLY, UPCOMING_ONLY, or ALL_DUES
+     */
+    @Transactional
+    public void allocatePaymentForUser(String userId, BigDecimal amount,
+                                       String instituteId, AllocationScope scope) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Payment amount must be positive");
         }
-        // Fetch all unpaid/partial bills for this user, ordered by due date
+        if (scope == null) {
+            scope = AllocationScope.ALL_DUES;
+        }
+
         List<StudentFeePayment> unpaidBills = studentFeePaymentRepository
-                .findByUserIdAndStatusNotOrderByDueDateAsc(userId, "PAID");
+                .findByUserIdAndStatusNot(userId, "PAID");
 
         if (unpaidBills.isEmpty()) {
-            // Nothing to allocate; simply return
+            log.info("No unpaid bills found for user {}", userId);
             return;
         }
 
-        // Create a new PaymentLog representing this offline/admin payment.
-        // We intentionally do not attach a UserPlan here to keep the flow
-        // independent of the subscription layer.
+        if (instituteId == null || instituteId.isBlank()) {
+            instituteId = unpaidBills.stream()
+                    .map(StudentFeePayment::getIId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .findFirst()
+                    .orElse(null);
+        }
+
         PaymentLog paymentLog = new PaymentLog();
         paymentLog.setStatus("ACTIVE");
         paymentLog.setPaymentStatus("PAID");
         paymentLog.setUserId(userId);
-        paymentLog.setVendor("OFFLINE"); // or "CASH" based on your convention
+        paymentLog.setVendor("OFFLINE");
         paymentLog.setVendorId(null);
         paymentLog.setDate(new Date());
-        paymentLog.setCurrency("INR"); // adjust if you support multi-currency
+        paymentLog.setCurrency("INR");
         paymentLog.setUserPlan(null);
         paymentLog.setPaymentAmount(amount.doubleValue());
         paymentLog.setPaymentSpecificData(null);
-
         paymentLog = paymentLogRepository.save(paymentLog);
 
-        // Allocate this payment across unpaid installments; all ledger rows will
-        // reference ONLY this new PaymentLog's ID.
-        BigDecimal remainingAmount = amount;
+        BigDecimal remaining = amount;
 
-        for (StudentFeePayment bill : unpaidBills) {
-            if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
-                break;
-            }
-
-            BigDecimal amountToPayOnThisBill = bill.getAmountExpected().subtract(bill.getAmountPaid());
-            BigDecimal allocatedAmount;
-
-            if (remainingAmount.compareTo(amountToPayOnThisBill) >= 0) {
-                allocatedAmount = amountToPayOnThisBill;
-                bill.setAmountPaid(bill.getAmountExpected());
-                bill.setStatus("PAID");
-            } else {
-                allocatedAmount = remainingAmount;
-                bill.setAmountPaid(bill.getAmountPaid().add(allocatedAmount));
-                bill.setStatus("PARTIAL_PAID");
-            }
-
-            remainingAmount = remainingAmount.subtract(allocatedAmount);
-            studentFeePaymentRepository.save(bill);
-
-            StudentFeeAllocationLedger ledger = new StudentFeeAllocationLedger();
-            ledger.setUserId(bill.getUserId());
-            ledger.setPaymentLogId(paymentLog.getId());
-            ledger.setStudentFeePaymentId(bill.getId());
-            ledger.setAmountAllocated(allocatedAmount);
-            ledger.setAllocationType("PAYMENT");
-            ledger.setRemarks("[USER OFFLINE] Auto-allocated via FIFO");
-            studentFeeAllocationLedgerRepository.save(ledger);
-
-            log.info("[USER OFFLINE] Allocated {} to Bill {}, New Status: {}", allocatedAmount, bill.getId(),
-                    bill.getStatus());
+        // Pass 1: focused allocation (OVERDUE_ONLY or UPCOMING_ONLY)
+        if (scope == AllocationScope.OVERDUE_ONLY || scope == AllocationScope.UPCOMING_ONLY) {
+            remaining = feeAllocationEngine.allocate(
+                    unpaidBills, remaining, paymentLog.getId(), instituteId, scope);
         }
 
-        if (remainingAmount.compareTo(BigDecimal.ZERO) > 0) {
-            log.warn("[USER OFFLINE] Payment Log {} had excess amount {} after paying all bills for user {}",
-                    paymentLog.getId(), remainingAmount, userId);
+        // Pass 2 (always runs): ALL_DUES on whatever is left
+        // - If scope was ALL_DUES, this is the only pass.
+        // - If scope was OVERDUE_ONLY / UPCOMING_ONLY, this catches any leftover
+        //   amount and applies it to remaining unpaid bills (overdue-first, then upcoming).
+        // - Bills already paid in Pass 1 will have amountDue=0 and are skipped automatically.
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            remaining = feeAllocationEngine.allocate(
+                    unpaidBills, remaining, paymentLog.getId(), instituteId, AllocationScope.ALL_DUES);
+        }
+
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            log.warn("Payment Log {} had excess amount {} after allocation for user {}",
+                    paymentLog.getId(), remaining, userId);
+        }
+
+        // Generate receipt and send email using SchoolFeeReceiptService
+        BigDecimal allocatedAmount = amount.subtract(remaining);
+        if (allocatedAmount.compareTo(BigDecimal.ZERO) > 0) {
+            List<StudentFeeAllocationLedger> allocations =
+                    studentFeeAllocationLedgerRepository.findByPaymentLogId(paymentLog.getId());
+
+            if (!allocations.isEmpty()) {
+                List<String> paidInstallmentIds = allocations.stream()
+                        .map(StudentFeeAllocationLedger::getStudentFeePaymentId)
+                        .distinct()
+                        .collect(Collectors.toList());
+
+                schoolFeeReceiptService.generateAndSendReceipt(
+                        userId,
+                        paymentLog.getId(),
+                        instituteId,
+                        allocatedAmount,
+                        paymentLog.getId(),
+                        "OFFLINE",
+                        paidInstallmentIds
+                );
+            }
         }
     }
 }

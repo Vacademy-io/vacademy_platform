@@ -22,6 +22,7 @@ class TransactionType(str, Enum):
     MONTHLY_ALLOCATION = "MONTHLY_ALLOCATION"
     PURCHASE = "PURCHASE"
     PROMOTIONAL = "PROMOTIONAL"
+    ADMIN_DEDUCTION = "ADMIN_DEDUCTION"
 
 
 class AlertType(str, Enum):

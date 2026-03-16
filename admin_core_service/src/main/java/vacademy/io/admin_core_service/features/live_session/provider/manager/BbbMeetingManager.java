@@ -104,6 +104,18 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         return configRepository.save(config);
     }
 
+    @Override
+    public ParticipantJoinLinkDTO getParticipantJoinLink(String providerMeetingId, String participantName,
+            String participantEmail, String instituteId) {
+        String joinUrl = buildJoinUrlForUser(providerMeetingId, participantName, participantEmail, "VIEWER", instituteId);
+        return ParticipantJoinLinkDTO.builder()
+                .joinLink(joinUrl)
+                .participantName(participantName)
+                .participantEmail(participantEmail)
+                .providerMeetingId(providerMeetingId)
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Create meeting
     // -----------------------------------------------------------------------
@@ -414,6 +426,16 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
                     .build());
         }
         return attendees;
+    }
+
+    @Override
+    public UserScheduleAvailabilityDTO checkUserAvailability(
+            String requestedStartTimeIso, int durationMinutes, String instituteId, String vendorUserId) {
+        // BBB does not track user schedules — always available
+        return UserScheduleAvailabilityDTO.builder()
+                .available(true)
+                .conflicts(List.of())
+                .build();
     }
 
     // -----------------------------------------------------------------------

@@ -32,4 +32,16 @@ public class ProviderConnectRequestDTO {
      * Provider-specific user identifier (e.g. Zoho User ID).
      */
     private String vendorUserId;
+
+    /**
+     * OAuth redirect URI — required for Server-based Application token exchange.
+     * Leave null for Self Client flows.
+     */
+    private String redirectUri;
+
+    /**
+     * Zoho individual user ZUID for the meeting presenter/host.
+     * Required for SDK connect to schedule sessions with a specific presenter.
+     */
+    private String presenterZuid;
 }

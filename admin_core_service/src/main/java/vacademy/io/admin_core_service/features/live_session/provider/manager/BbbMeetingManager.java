@@ -168,6 +168,16 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         }
         params.put("bannerText", instituteName);
 
+        // Whitelabeling: disable default BBB presentation (removes "Welcome to BigBlueButton" slide)
+        params.put("preUploadedPresentationOverrideDefault", "true");
+
+        // Whitelabeling: set custom copyright/branding text
+        params.put("copyright", "\u00A9 " + instituteName);
+
+        // Whitelabeling: metadata for client-side branding
+        params.put("meta_bbb-origin-server-name", instituteName);
+        params.put("meta_bbb-origin", instituteName);
+
         if (request.getDurationMinutes() > 0) {
             params.put("duration", String.valueOf(request.getDurationMinutes()));
         }
@@ -250,6 +260,46 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         String apiUrl = (String) cfg.get("apiUrl");
         String secret = (String) cfg.get("secret");
         return buildJoinUrl(apiUrl, secret, meetingId, fullName, userId, role);
+    }
+
+    // -----------------------------------------------------------------------
+    // Check if meeting is running
+    // -----------------------------------------------------------------------
+
+    /**
+     * Calls BBB's isMeetingRunning API to check if the meeting is still active.
+     * Returns false if the meeting was force-ended or never started.
+     */
+    public boolean isMeetingRunning(String meetingId, String instituteId) {
+        try {
+            Map<String, Object> cfg = getConfigMap(instituteId);
+            String apiUrl = (String) cfg.get("apiUrl");
+            String secret = (String) cfg.get("secret");
+
+            Map<String, String> params = new LinkedHashMap<>();
+            params.put("meetingID", meetingId);
+
+            String queryString = buildQueryString(params);
+            String checksum = sha256("isMeetingRunning" + queryString + secret);
+            String url = apiUrl + "/isMeetingRunning?" + queryString + "&checksum=" + checksum;
+
+            String xmlResponse = webClientBuilder.build()
+                    .get().uri(URI.create(url))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            Document doc = parseXml(xmlResponse);
+            String returnCode = getXmlText(doc, "returncode");
+            if (!"SUCCESS".equals(returnCode)) {
+                return false;
+            }
+            String running = getXmlText(doc, "running");
+            return "true".equalsIgnoreCase(running);
+        } catch (Exception e) {
+            log.warn("[BBB] isMeetingRunning check failed for meetingId={}: {}", meetingId, e.getMessage());
+            return false;
+        }
     }
 
     // -----------------------------------------------------------------------

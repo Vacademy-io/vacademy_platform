@@ -205,6 +205,15 @@ public class LiveSessionProviderController {
             schedule = scheduleRepository.findById(scheduleId).orElse(schedule);
         }
 
+        // Check if the meeting is still running (prevents joining ended meetings)
+        boolean isRunning = bbbMeetingManager.isMeetingRunning(providerMeetingId, null);
+        if (!isRunning && !"MODERATOR".equalsIgnoreCase(role)) {
+            // For viewers, the meeting must be running; moderators can re-create it
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Meeting has ended",
+                    "meetingId", providerMeetingId));
+        }
+
         // Generate personalized join URL
         String fullName = user.getFullName() != null ? user.getFullName() : user.getUsername();
         String joinUrl = bbbMeetingManager.buildJoinUrlForUser(

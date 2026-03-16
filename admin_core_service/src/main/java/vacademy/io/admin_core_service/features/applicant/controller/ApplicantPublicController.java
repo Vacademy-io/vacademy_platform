@@ -47,6 +47,30 @@ public class ApplicantPublicController {
     }
 
     /**
+     * Submit application form explicitly (hardcodes workflowType to APPLICATION)
+     */
+    @PostMapping("/application")
+    public ResponseEntity<ApplyResponseDTO> submitApplicationSpecific(@RequestBody ApplyRequestDTO request) {
+        logger.info("Request to submit explicit application. InstituteId: {}, Source: {}, SourceId: {}",
+                request.getInstituteId(), request.getSource(), request.getSourceId());
+        request.setWorkflowType("APPLICATION");
+        ApplyResponseDTO response = applicantService.submitApplication(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Submit admission form explicitly (hardcodes workflowType to ADMISSION)
+     */
+    @PostMapping("/admission")
+    public ResponseEntity<ApplyResponseDTO> submitAdmissionSpecific(@RequestBody ApplyRequestDTO request) {
+        logger.info("Request to submit explicit admission. InstituteId: {}, Source: {}, SourceId: {}",
+                request.getInstituteId(), request.getSource(), request.getSourceId());
+        request.setWorkflowType("ADMISSION");
+        ApplyResponseDTO response = applicantService.submitApplication(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Initiate Payment for Applicant
      * Wrapper that calls Payment Service and updates Applicant JSON
      */

@@ -71,6 +71,15 @@ public class StudentFeePayment {
     @Column(name = "fee_type_id")
     private String feeTypeId;
 
+    /**
+     * The institute this fee payment belongs to.
+     * Nullable for backward compatibility with existing rows.
+     * Populated at enrollment time so the fee reminder workflow
+     * can resolve the correct workflow_trigger by institute_id.
+     */
+    @Column(name = "institute_id")
+    private String instituteId;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

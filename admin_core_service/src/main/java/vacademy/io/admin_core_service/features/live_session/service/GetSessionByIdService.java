@@ -147,7 +147,8 @@ public class GetSessionByIdService {
                     try {
                         Map<String, Object> bbbCfg = new com.fasterxml.jackson.databind.ObjectMapper()
                                 .readValue(liveSession.getBbbConfigJson(),
-                                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                                        });
                         dto.setBbbConfig(bbbCfg);
                     } catch (Exception e) {
                         System.err.println("Error deserializing bbbConfigJson: " + e.getMessage());
@@ -240,6 +241,7 @@ public class GetSessionByIdService {
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
                         .allowRewind(p.getAllowRewind())
                         .timezone(p.getTimezone())
+                        .providerHostUrl(p.getProviderHostUrl())
                         .providerMeetingId(p.getProviderMeetingId())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
@@ -286,6 +288,7 @@ public class GetSessionByIdService {
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
                         .allowRewind(p.getAllowRewind())
                         .timezone(p.getTimezone())
+                        .providerHostUrl(p.getProviderHostUrl())
                         .providerMeetingId(p.getProviderMeetingId())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));

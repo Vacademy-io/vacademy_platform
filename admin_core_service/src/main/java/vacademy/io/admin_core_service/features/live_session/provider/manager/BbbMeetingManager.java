@@ -366,6 +366,16 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         return attendees;
     }
 
+    @Override
+    public UserScheduleAvailabilityDTO checkUserAvailability(
+            String requestedStartTimeIso, int durationMinutes, String instituteId, String vendorUserId) {
+        // BBB does not track user schedules — always available
+        return UserScheduleAvailabilityDTO.builder()
+                .available(true)
+                .conflicts(List.of())
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------

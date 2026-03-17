@@ -93,6 +93,8 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         negativeMarking: 0,
         passPercentageEnabled: false,
         passPercentage: 50,
+        reAttemptCountEnabled: false,
+        reAttemptCount: 3,
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
 
@@ -182,6 +184,8 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 negativeMarking: negativeMarking,
                 passPercentageEnabled: passPercentage != null,
                 passPercentage: passPercentage ?? 50,
+                reAttemptCountEnabled: (qs as any).re_attempt_count != null,
+                reAttemptCount: (qs as any).re_attempt_count ?? 3,
             });
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -240,6 +244,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 marks_per_question: quizSettings.marksPerQuestion,
                 negative_marking: quizSettings.negativeMarkingEnabled ? quizSettings.negativeMarking : 0,
                 pass_percentage: quizSettings.passPercentageEnabled ? quizSettings.passPercentage : null,
+                re_attempt_count: quizSettings.reAttemptCountEnabled ? quizSettings.reAttemptCount : undefined,
                 questions: currentQuestions,
             },
         });
@@ -312,6 +317,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         marksPerQuestion: s.marksPerQuestion,
         negativeMarking: s.negativeMarkingEnabled ? s.negativeMarking : 0,
         passPercentage: s.passPercentageEnabled ? s.passPercentage : null,
+        reAttemptCount: s.reAttemptCountEnabled ? s.reAttemptCount : null,
     });
 
     const handleSaveSettings = async () => {

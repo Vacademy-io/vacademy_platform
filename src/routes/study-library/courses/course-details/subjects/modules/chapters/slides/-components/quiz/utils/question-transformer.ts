@@ -1,14 +1,11 @@
 import { BackendQuestion, TransformedQuestion } from '../types';
 
 // Helper function to parse auto_evaluation_json
-export const parseValidAnswers = (question: BackendQuestion): number[] => {
+// Returns an array that may contain numeric indices OR string option IDs (UUIDs).
+export const parseValidAnswers = (question: BackendQuestion): (number | string)[] => {
     try {
         if (question.auto_evaluation_json) {
             const evaluationData = JSON.parse(question.auto_evaluation_json);
-            console.log('[QuestionTransformer] Parsed auto_evaluation_json:', {
-                evaluationData,
-                correctAnswers: evaluationData.correctAnswers,
-            });
             return evaluationData.correctAnswers || [];
         }
     } catch (error) {
@@ -29,16 +26,23 @@ export const getQuestionText = (question: BackendQuestion): string => {
 };
 
 // Helper function to transform options
+// validAnswers may contain numeric indices (legacy) OR string option IDs (new UUID format).
 export const transformOptions = (
     options: BackendQuestion['options'],
-    validAnswers: number[]
+    validAnswers: (number | string)[]
 ): Array<{ id: string; name: string; isSelected: boolean }> => {
     if (!options || options.length === 0) return [];
+
+    // Detect format: if the first entry is a string, match by option ID; otherwise by index.
+    const matchById = validAnswers.length > 0 && typeof validAnswers[0] === 'string';
+    const answerStrings = validAnswers.map(String);
 
     return options.map((opt, idx: number) => ({
         id: opt.id || `opt-${idx}`,
         name: opt.text?.content || opt.content || '',
-        isSelected: validAnswers.includes(idx),
+        isSelected: matchById
+            ? answerStrings.includes(String(opt.id))
+            : validAnswers.includes(idx),
     }));
 };
 
@@ -79,7 +83,7 @@ const createBaseTransformedQuestion = (
     question: BackendQuestion | any,
     questionText: string,
     questionType: string,
-    validAnswers: number[]
+    validAnswers: (number | string)[]
 ): TransformedQuestion => {
     // Prefer explanation_text_data, then explanation_text, then explanation
     const explanation =
@@ -161,7 +165,7 @@ const handleSubjectiveQuestion = (
     transformed: TransformedQuestion,
     question: BackendQuestion | any,
     questionType: string,
-    validAnswers: number[],
+    validAnswers: (number | string)[],
     subjectiveAnswerText: string
 ): void => {
     console.log('[QuestionTransformer] Processing subjective question:', {
@@ -193,7 +197,7 @@ const handleSubjectiveQuestion = (
 };
 
 // Helper function to handle numeric questions
-const handleNumericQuestion = (transformed: TransformedQuestion, validAnswers: number[]): void => {
+const handleNumericQuestion = (transformed: TransformedQuestion, validAnswers: (number | string)[]): void => {
     transformed.subjectiveAnswerText = validAnswers.join(', ');
 };
 
@@ -202,7 +206,7 @@ const handleQuestionOptions = (
     transformed: TransformedQuestion,
     question: BackendQuestion | any,
     questionType: string,
-    validAnswers: number[]
+    validAnswers: (number | string)[]
 ): void => {
     console.log('[QuestionTransformer] handleQuestionOptions called:', {
         questionType,

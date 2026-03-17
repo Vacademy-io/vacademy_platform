@@ -9,6 +9,8 @@ export interface QuizSettings {
     negativeMarking: number;
     passPercentageEnabled: boolean;
     passPercentage: number;
+    reAttemptCountEnabled: boolean;
+    reAttemptCount: number;
 }
 
 interface QuizSettingsPanelProps {
@@ -121,6 +123,33 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
                         />
                         <span className="text-neutral-500">%</span>
                     </div>
+                )}
+            </div>
+
+            <div className="h-4 w-px bg-neutral-300" />
+
+            {/* Re-attempt Count */}
+            <div className="flex items-center gap-2">
+                <input
+                    type="checkbox"
+                    id="qs-reattempt"
+                    className="accent-primary-500"
+                    checked={settings.reAttemptCountEnabled}
+                    onChange={(e) => update({ reAttemptCountEnabled: e.target.checked })}
+                />
+                <label htmlFor="qs-reattempt" className="font-medium text-neutral-700 select-none cursor-pointer">
+                    Attempts
+                </label>
+                {settings.reAttemptCountEnabled && (
+                    <MyInput
+                        inputType="number"
+                        input={String(settings.reAttemptCount)}
+                        onChangeFunction={(e) =>
+                            update({ reAttemptCount: Math.max(1, parseInt(e.target.value) || 1) })
+                        }
+                        className="!w-16 text-center"
+                        inputPlaceholder="3"
+                    />
                 )}
             </div>
 

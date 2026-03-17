@@ -333,7 +333,7 @@ export const uploadQuestionPaperFormSchema = (examType?: string) => {
                 parentRichTextContent: z.union([z.string(), z.null()]).optional(),
                 decimals: z.number().optional(),
                 numericType: z.string().optional(),
-                validAnswers: z.union([z.array(z.number()), z.null()]).optional(),
+                validAnswers: z.union([z.array(z.union([z.number(), z.string()])), z.null()]).optional(),
                 questionResponseType: z.union([z.string(), z.null()]).optional(),
                 subjectiveAnswerText: z.string().optional(),
                 questionPoints: z.string().optional(),

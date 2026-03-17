@@ -231,7 +231,10 @@ const createQuestionStructure = (
         quiz_slide_id: '', // This will be set by the caller
         can_skip: question.canSkip || (question as any).can_skip || false,
         new_question: true, // Added for backend compatibility
-        marks: question.marks != null ? question.marks : (question.questionMark ? parseFloat(question.questionMark) : null),
+        // Always null — the quiz-level marks_per_question is the single source of truth.
+        // There is no per-question marks editor in the UI, so sending null ensures the
+        // backend uses the quiz-level default consistently.
+        marks: null,
         // Handle both camelCase (form-format) and snake_case (backend-format) negative_marking
         negative_marking: (question.negativeMarking ?? (question as any).negative_marking) != null
             ? (question.negativeMarking ?? (question as any).negative_marking)
@@ -282,6 +285,7 @@ export interface QuizSettings {
     marksPerQuestion?: number;
     negativeMarking?: number;
     passPercentage?: number | null;
+    reAttemptCount?: number | null;
 }
 
 // Helper function to create quiz slide payload for API
@@ -347,6 +351,10 @@ export const createQuizSlidePayload = (
                 settings?.passPercentage !== undefined
                     ? settings.passPercentage
                     : ((activeItem.quiz_slide as any)?.pass_percentage ?? null),
+            re_attempt_count:
+                settings?.reAttemptCount !== undefined
+                    ? settings.reAttemptCount
+                    : ((activeItem.quiz_slide as any)?.re_attempt_count ?? null),
             questions: transformedQuestions,
         },
         is_loaded: true,

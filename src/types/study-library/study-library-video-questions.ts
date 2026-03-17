@@ -30,7 +30,7 @@ export interface StudyLibraryQuestion {
     csingleChoiceOptions?: MySingleChoiceOption[]; // Array of single choice options
     cmultipleChoiceOptions?: MyMultipleChoiceOption[]; // Array of multiple choice options
     trueFalseOptions?: MyMultipleChoiceOption[]; // Array of multiple choice options
-    validAnswers?: number[] | null;
+    validAnswers?: (number | string)[] | null;
     decimals?: number;
     numericType?: string;
     parentRichTextContent?: string | null;

@@ -111,7 +111,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
         );
     };
 
-    const renderNumericAnswer = (validAnswers: number[]) => {
+    const renderNumericAnswer = (validAnswers: (number | string)[]) => {
         return (
             <div className="mt-3 space-y-2">
                 <div className="text-xs font-medium text-slate-600">Correct Answer(s):</div>
@@ -129,7 +129,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
         );
     };
 
-    const renderCorrectAnswerIndex = (validAnswers: number[], questionType: string) => {
+    const renderCorrectAnswerIndex = (validAnswers: (number | string)[], questionType: string) => {
         if (!validAnswers || validAnswers.length === 0) return null;
 
         return (
@@ -141,7 +141,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
                             key={index}
                             className="rounded-md border border-green-200 bg-green-50 px-3 py-1 text-xs font-medium text-green-700"
                         >
-                            Option {String.fromCharCode(65 + answerIndex)} (Index: {answerIndex})
+                            {typeof answerIndex === 'number' ? `Option ${String.fromCharCode(65 + answerIndex)} (Index: ${answerIndex})` : `Option ID: ${answerIndex}`}
                         </div>
                     ))}
                 </div>

@@ -41,7 +41,7 @@ export interface TransformedQuestion {
     questionMark: string;
     id: string;
     status?: string;
-    validAnswers?: number[] | null;
+    validAnswers?: (number | string)[] | null;
     explanation?: string;
     canSkip?: boolean;
     tags?: string[];

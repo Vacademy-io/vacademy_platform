@@ -649,8 +649,9 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   };
 
   const handleNext = async () => {
-    // Enforce correctness if required
-    if (moveOnlyOnCorrectAnswer && !isCurrentAnswerCorrect) {
+    // When showReportAndCorrectAnswers is on, don't block on wrong answers —
+    // correct answers will be shown in the final report after the quiz.
+    if (!showReportAndCorrectAnswers && moveOnlyOnCorrectAnswer && !isCurrentAnswerCorrect) {
       setShowIncorrectNotice(true);
       toast.error("Incorrect answer. Please try again.");
       return;

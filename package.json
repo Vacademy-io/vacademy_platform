@@ -258,6 +258,7 @@
         "rehype-raw": "^7.0.0",
         "remark-breaks": "^4.0.0",
         "remark-gfm": "^4.0.1",
+        "remark-math": "^6.0.0",
         "reveal.js": "^5.2.1",
         "roughjs": "4.6.4",
         "sass": "1.51.0",

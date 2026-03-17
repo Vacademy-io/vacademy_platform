@@ -156,13 +156,14 @@ export const assessmentStatusStudentAttemptedColumnsInternal: ColumnDef<StudentT
         accessorKey: 'evaluation_status',
         header: 'Evaluation Status',
         cell: ({ row }) => {
-            const status = row.original.status || 'evaluated';
-            const statusMapping: Record<string, ActivityStatus> = {
-                EVALUATED: 'evaluated',
-                PENDING: 'pending',
+            const status = row.original.evaluation_status || 'PENDING';
+            // API returns: "COMPLETED" | "EVALUATING" | "PENDING"
+            const statusMapping: Record<string, string> = {
+                COMPLETED: 'evaluated',
                 EVALUATING: 'evaluating',
+                PENDING: 'pending',
             };
-            const mappedStatus = statusMapping[status] || 'evaluating';
+            const mappedStatus = statusMapping[status] || 'pending';
             return <StatusChips status={mappedStatus} />;
         },
     },
@@ -171,22 +172,13 @@ export const assessmentStatusStudentAttemptedColumnsInternal: ColumnDef<StudentT
         header: 'Result Status',
         cell: ({ row }) => {
             const status = row.original.result_status;
-
-            if (status === 'Released') {
-                return (
-                    <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
-                        Released
-                    </span>
-                );
-            } else if (status === 'Pending') {
-                return (
-                    <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
-                        Pending
-                    </span>
-                );
-            } else {
-                return <span className="text-gray-400">N/A</span>;
-            }
+            // API returns: "PENDING" | "RELEASED"
+            const statusMapping: Record<string, string> = {
+                RELEASED: 'released',
+                PENDING: 'pending',
+            };
+            const mappedStatus = statusMapping[status] || 'pending';
+            return <StatusChips status={mappedStatus} />;
         },
     },
 
@@ -393,13 +385,13 @@ export const assessmentStatusStudentAttemptedColumnsExternal: ColumnDef<StudentT
         cell: ({ row }) => {
             const status = row.original.result_status;
 
-            if (status === 'Released') {
+            if (status === 'RELEASED') {
                 return (
                     <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
                         Released
                     </span>
                 );
-            } else if (status === 'Pending') {
+            } else if (status === 'PENDING') {
                 return (
                     <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
                         Pending

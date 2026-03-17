@@ -25,6 +25,7 @@ export interface SubmissionStudentData {
     // ✅ Add these two fields from the response
     report_release_result_status: string | null;
     last_report_release_date: string | null;
+    evaluation_status?: string | null;
 }
 
 export interface StudentDetailsAttemptedOpen {
@@ -154,5 +155,6 @@ export interface AssessmentRevaluateStudentInterface {
     start_time: string;
     end_time: string;
     duration: string;
+    evaluation_status: string;
     score: string; // Consider using a more structured type like `{ obtained: number; total: number }` if needed
 }

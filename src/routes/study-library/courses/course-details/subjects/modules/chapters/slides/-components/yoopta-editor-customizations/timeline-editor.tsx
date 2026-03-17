@@ -62,7 +62,9 @@ export function TimelineBlock({ element, attributes, children, blockId }: Plugin
         if (newIndex < 0 || newIndex >= steps.length) return;
         setSteps((prev) => {
             const copy = [...prev];
-            [copy[newIndex]!, copy[index]!] = [copy[index]!, copy[newIndex]!];
+            const temp = copy[newIndex]!;
+            copy[newIndex] = copy[index]!;
+            copy[index] = temp;
             return copy;
         });
     };

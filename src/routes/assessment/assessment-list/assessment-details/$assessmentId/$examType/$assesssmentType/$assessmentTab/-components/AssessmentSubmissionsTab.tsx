@@ -120,6 +120,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
             selectedFilter: SelectedSubmissionsFilterInterface;
         }) => getAdminParticipants(assessmentId, instituteId, pageNo, pageSize, selectedFilter),
         onSuccess: (data) => {
+            console.log('submissions data', data);
             setParticipantsData(data);
         },
         onError: (error: unknown) => {
@@ -790,7 +791,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             attempt_type: ['Pending'],
                         }),
                     ]);
-
+                    console.log('participants data', attemptedData);
                     setParticipantsData(attemptedData);
                     setAttemptedCount(attemptedData.content.length);
                     setOngoingCount(ongoingData.content.length);

@@ -44,8 +44,9 @@ public class CustomUserDetails extends User implements UserDetails {
         if (user == null || instituteId == null) {
             throw new IllegalArgumentException("User or Institute cannot be null");
         }
-        // Set the username from the provided User object
+        // Set the username and full name from the provided User object
         this.setUsername(user.getUsername());
+        this.setFullName(user.getFullName());
 
         // Set the password securely from the User object
         this.password = user.getPassword();

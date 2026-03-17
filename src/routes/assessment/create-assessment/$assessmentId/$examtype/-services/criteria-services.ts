@@ -2,7 +2,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 
 // API Endpoints
-const CRITERIA_BASE_URL = `${'http://localhost:8074'}/assessment-service/assessment/evaluation-criteria`;
+const CRITERIA_BASE_URL = `${BASE_URL}/assessment-service/assessment/evaluation-criteria`;
 const GENERATE_AI_CRITERIA_URL = `${CRITERIA_BASE_URL}/generate-ai`;
 const LIST_TEMPLATES_URL = `${CRITERIA_BASE_URL}/templates`;
 const CREATE_TEMPLATE_URL = `${CRITERIA_BASE_URL}/template`;

@@ -44,6 +44,7 @@ public class LiveSessionProviderController {
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository liveSessionRepository;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final vacademy.io.common.media.service.FileService fileService;
+    private final vacademy.io.common.auth.repository.UserRepository userRepository;
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -290,8 +291,21 @@ public class LiveSessionProviderController {
                     "meetingId", providerMeetingId));
         }
 
-        // Generate personalized join URL
-        String fullName = user.getFullName() != null ? user.getFullName() : user.getUsername();
+        // Generate personalized join URL — resolve real name from DB if JWT doesn't have it
+        String fullName = user.getFullName();
+        if (fullName == null || fullName.isBlank()) {
+            try {
+                var dbUser = userRepository.findById(user.getUserId());
+                if (dbUser.isPresent() && dbUser.get().getFullName() != null && !dbUser.get().getFullName().isBlank()) {
+                    fullName = dbUser.get().getFullName();
+                }
+            } catch (Exception e) {
+                log.warn("[BBB] Failed to fetch user full name from DB: {}", e.getMessage());
+            }
+        }
+        if (fullName == null || fullName.isBlank()) {
+            fullName = user.getUsername();
+        }
         String joinUrl = bbbMeetingManager.buildJoinUrlForUser(
                 providerMeetingId, fullName, user.getUserId(), role, instituteId);
 

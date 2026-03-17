@@ -129,7 +129,7 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         String meetingId = UUID.randomUUID().toString();
 
         // Fetch institute branding
-        String instituteName = "Vacademy";
+        String instituteName = "Live Class";
         String themeColor = null;
         String logoUrl = null;
         String learnerBaseUrl = null;
@@ -304,13 +304,47 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
     /**
      * Build a personalized join URL using stored config.
      * Public method used by the controller for per-user join URLs.
+     * Includes per-institute branding via userdata parameters.
      */
     public String buildJoinUrlForUser(String meetingId, String fullName,
                                       String userId, String role, String instituteId) {
         Map<String, Object> cfg = getConfigMap(instituteId);
         String apiUrl = (String) cfg.get("apiUrl");
         String secret = (String) cfg.get("secret");
-        return buildJoinUrl(apiUrl, secret, meetingId, fullName, userId, role);
+
+        // Build base join params
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("meetingID", meetingId);
+        params.put("fullName", fullName);
+        params.put("userID", userId);
+        params.put("role", role);
+        params.put("redirect", "true");
+
+        // Per-institute theming via userdata params
+        if (instituteId != null) {
+            try {
+                Institute institute = instituteRepository.findById(instituteId).orElse(null);
+                if (institute != null && institute.getInstituteThemeCode() != null
+                        && !institute.getInstituteThemeCode().isBlank()) {
+                    String color = institute.getInstituteThemeCode();
+                    // Inject institute theme color as CSS custom properties.
+                    // BBB 3.0 uses --color-primary as the main accent (palette.js).
+                    // We also override button states for a complete theme.
+                    String css = ":root{"
+                            + "--color-primary:" + color + ";"
+                            + "--color-link:" + color + ";"
+                            + "--btn-primary-bg:" + color + ";"
+                            + "}";
+                    params.put("userdata-bbb_custom_style", css);
+                }
+            } catch (Exception e) {
+                log.warn("[BBB] Failed to fetch institute theme for join URL: {}", e.getMessage());
+            }
+        }
+
+        String queryString = buildQueryString(params);
+        String checksum = sha256("join" + queryString + secret);
+        return apiUrl + "/join?" + queryString + "&checksum=" + checksum;
     }
 
     // -----------------------------------------------------------------------
@@ -397,12 +431,19 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             long endTimeMs = Long.parseLong(getChildText(rec, "endTime", "0"));
             long durationSecs = (endTimeMs - startTimeMs) / 1000;
 
-            // Get playback URL
-            String playbackUrl = "";
-            NodeList formats = rec.getElementsByTagName("format");
-            if (formats.getLength() > 0) {
-                Element format = (Element) formats.item(0);
-                playbackUrl = getChildText(format, "url", "");
+            // Get playback URL — BBB 3.0 structure: <playback><format><url>...</url></format></playback>
+            String playbackUrl = null;
+            NodeList playbackNodes = rec.getElementsByTagName("playback");
+            if (playbackNodes.getLength() > 0) {
+                Element playback = (Element) playbackNodes.item(0);
+                NodeList formats = playback.getElementsByTagName("format");
+                if (formats.getLength() > 0) {
+                    Element format = (Element) formats.item(0);
+                    String url = getChildText(format, "url", "");
+                    if (!url.isEmpty()) {
+                        playbackUrl = url;
+                    }
+                }
             }
 
             recordings.add(MeetingRecordingDTO.builder()

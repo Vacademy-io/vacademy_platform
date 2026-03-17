@@ -403,7 +403,11 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                 WHERE ss.provider_meeting_id IS NOT NULL
                   AND (ls.link_type = :provider OR ls.link_type = :providerAlt)
                   AND ss.status != 'DELETED'
-                  AND (ss.last_recording_sync_at IS NULL OR ss.last_recording_sync_at < :before)
+                  AND (
+                      ss.last_recording_sync_at IS NULL
+                      OR ss.last_recording_sync_at < :before
+                      OR (ss.provider_recordings_json IS NOT NULL AND ss.provider_recordings_json LIKE '%"playbackUrl":null%')
+                  )
                   AND (
                       ss.meeting_date < CURRENT_DATE
                       OR (ss.meeting_date = CURRENT_DATE AND ss.last_entry_time < CURRENT_TIME)

@@ -225,11 +225,11 @@ public class LiveSessionProviderController {
                 .orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Schedule not found: " + scheduleId));
 
         String providerMeetingId = schedule.getProviderMeetingId();
+        String instituteId = null;
 
         // Auto-create BBB meeting if it doesn't exist yet
         if (providerMeetingId == null || providerMeetingId.isBlank()) {
-            String sessionTitle = "Vacademy Live Class";
-            String instituteId = null;
+            String sessionTitle = "Live Class";
             java.util.Map<String, Object> bbbConfig = null;
 
             // Load session-level data (title, instituteId, BBB config)
@@ -251,7 +251,7 @@ public class LiveSessionProviderController {
                     }
                 }
             }
-            if ("Vacademy Live Class".equals(sessionTitle)
+            if ("Live Class".equals(sessionTitle)
                     && schedule.getDefaultClassName() != null && !schedule.getDefaultClassName().isBlank()) {
                 sessionTitle = schedule.getDefaultClassName();
             }
@@ -271,6 +271,14 @@ public class LiveSessionProviderController {
 
             // Re-fetch schedule to get updated fields
             schedule = scheduleRepository.findById(scheduleId).orElse(schedule);
+        } else {
+            // Meeting already exists — still need instituteId for per-institute join branding
+            if (schedule.getSessionId() != null) {
+                var sessionOpt = liveSessionRepository.findById(schedule.getSessionId());
+                if (sessionOpt.isPresent()) {
+                    instituteId = sessionOpt.get().getInstituteId();
+                }
+            }
         }
 
         // Check if the meeting is still running (prevents joining ended meetings)
@@ -285,7 +293,7 @@ public class LiveSessionProviderController {
         // Generate personalized join URL
         String fullName = user.getFullName() != null ? user.getFullName() : user.getUsername();
         String joinUrl = bbbMeetingManager.buildJoinUrlForUser(
-                providerMeetingId, fullName, user.getUserId(), role, null);
+                providerMeetingId, fullName, user.getUserId(), role, instituteId);
 
         // Mark attendance with join timestamp
         markBbbAttendance(schedule.getSessionId(), scheduleId, user.getUserId(), fullName, role);

@@ -1,0 +1,1 @@
+ALTER TABLE quiz_slide ADD COLUMN IF NOT EXISTS re_attempt_count INTEGER DEFAULT NULL;

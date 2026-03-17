@@ -541,6 +541,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     'time_limit_in_minutes', qs.time_limit_in_minutes,
                                     'marks_per_question', qs.marks_per_question,
                                     'negative_marking', qs.negative_marking,
+                                    'pass_percentage', qs.pass_percentage,
+                                    're_attempt_count', qs.re_attempt_count,
                                     'questions', COALESCE((
                                         SELECT json_agg(
                                             json_build_object(
@@ -1003,6 +1005,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             'time_limit_in_minutes', qs.time_limit_in_minutes,
                             'marks_per_question', qs.marks_per_question,
                             'negative_marking', qs.negative_marking,
+                            'pass_percentage', qs.pass_percentage,
+                            're_attempt_count', qs.re_attempt_count,
                             'questions', COALESCE((
                                                 SELECT json_agg(
                                                     json_build_object(
@@ -1683,6 +1687,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'time_limit_in_minutes', qs.time_limit_in_minutes,
                                 'marks_per_question', qs.marks_per_question,
                                 'negative_marking', qs.negative_marking,
+                                'pass_percentage', qs.pass_percentage,
+                                're_attempt_count', qs.re_attempt_count,
                                 'questions', COALESCE((
                                     SELECT json_agg(
                                         json_build_object(

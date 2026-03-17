@@ -98,6 +98,7 @@ public class QuizSlideService {
         quizSlide.setMarksPerQuestion(dto.getMarksPerQuestion() != null ? dto.getMarksPerQuestion() : 1.0);
         quizSlide.setNegativeMarking(dto.getNegativeMarking() != null ? dto.getNegativeMarking() : 0.0);
         quizSlide.setPassPercentage(dto.getPassPercentage());
+        quizSlide.setReAttemptCount(dto.getReAttemptCount());
         addOrUpdateQuestionsInBulk(quizSlide, dto.getQuestions());
     }
 
@@ -279,6 +280,7 @@ public class QuizSlideService {
         newQuizSlide.setMarksPerQuestion(originalQuizSlide.getMarksPerQuestion() != null ? originalQuizSlide.getMarksPerQuestion() : 1.0);
         newQuizSlide.setNegativeMarking(originalQuizSlide.getNegativeMarking() != null ? originalQuizSlide.getNegativeMarking() : 0.0);
         newQuizSlide.setPassPercentage(originalQuizSlide.getPassPercentage());
+        newQuizSlide.setReAttemptCount(originalQuizSlide.getReAttemptCount());
 
         // Copy description RichTextData if it exists
         if (originalQuizSlide.getDescriptionRichText() != null) {

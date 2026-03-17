@@ -88,8 +88,8 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                             .time,
                         duration: (student.duration / 60).toFixed(2) + ' min',
                         score: `${student.score ? student.score.toFixed(2) : 0} / ${totalMarks}`,
-                        result_status:
-                            student.report_release_result_status !== null ? 'Released' : 'Pending',
+                        evaluation_status: student.evaluation_status,
+                        result_status: student.report_release_result_status,
                     };
                 } else if (selectedTab === 'Ongoing') {
                     return {
@@ -133,8 +133,8 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                             .time,
                         duration: (student.duration / 60).toFixed(2) + ' min',
                         score: `${student.score ? student.score.toFixed(2) : 0} / ${totalMarks}`,
-                        result_status:
-                            student.report_release_result_status !== null ? 'Released' : 'Pending',
+                        evaluation_status: student.evaluation_status,
+                        result_status: student.report_release_result_status,
                     };
                 } else if (selectedTab === 'Ongoing') {
                     return {

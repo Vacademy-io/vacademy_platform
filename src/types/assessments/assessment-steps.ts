@@ -40,6 +40,8 @@ export interface QuestionData {
     question_duration: number;
     question_order: number;
     marking_json: string; // Serialized JSON string
+    evaluation_criteria_json: string | null;
+    criteria_template_id: string | null;
     question_type: string;
 }
 

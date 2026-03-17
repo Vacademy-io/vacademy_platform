@@ -1,5 +1,5 @@
 import { AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import React, { MutableRefObject, useEffect, useState } from 'react';
+import React, { MutableRefObject, useEffect, useState, useRef } from 'react';
 import { useFieldArray, UseFormReturn } from 'react-hook-form';
 import { PencilSimpleLine, TrashSimple, X, Check } from '@phosphor-icons/react';
 import {
@@ -11,7 +11,14 @@ import {
 import useDialogStore from '@/routes/assessment/question-papers/-global-states/question-paper-dialogue-close';
 import { MyButton } from '@/components/design-system/button';
 import { QuestionPaperUpload } from '@/routes/assessment/question-papers/-components/QuestionPaperUpload';
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import { QuestionPapersTabs } from '@/routes/assessment/question-papers/-components/QuestionPapersTabs';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
@@ -38,6 +45,20 @@ import { Route } from '../..';
 import { useQuestionsForSection } from '../../-hooks/getQuestionsDataForSection';
 import { calculateAveragePenalty } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-utils/helper';
 import Step2GenerateQuestionsFromAI from './-components/Step2GenerateQuestionsFromAI';
+import { CriteriaStatusBadge } from './-components/CriteriaStatusBadge';
+import { CriteriaPreviewDialog } from './-components/CriteriaPreviewDialog';
+import { AddEditCriteriaDialog } from './-components/AddEditCriteriaDialog';
+import {
+    CriteriaJson,
+    CriteriaSource,
+    parseCriteria,
+    generateAICriteria,
+    stringifyCriteria,
+} from '../../-services/criteria-services';
+import { MainViewQuillEditor } from '@/components/quill/MainViewQuillEditor';
+import TipTapEditor from '@/components/tiptap/TipTapEditor';
+import { Sparkle, Spinner } from 'phosphor-react';
+import { toast } from 'sonner';
 
 type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 
@@ -58,6 +79,15 @@ export const Step2SectionInfo = ({
     const [originalSectionName, setOriginalSectionName] = useState<string>('');
     const sectionNameInputRef = React.useRef<HTMLInputElement>(null);
 
+    // Criteria management state
+    const [criteriaDialogOpen, setCriteriaDialogOpen] = useState(false);
+    const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+    const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(null);
+    const [criteriaPreview, setCriteriaPreview] = useState<CriteriaJson | null>(null);
+
+    // Bulk AI generation state
+    const [bulkGenerating, setBulkGenerating] = useState(false);
+    const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
 
     // Auto-focus input when edit mode is enabled
     useEffect(() => {
@@ -66,6 +96,102 @@ export const Step2SectionInfo = ({
             sectionNameInputRef.current.select();
         }
     }, [enableSectionName, index]);
+
+    // Ref to track if bulk generation should be cancelled
+    const cancelBulkGeneration = useRef(false);
+
+    // Bulk generate AI criteria for all questions
+    const handleBulkGenerateCriteria = async () => {
+        const questions = allSections[index]?.adaptive_marking_for_each_question || [];
+
+        if (questions.length === 0) {
+            toast.error('No questions in this section');
+            return;
+        }
+
+        // Confirm with user
+        const confirmed = window.confirm(
+            `Generate AI criteria for all ${questions.length} questions in this section?`
+        );
+
+        if (!confirmed) return;
+
+        cancelBulkGeneration.current = false;
+        setBulkGenerating(true);
+        setBulkProgress({ current: 0, total: questions.length });
+
+        const updatedSections = [...allSections];
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 0; i < questions.length; i++) {
+            // Check if user cancelled
+            if (cancelBulkGeneration.current) {
+                toast.info('Generation cancelled by user');
+                break;
+            }
+
+            const question = questions[i];
+
+            try {
+                setBulkProgress({ current: i + 1, total: questions.length });
+
+                // Skip if criteria already exists
+                if ((question as any).evaluation_criteria_json) {
+                    toast.info(`Question ${i + 1} already has criteria`);
+                    continue;
+                }
+
+                if (question?.questionMark === '0') {
+                    toast.info(`Question ${i + 1} has 0 marks, skipping`);
+                    continue;
+                }
+
+                // Generate AI criteria
+                const criteriaJson = await generateAICriteria({
+                    question_text: question?.questionName || '',
+                    question_type: question?.questionType || '',
+                    subject: '', // Can be enhanced to get from parent form
+                    max_marks: Number(question?.questionMark) || 0,
+                });
+
+                // Update the question with generated criteria
+                (
+                    updatedSections[index]!.adaptive_marking_for_each_question[i] as any
+                ).evaluation_criteria_json = stringifyCriteria(criteriaJson);
+                (
+                    updatedSections[index]!.adaptive_marking_for_each_question[i] as any
+                ).criteria_source = 'ai';
+
+                successCount++;
+
+                // Small delay to avoid overwhelming the API
+                await new Promise((resolve) => setTimeout(resolve, 500));
+            } catch (error) {
+                toast.error(`Failed to generate criteria for question ${i + 1}: ${error instanceof Error ? error.message : String(error)}`);
+                failCount++;
+            }
+        }
+
+        // Update form with all changes
+        setValue('section', updatedSections);
+
+        setBulkGenerating(false);
+        setBulkProgress({ current: 0, total: 0 });
+        cancelBulkGeneration.current = false;
+
+        // Show summary
+        if (successCount > 0) {
+            toast.success(`Generated criteria for ${successCount} questions!`);
+        }
+        if (failCount > 0) {
+            toast.error(`Failed to generate criteria for ${failCount} questions`);
+        }
+    };
+
+    const handleCancelBulkGeneration = () => {
+        cancelBulkGeneration.current = true;
+    };
 
     // Store original section name when editing starts
     useEffect(() => {
@@ -279,7 +405,9 @@ export const Step2SectionInfo = ({
 
                                                         // Save the changes and exit edit mode
                                                         setEnableSectionName(false);
-                                                        form.trigger(`section.${index}.sectionName`);
+                                                        form.trigger(
+                                                            `section.${index}.sectionName`
+                                                        );
                                                         return;
                                                     }
 
@@ -290,7 +418,10 @@ export const Step2SectionInfo = ({
 
                                                         // Cancel editing and restore original value
                                                         setEnableSectionName(false);
-                                                        form.setValue(`section.${index}.sectionName`, originalSectionName);
+                                                        form.setValue(
+                                                            `section.${index}.sectionName`,
+                                                            originalSectionName
+                                                        );
                                                         return;
                                                     }
 
@@ -325,7 +456,7 @@ export const Step2SectionInfo = ({
                             {enableSectionName ? (
                                 <Check
                                     size={16}
-                                    className="text-primary-600 hover:text-primary-700 cursor-pointer transition-colors"
+                                    className="cursor-pointer text-primary-600 transition-colors hover:text-primary-700"
                                     onClick={(e) => {
                                         e.stopPropagation(); // Prevent accordion toggle
                                         setEnableSectionName(false);
@@ -336,7 +467,7 @@ export const Step2SectionInfo = ({
                             ) : (
                                 <PencilSimpleLine
                                     size={16}
-                                    className="hover:text-primary-600 cursor-pointer text-neutral-600 transition-colors"
+                                    className="cursor-pointer text-neutral-600 transition-colors hover:text-primary-600"
                                     onClick={(e) => {
                                         e.stopPropagation(); // Prevent accordion toggle
                                         setEnableSectionName(true);
@@ -421,7 +552,7 @@ export const Step2SectionInfo = ({
                             {enableSectionName ? (
                                 <Check
                                     size={16}
-                                    className="text-primary-600 hover:text-primary-700 cursor-pointer transition-colors"
+                                    className="cursor-pointer text-primary-600 transition-colors hover:text-primary-700"
                                     onClick={(e) => {
                                         e.stopPropagation(); // Prevent accordion toggle
                                         setEnableSectionName(false);
@@ -432,7 +563,7 @@ export const Step2SectionInfo = ({
                             ) : (
                                 <PencilSimpleLine
                                     size={16}
-                                    className="hover:text-primary-600 cursor-pointer text-neutral-600 transition-colors"
+                                    className="cursor-pointer text-neutral-600 transition-colors hover:text-primary-600"
                                     onClick={(e) => {
                                         e.stopPropagation(); // Prevent accordion toggle
                                         setEnableSectionName(true);
@@ -542,12 +673,14 @@ export const Step2SectionInfo = ({
                                 Choose Saved Paper
                             </MyButton>
                         </DialogTrigger>
-                          <DialogContent className="no-scrollbar !m-0 flex h-[90vh] !w-full !max-w-[90vw] flex-col items-start !gap-0 overflow-y-auto !p-0 [&>button]:hidden">
-                              <DialogTitle className="sr-only">Choose Saved Question Paper From List</DialogTitle>
-                              <DialogDescription className="sr-only">
-                                  Select a previously saved question paper to add to this section
-                              </DialogDescription>
-                              <div className="flex h-14 w-full items-center justify-between rounded-md bg-primary-50">
+                        <DialogContent className="no-scrollbar !m-0 flex h-[90vh] !w-full !max-w-[90vw] flex-col items-start !gap-0 overflow-y-auto !p-0 [&>button]:hidden">
+                            <DialogTitle className="sr-only">
+                                Choose Saved Question Paper From List
+                            </DialogTitle>
+                            <DialogDescription className="sr-only">
+                                Select a previously saved question paper to add to this section
+                            </DialogDescription>
+                            <div className="flex h-14 w-full items-center justify-between rounded-md bg-primary-50">
                                 <h1 className="rounded-sm p-4 font-bold text-primary-500">
                                     Choose Saved Question Paper From List
                                 </h1>
@@ -572,6 +705,43 @@ export const Step2SectionInfo = ({
                     </Dialog>
                     <Step2GenerateQuestionsFromAI form={form} index={index} />
                 </div>
+
+                {/* Evaluation Criteria Section */}
+                {examtype !== 'SURVEY' &&
+                    (allSections[index]?.adaptive_marking_for_each_question?.length ?? 0) > 0 && (
+                        <div className="flex flex-col gap-4">
+                            <h3 className="font-thin">Evaluation Criteria</h3>
+                            <div className="flex items-center gap-3">
+                                <MyButton
+                                    type="button"
+                                    buttonType={'secondary'}
+                                    scale="large"
+                                    onClick={() => {
+                                        if (bulkGenerating) {
+                                            handleCancelBulkGeneration();
+                                        } else {
+                                            handleBulkGenerateCriteria();
+                                        }
+                                    }}
+                                >
+                                    {bulkGenerating ? (
+                                        <p className="ml-2 flex items-center gap-2 text-sm text-neutral-600">
+                                            <span>
+                                                Stop ({bulkProgress.current}/{bulkProgress.total})
+                                            </span>
+                                            <Spinner className="mr-2 animate-spin text-primary-500" />
+                                        </p>
+                                    ) : (
+                                        <>
+                                            <Sparkle size={16} className="mr-2" />
+                                            AI Generate All Criteria
+                                        </>
+                                    )}
+                                </MyButton>
+                            </div>
+                        </div>
+                    )}
+
                 <div className="flex flex-col gap-2" id="section-instructions">
                     <h1 className="font-thin">Section Description</h1>
                     <FormField
@@ -1015,6 +1185,7 @@ export const Step2SectionInfo = ({
                                     {examtype !== 'SURVEY' && <TableHead>Penalty</TableHead>}
                                     {watch(`testDuration.questionWiseDuration`) &&
                                         examtype !== 'SURVEY' && <TableHead>Time</TableHead>}
+                                    {examtype !== 'SURVEY' && <TableHead>Criteria</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody className="bg-neutral-50">
@@ -1024,11 +1195,15 @@ export const Step2SectionInfo = ({
                                             return (
                                                 <TableRow key={idx}>
                                                     <TableCell>{idx + 1}</TableCell>
-                                                    <TableCell
-                                                        dangerouslySetInnerHTML={{
-                                                            __html: question.questionName || '',
-                                                        }}
-                                                    />
+                                                    <TableCell>
+                                                        <div className="w-full max-w-md">
+                                                            <TipTapEditor
+                                                                value={question.questionName || ''}
+                                                                editable={false}
+                                                                onChange={() => {}}
+                                                            />
+                                                        </div>
+                                                    </TableCell>
                                                     <TableCell>{question.questionType}</TableCell>
                                                     {examtype !== 'SURVEY' && (
                                                         <TableCell>
@@ -1141,6 +1316,42 @@ export const Step2SectionInfo = ({
                                                                 </div>
                                                             </TableCell>
                                                         )}
+                                                    {examtype !== 'SURVEY' && (
+                                                        <TableCell>
+                                                            <CriteriaStatusBadge
+                                                                status={
+                                                                    (question as any)
+                                                                        ?.evaluation_criteria_json
+                                                                        ? ((question as any)
+                                                                              ?.criteria_source as CriteriaSource) ||
+                                                                          'manual'
+                                                                        : 'not-added'
+                                                                }
+                                                                onClick={() => {
+                                                                    setSelectedQuestionIndex(idx);
+                                                                    setCriteriaDialogOpen(true);
+                                                                }}
+                                                                onPreview={
+                                                                    (question as any)
+                                                                        ?.evaluation_criteria_json
+                                                                        ? () => {
+                                                                              setCriteriaPreview(
+                                                                                  parseCriteria(
+                                                                                      (
+                                                                                          question as any
+                                                                                      )
+                                                                                          .evaluation_criteria_json!
+                                                                                  )
+                                                                              );
+                                                                              setPreviewDialogOpen(
+                                                                                  true
+                                                                              );
+                                                                          }
+                                                                        : undefined
+                                                                }
+                                                            />
+                                                        </TableCell>
+                                                    )}
                                                 </TableRow>
                                             );
                                         }
@@ -1163,6 +1374,71 @@ export const Step2SectionInfo = ({
                         </div>
                     )}
             </AccordionContent>
+
+            {/* Criteria Dialogs */}
+            {selectedQuestionIndex !== null && (
+                <AddEditCriteriaDialog
+                    question={{
+                        text:
+                            allSections[index]?.adaptive_marking_for_each_question[
+                                selectedQuestionIndex
+                            ]?.questionName || '',
+                        question_type:
+                            allSections[index]?.adaptive_marking_for_each_question[
+                                selectedQuestionIndex
+                            ]?.questionType || '',
+                        max_marks: Number(
+                            allSections[index]?.adaptive_marking_for_each_question[
+                                selectedQuestionIndex
+                            ]?.questionMark || 0
+                        ),
+                        subject: String(getValues('testCreation.subject' as any) ?? ''),
+                    }}
+                    existingCriteria={
+                        allSections[index]?.adaptive_marking_for_each_question[
+                            selectedQuestionIndex
+                        ]?.evaluation_criteria_json
+                            ? parseCriteria(
+                                  allSections[index]?.adaptive_marking_for_each_question[
+                                      selectedQuestionIndex
+                                  ]?.evaluation_criteria_json!
+                              ) ?? undefined
+                            : undefined
+                    }
+                    open={criteriaDialogOpen}
+                    onSave={(criteria: CriteriaJson, source: CriteriaSource) => {
+                        // Update the question with criteria
+                        const updatedQuestions = [
+                            ...allSections[index]!.adaptive_marking_for_each_question,
+                        ];
+                        updatedQuestions[selectedQuestionIndex] = {
+                            ...updatedQuestions[selectedQuestionIndex]!,
+                            evaluation_criteria_json: stringifyCriteria(criteria),
+                            criteria_source: source,
+                        } as any;
+                        setValue(
+                            `section.${index}.adaptive_marking_for_each_question`,
+                            updatedQuestions
+                        );
+                        setCriteriaDialogOpen(false);
+                        setSelectedQuestionIndex(null);
+                    }}
+                    onClose={() => {
+                        setCriteriaDialogOpen(false);
+                        setSelectedQuestionIndex(null);
+                    }}
+                />
+            )}
+
+            {/* Criteria Preview Dialog */}
+            <CriteriaPreviewDialog
+                criteria={criteriaPreview}
+                open={previewDialogOpen}
+                onClose={() => {
+                    setPreviewDialogOpen(false);
+                    setCriteriaPreview(null);
+                }}
+            />
         </AccordionItem>
     );
 };

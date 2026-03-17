@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -13,7 +14,7 @@ import { DotsThree, WarningCircle } from '@phosphor-icons/react';
 import { AssessmentRevaluateStudentInterface } from '@/types/assessments/assessment-overview';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { StudentRevaluateQuestionWiseComponent } from './student-revaluate-question-wise-component';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
 import { SelectedFilterRevaluateInterface } from '@/types/assessments/assessment-revaluate-question-wise';
 import {
     getReleaseStudentResult,
@@ -23,6 +24,19 @@ import { Route } from '../..';
 import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
 import { SelectedReleaseResultFilterInterface } from '../AssessmentSubmissionsTab';
+import { getAssessmentDetails } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
+import {
+    storeEvaluationDataInStorage,
+    triggerAIEvaluation,
+} from '../../-services/ai-evaluation-services';
+import { MODEL_DISPLAY_NAMES } from '@/routes/ai-center/-types/ai-models';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 const ProvideReattemptComponent = ({
     student,
@@ -133,6 +147,120 @@ const ReleaseResultComponent = ({
     );
 };
 
+const StudentEvaluateWithAIComponent = ({
+    student,
+    onClose,
+    assessmentData,
+}: {
+    student: AssessmentRevaluateStudentInterface;
+    onClose: () => void;
+    assessmentData: any;
+}) => {
+    const { assessmentId } = Route.useParams();
+    const instituteId = getInstituteId();
+    const navigate = useNavigate();
+    const [selectedModel, setSelectedModel] = useState<string>('google/gemini-3.1-pro-preview');
+
+    // Trigger AI evaluation mutation
+    const triggerEvaluationMutation = useMutation({
+        mutationFn: ({
+            attempt_ids,
+            preferred_model,
+        }: {
+            attempt_ids: string[];
+            preferred_model?: string;
+        }) => triggerAIEvaluation(attempt_ids, preferred_model),
+        onSuccess: (processIds) => {
+            toast.success(`AI evaluation started successfully!`, {
+                className: 'success-toast',
+                duration: 4000,
+            });
+
+            console.log('sections', assessmentData?.[1]?.saved_data?.sections);
+            storeEvaluationDataInStorage({
+                processId: processIds[0] ?? '',
+                attemptId: student.attempt_id,
+                assessmentId: assessmentId,
+                sectionIds:
+                    assessmentData?.[1]?.saved_data?.sections?.map((section: any) => section.id) ||
+                    [],
+            });
+            onClose();
+
+            // Navigate to the evaluation progress page
+            navigate({
+                to: '/assessment/evaluation-ai/$attemptId/$processId',
+                params: {
+                    attemptId: student.attempt_id,
+                    processId: processIds[0] ?? '',
+                },
+            });
+        },
+        onError: (error: unknown) => {
+            console.error('Failed to trigger AI evaluation:', error);
+            toast.error('Failed to start AI evaluation. Please try again.');
+        },
+    });
+
+    const handleEvaluateWithAIStudent = () => {
+        triggerEvaluationMutation.mutate({
+            attempt_ids: [student.attempt_id],
+            preferred_model: selectedModel,
+        });
+    };
+
+    return (
+        <DialogContent className="flex flex-col gap-4 p-0">
+            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">
+                Evaluate Assessment with AI
+            </h1>
+            <div className="flex flex-col gap-4 p-4">
+                <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-neutral-700">Select AI Model</label>
+                    <Select value={selectedModel} onValueChange={setSelectedModel}>
+                        <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select a model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {Object.entries(MODEL_DISPLAY_NAMES).map(([modelId, info]) => (
+                                <SelectItem key={modelId} value={modelId}>
+                                    {info.name} - {info.description}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <p className="text-xs text-neutral-500">
+                        Choose the AI model to evaluate{' '}
+                        <span className="font-semibold text-primary-600">
+                            {student.full_name}'s
+                        </span>{' '}
+                        submission
+                    </p>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        onClick={onClose}
+                        disabled={triggerEvaluationMutation.isPending}
+                    >
+                        Cancel
+                    </MyButton>
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        onClick={handleEvaluateWithAIStudent}
+                        disabled={triggerEvaluationMutation.isPending}
+                    >
+                        {triggerEvaluationMutation.isPending ? 'Starting...' : 'Start'}
+                    </MyButton>
+                </div>
+            </div>
+        </DialogContent>
+    );
+};
+
 const StudentRevaluateForEntireAssessmentComponent = ({
     student,
     onClose,
@@ -229,11 +357,30 @@ const StudentRevaluateForEntireAssessmentComponent = ({
 const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStudentInterface }) => {
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
+    const { assessmentId } = Route.useParams();
+    const instituteId = getInstituteId();
+
+    // Fetch assessment details to get evaluation_type
+    const { data: assessmentData } = useSuspenseQuery(
+        getAssessmentDetails({
+            assessmentId: assessmentId,
+            instituteId: instituteId,
+            type: 'EXAM', // You may need to get this from route params if needed
+        })
+    );
 
     const handleProvideReattempt = (value: string) => {
         setOpenDialog(true);
         setSelectedOption(value);
     };
+
+    // Get evaluation_type from saved_data
+    const evaluationType = assessmentData?.[0]?.saved_data?.evaluation_type;
+    const isManualEvaluation = evaluationType === 'MANUAL';
+
+    // Get evaluation_status from student data
+    const evaluationStatus = student?.evaluation_status;
+    const isEvaluationPending = evaluationStatus === 'PENDING';
 
     return (
         <>
@@ -257,21 +404,33 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                     </DropdownMenuItem>
                     <DropdownMenuSub>
                         <DropdownMenuSubTrigger className="cursor-pointer">
-                            Revaluate
+                            {isEvaluationPending ? 'Evaluate' : 'Revaluate'}
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent>
-                            <DropdownMenuItem
-                                className="cursor-pointer"
-                                onClick={() => handleProvideReattempt('Question Wise')}
-                            >
-                                Question Wise
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                                className="cursor-pointer"
-                                onClick={() => handleProvideReattempt('Entire Assessment')}
-                            >
-                                Entire Assessment
-                            </DropdownMenuItem>
+                            {!isManualEvaluation ? (
+                                <>
+                                    <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onClick={() => handleProvideReattempt('Question Wise')}
+                                    >
+                                        Question Wise
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onClick={() => handleProvideReattempt('Entire Assessment')}
+                                    >
+                                        Entire Assessment
+                                    </DropdownMenuItem>
+                                </>
+                            ) : (
+                                /* Show "Evaluate with AI" if evaluation_type is MANUAL */
+                                <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    onClick={() => handleProvideReattempt('Evaluate with AI')}
+                                >
+                                    Evaluate with AI
+                                </DropdownMenuItem>
+                            )}
                         </DropdownMenuSubContent>
                     </DropdownMenuSub>
                     <DropdownMenuItem
@@ -307,6 +466,13 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                     <ReleaseResultComponent
                         student={student}
                         onClose={() => setOpenDialog(false)}
+                    />
+                )}
+                {selectedOption === 'Evaluate with AI' && (
+                    <StudentEvaluateWithAIComponent
+                        student={student}
+                        onClose={() => setOpenDialog(false)}
+                        assessmentData={assessmentData}
                     />
                 )}
             </Dialog>

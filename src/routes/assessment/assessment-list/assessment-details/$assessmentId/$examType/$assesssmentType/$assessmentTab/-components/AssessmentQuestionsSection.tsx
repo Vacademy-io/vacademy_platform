@@ -23,7 +23,17 @@ import {
 } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { calculateAverageMarks, calculateAveragePenalty } from '../-utils/helper';
 import { QuestionData } from '@/types/assessments/assessment-steps';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import TipTapEditor from '@/components/tiptap/TipTapEditor';
+import { CriteriaPreviewDialog } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-components/StepComponents/-components/CriteriaPreviewDialog';
+import {
+    CriteriaJson,
+    parseCriteria,
+    CriteriaSource,
+} from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/criteria-services';
+import { CriteriaStatusBadge } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-components/StepComponents/-components/CriteriaStatusBadge';
+import { AddEditCriteriaDialog } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-components/StepComponents/-components/AddEditCriteriaDialog';
+import { toast } from 'sonner';
 
 interface QuestionDuration {
     hrs: string;
@@ -37,13 +47,17 @@ interface Question {
     questionMark: string;
     questionPenalty: string;
     questionDuration: QuestionDuration;
+    evaluation_criteria_json?: string | null;
+    criteria_template_id?: string | null; // From API, indicates if from template
 }
 
 // Custom hook for data transformation
 const useAdaptiveMarking = (questionsForSection: QuestionData[]) => {
     return useMemo(() => {
         return questionsForSection.map((questionData: QuestionData) => {
-            const markingJson = questionData.marking_json ? JSON.parse(questionData.marking_json) : {};
+            const markingJson = questionData.marking_json
+                ? JSON.parse(questionData.marking_json)
+                : {};
             return {
                 questionId: questionData.question_id || '',
                 questionName: questionData.question?.content || '',
@@ -60,6 +74,8 @@ const useAdaptiveMarking = (questionsForSection: QuestionData[]) => {
                             ? String(questionData.question_duration % 60)
                             : '0',
                 },
+                evaluation_criteria_json: questionData.evaluation_criteria_json || null,
+                criteria_template_id: questionData.criteria_template_id || null,
             };
         });
     }, [questionsForSection]);
@@ -70,7 +86,7 @@ const SectionInfo = ({
     section,
     adaptiveMarking,
     examType,
-    assessmentDetails
+    assessmentDetails,
 }: {
     section: Section;
     adaptiveMarking: Question[];
@@ -92,7 +108,7 @@ const SectionInfo = ({
             )}
             {assessmentDetails[1]?.saved_data?.duration_distribution === 'SECTION' &&
                 section.duration && (
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-start gap-2 sm:gap-8 text-sm font-thin">
+                    <div className="flex flex-col justify-start gap-2 text-sm font-thin sm:flex-row sm:items-center sm:gap-8">
                         <h1 className="font-normal">Section Duration:</h1>
                         <div className="flex items-center gap-1">
                             <span>{section.duration}</span>
@@ -101,9 +117,15 @@ const SectionInfo = ({
                     </div>
                 )}
             {examType !== 'SURVEY' && (
-                <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-8 text-sm font-thin">
+                <div className="flex flex-col gap-2 text-sm font-thin sm:flex-row sm:items-start sm:gap-8">
                     <h1 className="font-normal">Marks Per Question (Default):</h1>
                     <span>{calculateAverageMarks(adaptiveMarking)}</span>
+                </div>
+            )}
+            {examType !== 'SURVEY' && (
+                <div className="flex flex-col gap-2 text-sm font-thin sm:flex-row sm:items-start sm:gap-8">
+                    <h1 className="font-normal">Total Marks:</h1>
+                    <span>{calculateTotalMarks(adaptiveMarking)}</span>
                 </div>
             )}
             {calculateAveragePenalty(adaptiveMarking) > 0 && (
@@ -146,65 +168,166 @@ const SectionInfo = ({
 const QuestionsTable = ({
     adaptiveMarking,
     examType,
-    assessmentDetails
+    assessmentDetails,
 }: {
     adaptiveMarking: Question[];
     examType: string;
     assessmentDetails: any;
 }) => {
-    if (adaptiveMarking.length === 0) return null;
+    const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+    const [criteriaPreview, setCriteriaPreview] = useState<CriteriaJson | null>(null);
+    const [criteriaDialogOpen, setCriteriaDialogOpen] = useState(false);
+    const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(null);
+    const [localAdaptiveMarking, setLocalAdaptiveMarking] = useState(adaptiveMarking);
+
+    // Update local state when prop changes
+    useEffect(() => {
+        setLocalAdaptiveMarking(adaptiveMarking);
+    }, [adaptiveMarking]);
+
+    if (localAdaptiveMarking.length === 0) return null;
+
+    const handlePreviewCriteria = (evaluation_criteria_json: string | null | undefined) => {
+        if (!evaluation_criteria_json) return;
+
+        const parsed = parseCriteria(evaluation_criteria_json);
+
+        // Validate parsed criteria structure
+        if (!parsed || !parsed.criteria || !Array.isArray(parsed.criteria)) {
+            console.error('Invalid criteria structure:', parsed);
+            toast.error('Unable to preview criteria. Invalid data format.');
+            return;
+        }
+
+        setCriteriaPreview(parsed);
+        setPreviewDialogOpen(true);
+    };
+
+    const handleEditCriteria = (questionIndex: number) => {
+        setSelectedQuestionIndex(questionIndex);
+        setCriteriaDialogOpen(true);
+    };
+
+    const handleSaveCriteria = (criteria: CriteriaJson | null, source: CriteriaSource) => {
+        if (selectedQuestionIndex === null) return;
+
+        const updated = [...localAdaptiveMarking];
+        updated[selectedQuestionIndex] = {
+            ...updated[selectedQuestionIndex]!,
+            evaluation_criteria_json: criteria ? JSON.stringify(criteria) : null,
+        } as Question;
+        setLocalAdaptiveMarking(updated);
+        setCriteriaDialogOpen(false);
+    };
+
+    const selectedQuestion =
+        selectedQuestionIndex !== null ? localAdaptiveMarking[selectedQuestionIndex] : null;
 
     return (
         <div>
             <h1 className="mb-4 text-primary-500">
                 {examType === 'SURVEY' ? 'Survey Questions' : 'Adaptive Marking Rules'}
             </h1>
-            <div className="overflow-x-auto scrollbar-hide">
+            <div className="scrollbar-hide overflow-x-auto">
                 <Table>
-                <TableHeader className="bg-primary-200">
-                    <TableRow>
-                        <TableHead>Q.No.</TableHead>
-                        <TableHead>Question</TableHead>
-                        <TableHead>Question Type</TableHead>
-                        {examType !== 'SURVEY' && <TableHead>Marks</TableHead>}
-                        {examType !== 'SURVEY' && <TableHead>Penalty</TableHead>}
-                        {assessmentDetails[1]?.saved_data?.duration_distribution ===
-                            'QUESTION' && <TableHead>Time</TableHead>}
-                    </TableRow>
-                </TableHeader>
-                <TableBody className="bg-neutral-50">
-                    {adaptiveMarking.map((question: Question, index: number) => {
-                        return (
-                            <TableRow key={index}>
-                                <TableCell>{index + 1}</TableCell>
-                                <TableCell
-                                    dangerouslySetInnerHTML={{
-                                        __html: question.questionName || '',
-                                    }}
-                                />
-                                <TableCell>{question.questionType}</TableCell>
-                                {examType !== 'SURVEY' && (
-                                    <TableCell>{question.questionMark}</TableCell>
-                                )}
-                                {examType !== 'SURVEY' && (
-                                    <TableCell>{question.questionPenalty}</TableCell>
-                                )}
-                                {assessmentDetails[1]?.saved_data
-                                    ?.duration_distribution === 'QUESTION' && (
+                    <TableHeader className="bg-primary-200">
+                        <TableRow>
+                            <TableHead>Q.No.</TableHead>
+                            <TableHead>Question</TableHead>
+                            <TableHead>Question Type</TableHead>
+                            {examType !== 'SURVEY' && <TableHead>Marks</TableHead>}
+                            {examType !== 'SURVEY' && <TableHead>Penalty</TableHead>}
+                            {examType !== 'SURVEY' && <TableHead>Criteria</TableHead>}
+                            {assessmentDetails[1]?.saved_data?.duration_distribution ===
+                                'QUESTION' && <TableHead>Time</TableHead>}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody className="bg-neutral-50">
+                        {localAdaptiveMarking.map((question: Question, index: number) => {
+                            return (
+                                <TableRow key={index}>
+                                    <TableCell>{index + 1}</TableCell>
                                     <TableCell>
-                                        <div className="flex items-center gap-2">
-                                            {question.questionDuration.hrs}
-                                            <span>:</span>
-                                            {question.questionDuration.min}
-                                        </div>
+                                        <TipTapEditor
+                                            value={question.questionName || ''}
+                                            onChange={() => {}}
+                                            editable={false}
+                                        />
                                     </TableCell>
-                                )}
-                            </TableRow>
-                        );
-                    })}
-                </TableBody>
+                                    <TableCell>{question.questionType}</TableCell>
+                                    {examType !== 'SURVEY' && (
+                                        <TableCell>{question.questionMark}</TableCell>
+                                    )}
+                                    {examType !== 'SURVEY' && (
+                                        <TableCell>{question.questionPenalty}</TableCell>
+                                    )}
+                                    {examType !== 'SURVEY' && (
+                                        <TableCell>
+                                            {question.evaluation_criteria_json ? (
+                                                <CriteriaStatusBadge
+                                                    status={
+                                                        question.criteria_template_id
+                                                            ? 'template'
+                                                            : 'manual'
+                                                    }
+                                                    onClick={() => handleEditCriteria(index)}
+                                                    onPreview={() =>
+                                                        handlePreviewCriteria(
+                                                            question.evaluation_criteria_json
+                                                        )
+                                                    }
+                                                />
+                                            ) : (
+                                                <span className="text-sm text-neutral-400">
+                                                    Not set
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                    )}
+                                    {assessmentDetails[1]?.saved_data?.duration_distribution ===
+                                        'QUESTION' && (
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                {question.questionDuration.hrs}
+                                                <span>:</span>
+                                                {question.questionDuration.min}
+                                            </div>
+                                        </TableCell>
+                                    )}
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
                 </Table>
             </div>
+
+            {/* Criteria Preview Dialog */}
+            <CriteriaPreviewDialog
+                criteria={criteriaPreview}
+                open={previewDialogOpen}
+                onClose={() => setPreviewDialogOpen(false)}
+            />
+
+            {/* Add/Edit Criteria Dialog */}
+            {selectedQuestion && (
+                <AddEditCriteriaDialog
+                    question={{
+                        id: selectedQuestion.questionId,
+                        text: selectedQuestion.questionName,
+                        question_type: selectedQuestion.questionType,
+                        max_marks: parseFloat(selectedQuestion.questionMark) || 0,
+                        subject: '', // Can be enhanced if subject data is available
+                    }}
+                    existingCriteria={
+                        selectedQuestion.evaluation_criteria_json
+                            ? (parseCriteria(selectedQuestion.evaluation_criteria_json) ?? undefined)
+                            : undefined
+                    }
+                    open={criteriaDialogOpen}
+                    onSave={handleSaveCriteria}
+                    onClose={() => setCriteriaDialogOpen(false)}
+                />
+            )}
         </div>
     );
 };
@@ -232,11 +355,11 @@ const AssessmentQuestionsSection = ({ section, index }: { section: Section; inde
         <AccordionItem value={`section-${index}`} key={index}>
             <AccordionTrigger className="flex items-center justify-between">
                 <div className="flex w-full items-center justify-between">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-start text-primary-500 gap-1 sm:gap-2">
+                    <div className="flex flex-col justify-start gap-1 text-primary-500 sm:flex-row sm:items-center sm:gap-2">
                         <h1 className="!ml-0 min-w-0 flex-shrink-0 border-none !pl-0 text-primary-500">
                             {section.name}
                         </h1>
-                        <span className="font-thin !text-neutral-600 text-sm">
+                        <span className="text-sm font-thin !text-neutral-600">
                             (MCQ(Single Correct):&nbsp;
                             {getQuestionTypeCounts(adaptiveMarking).MCQS}
                             ,&nbsp; MCQ(Multiple Correct):&nbsp;

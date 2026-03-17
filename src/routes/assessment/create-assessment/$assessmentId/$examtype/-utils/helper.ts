@@ -436,6 +436,9 @@ export const convertStep2Data = (data: z.infer<typeof sectionDetailsSchema>) => 
                     parseInt(section.question_duration.hrs) * 60 +
                         parseInt(section.question_duration.min) || 0,
                 question_order: qIndex + 1,
+                // Add evaluation criteria fields - send null if not applied
+                evaluation_criteria_json: (question as any).evaluation_criteria_json || null,
+                criteria_template_id: (question as any).criteria_template_id || null,
                 is_added: true,
                 is_deleted: false,
                 is_updated: false,
@@ -449,6 +452,8 @@ interface QuestionAndMarking {
     marking_json?: string | undefined;
     question_duration_in_min?: number | undefined;
     question_order?: number | undefined;
+    evaluation_criteria_json?: string | null;
+    criteria_template_id?: string | null;
     is_added: boolean;
     is_deleted: boolean;
     is_updated: boolean;

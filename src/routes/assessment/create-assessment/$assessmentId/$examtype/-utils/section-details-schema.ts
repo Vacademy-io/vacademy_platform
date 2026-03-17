@@ -56,6 +56,10 @@ const sectionDetailsSchema = z.object({
                         hrs: z.string(),
                         min: z.string(),
                     }),
+                    // Evaluation criteria fields
+                    evaluation_criteria_json: z.string().optional(),
+                    criteria_source: z.enum(['ai', 'manual', 'template']).optional(),
+                    criteria_template_id: z.string().optional(),
                 })
             ),
         })

@@ -27,7 +27,7 @@ class ContentEmbedding(Base):
     content_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False, default=0)  # For chunked content
     embedding = Column(Vector(768), nullable=False)  # 768-dim for text-embedding-004
-    metadata = Column("meta_data", JSONB, nullable=True)  # title, subject, chapter, etc.
+    meta_data = Column("meta_data", JSONB, nullable=True)  # title, subject, chapter, etc.
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

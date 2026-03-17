@@ -26,7 +26,7 @@ class LearningAnalytics(Base):
     topic = Column(String(500), nullable=True)
     score = Column(Float, nullable=True)
     total = Column(Integer, nullable=True)
-    metadata = Column("meta_data", JSONB, nullable=True)
+    meta_data = Column("meta_data", JSONB, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     __table_args__ = (

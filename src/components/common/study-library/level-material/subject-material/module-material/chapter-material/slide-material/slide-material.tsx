@@ -599,6 +599,7 @@ export const SlideMaterial = () => {
               marksPerQuestion={quizSlide?.marks_per_question ?? 1}
               defaultNegativeMarking={quizSlide?.negative_marking ?? 0}
               passPercentage={(quizSlide as any)?.pass_percentage ?? null}
+              reAttemptCount={(quizSlide as any)?.re_attempt_count ?? null}
               onAnswer={async (_questionId, selectedOptionId) => {
                 // Send/save answer data here if needed
                 await handleQuestionSubmit(String(selectedOptionId));
@@ -654,6 +655,7 @@ export const SlideMaterial = () => {
               <QuizViewer
                 questions={mappedQuestions}
                 passPercentage={(quizSlide as any)?.pass_percentage ?? null}
+              reAttemptCount={(quizSlide as any)?.re_attempt_count ?? null}
                 onAnswer={async (_questionId, selectedOptionId) => {
                   await handleQuestionSubmit(String(selectedOptionId));
                 }}

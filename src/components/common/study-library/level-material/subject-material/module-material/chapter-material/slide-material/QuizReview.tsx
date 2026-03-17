@@ -43,6 +43,8 @@ interface QuizReviewProps {
   passed?: boolean | null;
   passPercentage?: number | null;
   attemptNumber?: number;
+  maxAttempts?: number | null;
+  canReattempt?: boolean;
   attemptLogs?: QuizAttemptLog[];
 }
 
@@ -107,7 +109,7 @@ const getCorrectAnswers = (q: Question): (string | number)[] => {
   return [];
 };
 
-export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, attemptNumber, attemptLogs }) => {
+export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, attemptNumber, maxAttempts, canReattempt = true, attemptLogs }) => {
   const [showFullPassageIdx, setShowFullPassageIdx] = useState<number | null>(null);
   const [showPastAttempts, setShowPastAttempts] = useState(false);
   const PASSAGE_LIMIT = 200;
@@ -144,17 +146,23 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           <h2 className="text-primary-800 text-base font-bold">Quiz Review</h2>
           {attemptNumber != null && attemptNumber > 0 && (
             <span className="rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-700">
-              Attempt {attemptNumber}
+              Attempt {attemptNumber}{maxAttempts != null ? ` / ${maxAttempts}` : ''}
             </span>
           )}
         </div>
-        <button
-          className="px-4 py-2 bg-secondary-500 hover:bg-primary-100 text-black font-semibold text-xs border rounded shadow transition-colors"
-          onClick={onRestart}
-          type="button"
-        >
-          Reattempt
-        </button>
+        {canReattempt ? (
+          <button
+            className="px-4 py-2 bg-secondary-500 hover:bg-primary-100 text-black font-semibold text-xs border rounded shadow transition-colors"
+            onClick={onRestart}
+            type="button"
+          >
+            Reattempt
+          </button>
+        ) : (
+          <span className="px-4 py-2 text-xs font-medium text-gray-400">
+            No attempts remaining
+          </span>
+        )}
       </div>
 
       {/* Score Card */}
@@ -219,11 +227,12 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
             </div>
           </div>
           <button
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-red-700 transition-colors"
-            onClick={onRestart}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold text-white shadow transition-colors ${canReattempt ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-300 cursor-not-allowed'}`}
+            onClick={canReattempt ? onRestart : undefined}
+            disabled={!canReattempt}
             type="button"
           >
-            Reattempt Quiz
+            {canReattempt ? 'Reattempt Quiz' : 'No attempts remaining'}
           </button>
         </div>
       )}

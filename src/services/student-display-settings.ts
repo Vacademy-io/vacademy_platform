@@ -184,6 +184,9 @@ function mergeWithDefaults(
                 celebrateOnQuizComplete:
                     incoming?.courseSettings?.quiz?.celebrateOnQuizComplete ??
                     d.courseSettings.quiz.celebrateOnQuizComplete,
+                showReportAndCorrectAnswers:
+                    incoming?.courseSettings?.quiz?.showReportAndCorrectAnswers ??
+                    d.courseSettings.quiz.showReportAndCorrectAnswers,
             },
         },
         allCourses: {

@@ -64,6 +64,7 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
         'myClasses',
         'myMembership',
         'myBooks',
+        'upcomingLiveClasses',
     ];
     return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
 }
@@ -117,6 +118,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         quiz: {
             moveOnlyOnCorrectAnswer: false,
             celebrateOnQuizComplete: true,
+            showReportAndCorrectAnswers: true,
         },
     },
     allCourses: {

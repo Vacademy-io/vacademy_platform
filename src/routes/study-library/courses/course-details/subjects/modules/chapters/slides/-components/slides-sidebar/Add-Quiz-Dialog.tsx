@@ -157,8 +157,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
                 switch (q.questionType) {
                     case 'MCQS':
                         options = (q.singleChoiceOptions || [])
-                            .slice(0, 4)
-                            .map((option: ExtraOptionType) => ({
+                                                        .map((option: ExtraOptionType) => ({
                                 id: option.id || crypto.randomUUID(),
                                 quiz_slide_question_id: '',
                                 text: { id: '', type: 'TEXT', content: option.name || '' },
@@ -169,8 +168,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
                         break;
                     case 'MCQM':
                         options = (q.multipleChoiceOptions || [])
-                            .slice(0, 4)
-                            .map((option: ExtraOptionType) => ({
+                                                        .map((option: ExtraOptionType) => ({
                                 id: option.id || crypto.randomUUID(),
                                 quiz_slide_question_id: '',
                                 text: { id: '', type: 'TEXT', content: option.name || '' },
@@ -183,8 +181,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
                         options = (
                             getExtraField<ExtraOptionType[]>(q, 'csingleChoiceOptions') ?? []
                         )
-                            .slice(0, 4)
-                            .map((option: ExtraOptionType) => ({
+                                                        .map((option: ExtraOptionType) => ({
                                 id: option.id || crypto.randomUUID(),
                                 quiz_slide_question_id: '',
                                 text: { id: '', type: 'TEXT', content: option.name || '' },
@@ -197,8 +194,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
                         options = (
                             getExtraField<ExtraOptionType[]>(q, 'cmultipleChoiceOptions') ?? []
                         )
-                            .slice(0, 4)
-                            .map((option: ExtraOptionType) => ({
+                                                        .map((option: ExtraOptionType) => ({
                                 id: option.id || crypto.randomUUID(),
                                 quiz_slide_question_id: '',
                                 text: { id: '', type: 'TEXT', content: option.name || '' },
@@ -232,8 +228,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
                         break;
                     default:
                         options = (q.singleChoiceOptions || [])
-                            .slice(0, 4)
-                            .map((option: ExtraOptionType) => ({
+                                                        .map((option: ExtraOptionType) => ({
                                 id: option.id || crypto.randomUUID(),
                                 quiz_slide_question_id: '',
                                 text: { id: '', type: 'TEXT', content: option.name || '' },

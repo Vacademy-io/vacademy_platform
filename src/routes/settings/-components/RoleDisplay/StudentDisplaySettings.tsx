@@ -679,6 +679,20 @@ export default function StudentDisplaySettings(): JSX.Element {
                         />
                         <Label className="text-xs">Celebrate on quiz complete</Label>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.courseSettings.quiz.showReportAndCorrectAnswers}
+                            onCheckedChange={(v) =>
+                                update('courseSettings', {
+                                    quiz: {
+                                        ...settings.courseSettings.quiz,
+                                        showReportAndCorrectAnswers: v,
+                                    },
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show report &amp; correct answers</Label>
+                    </div>
                 </div>
             </Card>
 

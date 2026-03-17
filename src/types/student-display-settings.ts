@@ -36,6 +36,7 @@ export type StudentDashboardWidgetId =
     | 'myClasses'
     | 'myMembership'
     | 'myBooks'
+    | 'upcomingLiveClasses'
     | 'custom';
 
 export interface StudentDashboardWidgetConfig {
@@ -107,6 +108,7 @@ export interface StudentCourseSettings {
     quiz: {
         moveOnlyOnCorrectAnswer: boolean;
         celebrateOnQuizComplete: boolean;
+        showReportAndCorrectAnswers: boolean;
     };
 }
 

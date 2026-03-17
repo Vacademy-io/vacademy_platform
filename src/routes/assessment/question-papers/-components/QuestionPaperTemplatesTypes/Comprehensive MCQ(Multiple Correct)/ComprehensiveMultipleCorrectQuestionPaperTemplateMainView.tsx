@@ -1,6 +1,6 @@
 import { FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
-import { Sliders, X } from '@phosphor-icons/react';
+import { Plus, Sliders, Trash, X } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import 'react-quill/dist/quill.snow.css';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -12,80 +12,6 @@ import { formatStructure } from '../../../-utils/helper';
 import { QUESTION_TYPES } from '@/constants/dummy-data';
 import { Badge } from '@/components/ui/badge';
 
-// Extracted component for rendering individual options
-const OptionField = ({
-    optionIndex,
-    currentQuestionIndex,
-    control,
-    optionsType,
-    isSelected,
-    examType
-}: {
-    optionIndex: number;
-    currentQuestionIndex: number;
-    control: any;
-    optionsType: string;
-    isSelected: boolean;
-    examType?: string;
-}) => {
-    const optionLabel = optionsType ? formatStructure(optionsType, String.fromCharCode(97 + optionIndex)) : `(${String.fromCharCode(97 + optionIndex)}.)`;
-
-    return (
-        <div
-            className={`flex w-1/2 items-center justify-between gap-4 rounded-md bg-neutral-100 p-4 ${
-                isSelected && examType !== 'SURVEY' ? 'border border-primary-300 bg-primary-50' : ''
-            }`}
-        >
-            <div className="flex w-full items-center gap-4">
-                <div className="flex size-10 items-center justify-center rounded-full bg-white px-3">
-                    <span className="!p-0 text-sm">{optionLabel}</span>
-                </div>
-                <FormField
-                    control={control}
-                    name={`questions.${currentQuestionIndex}.cmultipleChoiceOptions.${optionIndex}.name`}
-                    render={({ field }) => (
-                        <FormItem className="w-full">
-                            <FormControl>
-                                <RichTextEditor
-                                    value={field.value}
-                                    onBlur={field.onBlur}
-                                    onChange={field.onChange}
-                                    minHeight={80}
-                                />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-            </div>
-            {examType !== 'SURVEY' && (
-                <div className="flex size-10 items-center justify-center rounded-full bg-white px-4">
-                    <FormField
-                        control={control}
-                        name={`questions.${currentQuestionIndex}.cmultipleChoiceOptions.${optionIndex}.isSelected`}
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormControl>
-                                    <Checkbox
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        className={`mt-1 size-5 border-2 shadow-none ${
-                                            field.value
-                                                ? 'border-none bg-green-500 text-white'
-                                                : ''
-                                        }`}
-                                    />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                </div>
-            )}
-        </div>
-    );
-};
-
 export const ComprehensiveMultipleCorrectQuestionPaperTemplateMainView = ({
     form,
     currentQuestionIndex,
@@ -93,12 +19,7 @@ export const ComprehensiveMultipleCorrectQuestionPaperTemplateMainView = ({
     showQuestionNumber = true,
     examType,
 }: QuestionPaperTemplateFormProps) => {
-    console.log('🎯 ComprehensiveMultipleCorrectQuestionPaperTemplateMainView rendered', {
-        examType,
-        currentQuestionIndex,
-        isSurvey: examType === 'SURVEY'
-    });
-    const { control, getValues } = form;
+    const { control, getValues, setValue } = form;
 
     const answersType = getValues('answersType') || 'Answer:';
     const explanationsType = getValues('explanationsType') || 'Explanation:';
@@ -107,12 +28,27 @@ export const ComprehensiveMultipleCorrectQuestionPaperTemplateMainView = ({
 
     const allQuestions = getValues('questions') || [];
 
-    const option1 = getValues(`questions.${currentQuestionIndex}.cmultipleChoiceOptions.${0}`);
-    const option2 = getValues(`questions.${currentQuestionIndex}.cmultipleChoiceOptions.${1}`);
-    const option3 = getValues(`questions.${currentQuestionIndex}.cmultipleChoiceOptions.${2}`);
-    const option4 = getValues(`questions.${currentQuestionIndex}.cmultipleChoiceOptions.${3}`);
+    const options: any[] = getValues(`questions.${currentQuestionIndex}.cmultipleChoiceOptions`) || [];
     const tags = getValues(`questions.${currentQuestionIndex}.tags`) || [];
     const level = getValues(`questions.${currentQuestionIndex}.level`) || '';
+
+    const handleAddOption = () => {
+        const current = getValues(`questions.${currentQuestionIndex}.cmultipleChoiceOptions`) || [];
+        setValue(`questions.${currentQuestionIndex}.cmultipleChoiceOptions`, [
+            ...current,
+            { id: '', name: '', isSelected: false },
+        ], { shouldDirty: true });
+    };
+
+    const handleRemoveOption = (optionIndex: number) => {
+        const current = getValues(`questions.${currentQuestionIndex}.cmultipleChoiceOptions`) || [];
+        if (current.length <= 2) return;
+        setValue(
+            `questions.${currentQuestionIndex}.cmultipleChoiceOptions`,
+            current.filter((_: any, i: number) => i !== optionIndex),
+            { shouldDirty: true, shouldValidate: true }
+        );
+    };
 
     if (allQuestions.length === 0) {
         return (
@@ -224,42 +160,81 @@ export const ComprehensiveMultipleCorrectQuestionPaperTemplateMainView = ({
             {/* Options */}
             <div className="flex w-full grow flex-col gap-4">
                 <span className="-mb-3">{answersType}</span>
-                <div className="flex gap-4">
-                    <OptionField
-                        optionIndex={0}
-                        currentQuestionIndex={currentQuestionIndex}
-                        control={control}
-                        optionsType={optionsType}
-                        isSelected={option1?.isSelected ?? false}
-                        examType={examType}
-                    />
-                    <OptionField
-                        optionIndex={1}
-                        currentQuestionIndex={currentQuestionIndex}
-                        control={control}
-                        optionsType={optionsType}
-                        isSelected={option2?.isSelected ?? false}
-                        examType={examType}
-                    />
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {options.map((opt: any, optionIndex: number) => {
+                        const letter = String.fromCharCode(97 + optionIndex);
+                        return (
+                            <div
+                                key={optionIndex}
+                                className={`flex items-center justify-between gap-4 rounded-md bg-neutral-100 p-4 ${
+                                    opt?.isSelected && examType !== 'SURVEY' ? 'border border-primary-300 bg-primary-50' : ''
+                                }`}
+                            >
+                                <div className="flex w-full items-center gap-4">
+                                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white px-3">
+                                        <span className="!p-0 text-sm">
+                                            {optionsType ? formatStructure(optionsType, letter) : `(${letter}.)`}
+                                        </span>
+                                    </div>
+                                    <FormField
+                                        control={control}
+                                        name={`questions.${currentQuestionIndex}.cmultipleChoiceOptions.${optionIndex}.name`}
+                                        render={({ field }) => (
+                                            <FormItem className="w-full">
+                                                <FormControl>
+                                                    <RichTextEditor
+                                                        value={field.value}
+                                                        onBlur={field.onBlur}
+                                                        onChange={field.onChange}
+                                                        minHeight={80}
+                                                    />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                                {examType !== 'SURVEY' && (
+                                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white px-4">
+                                        <FormField
+                                            control={control}
+                                            name={`questions.${currentQuestionIndex}.cmultipleChoiceOptions.${optionIndex}.isSelected`}
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormControl>
+                                                        <Checkbox
+                                                            checked={field.value}
+                                                            onCheckedChange={field.onChange}
+                                                            className={`mt-1 size-5 border-2 shadow-none ${
+                                                                field.value
+                                                                    ? 'border-none bg-green-500 text-white'
+                                                                    : ''
+                                                            }`}
+                                                        />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </div>
+                                )}
+                                {options.length > 2 && (
+                                    <button
+                                        type="button"
+                                        className="shrink-0 text-gray-400 hover:text-red-500"
+                                        onClick={() => handleRemoveOption(optionIndex)}
+                                        title="Remove option"
+                                    >
+                                        <Trash size={16} />
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
-                <div className="flex gap-4">
-                    <OptionField
-                        optionIndex={2}
-                        currentQuestionIndex={currentQuestionIndex}
-                        control={control}
-                        optionsType={optionsType}
-                        isSelected={option3?.isSelected ?? false}
-                        examType={examType}
-                    />
-                    <OptionField
-                        optionIndex={3}
-                        currentQuestionIndex={currentQuestionIndex}
-                        control={control}
-                        optionsType={optionsType}
-                        isSelected={option4?.isSelected ?? false}
-                        examType={examType}
-                    />
-                </div>
+                <Button type="button" variant="outline" size="sm" className="w-fit" onClick={handleAddOption}>
+                    <Plus size={16} className="mr-1" /> Add Option
+                </Button>
             </div>
 
             {/* Explanation */}

@@ -549,7 +549,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 }
             );
             toast.success('Student AI configuration saved successfully!');
-            await checkKeys();
+            await fetchTutorSettings();
         } catch (error) {
             console.error('Error saving tutor configuration:', error);
             toast.error('Failed to save Student AI configuration');

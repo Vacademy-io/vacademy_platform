@@ -91,6 +91,8 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         marksPerQuestion: 1,
         negativeMarkingEnabled: false,
         negativeMarking: 0,
+        passPercentageEnabled: false,
+        passPercentage: 50,
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
 
@@ -135,6 +137,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                         time_limit_in_minutes: quizSettings.timeLimitEnabled ? quizSettings.timeLimitMinutes : null,
                         marks_per_question: quizSettings.marksPerQuestion,
                         negative_marking: quizSettings.negativeMarkingEnabled ? quizSettings.negativeMarking : 0,
+                        pass_percentage: quizSettings.passPercentageEnabled ? quizSettings.passPercentage : null,
                         questions: currentQuestions,
                     },
                 });
@@ -170,12 +173,15 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
             const timeLimitMinutes = qs.time_limit_in_minutes ?? 30;
             const marksPerQuestion = qs.marks_per_question ?? 1;
             const negativeMarking = qs.negative_marking ?? 0;
+            const passPercentage = (qs as any).pass_percentage ?? null;
             setQuizSettings({
                 timeLimitEnabled: qs.time_limit_in_minutes != null,
                 timeLimitMinutes: timeLimitMinutes > 0 ? timeLimitMinutes : 30,
                 marksPerQuestion: marksPerQuestion > 0 ? marksPerQuestion : 1,
                 negativeMarkingEnabled: negativeMarking > 0,
                 negativeMarking: negativeMarking,
+                passPercentageEnabled: passPercentage != null,
+                passPercentage: passPercentage ?? 50,
             });
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -233,6 +239,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                 time_limit_in_minutes: quizSettings.timeLimitEnabled ? quizSettings.timeLimitMinutes : null,
                 marks_per_question: quizSettings.marksPerQuestion,
                 negative_marking: quizSettings.negativeMarkingEnabled ? quizSettings.negativeMarking : 0,
+                pass_percentage: quizSettings.passPercentageEnabled ? quizSettings.passPercentage : null,
                 questions: currentQuestions,
             },
         });
@@ -304,6 +311,7 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
         timeLimitInMinutes: s.timeLimitEnabled ? s.timeLimitMinutes : null,
         marksPerQuestion: s.marksPerQuestion,
         negativeMarking: s.negativeMarkingEnabled ? s.negativeMarking : 0,
+        passPercentage: s.passPercentageEnabled ? s.passPercentage : null,
     });
 
     const handleSaveSettings = async () => {

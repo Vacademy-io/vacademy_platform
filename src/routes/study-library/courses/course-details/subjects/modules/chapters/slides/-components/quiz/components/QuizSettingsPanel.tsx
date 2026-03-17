@@ -7,6 +7,8 @@ export interface QuizSettings {
     marksPerQuestion: number;
     negativeMarkingEnabled: boolean;
     negativeMarking: number;
+    passPercentageEnabled: boolean;
+    passPercentage: number;
 }
 
 interface QuizSettingsPanelProps {
@@ -89,6 +91,36 @@ const QuizSettingsPanel = ({ settings, onChange, onSave, isSaving }: QuizSetting
                         className="!w-16 text-center"
                         inputPlaceholder="0.25"
                     />
+                )}
+            </div>
+
+            <div className="h-4 w-px bg-neutral-300" />
+
+            {/* Pass Percentage */}
+            <div className="flex items-center gap-2">
+                <input
+                    type="checkbox"
+                    id="qs-pass-pct"
+                    className="accent-primary-500"
+                    checked={settings.passPercentageEnabled}
+                    onChange={(e) => update({ passPercentageEnabled: e.target.checked })}
+                />
+                <label htmlFor="qs-pass-pct" className="font-medium text-neutral-700 select-none cursor-pointer">
+                    🎯 Pass %
+                </label>
+                {settings.passPercentageEnabled && (
+                    <div className="flex items-center gap-1">
+                        <MyInput
+                            inputType="number"
+                            input={String(settings.passPercentage)}
+                            onChangeFunction={(e) =>
+                                update({ passPercentage: Math.min(100, Math.max(1, parseInt(e.target.value) || 50)) })
+                            }
+                            className="!w-16 text-center"
+                            inputPlaceholder="50"
+                        />
+                        <span className="text-neutral-500">%</span>
+                    </div>
                 )}
             </div>
 

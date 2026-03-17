@@ -18,12 +18,9 @@ const createOptionStructure = (option: any) => ({
 const getCorrectAnswerIndices = (question: any): number[] => {
     let opts = [];
     if (question.questionType === 'MCQS' || question.questionType === 'CMCQS') {
-        opts = (question.singleChoiceOptions || question.csingleChoiceOptions || []).slice(0, 4);
+        opts = question.singleChoiceOptions || question.csingleChoiceOptions || [];
     } else if (question.questionType === 'MCQM' || question.questionType === 'CMCQM') {
-        opts = (question.multipleChoiceOptions || question.cmultipleChoiceOptions || []).slice(
-            0,
-            4
-        );
+        opts = question.multipleChoiceOptions || question.cmultipleChoiceOptions || [];
     } else if (question.questionType === 'TRUE_FALSE') {
         opts = question.trueFalseOptions || [];
     }
@@ -69,17 +66,17 @@ const transformOptionsByType = (
     };
     switch (question.questionType) {
         case 'MCQS':
-            return pick(question.singleChoiceOptions || [], 4);
+            return pick(question.singleChoiceOptions || []);
         case 'MCQM':
-            return pick(question.multipleChoiceOptions || [], 4);
+            return pick(question.multipleChoiceOptions || []);
         case 'CMCQS':
-            return pick(question.csingleChoiceOptions || [], 4);
+            return pick(question.csingleChoiceOptions || []);
         case 'CMCQM':
-            return pick(question.cmultipleChoiceOptions || [], 4);
+            return pick(question.cmultipleChoiceOptions || []);
         case 'TRUE_FALSE':
             return pick(question.trueFalseOptions || []);
         default:
-            return pick(question.singleChoiceOptions || [], 4);
+            return pick(question.singleChoiceOptions || []);
     }
 };
 
@@ -284,6 +281,7 @@ export interface QuizSettings {
     timeLimitInMinutes?: number | null;
     marksPerQuestion?: number;
     negativeMarking?: number;
+    passPercentage?: number | null;
 }
 
 // Helper function to create quiz slide payload for API
@@ -345,6 +343,10 @@ export const createQuizSlidePayload = (
                 settings?.negativeMarking !== undefined
                     ? settings.negativeMarking
                     : (activeItem.quiz_slide?.negative_marking ?? 0),
+            pass_percentage:
+                settings?.passPercentage !== undefined
+                    ? settings.passPercentage
+                    : ((activeItem.quiz_slide as any)?.pass_percentage ?? null),
             questions: transformedQuestions,
         },
         is_loaded: true,

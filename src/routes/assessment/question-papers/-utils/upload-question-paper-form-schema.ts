@@ -12,10 +12,10 @@ const validateSingleChoiceQuestion = (question: any, ctx: z.RefinementCtx, examT
         return;
     }
 
-    if (question[optionsPath].length !== 4) {
+    if (question[optionsPath].length < 2) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `${optionsName} must have exactly 4 options`,
+            message: `${optionsName} must have at least 2 options`,
             path: [optionsPath],
         });
     }
@@ -54,10 +54,10 @@ const validateMultipleChoiceQuestion = (question: any, ctx: z.RefinementCtx, exa
         return;
     }
 
-    if (question[optionsPath].length !== 4) {
+    if (question[optionsPath].length < 2) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `${optionsName} must have exactly 4 options`,
+            message: `${optionsName} must have at least 2 options`,
             path: [optionsPath],
         });
     }

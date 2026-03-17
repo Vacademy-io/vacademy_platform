@@ -143,6 +143,7 @@ export interface QuizSlide {
     time_limit_in_minutes?: number | null;
     marks_per_question?: number;
     negative_marking?: number;
+    pass_percentage?: number | null;
 }
 
 // Audio slide interface

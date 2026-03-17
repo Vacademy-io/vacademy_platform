@@ -83,6 +83,45 @@ TOOL_DEFINITIONS = [
                 "required": ["topic"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_learning_analytics",
+            "description": "Get learning analytics including doubt patterns, quiz performance trends, and topic engagement. Use when the student asks about their learning patterns, weak areas, or overall performance trends.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "The student's user ID"
+                    }
+                },
+                "required": ["user_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "semantic_search_content",
+            "description": "Search across all course materials (slides, chapters, questions) using semantic similarity. Use this when the student asks about a topic and you need to find relevant learning materials, or when you need more context about a subject.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query - describe what you're looking for"
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Number of results to return (default 5)",
+                        "default": 5
+                    }
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 
@@ -92,15 +131,19 @@ class ToolManagerService:
     Manages tool definitions and executes tool calls from the LLM.
     """
     
-    def __init__(self, db_session: Session):
+    def __init__(self, db_session: Session, rag_service=None, analytics_service=None):
         self.db = db_session
         self.learning_progress_service = LearningProgressService(db_session)
-        
+        self.rag_service = rag_service
+        self.analytics_service = analytics_service
+
         # Map tool names to executor methods
         self.executors: Dict[str, Callable] = {
             "get_learning_progress": self._execute_get_learning_progress,
             "get_student_feedback": self._execute_get_student_feedback,
             "search_related_resources": self._execute_search_resources,
+            "semantic_search_content": self._execute_semantic_search,
+            "get_learning_analytics": self._execute_get_analytics,
         }
     
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
@@ -293,5 +336,65 @@ Use this information to provide personalized guidance to the student.
             logger.error(f"Error searching resources: {e}")
             return f"Unable to search resources: {str(e)}"
     
+
+    async def _execute_semantic_search(self, args: Dict[str, Any]) -> str:
+        """Search course content using semantic similarity via RAG."""
+        query = args.get("query")
+        top_k = args.get("top_k", 5)
+        institute_id = args.get("institute_id", "")
+
+        if not query:
+            return "Error: query is required"
+
+        if not self.rag_service:
+            return "Semantic search is not available. Falling back to keyword search."
+
+        try:
+            results = await self.rag_service.search(
+                query=query,
+                institute_id=institute_id,
+                top_k=top_k,
+            )
+
+            if not results:
+                return f"No relevant content found for: '{query}'"
+
+            formatted = [f"Found {len(results)} relevant materials:\n"]
+            for i, r in enumerate(results, 1):
+                meta = r.get("metadata", {})
+                title = meta.get("title", "Untitled")
+                chapter = meta.get("chapter", "")
+                subject = meta.get("subject", "")
+                source = f"{r['source_type']}/{r['source_id']}"
+
+                formatted.append(f"--- Result {i} (relevance: {r['similarity_score']}) ---")
+                if title:
+                    formatted.append(f"Title: {title}")
+                if chapter:
+                    formatted.append(f"Chapter: {chapter}")
+                if subject:
+                    formatted.append(f"Subject: {subject}")
+                formatted.append(f"Source: {source}")
+                formatted.append(f"Content:\n{r['content_text']}\n")
+
+            return "\n".join(formatted)
+        except Exception as e:
+            logger.error(f"Semantic search error: {e}")
+            return f"Search error: {str(e)}"
+
+
+    async def _execute_get_analytics(self, args: Dict[str, Any]) -> str:
+        """Get learning analytics for a student."""
+        user_id = args.get("user_id")
+        if not user_id:
+            return "Error: user_id is required"
+        if not self.analytics_service:
+            return "Learning analytics is not available."
+        try:
+            return self.analytics_service.get_analytics_summary(user_id)
+        except Exception as e:
+            logger.error(f"Error getting analytics: {e}")
+            return f"Unable to fetch analytics: {str(e)}"
+
 
 __all__ = ["ToolManagerService", "TOOL_DEFINITIONS"]

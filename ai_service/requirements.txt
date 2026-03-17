@@ -16,3 +16,4 @@ faster-whisper
 python-jose[cryptography]==3.3.0
 nltk
 rembg
+pgvector>=0.3.0

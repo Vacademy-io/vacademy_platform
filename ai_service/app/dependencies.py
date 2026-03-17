@@ -20,6 +20,9 @@ from .services.tool_manager_service import ToolManagerService
 from .services.chat_llm_client import ChatLLMClient
 from .services.institute_settings_service import InstituteSettingsService
 from .services.ai_chat_agent_service import AiChatAgentService
+from .services.embedding_service import EmbeddingService
+from .services.rag_service import RAGService
+from .services.learning_analytics_service import LearningAnalyticsService
 from .config import get_settings
 from .db import db_dependency
 from sqlalchemy.orm import Session
@@ -140,12 +143,18 @@ def get_chat_agent_service(db: Session = Depends(db_dependency)) -> AiChatAgentS
     """
     # Create services with DB session
     context_resolver = ContextResolverService(db)
-    tool_manager = ToolManagerService(db)
     institute_settings = InstituteSettingsService(db)
-    
+
     # Create API key resolver and LLM client
     api_key_resolver = ApiKeyResolver(db)
     llm_client = ChatLLMClient(api_key_resolver)
+
+    # Create embedding and RAG services
+    embedding_service = EmbeddingService(api_key_resolver)
+    rag_service = RAGService(db, embedding_service)
+
+    analytics_service = LearningAnalyticsService(db)
+    tool_manager = ToolManagerService(db, rag_service=rag_service, analytics_service=analytics_service)
     
     # Create and return chat agent service
     return AiChatAgentService(

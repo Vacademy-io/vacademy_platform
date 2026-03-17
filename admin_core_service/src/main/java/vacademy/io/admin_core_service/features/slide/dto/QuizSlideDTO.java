@@ -25,5 +25,7 @@ public class QuizSlideDTO {
 
     private Double negativeMarking;
 
+    private Double passPercentage;
+
     private List<QuizSlideQuestionDTO> questions;
 }

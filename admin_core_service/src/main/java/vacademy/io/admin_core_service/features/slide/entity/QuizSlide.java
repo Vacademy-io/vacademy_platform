@@ -37,6 +37,9 @@ public class QuizSlide {
     @Column(name = "negative_marking")
     private Double negativeMarking = 0.0;
 
+    @Column(name = "pass_percentage")
+    private Double passPercentage;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -52,6 +55,7 @@ public class QuizSlide {
         this.timeLimitInMinutes = quizSlideDTO.getTimeLimitInMinutes();
         this.marksPerQuestion = quizSlideDTO.getMarksPerQuestion() != null ? quizSlideDTO.getMarksPerQuestion() : 1.0;
         this.negativeMarking = quizSlideDTO.getNegativeMarking() != null ? quizSlideDTO.getNegativeMarking() : 0.0;
+        this.passPercentage = quizSlideDTO.getPassPercentage();
         if (quizSlideDTO.getDescription() != null) {
             this.descriptionRichText = new RichTextData(quizSlideDTO.getDescription());
         }

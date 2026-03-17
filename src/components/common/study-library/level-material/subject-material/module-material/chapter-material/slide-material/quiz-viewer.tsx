@@ -11,6 +11,7 @@ import { getUserId } from "@/constants/getUserId";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
 import QuizReview from "./QuizReview";
+import { useGetQuizSlideActivityLogs } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import confetti from "canvas-confetti";
 import katex from "katex";
@@ -63,6 +64,7 @@ interface QuizViewerProps {
   timeLimitMinutes?: number | null;
   marksPerQuestion?: number;
   defaultNegativeMarking?: number;
+  passPercentage?: number | null;
 }
 
 const BASE_QUESTION_TYPE_DESCRIPTIONS: Record<string, string> = {
@@ -118,6 +120,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   timeLimitMinutes,
   marksPerQuestion = 1,
   defaultNegativeMarking = 0,
+  passPercentage,
 }) => {
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<{ [questionId: string]: string | number | string[] }>({});
@@ -127,6 +130,9 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   const [showReview, setShowReview] = useState(false);
   const [moveOnlyOnCorrectAnswer, setMoveOnlyOnCorrectAnswer] = useState(false);
   const [celebrateOnQuizComplete, setCelebrateOnQuizComplete] = useState(true);
+  const [showReportAndCorrectAnswers, setShowReportAndCorrectAnswers] = useState(true);
+  const [passed, setPassed] = useState<boolean | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   const [showIncorrectNotice, setShowIncorrectNotice] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
   const timerExpiredRef = useRef(false);
@@ -138,6 +144,17 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   const submitQuizMutation = useSubmitQuizSlideActivityLog();
   const queryClient = useQueryClient();
   const { selectedSession } = useSelectedSessionStore();
+
+  // Resolve userId for attempt tracking query
+  useEffect(() => {
+    getUserId().then((id) => setCurrentUserId(id || undefined));
+  }, []);
+  const currentSlideIdForAttempts = useMemo(() => {
+    return new URLSearchParams(window.location.search).get("slideId") || undefined;
+  // Re-compute when questions change (indicates slide navigation)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questions]);
+  const attemptLogsQuery = useGetQuizSlideActivityLogs(currentUserId, currentSlideIdForAttempts);
 
   // ✅ Helper: Restore 100% for ALL completed quizzes from localStorage
   const restoreLocalStorageCompletions = useCallback((chapterId: string) => {
@@ -201,10 +218,13 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         setMoveOnlyOnCorrectAnswer(Boolean(flag));
         const celebrate = s?.courseSettings?.quiz?.celebrateOnQuizComplete ?? true;
         setCelebrateOnQuizComplete(Boolean(celebrate));
+        const showReport = s?.courseSettings?.quiz?.showReportAndCorrectAnswers ?? true;
+        setShowReportAndCorrectAnswers(Boolean(showReport));
       })
       .catch(() => {
         setMoveOnlyOnCorrectAnswer(false);
         setCelebrateOnQuizComplete(true);
+        setShowReportAndCorrectAnswers(true);
       });
   }, []);
 
@@ -442,22 +462,31 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
 
   // ✅ Only show review if we have answers (prevents "undefined" on first click)
   if (showReview && Object.keys(answers).length > 0) {
+    // Optimistic: if the query hasn't refetched yet after this submission,
+    // ensure the current attempt is counted (+1 when logs don't include it yet).
+    const logsCount = attemptLogsQuery.data?.length ?? 0;
+    const totalAttempts = logsCount > 0 ? logsCount : 1;
     return <QuizReview
       questions={questions}
       userAnswers={answers}
       scoreCard={scoreCard ?? undefined}
+      showCorrectAnswers={showReportAndCorrectAnswers}
+      passed={passed}
+      passPercentage={passPercentage}
+      attemptNumber={totalAttempts}
+      attemptLogs={attemptLogsQuery.data}
       onRestart={() => {
         // ✅ Clear localStorage when retaking quiz
         const { slideId, chapterId } = getUrlParams();
         const storageKey = `quiz_answers_${slideId}_${chapterId}`;
         localStorage.removeItem(storageKey);
-        console.log("🗑️ [QuizViewer] Cleared localStorage for quiz retake:", storageKey);
 
         // Reset quiz state
         setShowReview(false);
         setCurrent(0);
         setAnswers({});
         setScoreCard(null);
+        setPassed(null);
         timerExpiredRef.current = false;
       }}
     />;
@@ -522,6 +551,9 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
 
       toast.success("Quiz submitted!", { className: "text-center" });
 
+      // Refresh attempt history
+      queryClient.invalidateQueries({ queryKey: ["quiz-slide-activity-logs", currentUserId, currentSlideIdForAttempts] });
+
       const storageKey = `quiz_answers_${slideId}_${chapterId}`;
       localStorage.setItem(storageKey, JSON.stringify(finalAnswers));
 
@@ -548,6 +580,12 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
 
       const card = computeScore(finalAnswers);
       setScoreCard(card);
+      if (passPercentage != null && card.totalMarks > 0) {
+        const pct = (card.earned / card.totalMarks) * 100;
+        setPassed(pct >= passPercentage);
+      } else {
+        setPassed(null);
+      }
       setAnswers(finalAnswers);
       setShowReview(true);
       if (onComplete) onComplete();
@@ -667,6 +705,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         toast.success("Quiz submitted successfully!", {
           className: "text-center"
         });
+        queryClient.invalidateQueries({ queryKey: ["quiz-slide-activity-logs", currentUserId, currentSlideIdForAttempts] });
         
         // ✅ STEP 1: Save answers to localStorage for persistence across refreshes
         const storageKey = `quiz_answers_${slideId}_${chapterId}`;
@@ -821,6 +860,12 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         }
         const card = computeScore(answers);
         setScoreCard(card);
+        if (passPercentage != null && card.totalMarks > 0) {
+          const pct = (card.earned / card.totalMarks) * 100;
+          setPassed(pct >= passPercentage);
+        } else {
+          setPassed(null);
+        }
         setShowReview(true); // <-- Show review page
         if (onComplete) onComplete();
       } catch (err) {

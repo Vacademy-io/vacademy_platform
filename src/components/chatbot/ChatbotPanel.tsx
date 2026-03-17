@@ -17,6 +17,8 @@ import {
   MessageSquareQuote,
   Repeat,
   HelpCircle,
+  WifiOff,
+  ImagePlus,
 } from "lucide-react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -44,10 +46,12 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import "@/styles/katex-dark.css";
 import { avatarUrl } from "@/services/chatbot-settings";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
+import { ToolIndicator } from "./ToolIndicator";
 
 // Sound notification for new messages
 const playNotificationSound = () => {
@@ -153,6 +157,10 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     isSessionClosed,
     isInitializing,
     sessionId,
+    activeToolCall,
+    streamingContent,
+    isStreaming,
+    isOffline,
   } = useChatbotContext();
 
   // Check if the docked panel should be used - checking store AND route for immediate detection
@@ -193,6 +201,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, panelX: 0, panelY: 0 });
   
   const [selectedIntent, setSelectedIntent] = useState<MessageIntent>("general");
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{type: string; url: string; name?: string}>>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -360,7 +370,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(inputValue, selectedIntent);
+      sendMessage(inputValue, selectedIntent, pendingAttachments.length > 0 ? pendingAttachments : undefined);
+      setPendingAttachments([]);
     }
   };
 
@@ -535,6 +546,13 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
               <CardContent className="flex-1 p-0 overflow-hidden">
                 <ScrollArea className="h-full p-4">
                   <div className="flex flex-col space-y-4">
+                    {isOffline && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs rounded-md">
+                        <WifiOff className="size-3.5 shrink-0" />
+                        <span>You're offline. Messages will be sent when you reconnect.</span>
+                      </div>
+                    )}
+
                     {isInitializing && messages.length === 0 && (
                       <div className="w-full bg-muted/50 border border-muted-foreground/20 rounded-lg px-4 py-2 text-center text-sm text-muted-foreground">
                         Initialising chat...
@@ -644,13 +662,30 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                             )}
                           >
                             {msg.role === "user" ? (
-                              <p className="whitespace-pre-wrap">
-                                {msg.content}
-                              </p>
+                              <div>
+                                {msg.attachments && msg.attachments.length > 0 && (
+                                  <div className="flex gap-1 mb-1.5">
+                                    {msg.attachments.map((att, i) => (
+                                      <img
+                                        key={i}
+                                        src={att.url}
+                                        alt={att.name || 'attachment'}
+                                        className="max-w-[120px] max-h-[80px] rounded object-cover"
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                                <p className="whitespace-pre-wrap">
+                                  {msg.content}
+                                  {msg.status === "pending" && (
+                                    <span className="text-xs text-primary-foreground/60 ml-1" title="Queued - will send when online">&#x23F3;</span>
+                                  )}
+                                </p>
+                              </div>
                             ) : (
-                              <div className="max-w-none group">
+                              <div className="max-w-none group relative">
                                 <button
-                                  className="shrink-0 hover:text-muted-foreground float-right group-hover:opacity-100 opacity-0 transition-opacity"
+                                  className="absolute -top-0.5 -right-0.5 p-1 rounded-md bg-muted/80 z-10 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                                   onClick={() =>
                                     handleCopyMessage(msg.content, msg.id)
                                   }
@@ -754,7 +789,38 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                       );
                     })}
 
-                    {(isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz") && (
+                    {/* Streaming response */}
+                    {isStreaming && streamingContent && (
+                      <div className="flex items-start gap-2.5 mr-auto max-w-[90%]">
+                        <Avatar className="size-7 shrink-0 border border-primary/20">
+                          {avatarUrl ? (
+                            <AvatarImage
+                              src={avatarUrl}
+                              alt={chatbotSettings.assistant_name}
+                              className="object-cover"
+                            />
+                          ) : null}
+                          <AvatarFallback className="text-primary font-bold text-xs">
+                            {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="rounded-2xl px-4 py-2.5 text-sm shadow-sm break-words bg-muted/80 backdrop-blur-sm text-foreground rounded-bl-sm mr-2">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkBreaks, remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                          >
+                            {streamingContent}
+                          </ReactMarkdown>
+                          <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5" />
+                        </div>
+                      </div>
+                    )}
+
+                    <AnimatePresence>
+                      {activeToolCall && <ToolIndicator toolName={activeToolCall} />}
+                    </AnimatePresence>
+
+                    {!isStreaming && (isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz") && (
                       <div className="mr-auto flex max-w-[80%] items-end space-x-2">
                         <Avatar className="h-7 w-7 mr-2 shrink-0">
                           {avatarUrl ? (
@@ -810,7 +876,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
               </CardContent>
 
               {/* Input Area */}
-              <CardFooter className="border-t p-2 shrink-0 flex-col gap-2">
+              <CardFooter className="border-t p-2 shrink-0 flex-col gap-0">
                 {/* Quick Action Chips - only show when no messages yet or input is empty */}
                 {messages.length === 0 && !inputValue.trim() && (
                   <div className="w-full flex flex-wrap gap-1.5 pb-1">
@@ -835,7 +901,43 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     ))}
                   </div>
                 )}
-                
+
+                {/* Attachment preview */}
+                {pendingAttachments.length > 0 && (
+                  <div className="flex gap-2 w-full px-1 py-1.5">
+                    {pendingAttachments.map((att, i) => (
+                      <div key={i} className="relative size-12 rounded border overflow-hidden">
+                        <img src={att.url} alt={att.name || 'attachment'} className="size-full object-cover" />
+                        <button
+                          className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center"
+                          onClick={() => {
+                            URL.revokeObjectURL(att.url);
+                            setPendingAttachments(prev => prev.filter((_, idx) => idx !== i));
+                          }}
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Hidden file input for image upload */}
+                {/* TODO: For production, upload to S3 via useFileUpload and use the returned URL instead of object URL */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const url = URL.createObjectURL(file);
+                    setPendingAttachments(prev => [...prev, { type: 'image', url, name: file.name }]);
+                    e.target.value = '';
+                  }}
+                />
+
                 {/* Input Row */}
                 <div className="w-full flex gap-2">
                   <Select
@@ -860,8 +962,21 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     className="text-sm h-9 flex-1"
                   />
                   <Button
-                    onClick={() => sendMessage(inputValue, selectedIntent)}
-                    disabled={!inputValue.trim() || isLoading}
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!sessionId || isLoading}
+                    title="Attach image"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      sendMessage(inputValue, selectedIntent, pendingAttachments.length > 0 ? pendingAttachments : undefined);
+                      setPendingAttachments([]);
+                    }}
+                    disabled={(!inputValue.trim() && pendingAttachments.length === 0) || isLoading}
                     size="icon"
                     className="h-9 w-9 shrink-0"
                   >

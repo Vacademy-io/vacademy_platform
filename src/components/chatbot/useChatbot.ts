@@ -10,10 +10,16 @@ import {
   AIStatus,
   MessageIntent,
 } from "@/services/chatbot-api";
+import { enqueueMessage, peekQueue, dequeueMessage, QueuedMessage } from "@/services/offline-queue";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
 import { useParentPortalStore } from "@/stores/parent-portal-store";
 import { useCourseDetailsStore } from "@/stores/study-library/useCourseDetailsStore";
+import { useStudyLibraryStore } from "@/stores/study-library/use-study-library-store";
+import { useModulesWithChaptersStore } from "@/stores/study-library/use-modules-with-chapters-store";
+import { getSubjectName } from "@/utils/study-library/get-name-by-id/getSubjectNameById";
+import { getModuleName } from "@/utils/study-library/get-name-by-id/getModuleNameById";
+import { getChapterName } from "@/utils/study-library/get-name-by-id/getChapterById";
 import {
   ChatbotSettingsData,
   DEFAULT_CHATBOT_SETTINGS,
@@ -40,6 +46,11 @@ export const useChatbot = () => {
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [isSessionClosed, setIsSessionClosed] = useState(false);
+  const [activeToolCall, setActiveToolCall] = useState<string | null>(null);
+  const [streamingContent, setStreamingContent] = useState<string>("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [pendingMessages, setPendingMessages] = useState<QueuedMessage[]>([]);
 
   // Ref to scroll to bottom
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -52,6 +63,12 @@ export const useChatbot = () => {
   );
   const getCourseDetails = useCourseDetailsStore(
     (state) => state.getCourseDetails,
+  );
+  const studyLibraryData = useStudyLibraryStore(
+    (state) => state.studyLibraryData,
+  );
+  const modulesWithChaptersData = useModulesWithChaptersStore(
+    (state) => state.modulesWithChaptersData,
   );
 
   const scrollToBottom = () => {
@@ -73,6 +90,40 @@ export const useChatbot = () => {
       }
     };
   }, [sessionId]);
+
+  // Flush offline queue when back online
+  const flushOfflineQueue = useCallback(async () => {
+    if (!sessionId) return;
+    const queued = peekQueue();
+    for (const msg of queued) {
+      if (msg.sessionId === sessionId) {
+        try {
+          await chatbotAPI.sendMessage(sessionId, msg.message, msg.intent as MessageIntent | undefined);
+          dequeueMessage();
+        } catch (e) {
+          console.error("Failed to flush queued message:", e);
+          break; // Stop if sending fails
+        }
+      }
+    }
+    setPendingMessages([]);
+  }, [sessionId]);
+
+  // Online/offline detection
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      flushOfflineQueue();
+    };
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [flushOfflineQueue]);
 
   // Reset inactivity timer
   const resetInactivityTimer = useCallback(() => {
@@ -215,6 +266,17 @@ export const useChatbot = () => {
           courseName = batch?.package_dto?.package_name || "";
         }
 
+        // Resolve chapter/subject/module names from stores using URL params
+        const chapterNameStr = context.chapterId
+          ? getChapterName(context.chapterId, modulesWithChaptersData) || ""
+          : "";
+        const moduleNameStr = context.moduleId
+          ? getModuleName(context.moduleId, modulesWithChaptersData)
+          : "";
+        const subjectNameStr = context.subjectId
+          ? getSubjectName(context.subjectId, studyLibraryData) || ""
+          : "";
+
         return {
           name: activeSlide.title || "Current Slide",
           type: slideType,
@@ -222,6 +284,9 @@ export const useChatbot = () => {
           questions: questions || undefined,
           options: options.length > 0 ? options : undefined,
           order: activeSlide.slide_order,
+          chapter: chapterNameStr,
+          module: moduleNameStr,
+          subject: subjectNameStr,
           course: courseName,
           progress: `${Math.round(activeSlide.percentage_completed || 0)}%`,
         };
@@ -311,6 +376,8 @@ export const useChatbot = () => {
     activeSlide,
     instituteDetails,
     getCourseDetails,
+    studyLibraryData,
+    modulesWithChaptersData,
   ]);
 
   const initializeSession = useCallback(async () => {
@@ -365,11 +432,13 @@ export const useChatbot = () => {
         try {
           const messageData: MessageEvent = JSON.parse(event.data);
 
-          // Skip tool_call and tool_result messages
-          if (
-            messageData.type === "tool_call" ||
-            messageData.type === "tool_result"
-          ) {
+          // Handle tool_call: show indicator; tool_result: clear it
+          if (messageData.type === "tool_call") {
+            setActiveToolCall(messageData.metadata?.tool_name || null);
+            return;
+          }
+          if (messageData.type === "tool_result") {
+            setActiveToolCall(null);
             return;
           }
 
@@ -378,8 +447,15 @@ export const useChatbot = () => {
             return;
           }
 
-          // Clear waiting state only when we get an actual assistant message
+          // Clear waiting state and tool indicator when we get an actual assistant message
           setIsWaitingForResponse(false);
+          setActiveToolCall(null);
+
+          // When we receive a full assistant message, clear streaming state
+          if (messageData.type === "assistant") {
+            setIsStreaming(false);
+            setStreamingContent("");
+          }
 
           const newMessage: ChatMessage = {
             id: messageData.id,
@@ -397,6 +473,17 @@ export const useChatbot = () => {
           });
         } catch (error) {
           console.error("Error parsing message event:", error);
+        }
+      });
+
+      eventSource.addEventListener("token", (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setIsStreaming(true);
+          setStreamingContent((prev) => prev + (data.content || ""));
+          scrollToBottom();
+        } catch (e) {
+          console.error("Error parsing token event:", e);
         }
       });
 
@@ -525,14 +612,33 @@ export const useChatbot = () => {
     activeSlide,
   ]);
 
-  const sendMessage = async (content: string, intent?: MessageIntent) => {
+  const sendMessage = async (content: string, intent?: MessageIntent, attachments?: Array<{type: string; url: string; mime_type?: string; name?: string}>) => {
     if (!content.trim() || !sessionId) return;
+
+    // Queue message if offline
+    if (!navigator.onLine) {
+      const queued = enqueueMessage({ sessionId, message: content, intent });
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: "user",
+          content,
+          timestamp: Date.now(),
+          status: "pending",
+        },
+      ]);
+      setPendingMessages(peekQueue());
+      setInputValue("");
+      return;
+    }
 
     const newMessage: ChatMessage = {
       id: Date.now(),
       role: "user",
       content,
       timestamp: Date.now(),
+      attachments: attachments?.map(att => ({ ...att, type: att.type as 'image' | 'video' })),
     };
 
     setMessages((prev) => [...prev, newMessage]);
@@ -542,7 +648,7 @@ export const useChatbot = () => {
     setAiStatus(intent === "practice" ? "generating_quiz" : "thinking");
 
     try {
-      await chatbotAPI.sendMessage(sessionId, content, intent);
+      await chatbotAPI.sendMessage(sessionId, content, intent, undefined, attachments);
       // Response will come through SSE
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -617,6 +723,9 @@ export const useChatbot = () => {
     setIsWaitingForResponse(false);
     setHasError(false);
     setIsSessionClosed(false);
+    setActiveToolCall(null);
+    setStreamingContent("");
+    setIsStreaming(false);
 
     // Initialize new session
     await initializeSession();
@@ -648,6 +757,9 @@ export const useChatbot = () => {
     setIsWaitingForResponse(false);
     setHasError(false);
     setIsSessionClosed(true);
+    setActiveToolCall(null);
+    setStreamingContent("");
+    setIsStreaming(false);
   }, [sessionId]);
 
   return {
@@ -674,5 +786,10 @@ export const useChatbot = () => {
     hasError,
     isSessionClosed,
     isInitializing,
+    activeToolCall,
+    streamingContent,
+    isStreaming,
+    isOffline,
+    pendingMessages,
   };
 };

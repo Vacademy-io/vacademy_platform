@@ -598,6 +598,7 @@ export const SlideMaterial = () => {
               timeLimitMinutes={quizSlide?.time_limit_in_minutes ?? null}
               marksPerQuestion={quizSlide?.marks_per_question ?? 1}
               defaultNegativeMarking={quizSlide?.negative_marking ?? 0}
+              passPercentage={(quizSlide as any)?.pass_percentage ?? null}
               onAnswer={async (_questionId, selectedOptionId) => {
                 // Send/save answer data here if needed
                 await handleQuestionSubmit(String(selectedOptionId));
@@ -652,6 +653,7 @@ export const SlideMaterial = () => {
             setContent(
               <QuizViewer
                 questions={mappedQuestions}
+                passPercentage={(quizSlide as any)?.pass_percentage ?? null}
                 onAnswer={async (_questionId, selectedOptionId) => {
                   await handleQuestionSubmit(String(selectedOptionId));
                 }}

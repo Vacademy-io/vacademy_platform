@@ -41,11 +41,14 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import "@/styles/katex-dark.css";
 import { avatarUrl } from "@/services/chatbot-settings";
 import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { MessageIntent } from "@/services/chatbot-api";
+import { AnimatePresence } from "framer-motion";
+import { ToolIndicator } from "./ToolIndicator";
 
 // Context-aware quick action suggestions
 const getQuickActions = (
@@ -167,6 +170,9 @@ export const ChatbotSidePanel: React.FC = () => {
     sessionId,
     setIsOpen,
     shouldShowChatbot,
+    activeToolCall,
+    streamingContent,
+    isStreaming,
   } = useChatbotContext();
 
   const {
@@ -566,7 +572,38 @@ export const ChatbotSidePanel: React.FC = () => {
               );
             })}
 
-            {(isLoading ||
+            {/* Streaming response */}
+            {isStreaming && streamingContent && (
+              <div className="flex items-start gap-1.5 mr-auto max-w-[90%]">
+                <Avatar className="h-6 w-6 shrink-0 ring-1 ring-border/40">
+                  {avatarUrl ? (
+                    <AvatarImage
+                      src={avatarUrl}
+                      alt={chatbotSettings.assistant_name}
+                      className="object-cover"
+                    />
+                  ) : null}
+                  <AvatarFallback className="text-primary font-bold text-[10px] bg-muted">
+                    {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="rounded-xl rounded-bl-sm bg-card text-card-foreground px-2.5 py-1.5 shadow-sm ring-1 ring-border/30 text-[13px] leading-relaxed">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkBreaks, remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                  >
+                    {streamingContent}
+                  </ReactMarkdown>
+                  <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5" />
+                </div>
+              </div>
+            )}
+
+            <AnimatePresence>
+              {activeToolCall && <ToolIndicator toolName={activeToolCall} />}
+            </AnimatePresence>
+
+            {!isStreaming && (isLoading ||
               aiStatus === "thinking" ||
               aiStatus === "generating_quiz") && (
               <div className="mr-auto flex max-w-[90%] items-end space-x-1.5">

@@ -68,6 +68,7 @@ import { cn } from "@/lib/utils";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { MyMembershipWidget } from "./-components/MyMembershipWidget";
 import { MyBooksWidget } from "./-components/MyBooksWidget";
+import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
 
 export const Route = createFileRoute("/dashboard/")({
@@ -596,6 +597,18 @@ export function DashboardComponent() {
                       </CardContent>
                     </Card>
                   ) : null,
+                },
+                {
+                  id: "upcomingLiveClasses" as const,
+                  className: "sm:col-span-2 lg:col-span-4",
+                  render: (
+                    <UpcomingLiveClassesWidget
+                      liveSessions={liveSessions?.live_sessions || []}
+                      upcomingSessions={liveSessions?.upcoming_sessions || []}
+                      isLoading={isLoadingLiveSessions}
+                      onJoinSession={handleJoinSession}
+                    />
+                  ),
                 },
                 {
                   id: "myMembership" as const,

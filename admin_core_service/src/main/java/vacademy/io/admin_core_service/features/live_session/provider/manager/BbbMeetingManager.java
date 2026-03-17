@@ -37,8 +37,8 @@ import java.util.*;
  *
  * Config stored in configJson:
  * {
- *   "apiUrl": "https://meet.vacademy.io/bigbluebutton/api",
- *   "secret": "shared-secret-here"
+ * "apiUrl": "https://meet.vacademy.io/bigbluebutton/api",
+ * "secret": "shared-secret-here"
  * }
  */
 @Service
@@ -107,7 +107,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
     @Override
     public ParticipantJoinLinkDTO getParticipantJoinLink(String providerMeetingId, String participantName,
             String participantEmail, String instituteId) {
-        String joinUrl = buildJoinUrlForUser(providerMeetingId, participantName, participantEmail, "VIEWER", instituteId);
+        String joinUrl = buildJoinUrlForUser(providerMeetingId, participantName, participantEmail, "VIEWER",
+                instituteId);
         return ParticipantJoinLinkDTO.builder()
                 .joinLink(joinUrl)
                 .participantName(participantName)
@@ -165,7 +166,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         boolean autoStartRec = boolOrDefault(bbbCfg, "auto_start_recording", false);
         boolean muteOnStart = boolOrDefault(bbbCfg, "mute_on_start", true);
         boolean webcamsOnlyForMod = boolOrDefault(bbbCfg, "webcams_only_for_moderator", false);
-        String guestPolicy = bbbCfg.containsKey("guest_policy") ? String.valueOf(bbbCfg.get("guest_policy")) : "ALWAYS_ACCEPT";
+        String guestPolicy = bbbCfg.containsKey("guest_policy") ? String.valueOf(bbbCfg.get("guest_policy"))
+                : "ALWAYS_ACCEPT";
 
         Map<String, String> params = new LinkedHashMap<>();
         params.put("name", request.getTopic() != null ? request.getTopic() : instituteName + " Live Class");
@@ -187,7 +189,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         }
         params.put("bannerText", instituteName);
 
-        // Whitelabeling: disable default BBB presentation (removes "Welcome to BigBlueButton" slide)
+        // Whitelabeling: disable default BBB presentation (removes "Welcome to
+        // BigBlueButton" slide)
         params.put("preUploadedPresentationOverrideDefault", "true");
 
         // Whitelabeling: set custom copyright/branding text
@@ -209,7 +212,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
 
         // Set end callback URL so BBB notifies us when the meeting ends
         if (request.getScheduleId() != null) {
-            String callbackUrl = backendBaseUrl + "/admin-core-service/live-sessions/provider/meeting/bbb-callback?scheduleId="
+            String callbackUrl = backendBaseUrl
+                    + "/admin-core-service/live-sessions/provider/meeting/bbb-callback?scheduleId="
                     + request.getScheduleId();
             params.put("meta_endCallbackUrl", callbackUrl);
         }
@@ -218,7 +222,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         String checksum = sha256("create" + queryString + secret);
         String url = apiUrl + "/create?" + queryString + "&checksum=" + checksum;
 
-        // Build XML body with custom presentation (institute logo as slide, replaces BBB default)
+        // Build XML body with custom presentation (institute logo as slide, replaces
+        // BBB default)
         String xmlBody = null;
         if (logoUrl != null) {
             xmlBody = "<?xml version='1.0' encoding='UTF-8'?>"
@@ -288,7 +293,7 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
      * This is called by the join endpoint to create per-user URLs.
      */
     public String buildJoinUrl(String apiUrl, String secret, String meetingId,
-                               String fullName, String userId, String role) {
+            String fullName, String userId, String role) {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("meetingID", meetingId);
         params.put("fullName", fullName);
@@ -307,7 +312,7 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
      * Includes per-institute branding via userdata parameters.
      */
     public String buildJoinUrlForUser(String meetingId, String fullName,
-                                      String userId, String role, String instituteId) {
+            String userId, String role, String instituteId) {
         Map<String, Object> cfg = getConfigMap(instituteId);
         String apiUrl = (String) cfg.get("apiUrl");
         String secret = (String) cfg.get("secret");
@@ -431,7 +436,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             long endTimeMs = Long.parseLong(getChildText(rec, "endTime", "0"));
             long durationSecs = (endTimeMs - startTimeMs) / 1000;
 
-            // Get playback URL — BBB 3.0 structure: <playback><format><url>...</url></format></playback>
+            // Get playback URL — BBB 3.0 structure:
+            // <playback><format><url>...</url></format></playback>
             String playbackUrl = null;
             NodeList playbackNodes = rec.getElementsByTagName("playback");
             if (playbackNodes.getLength() > 0) {
@@ -439,9 +445,9 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
                 NodeList formats = playback.getElementsByTagName("format");
                 if (formats.getLength() > 0) {
                     Element format = (Element) formats.item(0);
-                    String url = getChildText(format, "url", "");
-                    if (!url.isEmpty()) {
-                        playbackUrl = url;
+                    String extractedUrl = getChildText(format, "url", "");
+                    if (!extractedUrl.isEmpty()) {
+                        playbackUrl = extractedUrl;
                     }
                 }
             }
@@ -529,7 +535,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         Optional<LiveSessionProviderConfig> config;
         String provider = MeetingProvider.BBB_MEETING.name();
 
-        // Try institute-specific first, then fall back to Vacademy-level (null instituteId)
+        // Try institute-specific first, then fall back to Vacademy-level (null
+        // instituteId)
         if (instituteId != null) {
             config = configRepository.findByInstituteIdAndProviderAndStatusIn(instituteId, provider, ACTIVE);
             if (config.isEmpty()) {
@@ -545,7 +552,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
 
         try {
             return objectMapper.readValue(config.get().getConfigJson(),
-                    new TypeReference<Map<String, Object>>() {});
+                    new TypeReference<Map<String, Object>>() {
+                    });
         } catch (Exception e) {
             throw new VacademyException("Failed to read BBB config");
         }
@@ -556,13 +564,16 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
      * Compares against the stored BBB config secret.
      */
     public boolean validateBbbSecret(String secret) {
-        if (secret == null || secret.isBlank()) return false;
+        if (secret == null || secret.isBlank())
+            return false;
         try {
             var config = configRepository.findByProviderAndStatusIn(
                     MeetingProvider.BBB_MEETING.name(), ACTIVE);
-            if (config.isEmpty()) return false;
+            if (config.isEmpty())
+                return false;
             Map<String, Object> cfg = objectMapper.readValue(config.get().getConfigJson(),
-                    new TypeReference<Map<String, Object>>() {});
+                    new TypeReference<Map<String, Object>>() {
+                    });
             return secret.equals(cfg.get("secret"));
         } catch (Exception e) {
             log.warn("[BBB] Failed to validate secret: {}", e.getMessage());
@@ -571,19 +582,22 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
     }
 
     private static boolean boolOrDefault(Map<String, Object> map, String key, boolean defaultValue) {
-        if (!map.containsKey(key)) return defaultValue;
+        if (!map.containsKey(key))
+            return defaultValue;
         Object val = map.get(key);
-        if (val instanceof Boolean) return (Boolean) val;
+        if (val instanceof Boolean)
+            return (Boolean) val;
         return Boolean.parseBoolean(String.valueOf(val));
     }
 
     private String buildQueryString(Map<String, String> params) {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, String> entry : params.entrySet()) {
-            if (sb.length() > 0) sb.append("&");
+            if (sb.length() > 0)
+                sb.append("&");
             sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
-              .append("=")
-              .append(URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
+                    .append("=")
+                    .append(URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
         }
         return sb.toString();
     }

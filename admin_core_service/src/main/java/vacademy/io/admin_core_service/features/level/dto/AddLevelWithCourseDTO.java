@@ -20,4 +20,8 @@ public class AddLevelWithCourseDTO {
     private String thumbnailFileId;
     private AddGroupDTO group;
     private List<AddFacultyToCourseDTO> addFacultyToCourse;
+    /** Optional: whether this batch is a parent. Backward compatible: not sent = false. */
+    private Boolean isParent;
+    /** Optional: parent batch id if this is a child batch. */
+    private String parentId;
 }

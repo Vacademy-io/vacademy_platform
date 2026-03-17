@@ -15,7 +15,7 @@ public interface LearnerActivityDataProjection {
 
     Double getTotalTime();
 
-    Double getDailyAvgTime();
+    Double  getDailyAvgTime();
 
     Integer getRank();
 }

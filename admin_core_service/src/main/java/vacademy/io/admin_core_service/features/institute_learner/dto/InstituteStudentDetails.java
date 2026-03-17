@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.institute_learner.dto;
 
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -29,4 +28,5 @@ public class InstituteStudentDetails {
     private String userPlanId;
     private String subOrgId;
     private String commaSeparatedOrgRoles;
+    private String type; // PACKAGE_SESSION, ABANDONED_CART, etc.
 }

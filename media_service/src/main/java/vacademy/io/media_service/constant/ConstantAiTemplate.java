@@ -22,6 +22,7 @@ public class ConstantAiTemplate {
                    - Include relevant images from source material
                    - Questions must directly relate to {topics}
                    - Maintain {classLevel} appropriate language
+                   {imageInstruction}
 
                 3. Question Type Handling:
                    - MCQS/MCQM: 4 options with clear single/multiple answers
@@ -66,7 +67,6 @@ public class ConstantAiTemplate {
                                          "is_process_completed": false
                                          "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
                                          "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
-
                                      }}
 
                        **Critical Rules**:
@@ -95,6 +95,7 @@ public class ConstantAiTemplate {
                 2. Content Requirements:
                    - Preserve ALL DS_TAGs in HTML comments
                    - Include relevant images from Objective
+                   {imageInstruction}
 
                 3. Question Type Handling:
                    - MCQS/MCQM: 4 options with clear single/multiple answers
@@ -172,6 +173,16 @@ public class ConstantAiTemplate {
         };
     }
 
+    public static String getImageGenerationInstruction() {
+        return """
+                - **Image Generation**:
+                  If a part of the question or option specifically requires a visual aid (diagram, figure, scene) that is NOT already present:
+                  Include a special div in the 'content' field:
+                  `<div class="image_to_generate">PROMPT: Detailed description of the image to generate</div>`
+                  This prompt will be used to generate an image using AI.
+                """;
+    }
+
     private static String getHtmlToQuestionTemplate() {
         return """
                 HTML raw data :  {htmlData}
@@ -179,6 +190,7 @@ public class ConstantAiTemplate {
                         Prompt:
                         Convert the given HTML file containing questions into the following JSON format:
                         - Preserve all DS_TAGs in HTML content in comments
+                        {imageInstruction}
 
                         JSON format :
 
@@ -258,6 +270,7 @@ public class ConstantAiTemplate {
                          - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
                          - Do not extract any questions if already extracted all questions and set is_process_completed true.
                          - Preserve all DS_TAGs in HTML content in comments
+                         {imageInstruction}
 
                         JSON format :
 
@@ -452,6 +465,7 @@ public class ConstantAiTemplate {
                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
                         - Do not generate any questions if already generated all questions from Required Topics and set is_process_completed true.
                         - Preserve all DS_TAGs in HTML content in comments
+                        {imageInstruction}
 
                         JSON format :
 
@@ -507,6 +521,7 @@ public class ConstantAiTemplate {
                          - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
                          - Do not generate any questions if already generated required questions and set is_process_completed true.
                          - Preserve all DS_TAGs in HTML content in comments
+                         {imageInstruction}
 
                         JSON format :
 
@@ -568,6 +583,7 @@ public class ConstantAiTemplate {
                          - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
                          - Do not generate any questions if already generated required questions and set is_process_completed true.
                          - Preserve all DS_TAGs in HTML content in comments
+                         {imageInstruction}
 
 
                         JSON format :

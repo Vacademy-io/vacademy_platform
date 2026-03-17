@@ -346,7 +346,176 @@ The Workflow Engine is a sophisticated automation system that enables the creati
 
 ## 🔒 Security & Deduplication
 
+### **Idempotency System for Trigger-Based Workflows**
+
+The workflow system implements a flexible idempotency mechanism to prevent duplicate executions of trigger-based workflows. Each workflow trigger can be configured with a specific strategy for generating unique keys.
+
+#### **Configuration**
+
+Idempotency settings are stored in the `idempotency_generation_setting` JSON field of the `workflow_trigger` table:
+
+```json
+{
+  "strategy": "CONTEXT_TIME_WINDOW",
+  "ttlMinutes": 15,
+  "contextFields": ["userId", "packageId"],
+  "includeTriggerId": true,
+  "includeEventType": false,
+  "includeEventId": false,
+  "customExpression": null,
+  "failOnMissingContext": false
+}
+```
+
+#### **Available Strategies**
+
+##### **1. NONE** - No Idempotency (Always Execute)
+```json
+{
+  "strategy": "NONE"
+}
+```
+- Generates new UUID for each execution
+- Workflow always runs regardless of previous executions
+- **Use case**: Workflows that must execute on every trigger (e.g., logging, analytics)
+
+##### **2. UUID** - Always Unique
+```json
+{
+  "strategy": "UUID"
+}
+```
+- Generates new UUID for each execution
+- Creates execution tracking record
+- **Use case**: Audit trail without deduplication
+
+##### **3. TIME_WINDOW** - Time-Based Deduplication
+```json
+{
+  "strategy": "TIME_WINDOW",
+  "ttlMinutes": 15
+}
+```
+- **Key format**: `trigger_{triggerId}_{roundedTimestamp}`
+- Prevents duplicate executions within time window
+- Time is rounded down (e.g., 9:07, 9:14 → both round to 9:00 for 15-min window)
+- **Use case**: "Max one reminder workflow per 15 minutes"
+- **Example**: Subscription renewal reminders once per hour
+
+##### **4. CONTEXT_BASED** - User/Entity Based
+```json
+{
+  "strategy": "CONTEXT_BASED",
+  "contextFields": ["userId"]
+}
+```
+- **Key format**: `trigger_{triggerId}_userId_{userIdValue}`
+- Prevents duplicate executions for same context values
+- Multiple fields: `trigger_{triggerId}_userId_{val}_packageId_{val}`
+- **Use cases**:
+  - "One enrollment workflow per user"
+  - "One workflow per package+session combination"
+- **Example**: Welcome email sent only once per new user
+
+##### **5. CONTEXT_TIME_WINDOW** - Combined Deduplication
+```json
+{
+  "strategy": "CONTEXT_TIME_WINDOW",
+  "contextFields": ["userId"],
+  "ttlMinutes": 60
+}
+```
+- **Key format**: `trigger_{triggerId}_userId_{value}_{roundedTimestamp}`
+- Combines context fields with time window
+- **Use case**: "Max one notification per user per hour"
+- **Example**: Reminder emails once per student per day
+
+##### **6. EVENT_BASED** - Event Deduplication
+```json
+{
+  "strategy": "EVENT_BASED",
+  "includeEventType": true,
+  "includeEventId": true
+}
+```
+- **Key format**: `trigger_{triggerId}_eventType_{type}_eventId_{id}`
+- Prevents duplicate executions for same event
+- **Use case**: "One workflow per unique event occurrence"
+- **Example**: Process each batch enrollment event exactly once
+
+##### **7. CUSTOM_EXPRESSION** - SpEL Expression
+```json
+{
+  "strategy": "CUSTOM_EXPRESSION",
+  "customExpression": "#{triggerId}_#{ctx['roleId']}_#{ctx['organizationId']}"
+}
+```
+- Evaluates SpEL expression for key generation
+- Available variables: `triggerId`, `eventName`, `eventId`, `ctx` (context map)
+- **Use case**: Complex business logic
+- **Example**: Different deduplication per role and organization
+
+#### **Real-World Examples**
+
+**User Enrollment Workflow**
+```json
+{
+  "triggerEventName": "LEARNER_BATCH_ENROLLMENT",
+  "idempotencyGenerationSetting": {
+    "strategy": "CONTEXT_BASED",
+    "contextFields": ["userId", "sessionId"],
+    "failOnMissingContext": true
+  }
+}
+```
+- Ensures each user is enrolled in each session only once
+- Prevents duplicate enrollments if event is triggered multiple times
+
+**Reminder Notifications**
+```json
+{
+  "triggerEventName": "SEND_LEARNER_CREDENTIALS",
+  "idempotencyGenerationSetting": {
+    "strategy": "CONTEXT_TIME_WINDOW",
+    "contextFields": ["userId"],
+    "ttlMinutes": 1440
+  }
+}
+```
+- Sends credentials to user maximum once per day (1440 minutes)
+- Prevents spam if trigger fires multiple times
+
+**General Event Processing**
+```json
+{
+  "triggerEventName": "SUB_ORG_MEMBER_ENROLLMENT",
+  "idempotencyGenerationSetting": {
+    "strategy": "TIME_WINDOW",
+    "ttlMinutes": 5
+  }
+}
+```
+- Processes batch enrollments once per 5-minute window
+- Prevents overwhelming system with rapid-fire events
+
+#### **Execution Tracking**
+
+All trigger-based workflow executions are tracked in the `workflow_execution` table:
+
+- **Status**: `PROCESSING` → `COMPLETED` / `FAILED`
+- **Timestamps**: `startedAt`, `completedAt`
+- **Error Messages**: Stored for failed executions
+- **Idempotency Key**: Unique constraint prevents duplicates
+
+#### **Error Handling**
+
+- Missing context fields: Uses `"null"` value or fails based on `failOnMissingContext`
+- Duplicate key detected: Skips execution gracefully
+- Invalid strategy: Falls back to `UUID` strategy
+- Expression evaluation error: Logs error and skips trigger
+
 ### **Idempotency Service**
+
 
 - **Execution Deduplication** → Prevent duplicate runs
 - **Session Management** → Track workflow sessions

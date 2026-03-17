@@ -2,6 +2,7 @@ package vacademy.io.media_service.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.media_service.dto.DeepSeekResponse;
+import vacademy.io.media_service.service.AiTokenUsageClient;
 
 import java.util.*;
 
@@ -30,11 +32,44 @@ public class ExternalAIApiServiceImpl {
     @Value("${openrouter.x_title:Vacademy Platform}")
     private String xTitle;
 
+    @Autowired
+    private AiTokenUsageClient aiTokenUsageClient;
+
     public ExternalAIApiServiceImpl() {
 
     }
 
+    /**
+     * Get chat completion from OpenRouter API.
+     * 
+     * @param modelName Model name (e.g., "google/gemini-2.5-flash")
+     * @param userInput User input/prompt
+     * @param maxTokens Maximum tokens to generate
+     * @return DeepSeekResponse containing the completion and usage info
+     */
     public DeepSeekResponse getChatCompletion(String modelName, String userInput, int maxTokens) {
+        return getChatCompletion(modelName, userInput, maxTokens, "content", null, null);
+    }
+
+    /**
+     * Get chat completion from OpenRouter API with usage logging.
+     * 
+     * @param modelName   Model name (e.g., "google/gemini-2.5-flash")
+     * @param userInput   User input/prompt
+     * @param maxTokens   Maximum tokens to generate
+     * @param requestType Request type for logging (e.g., "content", "evaluation",
+     *                    "presentation")
+     * @param instituteId Optional institute UUID for usage tracking
+     * @param userId      Optional user UUID for usage tracking
+     * @return DeepSeekResponse containing the completion and usage info
+     */
+    public DeepSeekResponse getChatCompletion(
+            String modelName,
+            String userInput,
+            int maxTokens,
+            String requestType,
+            UUID instituteId,
+            UUID userId) {
         // Prepare headers
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -74,7 +109,12 @@ public class ExternalAIApiServiceImpl {
                         entity,
                         String.class);
 
-                return objectMapper.readValue(response.getBody(), DeepSeekResponse.class);
+                DeepSeekResponse deepSeekResponse = objectMapper.readValue(response.getBody(), DeepSeekResponse.class);
+
+                // Log token usage asynchronously (fire and forget)
+                logUsage(deepSeekResponse, modelName, requestType, instituteId, userId);
+
+                return deepSeekResponse;
             } catch (HttpClientErrorException e) {
                 if (e.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS && attempt <= maxRetries) {
                     log.warn("Rate limit exceeded on OpenRouter (429). Retrying attempt {}/{} in {}ms", attempt,
@@ -98,6 +138,29 @@ public class ExternalAIApiServiceImpl {
             } catch (Exception e) {
                 throw new RuntimeException("Failed to parse API response or unknown error", e);
             }
+        }
+    }
+
+    /**
+     * Log token usage to the AI service asynchronously.
+     */
+    private void logUsage(DeepSeekResponse response, String modelName, String requestType, UUID instituteId,
+            UUID userId) {
+        try {
+            if (response != null && response.getUsage() != null) {
+                DeepSeekResponse.Usage usage = response.getUsage();
+                aiTokenUsageClient.recordUsageAsync(
+                        "openai", // OpenRouter uses OpenAI-compatible API
+                        modelName,
+                        usage.getPromptTokens(),
+                        usage.getCompletionTokens(),
+                        requestType != null ? requestType : "content",
+                        instituteId,
+                        userId);
+            }
+        } catch (Exception e) {
+            // Never fail the main request due to usage logging issues
+            log.warn("Failed to log AI token usage: {}", e.getMessage());
         }
     }
 

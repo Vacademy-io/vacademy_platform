@@ -75,6 +75,9 @@ public class InstituteDomainRouting {
     @Column(name = "allow_email_otp_auth")
     private Boolean allowEmailOtpAuth;
 
+    @Column(name = "allow_phone_auth")
+    private Boolean allowPhoneAuth;
+
     @Column(name = "allow_username_password_auth")
     private Boolean allowUsernamePasswordAuth;
 
@@ -89,4 +92,7 @@ public class InstituteDomainRouting {
 
     @Column(name = "mac_app_link", length = 500)
     private String macAppLink;
+
+    @Column(name = "convert_username_password_to_lowercase", nullable = false)
+    private boolean convertUsernamePasswordToLowercase;
 }

@@ -11,8 +11,7 @@ import java.util.List;
 @Repository
 public interface ChapterRepository extends JpaRepository<Chapter, String> {
 
-    @Query(
-        value = """
+    @Query(value = """
             WITH chapter_scope AS (
                 SELECT DISTINCT
                     c.id,
@@ -357,6 +356,94 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                 LEFT JOIN quiz_slide_questions_agg qsq ON qsq.quiz_slide_id = qz.id
                 WHERE vs.source_type = 'QUIZ'
             ),
+            audio_slides AS (
+                SELECT
+                    vs.chapter_id,
+                    vs.created_at,
+                    vs.slide_order,
+                    json_build_object(
+                        'id', vs.slide_id,
+                        'title', vs.title,
+                        'status', vs.status,
+                        'is_loaded', TRUE,
+                        'new_slide', TRUE,
+                        'source_id', vs.source_id,
+                        'description', vs.description,
+                        'slide_order', vs.slide_order,
+                        'source_type', vs.source_type,
+                        'parent_id', vs.parent_id,
+                        'audio_slide', json_build_object(
+                            'id', a.id,
+                            'title', a.title,
+                            'description', a.description,
+                            'audio_file_id', a.audio_file_id,
+                            'thumbnail_file_id', a.thumbnail_file_id,
+                            'audio_length_in_millis', a.audio_length_in_millis,
+                            'published_audio_file_id', a.published_audio_file_id,
+                            'published_audio_length_in_millis', a.published_audio_length_in_millis,
+                            'source_type', a.source_type,
+                            'external_url', a.external_url,
+                            'transcript', a.transcript
+                        )
+                    ) AS slide_data
+                FROM valid_slides vs
+                JOIN audio_slide a ON a.id = vs.source_id
+                WHERE vs.source_type = 'AUDIO'
+            ),
+            html_video_slides AS (
+                SELECT
+                    vs.chapter_id,
+                    vs.created_at,
+                    vs.slide_order,
+                    json_build_object(
+                        'id', vs.slide_id,
+                        'title', vs.title,
+                        'status', vs.status,
+                        'is_loaded', TRUE,
+                        'new_slide', TRUE,
+                        'source_id', vs.source_id,
+                        'description', vs.description,
+                        'slide_order', vs.slide_order,
+                        'source_type', vs.source_type,
+                        'parent_id', vs.parent_id,
+                        'html_video_slide', json_build_object(
+                            'id', h.id,
+                            'url', h.url,
+                            'video_length_in_millis', h.video_length,
+                            'ai_gen_video_id', h.ai_gen_video_id
+                        )
+                    ) AS slide_data
+                FROM valid_slides vs
+                JOIN html_video_slide h ON h.id = vs.source_id
+                WHERE vs.source_type = 'HTML_VIDEO'
+            ),
+            scorm_slides AS (
+                SELECT
+                    vs.chapter_id,
+                    vs.created_at,
+                    vs.slide_order,
+                    json_build_object(
+                        'id', vs.slide_id,
+                        'title', vs.title,
+                        'status', vs.status,
+                        'is_loaded', TRUE,
+                        'new_slide', TRUE,
+                        'source_id', vs.source_id,
+                        'description', vs.description,
+                        'slide_order', vs.slide_order,
+                        'source_type', vs.source_type,
+                        'parent_id', vs.parent_id,
+                        'scorm_slide', json_build_object(
+                            'id', sc.id,
+                            'launch_path', sc.launch_path,
+                            'scorm_version', sc.scorm_version,
+                            'original_file_id', sc.original_file_id
+                        )
+                    ) AS slide_data
+                FROM valid_slides vs
+                JOIN scorm_slide sc ON sc.id = vs.source_id
+                WHERE vs.source_type = 'SCORM'
+            ),
             all_slides AS (
                 SELECT * FROM video_slides
                 UNION ALL
@@ -367,6 +454,12 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                 SELECT * FROM assignment_slides
                 UNION ALL
                 SELECT * FROM quiz_slides
+                UNION ALL
+                SELECT * FROM audio_slides
+                UNION ALL
+                SELECT * FROM html_video_slides
+                UNION ALL
+                SELECT * FROM scorm_slides
             )
             SELECT json_agg(
                        json_build_object(
@@ -388,16 +481,13 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                        ORDER BY c.chapter_order ASC NULLS LAST, c.created_at ASC
                    )
             FROM chapter_scope c
-            """,
-        nativeQuery = true
-    )
+            """, nativeQuery = true)
     String getChaptersAndSlidesByModuleIdAndPackageSessionId(
-        @Param("moduleId") String moduleId,
-        @Param("chapterStatus") List<String> chapterStatus,
-        @Param("packageSessionId") String packageSessionId,
-        @Param("chapterToPackageSessionStatus") List<String> chapterToPackageSessionStatus,
-        @Param("slideStatus") List<String> slideStatus,
-        @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
-        @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus
-    );
+            @Param("moduleId") String moduleId,
+            @Param("chapterStatus") List<String> chapterStatus,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("chapterToPackageSessionStatus") List<String> chapterToPackageSessionStatus,
+            @Param("slideStatus") List<String> slideStatus,
+            @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
+            @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus);
 }

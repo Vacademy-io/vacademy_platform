@@ -61,6 +61,16 @@ public class UserPlanController {
         return ResponseEntity.ok().build();
     }
 
+    @PutMapping("/{userPlanId}/cancel")
+    public ResponseEntity<Void> cancelUserPlan(
+            @PathVariable String userPlanId,
+            @RequestParam(required = false, defaultValue = "false") boolean force,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+
+        userPlanService.cancelUserPlan(userPlanId, force);
+        return ResponseEntity.ok().build();
+    }
+
     @PostMapping("/membership-details")
     public ResponseEntity<Page<MembershipDetailsDTO>> getMembershipDetails(
             @RequestParam(required = false, defaultValue = "0") int pageNo,

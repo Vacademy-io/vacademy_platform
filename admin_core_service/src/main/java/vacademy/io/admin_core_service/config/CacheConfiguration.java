@@ -113,6 +113,30 @@ public class CacheConfiguration {
                                 "userDetails",
                                 caffeineCacheUserDetailsBuilder().build());
 
+                // Live Session caches (2 minutes TTL) - for caching session data
+                CaffeineCache liveAndUpcomingSessions = new CaffeineCache(
+                                "liveAndUpcomingSessions",
+                                caffeineCache2mBuilder().build());
+
+                // Learner Dashboard cache (2 minutes TTL)
+                CaffeineCache learnerDashboard = new CaffeineCache(
+                                "learnerDashboard",
+                                caffeineCache2mBuilder().build());
+
+                // Super Admin caches
+                CaffeineCache superAdminInstituteList = new CaffeineCache(
+                                "superAdminInstituteList",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache superAdminInstituteDetail = new CaffeineCache(
+                                "superAdminInstituteDetail",
+                                caffeineCache2mBuilder().build());
+                CaffeineCache superAdminPlatformDashboard = new CaffeineCache(
+                                "superAdminPlatformDashboard",
+                                caffeineCache5mBuilder().build());
+                CaffeineCache superAdminInstituteCourses = new CaffeineCache(
+                                "superAdminInstituteCourses",
+                                caffeineCache2mBuilder().build());
+
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
                                 facultyByPackageSessions,
@@ -135,7 +159,13 @@ public class CacheConfiguration {
                                 executionLogs,
                                 nodeLogs,
                                 timeRangeLogs,
-                                userDetails));
+                                userDetails,
+                                liveAndUpcomingSessions,
+                                learnerDashboard,
+                                superAdminInstituteList,
+                                superAdminInstituteDetail,
+                                superAdminPlatformDashboard,
+                                superAdminInstituteCourses));
 
                 return cacheManager;
         }

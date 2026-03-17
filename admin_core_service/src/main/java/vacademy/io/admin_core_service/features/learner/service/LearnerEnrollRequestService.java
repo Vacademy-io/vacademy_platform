@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -7,8 +9,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
+import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
+import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSubOrg;
+import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
+import vacademy.io.admin_core_service.features.institute_learner.enums.StudentSubOrgLinkType;
+import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSubOrgRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationFactory;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.PaymentOptionOperationStrategy;
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
@@ -23,13 +36,19 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.enrollment_policy.service.ReenrollmentGapValidationService;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
+
+import java.text.SimpleDateFormat;
 
 import java.util.List;
 import java.util.Map;
@@ -69,15 +88,59 @@ public class LearnerEnrollRequestService {
     @Autowired
     private PackageSessionRepository packageSessionRepository;
 
+    @Autowired
+    private ReenrollmentGapValidationService reenrollmentGapValidationService;
+
+    @Autowired
+    private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
+
+    @Autowired
+    private InstituteRepository instituteRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private WorkflowEngineService workflowEngineService;
+
+    @Autowired
+    private LearnerInvitationLinkService learnerInvitationLinkService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
+
+    @Autowired
+    private FacultyService facultyService;
+
+    @Autowired
+    private StudentSubOrgRepository studentSubOrgRepository;
+
+    @Autowired
+    private InstituteStudentRepository instituteStudentRepository;
+
+    @Autowired
+    private StudentSessionInstituteGroupMappingRepository ssigmRepository;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
+        return recordLearnerRequest(learnerEnrollRequestDTO, Map.of());
+    }
+
+    @Transactional
+    public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO,
+            Map<String, Object> extraData) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
-            UserDTO user = authService.createUserFromAuthService(learnerEnrollRequestDTO.getUser(),
-                    learnerEnrollRequestDTO.getInstituteId(), true);
+            boolean sendCredentials = getSendCredentialsFlag(
+                    learnerEnrollRequestDTO.getInstituteId(),
+                    enrollDTO.getPackageSessionIds());
+            UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
+                    learnerEnrollRequestDTO.getInstituteId(), sendCredentials);
             learnerEnrollRequestDTO.setUser(user);
+            EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
             // Generate coupon code for new learner enrollment
-            learnerCouponService.generateCouponCodeForLearner(user.getId());
+            learnerCouponService.generateCouponCodeForLearner(user.getId(), learnerEnrollRequestDTO.getInstituteId(),
+                    enrollInvite.getInviteCode());
         }
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
@@ -87,7 +150,14 @@ public class LearnerEnrollRequestService {
         String userPlanSource = UserPlanSourceEnum.USER.name();
         String subOrgId = null;
 
-        if (enrollDTO.getPackageSessionIds() != null && enrollDTO.getPackageSessionIds().size() == 1) {
+        // B2B: Detect SUB_ORG invite (org-level purchase by sub-org admin)
+        if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
+                && enrollInvite.getSubOrgId() != null) {
+            log.info("Detected SUB_ORG invite purchase. Invite={}, SubOrg={}",
+                    enrollInvite.getId(), enrollInvite.getSubOrgId());
+            userPlanSource = UserPlanSourceEnum.SUB_ORG.name();
+            subOrgId = enrollInvite.getSubOrgId();
+        } else if (enrollDTO.getPackageSessionIds() != null && enrollDTO.getPackageSessionIds().size() == 1) {
             // Fetch the package session to check isOrgAssociated
             List<PackageSession> packageSessions = packageSessionRepository
                     .findPackageSessionsByIds(enrollDTO.getPackageSessionIds());
@@ -118,6 +188,64 @@ public class LearnerEnrollRequestService {
             }
         }
 
+        // Validate re-enrollment gap before creating UserPlan
+        List<PackageSession> packageSessions = packageSessionRepository
+                .findPackageSessionsByIds(enrollDTO.getPackageSessionIds());
+
+        ReenrollmentGapValidationService.GapValidationResult gapValidationResult = reenrollmentGapValidationService
+                .validateGapForPackageSessions(
+                        learnerEnrollRequestDTO.getUser().getId(),
+                        learnerEnrollRequestDTO.getInstituteId(),
+                        packageSessions,
+                        new java.util.Date());
+
+        // Handle validation results
+        boolean isSinglePackageSession = enrollDTO.getPackageSessionIds().size() == 1;
+
+        if (!gapValidationResult.isAllowed()) {
+            // Some or all package sessions are blocked
+            if (isSinglePackageSession) {
+                // Single package session - throw error with retry date
+                ReenrollmentGapValidationService.GapBlockedPackageSession blocked = gapValidationResult
+                        .getBlockedPackageSessions().get(0);
+                String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(blocked.getRetryDate());
+                throw new VacademyException(
+                        new String("You are already enrolled in this demo. Please complete your current trial first."));
+            } else {
+                // Multiple package sessions - check if at least one is allowed
+                if (gapValidationResult.getAllowedPackageSessionIds().isEmpty()) {
+                    // All are blocked - throw error
+                    // Find the earliest retry date
+                    java.util.Date earliestRetryDate = gapValidationResult.getBlockedPackageSessions().stream()
+                            .map(ReenrollmentGapValidationService.GapBlockedPackageSession::getRetryDate)
+                            .min(java.util.Date::compareTo)
+                            .orElse(new java.util.Date());
+                    String retryDateStr = new SimpleDateFormat("yyyy-MM-dd").format(earliestRetryDate);
+                    throw new VacademyException(
+                            String.format("You can retry operation on %s", retryDateStr));
+                } else {
+                    // At least one is allowed - filter out blocked ones
+                    log.info("Filtering out {} blocked package sessions due to gap violation. " +
+                            "Proceeding with {} allowed package sessions.",
+                            gapValidationResult.getBlockedPackageSessions().size(),
+                            gapValidationResult.getAllowedPackageSessionIds().size());
+
+                    // Update enrollDTO to only include allowed package sessions
+                    enrollDTO.setPackageSessionIds(gapValidationResult.getAllowedPackageSessionIds());
+                }
+            }
+        }
+
+        // Ensure PaymentInitiationRequest has user's email if not already set
+        // This is critical for payment receipt emails to be sent correctly
+        if (enrollDTO.getPaymentInitiationRequest() != null
+                && !StringUtils.hasText(enrollDTO.getPaymentInitiationRequest().getEmail())
+                && StringUtils.hasText(learnerEnrollRequestDTO.getUser().getEmail())) {
+            log.info("Setting user email {} in PaymentInitiationRequest for payment receipt emails",
+                    learnerEnrollRequestDTO.getUser().getEmail());
+            enrollDTO.getPaymentInitiationRequest().setEmail(learnerEnrollRequestDTO.getUser().getEmail());
+        }
+
         UserPlan userPlan = createUserPlan(
                 learnerEnrollRequestDTO.getUser().getId(),
                 enrollDTO,
@@ -127,30 +255,137 @@ public class LearnerEnrollRequestService {
                 userPlanSource,
                 subOrgId);
 
-        LearnerEnrollResponseDTO response = enrollLearnerToBatch(
+        // B2B: After org-level UserPlan creation, create scoped FREE invites
+        // For FREE plans (status=ACTIVE), do it now. For PAID plans, webhook handles it.
+        if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
+                && enrollInvite.getSubOrgId() != null
+                && UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
+            log.info("SUB_ORG FREE plan activated. Creating scoped free invites for sub-org={}",
+                    enrollInvite.getSubOrgId());
+            subOrgSubscriptionService.createScopedFreeInvites(enrollInvite, userPlan, paymentPlan);
+        }
+
+        LearnerEnrollResponseDTO response;
+        response = enrollLearnerToBatch(
                 learnerEnrollRequestDTO,
                 enrollDTO,
                 enrollInvite,
                 paymentOption,
-                userPlan);
+                userPlan,
+                extraData);
+
+        // B2B: Post-processing for SUB_ORG invite enrollment
+        // Creates ROOT_ADMIN mappings, StudentSubOrg entry, and faculty mappings
+        if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
+                && enrollInvite.getSubOrgId() != null) {
+            postProcessSubOrgEnrollment(
+                    learnerEnrollRequestDTO.getUser(),
+                    enrollDTO.getPackageSessionIds(),
+                    enrollInvite,
+                    userPlan);
+        }
+
         // Send enrollment notifications ONLY for FREE enrollments (status = ACTIVE)
         // For PAID enrollments, notifications will be sent after webhook confirms
         // payment
         if (UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
-            log.info("FREE enrollment completed. Sending enrollment notifications for user: {}",
-                    learnerEnrollRequestDTO.getUser().getId());
-            sendDynamicNotificationForEnrollment(
-                    learnerEnrollRequestDTO.getInstituteId(),
-                    learnerEnrollRequestDTO.getUser(),
-                    paymentOption,
-                    enrollInvite,
-                    enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
-            );
+            // Check if workflow is configured for the package session
+            // If workflow exists, skip notifications - workflow will handle them
+            boolean hasWorkflow = false;
+            for (String packageSessionId : enrollDTO.getPackageSessionIds()) {
+                PackageSession ps = packageSessionRepository.findById(packageSessionId).orElse(null);
+                if (ps != null && learnerEnrollmentEntryService.hasWorkflowConfiguration(ps)) {
+                    hasWorkflow = true;
+                    log.info(
+                            "Workflow configured for package session {}. Skipping notifications - workflow will handle.",
+                            packageSessionId);
+                    break;
+                }
+            }
 
-            sendReferralInvitationEmail(
-                    learnerEnrollRequestDTO.getInstituteId(),
-                    learnerEnrollRequestDTO.getUser(),
-                    enrollInvite);
+            if (!hasWorkflow) {
+                log.info("FREE enrollment completed. Sending enrollment notifications for user: {}",
+                        learnerEnrollRequestDTO.getUser().getId());
+//                sendDynamicNotificationForEnrollment(
+//                        learnerEnrollRequestDTO.getInstituteId(),
+//                        learnerEnrollRequestDTO.getUser(),
+//                        paymentOption,
+//                        enrollInvite,
+//                        enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
+//                );
+//
+//                sendReferralInvitationEmail(
+//                        learnerEnrollRequestDTO.getInstituteId(),
+//                        learnerEnrollRequestDTO.getUser(),
+//                        enrollInvite);
+            } else {
+                log.info(
+                        "FREE enrollment with workflow. Notifications skipped for user: {}. Workflow will handle enrollment.",
+                        learnerEnrollRequestDTO.getUser().getId());
+
+                // Trigger workflow for each package session
+                for (String packageSessionId : enrollDTO.getPackageSessionIds()) {
+                    PackageSession ps = packageSessionRepository.findById(packageSessionId).orElse(null);
+                    if (ps != null) {
+                        List<String> workflowIds = learnerEnrollmentEntryService.getWorkflowIds(ps);
+                        for (String workflowId : workflowIds) {
+                            try {
+                                // Build context for workflow - ONLY essential data
+                                // Template name, language code, and template vars are configured in TRANSFORM
+                                // node
+                                Map<String, Object> workflowContext = new java.util.HashMap<>();
+                                workflowContext.put("instituteIdForWhatsapp", learnerEnrollRequestDTO.getInstituteId());
+                                workflowContext.put("package_session_id", packageSessionId);
+                                workflowContext.put("destination_package_session_id", packageSessionId);
+                                workflowContext.put("name", learnerEnrollRequestDTO.getUser().getFullName());
+
+                                // Build users list with essential data only
+                                Map<String, Object> userMap = new java.util.HashMap<>();
+                                userMap.put("phone_number", learnerEnrollRequestDTO.getUser().getMobileNumber());
+                                userMap.put("name", learnerEnrollRequestDTO.getUser().getFullName());
+                                userMap.put("username", learnerEnrollRequestDTO.getUser().getEmail() != null
+                                        ? learnerEnrollRequestDTO.getUser().getEmail().split("@")[0]
+                                        : learnerEnrollRequestDTO.getUser().getId());
+                                userMap.put("user_id", learnerEnrollRequestDTO.getUser().getId());
+                                userMap.put("email", learnerEnrollRequestDTO.getUser().getEmail());
+
+                                // Populating referral variables for workflow emails
+                                String invitationLink = learnerInvitationLinkService
+                                        .generateLearnerInvitationResponseLink(
+                                                learnerEnrollRequestDTO.getInstituteId(), enrollInvite,
+                                                learnerEnrollRequestDTO.getUser().getId());
+                                String shortRefLink = learnerInvitationLinkService
+                                        .generateShortLearnerInvitationResponseLink(
+                                                learnerEnrollRequestDTO.getInstituteId(), enrollInvite,
+                                                learnerEnrollRequestDTO.getUser().getId());
+                                String refCode = learnerInvitationLinkService
+                                        .getRefFromUserCoupon(learnerEnrollRequestDTO.getUser().getId());
+
+                                userMap.put("referral_link", invitationLink);
+                                userMap.put("short_referral_link", shortRefLink);
+                                userMap.put("ref_code", refCode);
+                                userMap.put("invite_code", enrollInvite != null ? enrollInvite.getInviteCode() : "");
+
+                                workflowContext.put("users", List.of(userMap));
+
+                                log.info("Triggering workflow {} for user {} on package session {}",
+                                        workflowId, learnerEnrollRequestDTO.getUser().getId(), packageSessionId);
+
+                                workflowEngineService.run(workflowId, workflowContext);
+
+                            } catch (Exception e) {
+                                log.error("Failed to trigger workflow {} for user {}: {}",
+                                        workflowId, learnerEnrollRequestDTO.getUser().getId(), e.getMessage(), e);
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (UserPlanStatusEnum.PENDING.name().equals(userPlan.getStatus())) {
+            log.info(
+                    "Stacked enrollment created with PENDING status for user: {}. Skipping notifications and session mapping.",
+                    learnerEnrollRequestDTO.getUser().getId());
+            // Explicitly do nothing else for PENDING plans
         } else {
             log.info(
                     "PAID enrollment initiated. Notifications will be sent after payment confirmation. UserPlan ID: {}",
@@ -195,6 +430,83 @@ public class LearnerEnrollRequestService {
         }
     }
 
+    /**
+     * Post-process SUB_ORG invite enrollment:
+     * 1. Update SSIGM entries to ROOT_ADMIN role + set subOrg
+     * 2. Create StudentSubOrg junction entry
+     * 3. Create faculty mappings for admin portal access
+     */
+    private void postProcessSubOrgEnrollment(
+            UserDTO user,
+            List<String> packageSessionIds,
+            EnrollInvite enrollInvite,
+            UserPlan userPlan) {
+        String subOrgId = enrollInvite.getSubOrgId();
+        String userId = user.getId();
+
+        try {
+            // 1. Update created SSIGM entries: set ROOT_ADMIN role and subOrg
+            List<StudentSessionInstituteGroupMapping> mappings =
+                    ssigmRepository.findByUserPlanIdAndStatus(userPlan.getId(), "ACTIVE");
+            if (mappings.isEmpty()) {
+                // For PAID plans, mappings may be in INVITED status
+                mappings = ssigmRepository.findByUserPlanIdAndStatus(userPlan.getId(), "INVITED");
+            }
+
+            Institute subOrgInstitute = instituteRepository.findById(subOrgId).orElse(null);
+
+            for (StudentSessionInstituteGroupMapping mapping : mappings) {
+                mapping.setCommaSeparatedOrgRoles("ROOT_ADMIN");
+                if (subOrgInstitute != null) {
+                    mapping.setSubOrg(subOrgInstitute);
+                }
+                ssigmRepository.save(mapping);
+            }
+            log.info("Updated {} SSIGM entries with ROOT_ADMIN role for sub-org={}", mappings.size(), subOrgId);
+
+            // 2. Create StudentSubOrg junction entry
+            Optional<StudentSubOrg> existingEntry = studentSubOrgRepository.findByUserIdAndSubOrgId(userId, subOrgId);
+            if (existingEntry.isEmpty()) {
+                List<Student> students = instituteStudentRepository.findByUserId(userId);
+                String studentId = students.isEmpty() ? userId : students.get(0).getId();
+                StudentSubOrg studentSubOrg = new StudentSubOrg(
+                        studentId,
+                        userId,
+                        subOrgInstitute,
+                        StudentSubOrgLinkType.DIRECT.name());
+                studentSubOrgRepository.save(studentSubOrg);
+                log.info("Created StudentSubOrg entry for user={} sub-org={}", userId, subOrgId);
+            }
+
+            // 3. Create faculty mappings for each package session (admin portal access)
+            for (String packageSessionId : packageSessionIds) {
+                try {
+                    AddUserAccessDTO accessDTO = AddUserAccessDTO.builder()
+                            .userId(userId)
+                            .packageSessionId(packageSessionId)
+                            .name(user.getFullName())
+                            .status("ACTIVE")
+                            .userType("ROOT_ADMIN")
+                            .accessType("PackageSession")
+                            .accessId(packageSessionId)
+                            .accessPermission("FULL")
+                            .linkageType("SUB_ORG")
+                            .suborgId(subOrgId)
+                            .build();
+                    facultyService.grantUserAccess(accessDTO);
+                    log.info("Created faculty mapping for user={} packageSession={} sub-org={}",
+                            userId, packageSessionId, subOrgId);
+                } catch (Exception e) {
+                    log.error("Failed to create faculty mapping for packageSession={}: {}",
+                            packageSessionId, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error in postProcessSubOrgEnrollment for user={} sub-org={}: {}",
+                    userId, subOrgId, e.getMessage(), e);
+        }
+    }
+
     private EnrollInvite getValidatedEnrollInvite(String enrollInviteId) {
         return Optional.ofNullable(enrollInviteId)
                 .map(enrollInviteService::findById)
@@ -227,7 +539,8 @@ public class LearnerEnrollRequestService {
             userPlanStatus = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name();
         } else {
             userPlanStatus = UserPlanStatusEnum.ACTIVE.name();
-        }        return userPlanService.createUserPlan(
+        }
+        return userPlanService.createUserPlan(
                 userId,
                 paymentPlan,
                 null, // coupon can be handled later if needed
@@ -245,7 +558,8 @@ public class LearnerEnrollRequestService {
             LearnerPackageSessionsEnrollDTO enrollDTO,
             EnrollInvite enrollInvite,
             PaymentOption paymentOption,
-            UserPlan userPlan) {
+            UserPlan userPlan,
+            Map<String, Object> extraData) {
         PaymentOptionOperationStrategy strategy = paymentOptionOperationFactory
                 .getStrategy(PaymentOptionType.fromString(paymentOption.getType()));
 
@@ -256,8 +570,247 @@ public class LearnerEnrollRequestService {
                 enrollInvite,
                 paymentOption,
                 userPlan,
-                Map.of(), // optional extra data,
+                extraData, // passes the data from arguments
                 learnerEnrollRequestDTO.getLearnerExtraDetails());
+    }
+
+    /**
+     * Extract sendCredentials flag using two-level policy:
+     * 1. Institute-level setting (short-circuits if NO)
+     * 2. Package-level setting (returns YES if at least one package says YES)
+     *
+     * Institute setting JSON structure:
+     * {
+     * "setting": {
+     * "LEARNER_ENROLLMENT_SETTING": {
+     * "key": "LEARNER_ENROLLMENT_SETTING",
+     * "name": "Learner Enrollment Settings",
+     * "data": {
+     * "sendCredentials": true/false
+     * }
+     * }
+     * }
+     * }
+     *
+     * Package setting JSON structure (in course_setting column):
+     * {
+     * "setting": {
+     * "LEARNER_ENROLLMENT_SETTING": {
+     * "key": "LEARNER_ENROLLMENT_SETTING",
+     * "name": "Learner Enrollment Settings",
+     * "data": {
+     * "sendCredentials": true/false
+     * }
+     * }
+     * }
+     * }
+     *
+     * @param instituteId       The institute ID
+     * @param packageSessionIds List of package session IDs for enrollment
+     * @return true if credentials should be sent (default), false otherwise
+     */
+    private boolean getSendCredentialsFlag(String instituteId, List<String> packageSessionIds) {
+        try {
+            // LEVEL 1: Check institute-level setting first
+            boolean instituteSendCredentials = checkInstituteSendCredentialsFlag(instituteId);
+
+            // If institute says NO, short-circuit and return false immediately
+            if (!instituteSendCredentials) {
+                log.info("Institute {} has sendCredentials=false. Skipping package-level checks.", instituteId);
+                return false;
+            }
+
+            // LEVEL 2: Institute says YES, now check package-level settings
+            // If at least one package says YES, return true
+            boolean packageSendCredentials = checkPackageSendCredentialsFlag(packageSessionIds);
+
+            log.info("Final sendCredentials decision for institute {}: {}",
+                    instituteId, packageSendCredentials);
+            return packageSendCredentials;
+
+        } catch (Exception e) {
+            log.error("Error in getSendCredentialsFlag for institute: {} - defaulting to sendCredentials=true",
+                    instituteId, e);
+            return true;
+        }
+    }
+
+    /**
+     * Check institute-level sendCredentials flag
+     *
+     * @param instituteId The institute ID
+     * @return true if credentials should be sent at institute level (default),
+     *         false otherwise
+     */
+    private boolean checkInstituteSendCredentialsFlag(String instituteId) {
+        try {
+            Optional<Institute> instituteOpt = instituteRepository.findById(instituteId);
+
+            if (instituteOpt.isEmpty()) {
+                log.warn("Institute not found with id: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            Institute institute = instituteOpt.get();
+            String settingJson = institute.getSetting();
+
+            if (!StringUtils.hasText(settingJson)) {
+                log.info("No setting_json found for institute: {} - defaulting to sendCredentials=true", instituteId);
+                return true;
+            }
+
+            JsonNode rootNode = objectMapper.readTree(settingJson);
+
+            // Check each level of the path to provide better error messages
+            if (!rootNode.has("setting")) {
+                log.info(
+                        "'setting' object not found in setting_json for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
+                return true;
+            }
+
+            JsonNode settingNode = rootNode.path("setting");
+            if (!settingNode.has("LEARNER_ENROLLMENT_SETTING")) {
+                log.info(
+                        "'LEARNER_ENROLLMENT_SETTING' not found in setting_json for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
+                return true;
+            }
+
+            JsonNode enrollmentSettingNode = settingNode.path("LEARNER_ENROLLMENT_SETTING");
+            if (!enrollmentSettingNode.has("data")) {
+                log.info(
+                        "'data' object not found in LEARNER_ENROLLMENT_SETTING for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
+                return true;
+            }
+
+            JsonNode dataNode = enrollmentSettingNode.path("data");
+            if (!dataNode.has("sendCredentials")) {
+                log.info(
+                        "'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for institute: {} - defaulting to sendCredentials=true",
+                        instituteId);
+                return true;
+            }
+
+            JsonNode sendCredentialsNode = dataNode.path("sendCredentials");
+            boolean sendCredentials = sendCredentialsNode.asBoolean(true);
+            log.info("Institute {} sendCredentials setting found: {}", instituteId, sendCredentials);
+            return sendCredentials;
+
+        } catch (Exception e) {
+            log.error("Error parsing institute setting_json for institute: {} - defaulting to sendCredentials=true",
+                    instituteId, e);
+            return true;
+        }
+    }
+
+    /**
+     * Check package-level sendCredentials flag for all packages in the enrollment
+     * Returns true if at least one package has sendCredentials=true
+     *
+     * @param packageSessionIds List of package session IDs
+     * @return true if at least one package says to send credentials (default),
+     *         false otherwise
+     */
+    private boolean checkPackageSendCredentialsFlag(List<String> packageSessionIds) {
+        try {
+            // If no package sessions provided, default to true
+            if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+                log.info("No package sessions provided - defaulting to sendCredentials=true");
+                return true;
+            }
+
+            // Fetch all package sessions to get their package IDs
+            List<PackageSession> packageSessions = packageSessionRepository
+                    .findPackageSessionsByIds(packageSessionIds);
+
+            if (packageSessions.isEmpty()) {
+                log.warn("No package sessions found for provided IDs - defaulting to sendCredentials=true");
+                return true;
+            }
+
+            // Check each package's course_setting for sendCredentials flag
+            for (PackageSession packageSession : packageSessions) {
+                try {
+                    if (packageSession.getPackageEntity() == null) {
+                        log.warn("Package entity is null for package session: {} - skipping",
+                                packageSession.getId());
+                        continue;
+                    }
+
+                    String packageId = packageSession.getPackageEntity().getId();
+                    String courseSetting = packageSession.getPackageEntity().getCourseSetting();
+
+                    // If courseSetting is null or empty, treat as sendCredentials=true for this
+                    // package
+                    if (!StringUtils.hasText(courseSetting)) {
+                        log.info("No course_setting found for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    // Parse the course_setting JSON
+                    JsonNode rootNode = objectMapper.readTree(courseSetting);
+
+                    // Navigate through the JSON structure
+                    if (!rootNode.has("setting")) {
+                        log.info(
+                                "'setting' object not found in course_setting for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    JsonNode settingNode = rootNode.path("setting");
+                    if (!settingNode.has("LEARNER_ENROLLMENT_SETTING")) {
+                        log.info(
+                                "'LEARNER_ENROLLMENT_SETTING' not found in course_setting for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    JsonNode enrollmentSettingNode = settingNode.path("LEARNER_ENROLLMENT_SETTING");
+                    if (!enrollmentSettingNode.has("data")) {
+                        log.info(
+                                "'data' object not found in LEARNER_ENROLLMENT_SETTING for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    JsonNode dataNode = enrollmentSettingNode.path("data");
+                    if (!dataNode.has("sendCredentials")) {
+                        log.info(
+                                "'sendCredentials' field not found in LEARNER_ENROLLMENT_SETTING.data for package: {} - treating as sendCredentials=true",
+                                packageId);
+                        return true; // At least one package says YES (by default)
+                    }
+
+                    JsonNode sendCredentialsNode = dataNode.path("sendCredentials");
+                    boolean packageSendCredentials = sendCredentialsNode.asBoolean(true);
+
+                    log.info("Package {} sendCredentials setting found: {}", packageId, packageSendCredentials);
+
+                    // If at least one package says YES, return true
+                    if (packageSendCredentials) {
+                        log.info("At least one package ({}) has sendCredentials=true - returning true", packageId);
+                        return true;
+                    }
+
+                } catch (Exception e) {
+                    log.error("Error parsing course_setting for package session: {} - treating as sendCredentials=true",
+                            packageSession.getId(), e);
+                    return true; // Error in parsing, default to true
+                }
+            }
+
+            // If we reach here, all packages explicitly said NO
+            log.info("All packages have sendCredentials=false - returning false");
+            return false;
+
+        } catch (Exception e) {
+            log.error("Error in checkPackageSendCredentialsFlag - defaulting to sendCredentials=true", e);
+            return true;
+        }
     }
 
 }

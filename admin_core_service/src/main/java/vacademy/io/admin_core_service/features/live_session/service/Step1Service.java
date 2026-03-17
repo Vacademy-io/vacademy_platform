@@ -53,21 +53,24 @@ public class Step1Service {
 
     /**
      * Comprehensive schedule update handler for existing sessions
-     * Handles: end date changes, start date changes, day pattern changes, and individual schedule updates
+     * Handles: end date changes, start date changes, day pattern changes, and
+     * individual schedule updates
      */
     private void handleScheduleUpdatesForExistingSession(LiveSessionStep1RequestDTO request, LiveSession session) {
         // Step 1: Handle explicit deletions first
         handleDeletedSchedules(request);
 
         // Step 2: Get all existing schedules (excluding already deleted ones)
-        List<SessionSchedule> existingSchedules = scheduleRepository.findBySessionId(session.getId());
+        List<SessionSchedule> existingSchedules = scheduleRepository.findBySessionId(session.getId()).stream()
+                .filter(s -> !LiveSessionStatus.DELETED.name().equalsIgnoreCase(s.getStatus()))
+                .toList();
         LocalDate today = LocalDate.now();
-        
+
         // Separate past and future schedules
         List<SessionSchedule> futureSchedules = existingSchedules.stream()
                 .filter(s -> toLocalDate(s.getMeetingDate()).isAfter(today))
                 .toList();
-        
+
         // Step 3: Handle recurrence type changes (if needed in future)
         // TODO: Handle WEEKLY <-> NONE conversion - clear all schedules and recreate
         if (shouldRecreateAllSchedules(request, session)) {
@@ -82,21 +85,25 @@ public class Step1Service {
                     .atZone(ZoneOffset.UTC)
                     .toLocalDate();
             LocalDate newEndDate = LocalDate.parse(request.getSessionEndDate(), DateTimeFormatter.ISO_DATE);
-            
+
             // Get requested days from the DTOs
             java.util.Set<String> requestedDays = request.getAddedSchedules().stream()
                     .map(dto -> dto.getDay().toUpperCase())
                     .collect(java.util.stream.Collectors.toSet());
-            
-            // Step 4a: Handle DAY PATTERN CHANGES - Delete future schedules for days no longer in the request
+
+            // Step 4a: Handle DAY PATTERN CHANGES - Delete future schedules for days no
+            // longer in the request
             List<String> schedulesToDeleteForRemovedDays = futureSchedules.stream()
-                    .filter(s -> s.getRecurrenceKey() != null && !requestedDays.contains(s.getRecurrenceKey().toUpperCase()))
+                    .filter(s -> s.getRecurrenceKey() != null
+                            && !requestedDays.contains(s.getRecurrenceKey().toUpperCase()))
                     .map(SessionSchedule::getId)
                     .toList();
-            
+
             if (!schedulesToDeleteForRemovedDays.isEmpty()) {
-                System.out.println("Deleting " + schedulesToDeleteForRemovedDays.size() + " future schedules for removed days");
-                scheduleNotificationRepository.disableNotificationsByScheduleIds(schedulesToDeleteForRemovedDays, "DISABLED");
+                System.out.println(
+                        "Deleting " + schedulesToDeleteForRemovedDays.size() + " future schedules for removed days");
+                scheduleNotificationRepository.disableNotificationsByScheduleIds(schedulesToDeleteForRemovedDays,
+                        "DISABLED");
                 scheduleRepository.deleteAllById(schedulesToDeleteForRemovedDays);
                 // Remove from our working lists to prevent stale data
                 futureSchedules = futureSchedules.stream()
@@ -106,16 +113,56 @@ public class Step1Service {
                         .filter(s -> !schedulesToDeleteForRemovedDays.contains(s.getId()))
                         .toList();
             }
-            
-            // Step 4b: Handle END DATE SHORTENING - Delete future schedules beyond new end date
+
+            // Step 4a2: Handle TIME SLOT REMOVAL - Delete future schedules for time slots
+            // that are no longer in the request (for days that ARE still in the request)
+            java.util.Map<String, java.util.Set<java.sql.Time>> requestedStartTimesByDay = new java.util.HashMap<>();
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
+                String day = dto.getDay().toUpperCase();
+                requestedStartTimesByDay
+                        .computeIfAbsent(day, k -> new java.util.HashSet<>())
+                        .add(java.sql.Time.valueOf(dto.getStartTime()));
+            }
+
+            List<String> schedulesToDeleteForRemovedTimeSlots = futureSchedules.stream()
+                    .filter(s -> s.getRecurrenceKey() != null
+                            && requestedDays.contains(s.getRecurrenceKey().toUpperCase())
+                            && s.getStartTime() != null)
+                    .filter(s -> {
+                        java.util.Set<java.sql.Time> requestedTimes =
+                                requestedStartTimesByDay.get(s.getRecurrenceKey().toUpperCase());
+                        return requestedTimes == null || !requestedTimes.contains(s.getStartTime());
+                    })
+                    .map(SessionSchedule::getId)
+                    .toList();
+
+            if (!schedulesToDeleteForRemovedTimeSlots.isEmpty()) {
+                System.out.println("Deleting " + schedulesToDeleteForRemovedTimeSlots.size()
+                        + " future schedules for removed time slots");
+                scheduleNotificationRepository.disableNotificationsByScheduleIds(
+                        schedulesToDeleteForRemovedTimeSlots, "DISABLED");
+                scheduleRepository.deleteAllById(schedulesToDeleteForRemovedTimeSlots);
+                // Remove from our working lists to prevent stale data
+                futureSchedules = futureSchedules.stream()
+                        .filter(s -> !schedulesToDeleteForRemovedTimeSlots.contains(s.getId()))
+                        .toList();
+                existingSchedules = existingSchedules.stream()
+                        .filter(s -> !schedulesToDeleteForRemovedTimeSlots.contains(s.getId()))
+                        .toList();
+            }
+
+            // Step 4b: Handle END DATE SHORTENING - Delete future schedules beyond new end
+            // date
             List<String> schedulesToDeleteBeyondEndDate = futureSchedules.stream()
                     .filter(s -> toLocalDate(s.getMeetingDate()).isAfter(newEndDate))
                     .map(SessionSchedule::getId)
                     .toList();
-            
+
             if (!schedulesToDeleteBeyondEndDate.isEmpty()) {
-                System.out.println("Deleting " + schedulesToDeleteBeyondEndDate.size() + " future schedules beyond new end date");
-                scheduleNotificationRepository.disableNotificationsByScheduleIds(schedulesToDeleteBeyondEndDate, "DISABLED");
+                System.out.println(
+                        "Deleting " + schedulesToDeleteBeyondEndDate.size() + " future schedules beyond new end date");
+                scheduleNotificationRepository.disableNotificationsByScheduleIds(schedulesToDeleteBeyondEndDate,
+                        "DISABLED");
                 scheduleRepository.deleteAllById(schedulesToDeleteBeyondEndDate);
                 // Remove from our working lists to prevent stale data
                 futureSchedules = futureSchedules.stream()
@@ -125,16 +172,19 @@ public class Step1Service {
                         .filter(s -> !schedulesToDeleteBeyondEndDate.contains(s.getId()))
                         .toList();
             }
-            
-            // Step 4c: Handle START DATE CHANGES - Delete future schedules before new start date
+
+            // Step 4c: Handle START DATE CHANGES - Delete future schedules before new start
+            // date
             List<String> schedulesToDeleteBeforeStartDate = futureSchedules.stream()
                     .filter(s -> toLocalDate(s.getMeetingDate()).isBefore(newStartDate))
                     .map(SessionSchedule::getId)
                     .toList();
-            
+
             if (!schedulesToDeleteBeforeStartDate.isEmpty()) {
-                System.out.println("Deleting " + schedulesToDeleteBeforeStartDate.size() + " future schedules before new start date");
-                scheduleNotificationRepository.disableNotificationsByScheduleIds(schedulesToDeleteBeforeStartDate, "DISABLED");
+                System.out.println("Deleting " + schedulesToDeleteBeforeStartDate.size()
+                        + " future schedules before new start date");
+                scheduleNotificationRepository.disableNotificationsByScheduleIds(schedulesToDeleteBeforeStartDate,
+                        "DISABLED");
                 scheduleRepository.deleteAllById(schedulesToDeleteBeforeStartDate);
                 // Remove from our working lists to prevent stale data
                 futureSchedules = futureSchedules.stream()
@@ -144,7 +194,7 @@ public class Step1Service {
                         .filter(s -> !schedulesToDeleteBeforeStartDate.contains(s.getId()))
                         .toList();
             }
-            
+
             // Step 5: Process each day pattern in the request
             for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
                 // If schedule has an ID and exists in DB, treat it as a single schedule update
@@ -152,31 +202,35 @@ public class Step1Service {
                     updateSingleSchedule(dto, request);
                     continue; // Skip pattern-based update logic for this DTO
                 }
-                
+
                 String dayOfWeek = dto.getDay().toUpperCase();
-                
-                // Get existing schedules for this day (including past ones for reference)
+                Time dtoStartTime = Time.valueOf(dto.getStartTime());
+
+                // Get existing schedules for this day AND start_time
+                // (to correctly handle multiple time slots on the same day)
                 List<SessionSchedule> existingSchedulesForDay = existingSchedules.stream()
-                        .filter(s -> s.getRecurrenceKey() != null && s.getRecurrenceKey().equalsIgnoreCase(dayOfWeek))
+                        .filter(s -> s.getRecurrenceKey() != null && s.getRecurrenceKey().equalsIgnoreCase(dayOfWeek)
+                                && s.getStartTime() != null && s.getStartTime().equals(dtoStartTime))
                         .sorted((a, b) -> toLocalDate(a.getMeetingDate()).compareTo(toLocalDate(b.getMeetingDate())))
                         .toList();
-                
-                // Step 5a: UPDATE existing future schedules for this day with new properties (pattern-based)
+
+                // Step 5a: UPDATE existing future schedules for this day with new properties
+                // (pattern-based)
                 List<SessionSchedule> futureSchedulesForDay = existingSchedulesForDay.stream()
                         .filter(s -> toLocalDate(s.getMeetingDate()).isAfter(today))
                         .toList();
-                
+
                 for (SessionSchedule schedule : futureSchedulesForDay) {
                     updateScheduleProperties(schedule, dto, request);
                     scheduleRepository.save(schedule);
                 }
-                
+
                 // Step 5b: CREATE new schedules for EXTENDED period
                 // Find the last existing date for this day
-                LocalDate lastExistingDate = existingSchedulesForDay.isEmpty() 
-                        ? null 
+                LocalDate lastExistingDate = existingSchedulesForDay.isEmpty()
+                        ? null
                         : toLocalDate(existingSchedulesForDay.get(existingSchedulesForDay.size() - 1).getMeetingDate());
-                
+
                 // Determine starting point for new schedules
                 LocalDate createFrom;
                 if (lastExistingDate == null) {
@@ -189,7 +243,7 @@ public class Step1Service {
                     // No extension needed
                     createFrom = null;
                 }
-                
+
                 // Create schedules for the extended period
                 if (createFrom != null) {
                     LocalDate current = createFrom;
@@ -204,31 +258,40 @@ public class Step1Service {
                         schedule.setThumbnailFileId(dto.getThumbnailFileId());
                         schedule.setDailyAttendance(dto.isDailyAttendance());
                         schedule.setStatus(LiveSessionStatus.LIVE.name());
-                        
+
                         // Calculate last entry time
                         LocalTime parsedStartTime = LocalTime.parse(dto.getStartTime());
-                        LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
+                        LocalTime computedLastEntryTime = parsedStartTime
+                                .plusMinutes(Long.parseLong(dto.getDuration()));
                         schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
-                        
+
                         // Set meeting link
-                        schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
+                        schedule.setCustomMeetingLink(
+                                dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
                         schedule.setLinkType(dto.getLink() != null
-                                ? getLinkTypeFromUrl(dto.getLink())
-                                : getLinkTypeFromUrl(request.getDefaultMeetLink()));
+                                ? resolveScheduleLinkType(dto.getLink(), request.getLinkType())
+                                : resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
                         schedule.setCustomWaitingRoomMediaId(null);
-                        
+
+                        if (dto.getDefaultClassLink() != null) {
+                            schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                            schedule.setDefaultClassName(dto.getDefaultClassName());
+                            schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                        }
+
                         scheduleRepository.save(schedule);
                         System.out.println("Created new schedule for " + dayOfWeek + " on " + current);
                         current = current.plusWeeks(1);
                     }
                 }
-                
+
                 // Step 5c: Handle START DATE BACKWARD EXTENSION
-                // If new start date is before first existing schedule, create schedules for that gap
+                // If new start date is before first existing schedule, create schedules for
+                // that gap
                 if (!existingSchedulesForDay.isEmpty()) {
                     LocalDate firstExistingDate = toLocalDate(existingSchedulesForDay.get(0).getMeetingDate());
                     LocalDate firstExpectedDate = getNextOrSameDay(newStartDate, dayOfWeek);
-                    
+
                     if (firstExpectedDate.isBefore(firstExistingDate)) {
                         LocalDate current = firstExpectedDate;
                         while (current.isBefore(firstExistingDate)) {
@@ -241,59 +304,72 @@ public class Step1Service {
                             schedule.setThumbnailFileId(dto.getThumbnailFileId());
                             schedule.setDailyAttendance(dto.isDailyAttendance());
                             schedule.setStatus(LiveSessionStatus.LIVE.name());
-                            
+
                             LocalTime parsedStartTime = LocalTime.parse(dto.getStartTime());
-                            LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
+                            LocalTime computedLastEntryTime = parsedStartTime
+                                    .plusMinutes(Long.parseLong(dto.getDuration()));
                             schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
-                            
-                            schedule.setCustomMeetingLink(dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
+
+                            schedule.setCustomMeetingLink(
+                                    dto.getLink() != null ? dto.getLink() : request.getDefaultMeetLink());
                             schedule.setLinkType(dto.getLink() != null
-                                    ? getLinkTypeFromUrl(dto.getLink())
-                                    : getLinkTypeFromUrl(request.getDefaultMeetLink()));
+                                    ? resolveScheduleLinkType(dto.getLink(), request.getLinkType())
+                                    : resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
                             schedule.setCustomWaitingRoomMediaId(null);
-                            
+
+                            if (dto.getDefaultClassLink() != null) {
+                                schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                                schedule.setDefaultClassName(dto.getDefaultClassName());
+                                schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                            }
+
                             scheduleRepository.save(schedule);
-                            System.out.println("Created new schedule for extended start date " + dayOfWeek + " on " + current);
+                            System.out.println(
+                                    "Created new schedule for extended start date " + dayOfWeek + " on " + current);
                             current = current.plusWeeks(1);
                         }
                     }
                 }
             }
         }
-        
+
         // Always process updated_schedules if present (independent of added_schedules)
         handleUpdatedSchedules(request);
     }
-    
+
     /**
      * Helper to update individual schedule properties from DTO
      */
-    private void updateScheduleProperties(SessionSchedule schedule, LiveSessionStep1RequestDTO.ScheduleDTO dto, LiveSessionStep1RequestDTO request) {
+    private void updateScheduleProperties(SessionSchedule schedule, LiveSessionStep1RequestDTO.ScheduleDTO dto,
+            LiveSessionStep1RequestDTO request) {
         if (dto.getStartTime() != null) {
             schedule.setStartTime(Time.valueOf(dto.getStartTime()));
-            
+
             if (dto.getDuration() != null) {
                 LocalTime parsedStartTime = LocalTime.parse(dto.getStartTime());
                 LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
                 schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
             }
         }
-        
+
         if (dto.getLink() != null) {
             schedule.setCustomMeetingLink(dto.getLink());
-            schedule.setLinkType(getLinkTypeFromUrl(dto.getLink()));
+            schedule.setLinkType(resolveScheduleLinkType(dto.getLink(), request.getLinkType()));
         } else if (request.getDefaultMeetLink() != null) {
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
-            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setLinkType(resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
+        } else if (request.getLinkType() != null && !request.getLinkType().isBlank()) {
+            // No link provided (e.g. BBB auto-creates later) — use explicit linkType
+            schedule.setLinkType(request.getLinkType());
         }
-        
+
         if (dto.getThumbnailFileId() != null) {
             schedule.setThumbnailFileId(dto.getThumbnailFileId());
         }
-        
+
         schedule.setDailyAttendance(dto.isDailyAttendance());
     }
-    
+
     /**
      * Check if we need to recreate all schedules (recurrence type change)
      */
@@ -302,12 +378,13 @@ public class Step1Service {
         // For now, return false
         return false;
     }
-    
+
     /**
      * Helper method to convert java.util.Date to LocalDate
      */
     private LocalDate toLocalDate(java.util.Date date) {
-        if (date == null) return null;
+        if (date == null)
+            return null;
         return date.toInstant()
                 .atZone(ZoneOffset.UTC)
                 .toLocalDate();
@@ -326,37 +403,100 @@ public class Step1Service {
     }
 
     private void updateSessionFields(LiveSession session, LiveSessionStep1RequestDTO request, CustomUserDetails user) {
-        if (request.getTitle() != null) session.setTitle(request.getTitle());
-        if (request.getSubject() != null) session.setSubject(request.getSubject());
-        if (request.getDescriptionHtml() != null) session.setDescriptionHtml(request.getDescriptionHtml());
+        if (request.getTitle() != null)
+            session.setTitle(request.getTitle());
+        if (request.getSubject() != null)
+            session.setSubject(request.getSubject());
+        if (request.getDescriptionHtml() != null)
+            session.setDescriptionHtml(request.getDescriptionHtml());
         if (request.getDefaultMeetLink() != null) {
             session.setDefaultMeetLink(request.getDefaultMeetLink());
             session.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
         }
-        if (request.getStartTime() != null) session.setStartTime(request.getStartTime());
-        if (request.getLastEntryTime() != null) session.setLastEntryTime(request.getLastEntryTime());
-        if (request.getInstituteId() != null) session.setInstituteId(request.getInstituteId());
-        if (request.getBackgroundScoreFileId() != null) session.setBackgroundScoreFileId(request.getBackgroundScoreFileId());
-        if (request.getThumbnailFileId() != null) session.setThumbnailFileId(request.getThumbnailFileId());
-        if (request.getWaitingRoomTime() != null) session.setWaitingRoomTime(request.getWaitingRoomTime());
-        if (request.getLinkType() != null) session.setLinkType(request.getLinkType());
-        if (request.getAllowRewind() != null) session.setAllowRewind(request.getAllowRewind());
-        if (request.getSessionStreamingServiceType() != null) session.setSessionStreamingServiceType(request.getSessionStreamingServiceType());
-        if (request.getJoinLink() != null) session.setRegistrationFormLinkForPublicSessions(request.getJoinLink());
-        if (request.getCoverFileId() != null) session.setCoverFileId(request.getCoverFileId());
+
+        if (request.getStartTime() != null)
+            session.setStartTime(request.getStartTime());
+        if (request.getLastEntryTime() != null)
+            session.setLastEntryTime(request.getLastEntryTime());
+        if (request.getInstituteId() != null)
+            session.setInstituteId(request.getInstituteId());
+        if (request.getBackgroundScoreFileId() != null)
+            session.setBackgroundScoreFileId(request.getBackgroundScoreFileId());
+        if (request.getThumbnailFileId() != null)
+            session.setThumbnailFileId(request.getThumbnailFileId());
+        if (request.getWaitingRoomTime() != null)
+            session.setWaitingRoomTime(request.getWaitingRoomTime());
+        if (request.getLinkType() != null)
+            session.setLinkType(request.getLinkType());
+        if (request.getAllowRewind() != null)
+            session.setAllowRewind(request.getAllowRewind());
+        if (request.getSessionStreamingServiceType() != null)
+            session.setSessionStreamingServiceType(request.getSessionStreamingServiceType());
+        if (request.getJoinLink() != null)
+            session.setRegistrationFormLinkForPublicSessions(request.getJoinLink());
+        if (request.getCoverFileId() != null)
+            session.setCoverFileId(request.getCoverFileId());
+
+        if (request.getBookingTypeId() != null)
+            session.setBookingTypeId(request.getBookingTypeId());
+        if (request.getSource() != null)
+            session.setSource(request.getSource());
+        if (request.getSourceId() != null)
+            session.setSourceId(request.getSourceId());
 
         // New Field
         session.setAllowPlayPause(request.isAllowPlayPause());
-        if(request.getTimeZone()!=null) session.setTimezone(request.getTimeZone());
+        if (request.getTimeZone() != null)
+            session.setTimezone(request.getTimeZone());
+
+        // Save BBB meeting config as JSON
+        if (request.getBbbConfig() != null) {
+            try {
+                session.setBbbConfigJson(new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(request.getBbbConfig()));
+            } catch (Exception e) {
+                System.out.println("Failed to serialize BBB config: " + e.getMessage());
+            }
+        }
 
         session.setCreatedByUserId(user.getUserId());
+
+        Object learnerButtonConfig = request.getLearnerButtonConfig();
+
+        if (learnerButtonConfig == null && request.getAddedSchedules() != null) {
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getAddedSchedules()) {
+                if (dto.getLearnerButtonConfig() != null) {
+                    learnerButtonConfig = dto.getLearnerButtonConfig();
+                    break;
+                }
+            }
+        }
+
+        if (learnerButtonConfig == null && request.getUpdatedSchedules() != null) {
+            for (LiveSessionStep1RequestDTO.ScheduleDTO dto : request.getUpdatedSchedules()) {
+                if (dto.getLearnerButtonConfig() != null) {
+                    learnerButtonConfig = dto.getLearnerButtonConfig();
+                    break;
+                }
+            }
+        }
+
+        if (learnerButtonConfig != null) {
+            try {
+                session.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(learnerButtonConfig));
+            } catch (Exception e) {
+                System.err.println("Error serializing LearnerButtonConfig: " + e.getMessage());
+            }
+        }
     }
 
     private void handleDeletedSchedules(LiveSessionStep1RequestDTO request) {
         if (request.getDeletedScheduleIds() != null) {
             // First, disable all notifications for these schedule IDs
-            scheduleNotificationRepository.disableNotificationsByScheduleIds(request.getDeletedScheduleIds(), "DISABLED");
-            
+            scheduleNotificationRepository.disableNotificationsByScheduleIds(request.getDeletedScheduleIds(),
+                    "DISABLED");
+
             // Then delete the schedules from session_schedule table
             for (String id : request.getDeletedScheduleIds()) {
                 scheduleRepository.deleteById(id);
@@ -378,7 +518,7 @@ public class Step1Service {
                     updateSingleSchedule(dto, request);
                     continue;
                 }
-                
+
                 String dayOfWeek = dto.getDay().toUpperCase();
 
                 LocalDate current = getNextOrSameDay(startDate, dayOfWeek);
@@ -404,6 +544,12 @@ public class Step1Service {
                             : getLinkTypeFromUrl(request.getDefaultMeetLink()));
                     schedule.setCustomWaitingRoomMediaId(null);
 
+                    if (dto.getDefaultClassLink() != null) {
+                        schedule.setDefaultClassLink(dto.getDefaultClassLink());
+                        schedule.setDefaultClassName(dto.getDefaultClassName());
+                        schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+                    }
+
                     scheduleRepository.save(schedule);
                     current = current.plusWeeks(1);
                 }
@@ -415,16 +561,22 @@ public class Step1Service {
 
             SessionSchedule schedule = new SessionSchedule();
             schedule.setSessionId(session.getId());
-            schedule.setRecurrenceType(request.getRecurrenceType());
+            schedule.setRecurrenceType(request.getRecurrenceType() != null ? request.getRecurrenceType() : "NONE");
             schedule.setMeetingDate(Date.valueOf(meetingLocalDate));
             schedule.setStartTime(Time.valueOf(startLocalTime));
             schedule.setLastEntryTime(Time.valueOf(lastEntryLocalTime));
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
-            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setLinkType(resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
             schedule.setCustomWaitingRoomMediaId(null);
             schedule.setThumbnailFileId(request.getThumbnailFileId());
             schedule.setDailyAttendance(false); // default for single schedule
             schedule.setStatus(LiveSessionStatus.LIVE.name());
+
+            if (request.getDefaultClassLink() != null) {
+                schedule.setDefaultClassLink(request.getDefaultClassLink());
+                schedule.setDefaultClassName(request.getDefaultClassName());
+                schedule.setDefaultClassLinkType(getLinkTypeFromUrl(request.getDefaultClassLink()));
+            }
 
             scheduleRepository.save(schedule);
         }
@@ -437,7 +589,7 @@ public class Step1Service {
             }
         }
     }
-    
+
     private void updateSingleSchedule(LiveSessionStep1RequestDTO.ScheduleDTO dto, LiveSessionStep1RequestDTO request) {
         SessionSchedule schedule = scheduleRepository.findById(dto.getId())
                 .orElseThrow(() -> new RuntimeException("Schedule not found with id: " + dto.getId()));
@@ -446,25 +598,27 @@ public class Step1Service {
         if (dto.getDay() != null) {
             schedule.setRecurrenceKey(dto.getDay().toLowerCase());
         }
-        
+
         // Update start time and calculate last entry time based on duration
         if (dto.getStartTime() != null) {
             schedule.setStartTime(Time.valueOf(dto.getStartTime()));
-            
+
             if (dto.getDuration() != null) {
                 LocalTime parsedStartTime = LocalTime.parse(dto.getStartTime());
                 LocalTime computedLastEntryTime = parsedStartTime.plusMinutes(Long.parseLong(dto.getDuration()));
                 schedule.setLastEntryTime(Time.valueOf(computedLastEntryTime));
             }
         }
-        
+
         // Update meeting link and link type
         if (dto.getLink() != null) {
             schedule.setCustomMeetingLink(dto.getLink());
-            schedule.setLinkType(getLinkTypeFromUrl(dto.getLink()));
+            schedule.setLinkType(resolveScheduleLinkType(dto.getLink(), request.getLinkType()));
         } else if (request.getDefaultMeetLink() != null) {
             schedule.setCustomMeetingLink(request.getDefaultMeetLink());
-            schedule.setLinkType(getLinkTypeFromUrl(request.getDefaultMeetLink()));
+            schedule.setLinkType(resolveScheduleLinkType(request.getDefaultMeetLink(), request.getLinkType()));
+        } else if (request.getLinkType() != null && !request.getLinkType().isBlank()) {
+            schedule.setLinkType(request.getLinkType());
         }
 
         // Update other fields
@@ -472,6 +626,12 @@ public class Step1Service {
             schedule.setThumbnailFileId(dto.getThumbnailFileId());
         }
         schedule.setDailyAttendance(dto.isDailyAttendance());
+
+        if (dto.getDefaultClassLink() != null) {
+            schedule.setDefaultClassLink(dto.getDefaultClassLink());
+            schedule.setDefaultClassName(dto.getDefaultClassName());
+            schedule.setDefaultClassLinkType(getLinkTypeFromUrl(dto.getDefaultClassLink()));
+        }
 
         scheduleRepository.save(schedule);
     }
@@ -487,9 +647,25 @@ public class Step1Service {
             return LinkType.ZOOM.name();
         } else if (lowerLink.contains("meet.google.com")) {
             return LinkType.GMEET.name();
+        } else if (List.of("meeting.zoho.com", "meeting.zoho.in", "meeting.zoho.eu").stream()
+                .anyMatch(lowerLink::contains)) {
+            return LinkType.ZOHO_MEETING.name();
         } else {
             return LinkType.RECORDED.name();
         }
+    }
+
+    /**
+     * Resolve schedule-level linkType: use URL-based detection first,
+     * but fall back to the explicit request linkType when URL is empty/unknown.
+     * This handles providers like BBB where the meeting link is auto-created later.
+     */
+    public static String resolveScheduleLinkType(String link, String requestLinkType) {
+        String fromUrl = getLinkTypeFromUrl(link);
+        if ("UNKNOWN".equals(fromUrl) && requestLinkType != null && !requestLinkType.isBlank()) {
+            return requestLinkType;
+        }
+        return fromUrl;
     }
 
     private LocalDate getNextOrSameDay(LocalDate startDate, String dayOfWeekStr) {

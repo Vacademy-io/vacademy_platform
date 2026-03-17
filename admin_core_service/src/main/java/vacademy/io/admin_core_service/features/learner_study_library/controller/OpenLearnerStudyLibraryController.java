@@ -51,6 +51,12 @@ public class OpenLearnerStudyLibraryController {
         return ResponseEntity.ok(studyLibraryService.getStudyLibraryInitDetails(instituteId));
     }
 
+    @GetMapping("/course-init")
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC)
+    public ResponseEntity<List<CourseDTOWithDetails>> initStudyLibrary(String courseId, String instituteId) {
+        return ResponseEntity.ok(studyLibraryService.getCourseInitDetails(courseId, instituteId));
+    }
+
     @GetMapping("/chapters-with-slides")
     @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"X-Package-Session-Id"})
     public ResponseEntity<List<ChapterDTOWithDetails>>getChaptersWithSlides(@RequestParam("moduleId") String subjectId, @RequestParam("packageSessionId") String packageSessionId) {

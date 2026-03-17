@@ -11,6 +11,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.media_service.util.MdToHtmlConverter;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -27,7 +28,6 @@ public class NewDocConverterService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-
     public Boolean isConversionCompleted(String pdfId) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("app_id", APP_ID);
@@ -39,8 +39,7 @@ public class NewDocConverterService {
                 API_URL + pdfId,
                 HttpMethod.GET,
                 entity,
-                ConversionStatusResponse.class
-        );
+                ConversionStatusResponse.class);
 
         return response.getStatusCode() == HttpStatus.OK
                 && response.getBody() != null
@@ -56,14 +55,13 @@ public class NewDocConverterService {
             HttpEntity<String> requestEntity = new HttpEntity<>(headers);
 
             ResponseEntity<String> response = restTemplate.exchange(
-                    API_PDF_URL + pdfId + ".html",
+                    API_PDF_URL + pdfId + ".md",
                     HttpMethod.GET,
                     requestEntity,
-                    String.class
-            );
+                    String.class);
 
-            if (response.getStatusCode() == HttpStatus.OK) {
-                return response.getBody();
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                return MdToHtmlConverter.convertMarkdownToHtml(response.getBody());
             }
             return null;
         } catch (RestClientException e) {
@@ -87,15 +85,15 @@ public class NewDocConverterService {
                 API_PDF_URL,
                 HttpMethod.POST,
                 requestEntity,
-                String.class
-        );
+                String.class);
 
         // Handle response
         ObjectMapper objectMapper = new ObjectMapper();
 
         if (response.getStatusCode() == HttpStatus.OK) {
             try {
-                PdfProcessingResponse pdfProcessingResponse = objectMapper.readValue(response.getBody(), PdfProcessingResponse.class);
+                PdfProcessingResponse pdfProcessingResponse = objectMapper.readValue(response.getBody(),
+                        PdfProcessingResponse.class);
                 return pdfProcessingResponse.getPdfId();
             } catch (IOException e) {
                 // Handle exception or log error
@@ -127,7 +125,7 @@ public class NewDocConverterService {
         public PdfProcessingRequest(String url) {
             this.url = url;
             this.conversion_formats = new HashMap<>();
-            this.conversion_formats.put("html", true);
+            this.conversion_formats.put("md", true);
         }
 
         // Getters and setters

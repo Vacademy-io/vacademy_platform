@@ -73,7 +73,7 @@ public class AuthServiceClient {
      */
     @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public List<User> getUsersByIds(List<String> userIds) {
-        log.debug("Calling auth service to get {} users by IDs", userIds.size());
+        log.debug("Calling auth service to get {} users by IDs", userIds != null ? userIds.size() : 0);
         
         if (userIds == null || userIds.isEmpty()) {
             return new ArrayList<>();
@@ -85,8 +85,9 @@ public class AuthServiceClient {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             
-            Map<String, Object> requestBody = Map.of("userIds", userIds);
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            // Use proper DTO for type safety and reliable serialization
+            UsersByIdsRequest requestBody = new UsersByIdsRequest(userIds);
+            HttpEntity<UsersByIdsRequest> entity = new HttpEntity<>(requestBody, headers);
 
             ResponseEntity<List<User>> response = restTemplate.exchange(
                     url,

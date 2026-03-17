@@ -18,6 +18,9 @@ import reactor.util.retry.Retry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
+import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
+import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 
 @Slf4j
 @Service
@@ -26,9 +29,14 @@ public class InstructorCopilotLLMService {
   private static final String API_URL = "https://openrouter.ai";
   private final WebClient webClient;
   private final ObjectMapper objectMapper;
+  private final AiTokenUsageService aiTokenUsageService;
 
-  public InstructorCopilotLLMService(@Value("${openrouter.api.key}") String apiKey, ObjectMapper objectMapper) {
+  public InstructorCopilotLLMService(
+      @Value("${openrouter.api.key}") String apiKey,
+      ObjectMapper objectMapper,
+      AiTokenUsageService aiTokenUsageService) {
     this.objectMapper = objectMapper;
+    this.aiTokenUsageService = aiTokenUsageService;
     this.webClient = WebClient.builder()
         .baseUrl(API_URL)
         .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
@@ -83,7 +91,35 @@ public class InstructorCopilotLLMService {
         .retrieve()
         .bodyToMono(String.class)
         .retryWhen(Retry.fixedDelay(maxRetries, Duration.ofSeconds(2)))
+        .doOnNext(response -> logTokenUsage(response, model))
         .flatMap(this::parseResponse);
+  }
+
+  /**
+   * Log token usage from API response
+   */
+  private void logTokenUsage(String responseBody, String model) {
+    try {
+      JsonNode root = objectMapper.readTree(responseBody);
+      JsonNode usage = root.get("usage");
+
+      if (usage != null) {
+        int promptTokens = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asInt() : 0;
+        int completionTokens = usage.has("completion_tokens") ? usage.get("completion_tokens").asInt() : 0;
+
+        aiTokenUsageService.recordUsageAsync(
+            ApiProvider.OPENAI,
+            RequestType.COPILOT,
+            model,
+            promptTokens,
+            completionTokens,
+            null, // No institute ID in this context
+            null // No user ID in this context
+        );
+      }
+    } catch (Exception e) {
+      log.warn("Failed to log token usage: {}", e.getMessage());
+    }
   }
 
   private String createPrompt(String transcript) {

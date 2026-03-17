@@ -18,4 +18,6 @@ public interface OtpRepository extends JpaRepository<EmailOtp, String> {
 
     Optional<EmailOtp> findTopByEmailOrderByCreatedAtDesc(String email);
 
+    Optional<EmailOtp> findTopByPhoneNumberAndTypeOrderByCreatedAtDesc(String phoneNumber, String type);
+
 }

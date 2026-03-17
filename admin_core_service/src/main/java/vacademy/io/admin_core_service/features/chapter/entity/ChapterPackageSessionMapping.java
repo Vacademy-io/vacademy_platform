@@ -59,6 +59,7 @@ public class ChapterPackageSessionMapping {
         chapterDTO.setStatus(this.chapter.getStatus());
         chapterDTO.setChapterOrder(this.chapterOrder);
         chapterDTO.setDripConditionJson(this.chapter.getDripConditionJson());
+        chapterDTO.setFileId(this.chapter.getFileId());
         return chapterDTO;
     }
 }

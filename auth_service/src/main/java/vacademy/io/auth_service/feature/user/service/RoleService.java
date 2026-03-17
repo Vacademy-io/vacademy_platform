@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.auth_service.feature.user.dto.ModifyUserRolesDTO;
 import vacademy.io.auth_service.feature.user.dto.UserRoleFilterDTO;
+import vacademy.io.common.auth.dto.PagedUserWithRolesResponse;
 import vacademy.io.common.auth.dto.RoleCountProjection;
 import vacademy.io.common.auth.dto.UserWithRolesDTO;
 import vacademy.io.common.auth.entity.Role;
@@ -30,7 +31,8 @@ public class RoleService {
     private final UserService userService;
     private final UserOperationService userOperationService;
 
-    public RoleService(RoleRepository roleRepository, UserRepository userRepository, UserRoleRepository userRoleRepository, UserService userService,UserOperationService userOperationService) {
+    public RoleService(RoleRepository roleRepository, UserRepository userRepository,
+            UserRoleRepository userRoleRepository, UserService userService, UserOperationService userOperationService) {
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
@@ -39,13 +41,15 @@ public class RoleService {
     }
 
     @Transactional
-    public String addRolesToUser(ModifyUserRolesDTO addRolesToUserDTO, Optional<String> roleStatus, CustomUserDetails customUserDetails) {
+    public String addRolesToUser(ModifyUserRolesDTO addRolesToUserDTO, Optional<String> roleStatus,
+            CustomUserDetails customUserDetails) {
         User user = getUserById(addRolesToUserDTO.getUserId());
         List<Role> roles = roleRepository.findByNameIn(addRolesToUserDTO.getRoles());
 
         List<UserRole> userRoles = new ArrayList<>();
         for (Role role : roles) {
-            List<UserRole>userRolesList = userRoleRepository.findByUserAndStatusAndRoleName(user, UserRoleStatus.ACTIVE.name(), role.getName());
+            List<UserRole> userRolesList = userRoleRepository.findByUserAndStatusAndRoleName(user,
+                    UserRoleStatus.ACTIVE.name(), role.getName());
             if (userRolesList.size() > 0) {
                 continue;
             }
@@ -80,19 +84,26 @@ public class RoleService {
     }
 
     private UserRole createUserRole(User user, Role role, Optional<String> userRoleStatus, String instituteId) {
+        return createUserRole(user, role, userRoleStatus, instituteId, null, null);
+    }
+
+    private UserRole createUserRole(User user, Role role, Optional<String> userRoleStatus, String instituteId,
+            String sourceType, String sourceId) {
         UserRole userRole = new UserRole();
         userRole.setUser(user);
         userRole.setRole(role);
         userRole.setInstituteId(instituteId);
+        userRole.setSourceType(sourceType);
+        userRole.setSourceId(sourceId);
         if (userRoleStatus.isPresent()) {
             userRole.setStatus(userRoleStatus.get());
         }
-        ;
         return userRole;
     }
 
     public String removeRolesFromUser(ModifyUserRolesDTO modifyUserRolesDTO, CustomUserDetails customUserDetails) {
-        userRoleRepository.deleteUserRolesByUserIdAndRoleNames(modifyUserRolesDTO.getUserId(), modifyUserRolesDTO.getRoles());
+        userRoleRepository.deleteUserRolesByUserIdAndRoleNames(modifyUserRolesDTO.getUserId(),
+                modifyUserRolesDTO.getRoles());
         return "Roles removed successfully";
     }
 
@@ -100,12 +111,25 @@ public class RoleService {
         return userRoleRepository.getUserRoleCountsByInstituteId(instituteId);
     }
 
-    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, UserRoleFilterDTO filterDTO, CustomUserDetails customUserDetails) {
-        return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(), filterDTO.getRoles(), customUserDetails);
+    public List<UserWithRolesDTO> getUsersByInstituteIdAndStatus(String instituteId, UserRoleFilterDTO filterDTO,
+            CustomUserDetails customUserDetails) {
+        return userService.getUsersByInstituteIdAndStatus(instituteId, filterDTO.getStatus(), filterDTO.getRoles(),
+                customUserDetails);
     }
 
-    public String updateUserRoleStatusByInstituteIdAndUserId(String newStatus, String instituteId, List<String> userIds, CustomUserDetails user) {
-        int rowsUpdated = userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(newStatus, instituteId, userIds);
+    public PagedUserWithRolesResponse getUsersByInstituteIdAndStatusPaged(String instituteId,
+            UserRoleFilterDTO filterDTO,
+            CustomUserDetails customUserDetails) {
+        int pageNumber = filterDTO.getPageNumber() != null ? filterDTO.getPageNumber() : 0;
+        int pageSize = filterDTO.getPageSize() != null ? filterDTO.getPageSize() : 10;
+        return userService.getUsersByInstituteIdAndStatusPaged(instituteId, filterDTO.getStatus(), filterDTO.getRoles(),
+                filterDTO.getName(), pageNumber, pageSize, customUserDetails);
+    }
+
+    public String updateUserRoleStatusByInstituteIdAndUserId(String newStatus, String instituteId, List<String> userIds,
+            CustomUserDetails user) {
+        int rowsUpdated = userRoleRepository.updateUserRoleStatusByInstituteIdAndUserId(newStatus, instituteId,
+                userIds);
         if (rowsUpdated == 0) {
             throw new VacademyException("No role found to update the status!!!");
         }

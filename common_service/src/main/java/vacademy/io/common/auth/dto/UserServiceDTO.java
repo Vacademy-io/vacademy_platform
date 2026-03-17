@@ -13,7 +13,9 @@ public class UserServiceDTO {
 
     private String username;
     private String userId;
+    private String fullName;
     private boolean enabled;
+    private boolean rootUser;
     private List<String> roles = new ArrayList<>();
     private List<String> authorities = new ArrayList<>();
 

@@ -75,6 +75,9 @@ public class ActivityLog {
         @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
         private List<QuizSlideQuestionTracked> quizSlideQuestionTracked;
 
+        @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
+        private List<AudioTracked> audioTracked;
+
         @OneToOne(mappedBy = "activityLog", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
         private ConcentrationScore concentrationScore;
 
@@ -143,6 +146,12 @@ public class ActivityLog {
                                                 .toList()
                                 : List.of());
                 // ---
+
+                activityLogDTO.setAudios(audioTracked != null
+                                ? audioTracked.stream()
+                                                .map(AudioTracked::toAudioActivityLogDTO)
+                                                .toList()
+                                : List.of());
 
                 activityLogDTO.setConcentrationScore(concentrationScore != null
                                 ? concentrationScore.toConcentrationScoreDTO()

@@ -1,6 +1,5 @@
 package vacademy.io.notification_service.features.email_otp.entity;
 
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -33,8 +32,16 @@ public class EmailOtp {
     @Column(name = "service")
     private String service;
 
+    @Builder.Default
     @Column(name = "is_verified")
     private String isVerified = "false";
+
+    @Column(name = "phone_number", length = 20)
+    private String phoneNumber;
+
+    @Builder.Default
+    @Column(name = "type", length = 20)
+    private String type = "EMAIL";
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

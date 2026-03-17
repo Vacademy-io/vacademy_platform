@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.learner_payment_option_operation.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -7,6 +8,8 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
+import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -27,6 +30,7 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogL
 
 import java.util.*;
 
+@Slf4j
 @Service
 public class SubscriptionPaymentOptionOperation implements PaymentOptionOperationStrategy {
 
@@ -43,29 +47,60 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
     private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
     @Autowired
-    private AuthService authService;    @Override
+    private AuthService authService;
+
+    @Autowired
+    private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
+
+    @Autowired
+    private UserPlanService userPlanService;
+
+    @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-            String instituteId,
-            EnrollInvite enrollInvite,
-            PaymentOption paymentOption,
-            UserPlan userPlan,
-            Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+                                                         String instituteId,
+                                                         EnrollInvite enrollInvite,
+                                                         PaymentOption paymentOption,
+                                                         UserPlan userPlan,
+                                                         Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+        log.info("Processing SUBSCRIPTION payment enrollment for user: {}", userDTO.getEmail());
+
+        // Step 1: Update existing ABANDONED_CART entries with userPlanId
+        // (ABANDONED_CART entries are created during form-submit step via new API)
+        List<String> packageSessionIds = learnerPackageSessionsEnrollDTO.getPackageSessionIds();
+
+        int updatedCount = learnerEnrollmentEntryService.updateAbandonedCartEntriesWithUserPlanId(
+                userDTO.getId(),
+                packageSessionIds,
+                instituteId,
+                userPlan.getId());
+
+        log.info("Updated {} ABANDONED_CART entries with userPlanId {} for SUBSCRIPTION user {}",
+                updatedCount, userPlan.getId(), userDTO.getId());
+
         // Use startDate from DTO if provided, otherwise default to current date
-        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null 
-                ? learnerPackageSessionsEnrollDTO.getStartDate() 
+        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
+                ? learnerPackageSessionsEnrollDTO.getStartDate()
                 : new Date();
-        
+
         String learnerSessionStatus = null;
-        if (paymentOption.isRequireApproval()) {
+        if (extraData.containsKey("ENROLLMENT_STATUS")) {
+            learnerSessionStatus = (String) extraData.get("ENROLLMENT_STATUS");
+            log.info("Using subscription enrollment status override: {}", learnerSessionStatus);
+        } else if (paymentOption.isRequireApproval()) {
             learnerSessionStatus = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
         } else {
             learnerSessionStatus = LearnerStatusEnum.INVITED.name();
         }
+        PaymentPlan paymentPlan = userPlan.getPaymentPlan();
+        if (Objects.isNull(paymentPlan)) {
+            throw new VacademyException("Payment plan is null");
+        }
+
         List<InstituteStudentDetails> instituteStudentDetails = buildInstituteStudentDetails(
                 instituteId,
                 learnerPackageSessionsEnrollDTO.getPackageSessionIds(),
-                userPlan.getPaymentPlan().getValidityInDays(),
+                paymentPlan.getValidityInDays(),
                 learnerSessionStatus,
                 userPlan,
                 enrollmentDate);
@@ -78,11 +113,26 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                 learnerPackageSessionsEnrollDTO.getCustomFieldValues(),
                 extraData, learnerExtraDetails, enrollInvite, userPlan);
 
-        PaymentPlan paymentPlan = userPlan.getPaymentPlan();
-        if (Objects.isNull(paymentPlan)) {
-            throw new VacademyException("Payment plan is null");
+        if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
+            if (extraData.containsKey("OVERRIDE_TOTAL_AMOUNT")) {
+                Object amountObj = extraData.get("OVERRIDE_TOTAL_AMOUNT");
+                if (amountObj instanceof Number) {
+                    Double amount = ((Number) amountObj).doubleValue();
+                    log.info("Overriding subscription payment amount to {} from extraData", amount);
+                    learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(amount);
+                }
+            } else {
+                log.info("Setting subscription payment amount to {} from plan {}", paymentPlan.getActualPrice(),
+                        paymentPlan.getId());
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
+            }
+
+            if (extraData.containsKey("PARENT_PAYMENT_LOG_ID")) {
+                String parentLogId = (String) extraData.get("PARENT_PAYMENT_LOG_ID");
+                log.info("Linking subscription to parent payment log ID: {}", parentLogId);
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setOrderId(parentLogId);
+            }
         }
-        learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
         // Process referral request if present
         if (learnerPackageSessionsEnrollDTO.getReferRequest() != null) {
             referralBenefitOrchestrator.processAllBenefits(
@@ -98,24 +148,55 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
         learnerEnrollResponseDTO.setUser(user);
 
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
-            PaymentInitiationRequestDTO paymentInitiationRequestDTO = learnerPackageSessionsEnrollDTO
-                    .getPaymentInitiationRequest();
-
-            PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
-                    user,
-                    learnerPackageSessionsEnrollDTO,
-                    instituteId,
-                    enrollInvite,
-                    userPlan);
+            PaymentResponseDTO paymentResponseDTO;
+            if (extraData.containsKey("SKIP_PAYMENT_INITIATION")
+                    && Boolean.TRUE.equals(extraData.get("SKIP_PAYMENT_INITIATION"))) {
+                paymentResponseDTO = paymentService.handlePaymentWithoutGateway(
+                        user,
+                        learnerPackageSessionsEnrollDTO,
+                        instituteId,
+                        enrollInvite,
+                        userPlan);
+            } else {
+                paymentResponseDTO = paymentService.handlePayment(
+                        user,
+                        learnerPackageSessionsEnrollDTO,
+                        instituteId,
+                        enrollInvite,
+                        userPlan);
+            }
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
+
+            // For synchronous payment gateways (e.g., Eway) that return PAID immediately,
+            // use applyOperationsOnFirstPayment which handles:
+            // 1. Terminating active sessions configured in enrollment policy
+            // 2. Shifting from INVITED to ACTIVE in the destination package session
+            if (isPaymentSuccessful(paymentResponseDTO)) {
+                log.info("Subscription payment successful for user: {}. Applying first payment operations.", user.getId());
+                userPlanService.applyOperationsOnFirstPayment(userPlan);
+            }
         } else {
             throw new VacademyException("PaymentInitiationRequest is null");
         }
 
         return learnerEnrollResponseDTO;
-    }    private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
-            List<String> packageSessionIds,
-            Integer accessDays, String learnerSessionStatus, UserPlan userPlan, Date enrollmentDate) {
+    }
+
+    /**
+     * Checks if payment was successful based on the payment response.
+     * Handles synchronous payment gateways like Eway that return PAID immediately.
+     */
+    private boolean isPaymentSuccessful(PaymentResponseDTO paymentResponseDTO) {
+        if (paymentResponseDTO == null || paymentResponseDTO.getResponseData() == null) {
+            return false;
+        }
+        Object paymentStatus = paymentResponseDTO.getResponseData().get("paymentStatus");
+        return "PAID".equals(paymentStatus);
+    }
+
+    private List<InstituteStudentDetails> buildInstituteStudentDetails(String instituteId,
+                                                                       List<String> packageSessionIds,
+                                                                       Integer accessDays, String learnerSessionStatus, UserPlan userPlan, Date enrollmentDate) {
         List<InstituteStudentDetails> detailsList = new ArrayList<>();
 
         for (String packageSessionId : packageSessionIds) {
@@ -141,7 +222,7 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                     null,
                     accessDays != null ? accessDays.toString() : null,
                     packageSessionId,
-                    userPlan.getId(), null, null);
+                    userPlan.getId(), null, null, null);
             detailsList.add(detail);
         }
         return detailsList;

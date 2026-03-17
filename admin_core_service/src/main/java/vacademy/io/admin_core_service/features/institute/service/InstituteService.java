@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.institute.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteInfoDTO;
 import vacademy.io.admin_core_service.features.institute.dto.InstituteSearchProjection;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -15,11 +16,16 @@ public class InstituteService {
     @Autowired
     private InstituteRepository instituteRepository;
 
+    @Transactional(readOnly = true)
     public Institute findById(String instituteId) {
-        return instituteRepository.findById(instituteId).orElseThrow(()-> new VacademyException("Institute not found"));
+        return instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new VacademyException("Institute not found"));
     }
+
+    @Transactional(readOnly = true)
     public InstituteInfoDTO getInstituteById(String instituteId) {
-        Institute institute= instituteRepository.findById(instituteId).orElseThrow(()-> new VacademyException("Institute not found"));
+        Institute institute = instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new VacademyException("Institute not found"));
         return InstituteInfoDTO.builder()
                 .id(institute.getId())
                 .instituteName(institute.getInstituteName())
@@ -32,7 +38,8 @@ public class InstituteService {
                 .build();
     }
 
-    public List<InstituteSearchProjection>searchInstitute(String searchName){
+    @Transactional(readOnly = true)
+    public List<InstituteSearchProjection> searchInstitute(String searchName) {
         return instituteRepository.searchByQuery(searchName);
     }
 }

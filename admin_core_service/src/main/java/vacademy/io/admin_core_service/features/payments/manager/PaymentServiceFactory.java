@@ -13,14 +13,16 @@ public class PaymentServiceFactory {
             StripePaymentManager stripe,
             RazorpayPaymentManager razorpay,
             PayPalPaymentManager paypal,
-            EwayPaymentManager eway
-    ) {
+            EwayPaymentManager eway,
+            PhonePePaymentManager phonepe,
+            CashfreePaymentManager cashfree) {
         strategies = Map.of(
                 PaymentGateway.STRIPE, stripe,
                 PaymentGateway.RAZORPAY, razorpay,
                 PaymentGateway.PAYPAL, paypal,
-                PaymentGateway.EWAY, eway
-        );
+                PaymentGateway.EWAY, eway,
+                PaymentGateway.PHONEPE, phonepe,
+                PaymentGateway.CASHFREE, cashfree);
     }
 
     public PaymentServiceStrategy getStrategy(PaymentGateway gateway) {

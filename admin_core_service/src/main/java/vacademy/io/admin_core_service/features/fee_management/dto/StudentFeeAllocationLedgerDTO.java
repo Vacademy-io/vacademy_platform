@@ -1,0 +1,31 @@
+package vacademy.io.admin_core_service.features.fee_management.dto;
+
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+public class StudentFeeAllocationLedgerDTO {
+    private String id;
+    private String paymentLogId;
+    private String studentFeePaymentId;
+    private String cpoName;
+    private String feeTypeName;
+    private String feeTypeCode;
+    private String feeTypeDescription;
+    private BigDecimal amountAllocated;
+    private String allocationType;
+    private String remarks;
+    private LocalDateTime createdAt;
+}

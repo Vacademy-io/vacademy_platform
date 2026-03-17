@@ -51,8 +51,9 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                             'question_slide_count', chap_data.question_slide_count,
                             'assignment_slide_count', chap_data.assignment_slide_count,
                             'survey_slide_count', chap_data.survey_slide_count,
-                            'unknown_count', chap_data.unknown_count
-                        ) ORDER BY c.created_at
+                            'unknown_count', chap_data.unknown_count,
+                            'chapter_order', cpsm.chapter_order
+                        ) ORDER BY cpsm.chapter_order ASC NULLS LAST, c.created_at ASC
                     ) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
                 ) AS module_data
                 FROM subject_module_mapping smm
@@ -140,14 +141,18 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         'question_slide_count', counts.question_slide_count,
                         'assignment_slide_count', counts.assignment_slide_count,
                         'survey_slide_count', counts.survey_slide_count,
-                        'unknown_count', counts.unknown_count
-                    ) ORDER BY c.created_at) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
+                        'unknown_count', counts.unknown_count,
+                        'chapter_order', cpsm.chapter_order
+                    ) ORDER BY cpsm.chapter_order ASC NULLS LAST, c.created_at ASC) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
                 ) AS module_data
                 FROM subject_module_mapping smm
                 JOIN modules m ON smm.module_id = m.id AND m.status IN (:moduleStatusList)
-                -- The only change is in the following line --
                 LEFT JOIN (SELECT DISTINCT module_id, chapter_id FROM module_chapter_mapping) mcm ON mcm.module_id = m.id
                 LEFT JOIN chapter c ON c.id = mcm.chapter_id AND c.status IN (:chapterStatusList)
+                JOIN chapter_package_session_mapping cpsm
+                    ON cpsm.chapter_id = c.id
+                    AND cpsm.package_session_id = :packageSessionId
+                    AND cpsm.status IN (:chapterStatusList)
                 LEFT JOIN (
                     SELECT
                         c.id AS chapter_id,
@@ -171,6 +176,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
             """, nativeQuery = true)
     String getOpenModuleChapterDetails(
             @Param("subjectId") String subjectId,
+            @Param("packageSessionId") String packageSessionId,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterToSlideStatusList") List<String> chapterToSlideStatusList,
             @Param("chapterStatusList") List<String> chapterStatusList,
@@ -209,6 +215,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                             'assignment_slide_count', chap_data.assignment_slide_count,
                             'survey_slide_count', chap_data.survey_slide_count,
                             'unknown_count', chap_data.unknown_count,
+                            'chapter_order', cpsm.chapter_order,
                             'learner_slides_details', (
                                 SELECT json_agg(slide_data ORDER BY slide_order IS NOT NULL, slide_order, created_at DESC) AS slides
                                 FROM (
@@ -555,7 +562,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                                 AND cs.status IN (:chapterToSlidesStatus)
                             ) AS slide_data
                             )
-                        ) ORDER BY c.created_at
+                        ) ORDER BY cpsm.chapter_order ASC NULLS LAST, c.created_at ASC
                     ) FILTER (WHERE c.id IS NOT NULL), CAST('[]' AS json))
                 ) AS module_data
                 FROM subject_module_mapping smm

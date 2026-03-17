@@ -6,7 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
-import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+
 import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
@@ -80,8 +80,17 @@ public class SubjectService {
                 }
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                         .orElseThrow(() -> new VacademyException("Package Session not found"));
+
+                // Auto-order logic
+                Integer order = subjectDTO.getSubjectOrder();
+                if (order == null) {
+                    Integer maxOrder = subjectPackageSessionRepository
+                            .findMaxSubjectOrderByPackageSessionId(packageSessionId);
+                    order = (maxOrder == null) ? 1 : maxOrder + 1;
+                }
+
                 subjectPackageSessionRepository
-                        .save(new SubjectPackageSession(savedSubject, packageSession, subjectDTO.getSubjectOrder()));
+                        .save(new SubjectPackageSession(savedSubject, packageSession, order));
                 // Create and save the relationship between the subject and the package session.
             } catch (Exception e) {
                 log.error("Error adding subject: {}", e.getMessage());
@@ -258,7 +267,12 @@ public class SubjectService {
                 newSubject.setThumbnailId(subject.getThumbnailId());
                 subjectRepository.save(newSubject);
 
-                SubjectPackageSession newMapping = new SubjectPackageSession(newSubject, packageSession, null);
+                // Auto-order logic for new subject
+                Integer maxOrder = subjectPackageSessionRepository
+                        .findMaxSubjectOrderByPackageSessionId(packageSessionId);
+                Integer newOrder = (maxOrder == null) ? 1 : maxOrder + 1;
+
+                SubjectPackageSession newMapping = new SubjectPackageSession(newSubject, packageSession, newOrder);
                 subjectPackageSessionRepository.save(newMapping);
 
                 Module newModule = createAndSaveModule(module);
@@ -314,6 +328,11 @@ public class SubjectService {
         SubjectModuleMapping subjectModuleMapping = new SubjectModuleMapping();
         subjectModuleMapping.setSubject(subject);
         subjectModuleMapping.setModule(module);
+
+        Integer maxOrder = subjectModuleMappingRepository.findMaxModuleOrderBySubjectId(subject.getId());
+        Integer newOrder = (maxOrder == null) ? 1 : maxOrder + 1;
+        subjectModuleMapping.setModuleOrder(newOrder);
+
         subjectModuleMappingRepository.save(subjectModuleMapping);
     }
 
@@ -377,7 +396,12 @@ public class SubjectService {
                     .findBySubjectIdAndPackageSessionId(subject.getId(), packageSessionId);
             if (optionalSubjectPackageSession.isEmpty()) {
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId).get();
-                SubjectPackageSession newMapping = new SubjectPackageSession(subject, packageSession, null);
+
+                Integer maxOrder = subjectPackageSessionRepository
+                        .findMaxSubjectOrderByPackageSessionId(packageSessionId);
+                Integer newOrder = (maxOrder == null) ? 1 : maxOrder + 1;
+
+                SubjectPackageSession newMapping = new SubjectPackageSession(subject, packageSession, newOrder);
                 subjectPackageSessions.add(newMapping);
             }
         }
@@ -409,8 +433,17 @@ public class SubjectService {
                 }
                 PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                         .orElseThrow(() -> new VacademyException("Package Session not found"));
+
+                // Auto-order logic
+                Integer order = subjectDTO.getSubjectOrder();
+                if (order == null) {
+                    Integer maxOrder = subjectPackageSessionRepository
+                            .findMaxSubjectOrderByPackageSessionId(packageSessionId);
+                    order = (maxOrder == null) ? 1 : maxOrder + 1;
+                }
+
                 subjectPackageSessionRepository
-                        .save(new SubjectPackageSession(savedSubject, packageSession, subjectDTO.getSubjectOrder()));
+                        .save(new SubjectPackageSession(savedSubject, packageSession, order));
                 // Create and save the relationship between the subject and the package session.
             } catch (Exception e) {
                 log.error("Error adding subject: {}", e.getMessage());

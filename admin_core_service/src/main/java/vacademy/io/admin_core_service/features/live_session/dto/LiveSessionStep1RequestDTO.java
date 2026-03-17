@@ -20,6 +20,8 @@ public class LiveSessionStep1RequestDTO {
     private String subject;
     private String descriptionHtml;
     private String defaultMeetLink;
+    private String defaultClassLink;
+    private String defaultClassName;
     private String joinLink;
     private Timestamp startTime;
     private Timestamp lastEntryTime;
@@ -33,12 +35,30 @@ public class LiveSessionStep1RequestDTO {
     private Boolean allowRewind;
     private String sessionStreamingServiceType;
 
-    private boolean allowPlayPause; //new added
+    private boolean allowPlayPause; // new added
     private String timeZone;
+
+    private String bookingTypeId;
+    private String source;
+    private String sourceId;
 
     private List<ScheduleDTO> addedSchedules;
     private List<ScheduleDTO> updatedSchedules;
     private List<String> deletedScheduleIds;
+
+    private LearnerButtonConfigDTO learnerButtonConfig;
+
+    private BbbConfigDTO bbbConfig;
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class BbbConfigDTO {
+        private Boolean record;
+        private Boolean autoStartRecording;
+        private Boolean muteOnStart;
+        private Boolean webcamsOnlyForModerator;
+        private String guestPolicy;
+    }
 
     @Data
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
@@ -49,8 +69,21 @@ public class LiveSessionStep1RequestDTO {
         private String duration;
         private String link;
 
-        //new added field
+        // new added field
         private String thumbnailFileId;
         private boolean dailyAttendance;
+        private String defaultClassLink;
+        private String defaultClassName;
+        private LearnerButtonConfigDTO learnerButtonConfig;
+    }
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class LearnerButtonConfigDTO {
+        private boolean isVisible;
+        private String text;
+        private String url;
+        private String backgroundColor;
+        private String textColor;
     }
 }

@@ -94,4 +94,37 @@ public class StudentSessionInstituteGroupMapping {
 
     @Column(name = "comma_separated_org_roles", columnDefinition = "TEXT")
     private String commaSeparatedOrgRoles;
+
+    public static StudentSessionInstituteGroupMapping createInvitedMappingFromTerminated(
+            StudentSessionInstituteGroupMapping original,
+            PackageSession invitedSession,
+            PackageSession activeSession,
+            String source,
+            String type,
+            String status) {
+
+        StudentSessionInstituteGroupMapping newMapping = new StudentSessionInstituteGroupMapping();
+        newMapping.setUserId(original.getUserId());
+        newMapping.setInstitute(original.getInstitute());
+        newMapping.setGroup(original.getGroup());
+        newMapping.setInstituteEnrolledNumber(original.getInstituteEnrolledNumber());
+        newMapping.setEnrolledDate(original.getEnrolledDate());
+        newMapping.setExpiryDate(original.getExpiryDate());
+        newMapping.setAutomatedCompletionCertificateFileId(original.getAutomatedCompletionCertificateFileId());
+        newMapping.setUserPlanId(original.getUserPlanId());
+        newMapping.setSubOrg(original.getSubOrg());
+        newMapping.setCommaSeparatedOrgRoles(original.getCommaSeparatedOrgRoles());
+        newMapping.setDesiredLevelId(original.getDesiredLevelId());
+        newMapping.setDesiredPackageId(original.getDesiredPackageId());
+
+        // Set new values
+        newMapping.setSource(source);
+        newMapping.setType(type);
+        newMapping.setTypeId(activeSession.getId());
+        newMapping.setStatus(status);
+        newMapping.setPackageSession(invitedSession);
+        newMapping.setDestinationPackageSession(activeSession);
+
+        return newMapping;
+    }
 }

@@ -3,9 +3,11 @@ package vacademy.io.admin_core_service.features.enroll_invite.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteWithSessionsProjection;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 
@@ -17,6 +19,11 @@ import java.util.Optional;
 public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, String> {
 
     Optional<EnrollInvite> findByInviteCode(String inviteCode);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE EnrollInvite ei SET ei.status = :status WHERE ei.id IN :enrollInviteIds")
+    void updateStatusByIds(@Param("enrollInviteIds") List<String> enrollInviteIds, @Param("status") String status);
 
     @Query(value = """
     SELECT
@@ -34,11 +41,13 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
         ei.web_page_meta_data_json AS webPageMetaDataJson,
         ei.created_at AS createdAt,
         ei.updated_at AS updatedAt,
+        ei.short_url AS shortUrl,
         (
             SELECT ARRAY_REMOVE(ARRAY_AGG(DISTINCT ps.id), NULL)
             FROM package_session_learner_invitation_to_payment_option psl
             JOIN package_session ps ON ps.id = psl.package_session_id
             WHERE psl.enroll_invite_id = ei.id
+              AND psl.status != 'DELETED'
               AND (:#{#packageSessionStatuses == null || #packageSessionStatuses.isEmpty()} = true OR ps.status IN (:packageSessionStatuses))
               AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
         ) AS "packageSessionIds"
@@ -48,11 +57,11 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
       AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
       AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
-          WHERE psl.enroll_invite_id = ei.id AND psl.package_session_id IN (:packageSessionIds)
+          WHERE psl.enroll_invite_id = ei.id AND psl.package_session_id IN (:packageSessionIds) AND psl.status != 'DELETED'
       ))
       AND (:#{#paymentOptionIds == null || #paymentOptionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
-          WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds)
+          WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds) AND psl.status != 'DELETED'
       ))
     """,
             countQuery = """
@@ -63,11 +72,11 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
       AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
       AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
-          WHERE psl.enroll_invite_id = ei.id AND psl.package_session_id IN (:packageSessionIds)
+          WHERE psl.enroll_invite_id = ei.id AND psl.package_session_id IN (:packageSessionIds) AND psl.status != 'DELETED'
       ))
       AND (:#{#paymentOptionIds == null || #paymentOptionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
-          WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds)
+          WHERE psl.enroll_invite_id = ei.id AND psl.payment_option_id IN (:paymentOptionIds) AND psl.status != 'DELETED'
       ))
     """,
             nativeQuery = true)
@@ -85,7 +94,7 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             "ei.id as \"id\", ei.name as \"name\", ei.end_date as \"endDate\", ei.start_date as \"startDate\", ei.invite_code as \"inviteCode\", " +
             "ei.status as \"status\", ei.institute_id as \"instituteId\", ei.vendor as \"vendor\", ei.vendor_id as \"vendorId\", " +
             "ei.currency as \"currency\", ei.tag as \"tag\", ei.web_page_meta_data_json as \"webPageMetaDataJson\", " +
-            "ei.created_at as \"createdAt\", ei.updated_at as \"updatedAt\", " +
+            "ei.created_at as \"createdAt\", ei.updated_at as \"updatedAt\", ei.short_url as \"shortUrl\", " +
             "ARRAY_REMOVE(ARRAY_AGG(DISTINCT ps.id), NULL) as \"packageSessionIds\" " +
             "FROM enroll_invite ei " +
             "LEFT JOIN package_session_learner_invitation_to_payment_option psl ON ei.id = psl.enroll_invite_id " +
@@ -165,4 +174,31 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             @Param("enrollInviteActiveStatuses") List<String> enrollInviteActiveStatuses,
             @Param("packageSessionMappingActiveStatuses") List<String> packageSessionMappingActiveStatuses
     );
+
+    @Query(value = """
+        SELECT ei.* FROM enroll_invite ei
+        WHERE ei.sub_org_id = :subOrgId
+        AND ei.tag = 'SUB_ORG'
+        AND ei.status IN (:statuses)
+        AND ei.institute_id = :instituteId
+        ORDER BY ei.created_at DESC
+    """, nativeQuery = true)
+    List<EnrollInvite> findBySubOrgIdAndInstituteId(
+            @Param("subOrgId") String subOrgId,
+            @Param("instituteId") String instituteId,
+            @Param("statuses") List<String> statuses);
+
+    @Query(value = """
+        SELECT ei.* FROM enroll_invite ei
+        JOIN package_session_learner_invitation_to_payment_option pslipo
+          ON pslipo.enroll_invite_id = ei.id
+        WHERE ei.sub_org_id = :subOrgId
+        AND ei.tag = 'SUB_ORG'
+        AND pslipo.package_session_id = :packageSessionId
+        AND ei.status = 'ACTIVE'
+        ORDER BY ei.created_at DESC LIMIT 1
+    """, nativeQuery = true)
+    Optional<EnrollInvite> findScopedInviteForSubOrgAndPackageSession(
+            @Param("subOrgId") String subOrgId,
+            @Param("packageSessionId") String packageSessionId);
 }

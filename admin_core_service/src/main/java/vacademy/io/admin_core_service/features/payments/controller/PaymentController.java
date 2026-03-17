@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin-core-service/payments/user-plan")
@@ -17,10 +18,10 @@ public class PaymentController {
 
     @PostMapping("/user-plan-payment")
     public ResponseEntity<PaymentResponseDTO> handleUserPlanPayment(
-        @RequestBody PaymentInitiationRequestDTO request,
-        @RequestParam String instituteId,
-        @RequestAttribute("user")CustomUserDetails userDetails,
-        @RequestParam String userPlanId) {
+            @RequestBody PaymentInitiationRequestDTO request,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam String userPlanId) {
 
         try {
             var response = paymentService.handleUserPlanPayment(request, instituteId, userDetails, userPlanId);
@@ -32,4 +33,5 @@ public class PaymentController {
             return ResponseEntity.badRequest().body(errorResponse);
         }
     }
+
 }

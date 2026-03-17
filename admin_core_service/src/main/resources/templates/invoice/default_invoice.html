@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        @page {
+            size: A4;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100%;
+        }
+        
+        body {
+            font-family: 'Cairo', 'Arial', 'Helvetica', sans-serif;
+            font-size: 15px;
+            line-height: 1.5;
+            color: #333;
+            background-color: #ffffff;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100%;
+        }
+        
+        .invoice-container {
+            width: 100%;
+            margin: 0 !important;
+            background: #ffffff;
+            padding: 0 !important;
+        }
+        
+        /* Invoice Title - Top Right */
+        .invoice-title-row {
+            width: 100%;
+            text-align: right;
+            padding: 10px 15px 15px 0;
+        }
+        
+        .invoice-title-row h1 {
+            font-size: 42px;
+            font-weight: bold;
+            color: #000000;
+            margin: 0;
+            letter-spacing: -1px;
+        }
+        
+        /* Top Header Section - Exact 50/50 split side by side */
+        .top-header {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: separate;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .bill-to-section {
+            background-color: {{theme_color}};
+            color: #ffffff;
+            padding: 15px 0;
+            display: table-cell;
+            width: 50%;
+            vertical-align: top;
+            border-right: 0;
+            overflow: hidden;
+        }
+        
+        .bill-to-section h2,
+        .bill-to-section p {
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+        
+        .bill-to-section h2 {
+            font-size: 15px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 15px;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+        }
+        
+        .bill-to-section p {
+            font-size: 14px;
+            margin: 4px 0;
+            color: #ffffff;
+            line-height: 1.6;
+        }
+        
+        .bill-to-section strong {
+            font-weight: 600;
+        }
+        
+        .invoice-details-section {
+            background-color: #ffffff;
+            padding: 15px 0;
+            display: table-cell;
+            width: 50%;
+            vertical-align: top;
+            overflow: hidden;
+        }
+        
+        .invoice-details {
+            text-align: left;
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+        
+        .invoice-details-row {
+            margin-bottom: 8px;
+        }
+        
+        .invoice-details-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            text-align: left;
+            margin-bottom: 2px;
+        }
+        
+        .invoice-details-value {
+            font-size: 14px;
+            color: #333;
+            text-align: left;
+            line-height: 1.5;
+        }
+        
+        /* Company Info Section - Below Header */
+        .company-info-section {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            margin-top: 0;
+            margin-bottom: 0;
+        }
+        
+        .company-logo-name {
+            display: table-cell;
+            width: 50%;
+            vertical-align: middle;
+            padding: 15px 0;
+        }
+        
+        .company-logo-name-wrapper {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+        
+        .company-logo-name-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo-container {
+            flex-shrink: 0;
+            width: 50px;
+            height: 50px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        
+        .logo-container img {
+            max-width: 50px;
+            max-height: 50px;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            display: block;
+            vertical-align: middle;
+        }
+        
+        .company-name {
+            font-size: 22px;
+            font-weight: bold;
+            color: #000000;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        
+        .company-address {
+            display: table-cell;
+            width: 50%;
+            text-align: right;
+            vertical-align: middle;
+            font-size: 14px;
+            color: #333;
+            line-height: 1.6;
+            padding: 15px 0;
+        }
+        
+        .company-address p {
+            margin: 2px 0;
+            font-size: 14px;
+            color: #333;
+            line-height: 1.6;
+            text-align: right;
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+        
+        /* Items Table */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+            background: #ffffff;
+            border-top: 1px solid #e0e0e0;
+            border-left: none;
+            border-right: none;
+        }
+        
+        .items-table thead {
+            background-color: #f78f1e;
+            color: #ffffff;
+        }
+        
+        .items-table th {
+            padding: 10px;
+            text-align: left;
+            font-size: 15px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-left: none;
+            border-right: none;
+        }
+        
+        .items-table th:first-child,
+        .items-table td:first-child {
+            padding-left: 15px;
+        }
+        
+        .items-table th:last-child,
+        .items-table td:last-child {
+            padding-right: 15px;
+        }
+        
+        .items-table td {
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+            border-left: none;
+            border-right: none;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        /* Total Purchases */
+        .total-purchases {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 15px;
+            font-size: 15px;
+            font-weight: bold;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .total-purchases-label {
+            color: #333;
+        }
+        
+        .total-purchases-amount {
+            color: #333;
+        }
+        
+        /* Payment Details Section */
+        .payment-details-section {
+            margin-top: 15px;
+        }
+        
+        .section-header {
+            background-color: #4a4a4a;
+            color: #ffffff;
+            padding: 10px 15px;
+            font-size: 15px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-left: none;
+            border-right: none;
+        }
+        
+        .section-content {
+            background-color: #ffffff;
+            padding: 12px 15px;
+            border: 1px solid #e0e0e0;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+        }
+        
+        .section-content p {
+            padding: 0;
+        }
+        
+        .section-content p {
+            font-size: 14px;
+            margin: 6px 0;
+            color: #333;
+            line-height: 1.5;
+        }
+        
+        .section-content strong {
+            display: inline-block;
+            min-width: 130px;
+            color: #333;
+            font-weight: normal;
+        }
+        
+        /* Payments Due Section */
+        .payments-due-section {
+            margin-top: 10px;
+        }
+        
+        .payments-due-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        
+        .payments-due-table td {
+            padding: 6px 15px;
+            font-size: 14px;
+            border-bottom: 1px solid #e0e0e0;
+            border-left: none;
+            border-right: none;
+        }
+        
+        .payments-due-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .payments-due-table .label-cell {
+            color: #333;
+            text-align: left;
+            width: 60%;
+        }
+        
+        .payments-due-table .middle-cell {
+            text-align: left;
+            width: 25%;
+        }
+        
+        .payments-due-table .amount-cell {
+            text-align: right;
+            font-weight: normal;
+            color: #333;
+            width: 15%;
+        }
+        
+        .payments-due-table .date-row {
+            font-weight: normal;
+        }
+        
+        .payments-due-table .current-label {
+            text-align: left;
+            font-weight: normal;
+        }
+        
+        /* Footer */
+        .footer-note {
+            margin-top: 10px;
+            padding: 8px 15px;
+            font-size: 13px;
+            color: #666;
+            text-align: left;
+            font-style: italic;
+        }
+        
+        .footer-bar {
+            background-color: {{theme_color}};
+            color: #ffffff;
+            padding: 10px 15px;
+            margin-top: 5px;
+            font-size: 14px;
+            text-align: left;
+            page-break-inside: avoid;
+        }
+        
+        /* Prevent page breaks */
+        .invoice-container {
+            page-break-inside: avoid;
+        }
+        
+        .top-header {
+            page-break-inside: avoid;
+        }
+        
+        .company-info-section {
+            page-break-inside: avoid;
+        }
+        
+        .items-table {
+            page-break-inside: avoid;
+        }
+        
+        .payment-details-section {
+            page-break-inside: avoid;
+        }
+        
+        .payments-due-section {
+            page-break-inside: avoid;
+        }
+        
+        @page {
+            size: A4;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        @media print {
+            @page {
+                size: A4;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            body {
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .invoice-container {
+                border: none;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="invoice-container">
+        <!-- Invoice Title - Top Right -->
+        <div class="invoice-title-row">
+            <h1>INVOICE</h1>
+        </div>
+        
+        <!-- Top Header: BILL TO (50%) and Invoice Details (50%) -->
+        <div class="top-header">
+            <div class="bill-to-section">
+                <h2>BILL TO</h2>
+                <p><strong>{{user_name}}</strong></p>
+                <p>{{user_email}}</p>
+                <p>{{user_address}}</p>
+            </div>
+            <div class="invoice-details-section">
+                <div class="invoice-details">
+                    <div class="invoice-details-row">
+                        <div class="invoice-details-label">Invoice Number:</div>
+                        <div class="invoice-details-value">{{invoice_number}}</div>
+                    </div>
+                    <div class="invoice-details-row">
+                        <div class="invoice-details-label">Date:</div>
+                        <div class="invoice-details-value">{{invoice_date}}</div>
+                    </div>
+                    <div class="invoice-details-row">
+                        <div class="invoice-details-label">ABN:</div>
+                        <div class="invoice-details-value">41 459 532 142</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Company Info: Logo and Address - Next Line -->
+        <div class="company-info-section">
+            <div class="company-logo-name">
+                <div class="company-logo-name-wrapper">
+                    {{institute_logo}}
+                    <div class="company-name">{{institute_name}}</div>
+                </div>
+            </div>
+            <div class="company-address">
+                <p>PO Box 55</p>
+                <p>James Cook University, Queensland 4811</p>
+                <p>Australia</p>
+                <p>{{institute_contact}}</p>
+            </div>
+        </div>
+        
+        <!-- Line Items Table -->
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th class="text-center">Qty</th>
+                    <th class="text-right">Unit Price</th>
+                    <th class="text-right">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{line_items}}
+            </tbody>
+        </table>
+        
+        <!-- Total Purchases -->
+        <div class="total-purchases">
+            <span class="total-purchases-label">Total Purchases</span>
+            <span class="total-purchases-amount">{{total_amount}}</span>
+        </div>
+        
+        <!-- Payment Details Section -->
+        <div class="payment-details-section">
+            <div class="section-header">Payment Details</div>
+            <div class="section-content">
+                <p><strong>Payments Method:</strong> {{payment_method}} - PAID</p>
+                <p><strong>Date:</strong> {{payment_date}}</p>
+                <p><strong>Amount Paid:</strong> {{total_amount}}</p>
+            </div>
+        </div>
+        
+        <!-- Payments Due Section -->
+        <div class="payments-due-section">
+            <div class="section-header">Payments Due</div>
+            <div class="section-content">
+                <table class="payments-due-table">
+                    <tr>
+                        <td class="label-cell date-row">{{payment_date}}</td>
+                        <td class="middle-cell current-label">Current</td>
+                        <td class="amount-cell">{{currency_symbol}}0.00</td>
+                    </tr>
+                    <tr>
+                        <td class="label-cell">Outstanding Balance:</td>
+                        <td class="middle-cell"></td>
+                        <td class="amount-cell">{{currency_symbol}}0.00</td>
+                    </tr>
+                    <tr>
+                        <td class="label-cell">Balance Due Now:</td>
+                        <td class="middle-cell"></td>
+                        <td class="amount-cell">{{currency_symbol}}0.00</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer-note">
+            <p>*Please note that all prices are inclusive of GST for Australian customers.</p>
+        </div>
+        
+        <div class="footer-bar">
+            Need assistance? Don't hesitate to contact us at: {{institute_contact}}
+        </div>
+    </div>
+</body>
+</html>

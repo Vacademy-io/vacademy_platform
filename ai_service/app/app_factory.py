@@ -8,6 +8,22 @@ from .routers.health import router as health_router
 from .routers.course_outline import router as course_outline_router
 from .routers.content_generation import router as content_generation_router
 from .routers.video_generation import router as video_generation_router
+from .routers.models import router as models_router
+from .routers.api_keys import router as api_keys_router
+from .routers.token_usage import router as token_usage_router
+from .routers.chat_bot import router as chat_bot_router
+from .routers.chat_agent import router as chat_agent_router
+from .routers.validation import router as validation_router
+from .routers.institute_settings import router as institute_settings_router
+from .routers.utils import router as utils_router
+from .routers.institute_api_keys import router as institute_api_keys_router
+from .routers.external_video_generation import router as external_video_generation_router
+from .routers.auth_test import router as auth_test_router
+from .routers.credits import router as credits_router
+from .routers.ai_models import router as ai_models_router
+from .routers.super_admin import router as super_admin_router
+
+
 
 # Configure logging
 logging.basicConfig(
@@ -43,10 +59,10 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=allow_origins or ["*"],
-        allow_credentials=settings.cors_allow_credentials,
-        allow_methods=allow_methods or ["*"],
-        allow_headers=allow_headers or ["*"],
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # Routers
@@ -54,7 +70,20 @@ def create_app() -> FastAPI:
     app.include_router(course_outline_router, prefix=settings.api_base_path)
     app.include_router(content_generation_router, prefix=settings.api_base_path)
     app.include_router(video_generation_router, prefix=settings.api_base_path)
-
+    app.include_router(models_router, prefix=settings.api_base_path)
+    app.include_router(api_keys_router, prefix=settings.api_base_path)
+    app.include_router(token_usage_router, prefix=settings.api_base_path)
+    app.include_router(chat_bot_router, prefix=settings.api_base_path)
+    app.include_router(chat_agent_router, prefix=settings.api_base_path)
+    app.include_router(validation_router, prefix=settings.api_base_path)
+    app.include_router(institute_settings_router, prefix=settings.api_base_path)
+    app.include_router(utils_router, prefix=settings.api_base_path)
+    app.include_router(institute_api_keys_router, prefix=settings.api_base_path)
+    app.include_router(external_video_generation_router, prefix=settings.api_base_path)
+    app.include_router(auth_test_router, prefix=settings.api_base_path)
+    app.include_router(credits_router, prefix=settings.api_base_path)
+    app.include_router(ai_models_router, prefix=settings.api_base_path)
+    app.include_router(super_admin_router, prefix=settings.api_base_path)
 
     return app
 

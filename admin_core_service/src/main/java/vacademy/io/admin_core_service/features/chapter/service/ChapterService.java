@@ -109,6 +109,11 @@ public class ChapterService {
 
     private void saveChapterPackageSessionMapping(Chapter chapter, PackageSession packageSession,
             Integer chapterOrder) {
+        if (chapterOrder == null) {
+            Integer maxOrder = chapterPackageSessionMappingRepository
+                    .findMaxChapterOrderByPackageSessionId(packageSession.getId());
+            chapterOrder = (maxOrder == null) ? 1 : maxOrder + 1;
+        }
         chapterPackageSessionMappingRepository
                 .save(new ChapterPackageSessionMapping(chapter, packageSession, chapterOrder));
     }
@@ -355,8 +360,12 @@ public class ChapterService {
                 .orElseThrow(() -> new VacademyException("Module not found"));
         ModuleChapterMapping moduleChapterMapping = new ModuleChapterMapping(chapter, module);
         moduleChapterMappingRepository.save(moduleChapterMapping);
+        Integer maxOrder = chapterPackageSessionMappingRepository
+                .findMaxChapterOrderByPackageSessionId(packageSessionId);
+        Integer newOrder = (maxOrder == null) ? 1 : maxOrder + 1;
+
         ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter,
-                packageSession, null);
+                packageSession, newOrder);
         chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
         return "Chapter copied successfully";
     }
@@ -391,8 +400,16 @@ public class ChapterService {
         String[] packageSessionIds = getPackageSessionIds(commaSeparatedPackageSessionIds);
         for (String packageSessionId : packageSessionIds) {
             PackageSession packageSession = fetchPackageSessionById(packageSessionId);
+
+            Integer order = chapterDTO.getChapterOrder();
+            if (order == null) {
+                Integer maxOrder = chapterPackageSessionMappingRepository
+                        .findMaxChapterOrderByPackageSessionId(packageSessionId);
+                order = (maxOrder == null) ? 1 : maxOrder + 1;
+            }
+
             ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter,
-                    packageSession, chapterDTO.getChapterOrder());
+                    packageSession, order);
             chapterPackageSessionMapping.setStatus(ChapterStatus.PENDING_APPROVAL.name());
             chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
         }

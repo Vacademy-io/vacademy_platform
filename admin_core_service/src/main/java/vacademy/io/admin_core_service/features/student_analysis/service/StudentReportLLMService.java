@@ -10,13 +10,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
+import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
+import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
+import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentAnalysisData;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentReportData;
-
+import vacademy.io.admin_core_service.features.student_analysis.entity.UserLinkedData;
+import vacademy.io.admin_core_service.features.student_analysis.repository.UserLinkedDataRepository;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Service to generate student analysis reports using LLM
@@ -39,9 +44,17 @@ public class StudentReportLLMService {
 
         private final WebClient webClient;
         private final ObjectMapper objectMapper;
+        private final UserLinkedDataRepository userLinkedDataRepository;
+        private final AiTokenUsageService aiTokenUsageService;
 
-        public StudentReportLLMService(@Value("${openrouter.api.key}") String apiKey, ObjectMapper objectMapper) {
+        public StudentReportLLMService(
+                        @Value("${openrouter.api.key}") String apiKey,
+                        ObjectMapper objectMapper,
+                        UserLinkedDataRepository userLinkedDataRepository,
+                        AiTokenUsageService aiTokenUsageService) {
                 this.objectMapper = objectMapper;
+                this.userLinkedDataRepository = userLinkedDataRepository;
+                this.aiTokenUsageService = aiTokenUsageService;
 
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
@@ -58,10 +71,13 @@ public class StudentReportLLMService {
                 log.info("[Student-Report-LLM] Generating report for date range: {} to {}",
                                 data.getStartDateIso(), data.getEndDateIso());
 
-                String prompt = createStudentReportPrompt(data);
+                // Fetch existing user-linked data
+                List<UserLinkedData> existingData = userLinkedDataRepository.findByUserId(data.getUserId());
+
+                String prompt = createStudentReportPrompt(data, existingData);
 
                 // Try each model in priority order with retries
-                return tryModelsWithFallback(prompt, 0);
+                return tryModelsWithFallback(prompt, 0, data.getUserId());
         }
 
         /**
@@ -69,18 +85,18 @@ public class StudentReportLLMService {
          * 
          * @param prompt     The prompt to send to LLM
          * @param modelIndex Current model index in priority list
+         * @param userId     The user ID for the report
          * @return Mono containing the report or error
          */
-        private Mono<StudentReportData> tryModelsWithFallback(String prompt, int modelIndex) {
+        private Mono<StudentReportData> tryModelsWithFallback(String prompt, int modelIndex, String userId) {
                 if (modelIndex >= MODEL_PRIORITY.size()) {
                         log.error("[Student-Report-LLM] All models failed after retries");
                         return Mono.error(new RuntimeException("All LLM models failed. Tried: " + MODEL_PRIORITY));
                 }
 
                 String currentModel = MODEL_PRIORITY.get(modelIndex);
-                log.info("[Student-Report-LLM] Attempting with model: {} (priority {})", currentModel, modelIndex + 1);
 
-                return generateWithModel(prompt, currentModel)
+                return generateWithModel(prompt, currentModel, userId)
                                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
                                                 .doBeforeRetry(signal -> log.warn(
                                                                 "[Student-Report-LLM] Retry {}/{} for model: {}",
@@ -94,14 +110,14 @@ public class StudentReportLLMService {
                                 .onErrorResume(error -> {
                                         log.error("[Student-Report-LLM] Model {} failed: {}. Trying next model...",
                                                         currentModel, error.getMessage());
-                                        return tryModelsWithFallback(prompt, modelIndex + 1);
+                                        return tryModelsWithFallback(prompt, modelIndex + 1, userId);
                                 });
         }
 
         /**
          * Generate report with specific model
          */
-        private Mono<StudentReportData> generateWithModel(String prompt, String model) {
+        private Mono<StudentReportData> generateWithModel(String prompt, String model, String userId) {
                 Map<String, Object> payload = Map.of(
                                 "model", model,
                                 "messages", List.of(
@@ -118,76 +134,122 @@ public class StudentReportLLMService {
                                 .retrieve()
                                 .bodyToMono(String.class)
                                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
-                                .flatMap(response -> parseResponse(response, model));
+                                .doOnNext(response -> logTokenUsage(response, model, userId))
+                                .flatMap(response -> parseResponse(response, model, userId));
         }
 
-        private String createStudentReportPrompt(StudentAnalysisData data) {
+        /**
+         * Log token usage from API response
+         */
+        private void logTokenUsage(String responseBody, String model, String userId) {
+                try {
+                        JsonNode root = objectMapper.readTree(responseBody);
+                        JsonNode usage = root.get("usage");
+
+                        if (usage != null) {
+                                int promptTokens = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asInt() : 0;
+                                int completionTokens = usage.has("completion_tokens")
+                                                ? usage.get("completion_tokens").asInt()
+                                                : 0;
+
+                                UUID userUuid = null;
+                                try {
+                                        if (userId != null) {
+                                                userUuid = UUID.fromString(userId);
+                                        }
+                                } catch (IllegalArgumentException e) {
+                                        // userId is not a valid UUID, leave as null
+                                }
+
+                                aiTokenUsageService.recordUsageAsync(
+                                                ApiProvider.OPENAI,
+                                                RequestType.ANALYTICS,
+                                                model,
+                                                promptTokens,
+                                                completionTokens,
+                                                null, // No institute ID in this context
+                                                userUuid);
+                        }
+                } catch (Exception e) {
+                        log.warn("[Student-Report-LLM] Failed to log token usage: {}", e.getMessage());
+                }
+        }
+
+        private String createStudentReportPrompt(StudentAnalysisData data, List<UserLinkedData> existingData) {
                 return String.format(
                                 """
                                                 Analyze the following comprehensive student data and generate a detailed performance report.
 
-                                                **Date Range:** %s to %s
+                                                        **Date Range:** %s to %s
 
-                                                **Login Activity:**
-                                                - Total Logins: %d
-                                                - Last Login: %s
-                                                - Average Session Duration: %.1f minutes
-                                                - Total Active Time: %d minutes (%.1f hours)
+                                                        **Login Activity:**
+                                                        - Total Logins: %d
+                                                        - Last Login: %s
+                                                        - Average Session Duration: %.1f minutes
+                                                        - Total Active Time: %d minutes (%.1f hours)
 
-                                                **Processed Activity Insights (Last 5):**
-                                                %s
+                                                        **Processed Activity Insights (Last 5):**
+                                                        %s
 
-                                                **Learning Operations Summary:**
-                                                %s
+                                                        **Learning Operations Summary:**
+                                                        %s
 
-                                                Generate a JSON response with the following structure:
-                                                {
-                                                  "learning_frequency": "Markdown formatted analysis of student's learning patterns, frequency of engagement, consistency in activities, and peak learning times. Include specific observations about login patterns and activity completion rates.",
+                                                        **Existing Strengths and Weaknesses:**
+                                                        %s
 
-                                                  "progress": "Markdown formatted comprehensive analysis of student's progress over the time period. Include improvements in performance, completion rates, engagement trends, and milestone achievements. Compare early vs. recent activities.",
+                                                        Generate a JSON response with the following structure.
 
-                                                  "topics_of_improvement": "Markdown formatted list of topics where the student showed improvement or mastery. Include specific topics, percentage improvements, and evidence from the data. Use bullet points with explanations.",
+                                                        **CRITICAL FORMATTING INSTRUCTION:** The string values inside the JSON must be **Rich Markdown**. To ensure the UI renders this correctly, you must:
+                                                        1. Use **Double Newlines (`\n\n`)** before every Header (`###`), Table, and List. This is mandatory for headers to render with correct sizing.
+                                                        2. Use **Level 3 Headers (`###`)** for section titles inside the text to create a distinct visual hierarchy.
+                                                        3. Ensure Tables have valid Markdown syntax with clear column definitions.
 
-                                                  "topics_of_degradation": "Markdown formatted list of topics where performance declined or showed concerning patterns. Include specific topics, areas of struggle, and supporting evidence. Use bullet points with explanations.",
+                                                        {
+                                                          "learning_frequency": "Rich Markdown analysis. Use `### Learning Patterns` as a header. Use tables for session patterns.",
+                                                          "progress": "Rich Markdown analysis. User `### Key Trends`as header. Use comparison tables (Previous vs Current).",
+                                                          "student_efforts": "Rich Markdown summary. Use `### Efforts` as a header. Must include a table: `| Activity 📚 | Time ⏱️ | Status ✅ |`.",
+                                                          "topics_of_improvement": "Rich Markdown list. Use `### Improvements` as a header. Use bullet points.",
+                                                          "topics_of_degradation": "Rich Markdown list. Use `### Need Attention` as a header. Use warning emojis (⚠️).",
+                                                          "remedial_points": "Rich Markdown checklist. Use `### Immediate Actions` and `### Long-term Goals` headers. Use `- [ ]` for items.",
+                                                          "strengths": {
+                                                            "Topic Name 1": 85,
+                                                            "Topic Name 2": 90
+                                                          },
+                                                          "weaknesses": {
+                                                            "Topic Name 1": 35,
+                                                            "Topic Name 2": 42
+                                                          }
+                                                        }
 
-                                                  "remedial_points": "Markdown formatted actionable recommendations for improvement. Include:
-                                                  - Specific learning strategies
-                                                  - Time management suggestions
-                                                  - Topic-specific study plans
-                                                  - Engagement improvement tactics
-                                                  - Practice recommendations
-                                                  Use numbered list format with detailed explanations.",
+                                                        **Important Guidelines:**
 
-                                                  "strengths": {
-                                                    "topic_name_1": 85,
-                                                    "topic_name_2": 90
-                                                  },
+                                                        **1. Visual Hierarchy & Spacing (Crucial):**
+                                                           - **Headers:** Always use `###` for headers. **ALWAYS** put `\n\n` before a header.
+                                                           - **Tables:** ensure the table syntax is correct (e.g., `|---|---|`). Put `\n\n` before the table starts.
+                                                           - **Spacing:** Do not create dense walls of text. Use newlines generously to separate ideas.
 
-                                                  "weaknesses": {
-                                                    "topic_name_1": 35,
-                                                    "topic_name_2": 42
-                                                  }
-                                                }
+                                                        **2. Visual Presentation:**
+                                                           - **Tables:** Use Markdown tables for comparing data (e.g., Time spent vs. Output).
+                                                           - **Emojis:** Use relevant emojis (🎯, 💡, ✅, 📉) to break up text and add visual cues.
+                                                           - **Styling:** Use **Bold** for key metrics.
 
-                                                **Important Guidelines:**
-                                                1. **Learning Frequency:** Focus on consistency, engagement patterns, time gaps between activities, and learning habits
-                                                2. **Progress:** Highlight both positive trends and areas needing attention. Be specific with data points
-                                                3. **Topics of Improvement:** Extract topic names from activity data. Score 70-100 for strong performance
-                                                4. **Topics of Degradation:** Identify declining performance areas. Score 0-50 for weak areas
-                                                5. **Remedial Points:** Provide 5-10 specific, actionable recommendations tailored to the student's needs
-                                                6. **Strengths/Weaknesses:** Use actual topic names from the data with percentage scores (0-100)
+                                                        **3. Content Logic:**
+                                                           - **Learning Frequency:** Focus on consistency and gaps.
+                                                           - **Progress:** Specific data points (e.g., 'Score increased by 15%%').
+                                                           - **Topics:** Extract from activity data. 70-100 = Strength, 0-50 = Weakness/Degradation.
+                                                           - **Remedial Points:** 5-10 actionable items in a checklist format.
 
-                                                **Analysis Focus:**
-                                                - Base insights on actual activity data and learning operations
-                                                - Look for patterns in video watching, quiz completion, document reading
-                                                - Consider time spent, completion percentages, and marked activities
-                                                - Identify topics from processed activity insights
-                                                - Be specific and data-driven in all recommendations
-                                                - Use straight forward language suitable for students and educators
-                                                - Focus ENTIRELY on the student's learning and performance, NOT on system evaluation or technical aspects
+                                                        **4. Strengths/Weaknesses (Data Structure):**
+                                                           - **Consolidation:** Update existing scores if topics match. Merge similar topics.
+                                                           - **Naming:** Strict **Title Case** (e.g., 'Newtonian Physics'). Meaningful academic topics only.
+                                                           - **No Duplicates.**
 
-                                                Return ONLY valid JSON. Be thorough, specific, and actionable in your analysis.
-                                                """,
+                                                        **General Rules:**
+                                                           - Base analysis on actual data.
+                                                           - All fields must be populated; no empty strings.
+                                                           - Be data-driven but easy to read.
+                                                           - **Return ONLY valid JSON.**
+                                                                                                        """,
                                 data.getStartDateIso(),
                                 data.getEndDateIso(),
                                 data.getTotalLogins(),
@@ -196,7 +258,8 @@ public class StudentReportLLMService {
                                 data.getTotalActiveTimeMinutes(),
                                 data.getTotalActiveTimeMinutes() / 60.0,
                                 formatActivityLogs(data.getProcessedActivityLogs()),
-                                formatLearnerOperations(data.getLearnerOperations()));
+                                formatLearnerOperations(data.getLearnerOperations()),
+                                formatExistingData(existingData));
         }
 
         private String formatActivityLogs(List<String> logs) {
@@ -225,7 +288,20 @@ public class StudentReportLLMService {
                 return formatted.toString();
         }
 
-        private Mono<StudentReportData> parseResponse(String responseBody, String model) {
+        private String formatExistingData(List<UserLinkedData> existingData) {
+                if (existingData == null || existingData.isEmpty()) {
+                        return "No existing strengths and weaknesses recorded.";
+                }
+
+                StringBuilder formatted = new StringBuilder();
+                for (UserLinkedData data : existingData) {
+                        formatted.append(String.format("- %s: %s (%d%%)\n",
+                                        data.getType(), data.getData(), data.getPercentage()));
+                }
+                return formatted.toString();
+        }
+
+        private Mono<StudentReportData> parseResponse(String responseBody, String model, String userId) {
                 try {
                         JsonNode root = objectMapper.readTree(responseBody);
                         JsonNode contentNode = root.path("choices").path(0).path("message").path("content");
@@ -249,6 +325,7 @@ public class StudentReportLLMService {
                         StudentReportData reportData = StudentReportData.builder()
                                         .learningFrequency(parsedContent.path("learning_frequency").asText())
                                         .progress(parsedContent.path("progress").asText())
+                                        .studentEfforts(parsedContent.path("student_efforts").asText())
                                         .topicsOfImprovement(parsedContent.path("topics_of_improvement").asText())
                                         .topicsOfDegradation(parsedContent.path("topics_of_degradation").asText())
                                         .remedialPoints(parsedContent.path("remedial_points").asText())
@@ -275,4 +352,5 @@ public class StudentReportLLMService {
                 }
                 return result;
         }
+
 }

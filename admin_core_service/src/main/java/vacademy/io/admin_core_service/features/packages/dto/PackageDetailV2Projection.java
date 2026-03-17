@@ -49,11 +49,16 @@ public interface PackageDetailV2Projection {
 
     String getLevelName();
 
-    // Faculty IDs
+    // Faculty IDs (from faculty_subject_package_session_mapping)
     List<String> getFacultyUserIds();
 
-    // Enroll Invite + Payment details
+    /** Package creator user id (for instructor fallback when no faculty mapped). */
+    String getCreatedByUserId();
+
+    // Enroll Invite + Payment details (default invite -> psli -> last updated payment_option -> its plan)
     String getEnrollInviteId();
+
+    String getPsliId();
 
     String getPaymentOptionId();
 
@@ -61,7 +66,11 @@ public interface PackageDetailV2Projection {
 
     String getPaymentOptionStatus();
 
+    String getPaymentPlanId();
+
     Double getMinPlanActualPrice();
 
     String getCurrency();
+
+    Integer getAvailableSlots();
 }

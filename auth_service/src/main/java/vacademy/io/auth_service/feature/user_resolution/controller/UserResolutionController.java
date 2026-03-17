@@ -51,10 +51,10 @@ public class UserResolutionController {
     public ResponseEntity<List<User>> getUsersByIds(@Valid @RequestBody UsersByIdsRequest request) {
         try {
             log.info("Getting {} users by IDs", request.getUserIds().size());
+            // Service already sanitizes users (removes circular references) before caching
             List<User> users = userResolutionService.getUsersByIds(request.getUserIds());
-            List<User> sanitized = users.stream().map(this::shallowUser).toList();
-            log.info("Found {} users out of {} requested IDs", sanitized.size(), request.getUserIds().size());
-            return ResponseEntity.ok(sanitized);
+            log.info("Found {} users out of {} requested IDs", users.size(), request.getUserIds().size());
+            return ResponseEntity.ok(users);
             
         } catch (Exception e) {
             log.error("Error getting users by IDs", e);

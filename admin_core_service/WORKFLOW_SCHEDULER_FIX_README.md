@@ -41,9 +41,24 @@ Changed `generateIdempotencyKey` to use `nextRunAt` (the target execution time) 
 Modified the `try-catch` block to explicitly catch `DataIntegrityViolationException` (Duplicate Key).
 *   **Why:** When Pod B loses the race, it now logs a warning ("Skipping execution") and exits gracefully, instead of treating it as a failure and sabotaging Pod A.
 
-### 3. Guaranteed Schedule Advancement
-Moved `updateScheduleExecutionTime()` to run even if the workflow logic throws an exception.
-*   **Why:** This prevents the system from getting stuck in an infinite loop retrying a failing job.
+### 3. Early Schedule Advancement
+Moved `updateScheduleExecutionTime()` to run **immediately** after the execution is marked as `PROCESSING` in the database, *before* the actual workflow logic runs.
+*   **Why:** This is the most robust protection against "Stuck Schedules". Even if the pod crashes 1 second after starting the workflow, the schedule has already been advanced to the next future slot. The current run might be a zombie, but it will never block the queue.
 
 ## Summary
 The combination of the **Database Unique Constraint** (safety net) and these **Logic Fixes** (correct key generation + graceful failure handling) ensures that workflows now run exactly once per schedule, regardless of how many pods are running.
+
+## 4. Workflow Watchdog (Zombie Recovery)
+To handle rare cases where a pod crashes *during* execution (leaving a 'PROCESSING' row forever), we implemented a **Workflow Watchdog**.
+
+### How it works:
+1.  **Job:** `WorkflowWatchdogJob` runs every **15 minutes**.
+2.  **Detection:** Finds executions stuck in `PROCESSING` status for > 60 minutes.
+3.  **Action:**
+    *   Marks execution as `FAILED` (Error: "Watchdog: Execution timed out").
+    *   **Alerts:** Sends an email to the dev team (`shreyash@vidyayatan.com`, `manshu@vidyayatan.com`).
+    *   **Recovery:**  Forces the **Schedule** to advance to the *next valid future time*.
+
+**Why Recovery is critical:**
+If a schedule is left pointing to a past time (e.g., yesterday), the scheduler will try to re-run "yesterday's" job, generate the same Idempotency Key, fail with "Duplicate Key", and loop forever. The Watchdog breaks this loop by skipping the lost run and resetting the schedule to the future.
+

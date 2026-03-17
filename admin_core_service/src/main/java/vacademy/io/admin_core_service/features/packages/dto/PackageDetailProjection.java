@@ -47,6 +47,9 @@ public interface PackageDetailProjection {
 
     List<String> getFacultyUserIds();
 
+    /** Package creator user id (for instructor fallback when no faculty mapped). */
+    String getCreatedByUserId();
+
     List<String> getLevelIds();
 
     Long getReadTimeInMinutes();

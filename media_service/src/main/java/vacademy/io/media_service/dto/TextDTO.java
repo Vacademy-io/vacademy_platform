@@ -1,5 +1,6 @@
 package vacademy.io.media_service.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
@@ -21,9 +22,12 @@ public class TextDTO {
     private String classLevel;
     private String topics;
     private String questionLanguage;
+    @JsonProperty("taskName")
     private String taskName;
+    @JsonProperty("taskId")
     private String taskId;
     private String questionType;
+    private Boolean generateImage = true;
 
     /**
      * Optional: Preferred AI model to use.

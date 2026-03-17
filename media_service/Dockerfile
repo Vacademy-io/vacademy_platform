@@ -41,4 +41,4 @@ RUN update-ms-fonts
 EXPOSE 8075
 
 # Define the command to run the application
-CMD ["java", "-jar", "-Dspring.profiles.active=stage", "media_service.jar"]
+CMD ["java", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=200", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-Dspring.profiles.active=stage", "-jar", "media_service.jar"]

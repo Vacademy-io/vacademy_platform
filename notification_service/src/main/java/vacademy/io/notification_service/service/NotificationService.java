@@ -1,14 +1,18 @@
 package vacademy.io.notification_service.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
 import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.dto.NotificationToUserDTO;
+import vacademy.io.notification_service.features.bounced_emails.service.BouncedEmailService;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
+
+import vacademy.io.notification_service.util.EmailDomainBlocklistUtil;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -17,12 +21,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
 
     private final NotificationLogRepository notificationLogRepository;
     private final EmailService emailSenderService;
+    private final BouncedEmailService bouncedEmailService;
+
+    /**
+     * Check if an email should be blocked from sending.
+     * Checks both domain blocklist and bounced email blocklist.
+     */
+    private boolean isEmailBlocked(String email) {
+        return EmailDomainBlocklistUtil.isEmailDomainBlocked(email) || 
+               bouncedEmailService.isEmailBlocked(email);
+    }
 
     @Transactional
     public String sendNotification(NotificationDTO notificationDTO,String instituteId) {
@@ -38,11 +53,16 @@ public class NotificationService {
             String channelId = user.getChannelId();
             String userId = user.getUserId();
 
-            NotificationLog log = createNotificationLog(notificationType, channelId, parsedBody, notificationDTO.getSource(), notificationDTO.getSourceId(), userId);
-            notificationLogs.add(log);
+            NotificationLog notificationLog = createNotificationLog(notificationType, channelId, parsedBody, notificationDTO.getSource(), notificationDTO.getSourceId(), userId);
+            notificationLogs.add(notificationLog);
 
             switch (notificationType.toUpperCase()) {
                 case "EMAIL":
+                    // Skip sending email if blocked (domain blocklist or bounced email blocklist)
+                    if (isEmailBlocked(channelId)) {
+                        log.info("Skipping email notification for blocked email address: {}", channelId);
+                        break;
+                    }
                     emailSenderService.sendHtmlEmail(channelId, parsedSubject, "email-service", parsedBody, instituteId);
                     break;
                 default:
@@ -91,7 +111,7 @@ public class NotificationService {
                     String userId = user.getUserId();
 
                     // Create and store log
-                    NotificationLog log = createNotificationLog(
+                    NotificationLog notificationLog = createNotificationLog(
                             notificationType,
                             channelId,
                             parsedBody,
@@ -99,9 +119,14 @@ public class NotificationService {
                             attachmentNotificationDTO.getSourceId(),
                             userId
                     );
-                    notificationLogs.add(log);
+                    notificationLogs.add(notificationLog);
 
                     if ("EMAIL".equalsIgnoreCase(notificationType)) {
+                        // Skip sending email if blocked (domain blocklist or bounced email blocklist)
+                        if (isEmailBlocked(channelId)) {
+                            log.info("Skipping attachment email notification for blocked email address: {}", channelId);
+                            continue;
+                        }
                         Map<String, byte[]> base64AttachmentNameAndAttachment = user.getAttachments().stream()
                                 .collect(Collectors.toMap(
                                         AttachmentUsersDTO.AttachmentDTO::getAttachmentName,

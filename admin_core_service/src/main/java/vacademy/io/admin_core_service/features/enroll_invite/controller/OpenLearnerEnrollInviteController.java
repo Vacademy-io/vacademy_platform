@@ -14,7 +14,6 @@ import vacademy.io.admin_core_service.features.enroll_invite.service.LearnerEnro
 @RequestMapping("/admin-core-service/open/learner/enroll-invite")
 public class OpenLearnerEnrollInviteController {
 
-
     @Autowired
     private LearnerEnrollInviteService learnerEnrollInviteService;
 
@@ -22,12 +21,13 @@ public class OpenLearnerEnrollInviteController {
     private EnrollInviteService enrollInviteService;
 
     @GetMapping
-    public ResponseEntity<EnrollInviteDTO>getEnrollInvite(String instituteId,String inviteCode) {
+    public ResponseEntity<EnrollInviteDTO> getEnrollInvite(String instituteId, String inviteCode) {
         return ResponseEntity.ok(learnerEnrollInviteService.getEnrollInvite(instituteId, inviteCode));
     }
 
     @GetMapping("/{instituteId}/{enrollInviteId}")
-    public ResponseEntity<EnrollInviteDTO>getEnrollInviteById(@PathVariable("instituteId") String instituteId, @PathVariable("enrollInviteId") String enrollInviteId) {
-        return ResponseEntity.ok(enrollInviteService.findByEnrollInviteId(enrollInviteId,instituteId));
+    public ResponseEntity<EnrollInviteDTO> getEnrollInviteById(@PathVariable("instituteId") String instituteId,
+            @PathVariable("enrollInviteId") String enrollInviteId) {
+        return ResponseEntity.ok(enrollInviteService.findByEnrollInviteId(enrollInviteId, instituteId));
     }
 }

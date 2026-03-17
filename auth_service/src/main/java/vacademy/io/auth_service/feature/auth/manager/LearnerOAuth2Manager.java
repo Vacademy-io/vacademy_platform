@@ -1,5 +1,7 @@
 package vacademy.io.auth_service.feature.auth.manager;
 
+import vacademy.io.auth_service.feature.institute.service.InstituteSettingsService;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,19 +56,34 @@ public class LearnerOAuth2Manager {
     @Autowired
     private LearnerAuthManager learnerAuthManager;
 
+    @Autowired
+    private InstituteSettingsService instituteSettingsService;
+
     public JwtResponseDto loginUserByEmail(String fullName, String email, String instituteId) throws Exception {
         return loginUserByEmail(fullName, email, instituteId, null, null);
     }
 
-    public JwtResponseDto loginUserByEmail(String fullName, String email, String instituteId, String subjectId, String vendorId) throws Exception {
+    public JwtResponseDto loginUserByEmail(String fullName, String email, String instituteId, String subjectId,
+            String vendorId) throws Exception {
         log.info("Attempting OAuth2 login for email={} fullName={} instituteId={}", email, fullName, instituteId);
 
-        Optional<User> userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
-                email,
-                List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
-                AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL
-        );
-        log.info("User lookup result for email {}: {}", email, userOptional.isPresent() ? "User found" : "User not found");
+        // Determine the user identifier strategy for the institute
+        String userIdentifier = resolveUserIdentifier(instituteId);
+
+        Optional<User> userOptional;
+        if ("PHONE".equalsIgnoreCase(userIdentifier)) {
+            userOptional = userRepository.findUserByEmailWithPhoneNotNull(
+                    email,
+                    List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                    AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+        } else {
+            userOptional = userRepository.findMostRecentUserByEmailAndRoleStatusAndRoleNames(
+                    email,
+                    List.of(UserRoleStatus.ACTIVE.name(), UserRoleStatus.INVITED.name()),
+                    AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL);
+        }
+        log.info("User lookup result for email {}: {}", email,
+                userOptional.isPresent() ? "User found" : "User not found");
 
         if (userOptional.isPresent()) {
             User user = userOptional.get();
@@ -78,12 +95,12 @@ public class LearnerOAuth2Manager {
             List<UserRole> userRoles = userRoleRepository.findByUserAndStatusAndRoleName(
                     user,
                     UserRoleStatus.ACTIVE.name(),
-                    "STUDENT"
-            );
+                    "STUDENT");
             log.debug("Fetched roles for user {}: {}", user.getUsername(), userRoles);
 
             if (userRoles.isEmpty()) {
-                log.warn("User {} exists but has no STUDENT role. Checking signup policy for institute {}", user.getUsername(), instituteId);
+                log.warn("User {} exists but has no STUDENT role. Checking signup policy for institute {}",
+                        user.getUsername(), instituteId);
                 InstituteSignupPolicy signupPolicy = institutePolicyService.fetchSignupPolicy(instituteId);
                 log.debug("Signup policy fetched for institute {}: {}", instituteId, signupPolicy);
 
@@ -134,11 +151,13 @@ public class LearnerOAuth2Manager {
     }
 
     // Backward compatibility method
-    private void createUserFromPolicy(InstituteSignupPolicy signupPolicy, String fullName, String email, String instituteId) throws Exception {
+    private void createUserFromPolicy(InstituteSignupPolicy signupPolicy, String fullName, String email,
+            String instituteId) throws Exception {
         createUserFromPolicy(signupPolicy, fullName, email, instituteId, null, null);
     }
 
-    private void createUserFromPolicy(InstituteSignupPolicy signupPolicy, String fullName, String email, String instituteId, String subjectId, String vendorId) throws Exception {
+    private void createUserFromPolicy(InstituteSignupPolicy signupPolicy, String fullName, String email,
+            String instituteId, String subjectId, String vendorId) throws Exception {
         log.info("Creating user from signup policy for instituteId={} email={}", instituteId, email);
 
         UserDTO userDTO = new UserDTO();
@@ -147,7 +166,7 @@ public class LearnerOAuth2Manager {
 
         // Check if we have all required details from policy
         boolean hasCompleteDetails = true;
-        
+
         if ("email".equalsIgnoreCase(signupPolicy.getUserNameStrategy())) {
             userDTO.setUsername(email);
             log.debug("Username strategy is 'email', setting username={}", email);
@@ -166,15 +185,16 @@ public class LearnerOAuth2Manager {
         }
 
         // Check if password delivery is configured (not manual)
-        boolean isPasswordDeliveryConfigured = signupPolicy.getPasswordDelivery() != null && 
+        boolean isPasswordDeliveryConfigured = signupPolicy.getPasswordDelivery() != null &&
                 !"none".equalsIgnoreCase(signupPolicy.getPasswordDelivery());
 
         // Use registerLearner only if we have complete details and OAuth2 data
-        if (hasCompleteDetails && instituteId != null && !instituteId.isBlank() && 
-            subjectId != null && vendorId != null) {
+        if (hasCompleteDetails && instituteId != null && !instituteId.isBlank() &&
+                subjectId != null && vendorId != null) {
             try {
-                log.info("Using registerLearner for complete OAuth2 user setup with subjectId={} vendorId={}", subjectId, vendorId);
-                
+                log.info("Using registerLearner for complete OAuth2 user setup with subjectId={} vendorId={}",
+                        subjectId, vendorId);
+
                 // Create LearnerEnrollRequestDTO for registerLearner with OAuth2 data
                 LearnerEnrollRequestDTO enrollRequest = new LearnerEnrollRequestDTO();
                 enrollRequest.setUser(userDTO);
@@ -182,13 +202,14 @@ public class LearnerOAuth2Manager {
                 enrollRequest.setSubjectId(subjectId);
                 enrollRequest.setVendorId(vendorId);
                 // learnerPackageSessionEnroll is null for OAuth2 signup
-                
+
                 learnerAuthManager.registerLearner(enrollRequest);
                 log.info("Successfully used registerLearner for complete OAuth2 user setup");
                 return; // Success - user and student entity created with OAuth2 verification
-                
+
             } catch (Exception e) {
-                log.warn("Failed to use registerLearner with OAuth2 data, falling back to legacy authService: {}", e.getMessage());
+                log.warn("Failed to use registerLearner with OAuth2 data, falling back to legacy authService: {}",
+                        e.getMessage());
                 // Fall through to legacy method
             }
         }
@@ -200,7 +221,8 @@ public class LearnerOAuth2Manager {
     }
 
     public void signUpUser(UserDTO userDTO, String instituteId, boolean sendNotification) throws Exception {
-        log.info("Manually signing up user {} for institute {} with sendNotification={}", userDTO.getEmail(), instituteId, sendNotification);
+        log.info("Manually signing up user {} for institute {} with sendNotification={}", userDTO.getEmail(),
+                instituteId, sendNotification);
         authService.createUser(userDTO, instituteId, sendNotification);
         log.info("User {} signed up successfully", userDTO.getEmail());
     }
@@ -209,7 +231,8 @@ public class LearnerOAuth2Manager {
         return createUserAndLogin(fullName, email, instituteId, null, null);
     }
 
-    public JwtResponseDto createUserAndLogin(String fullName, String email, String instituteId, String subjectId, String vendorId) throws Exception {
+    public JwtResponseDto createUserAndLogin(String fullName, String email, String instituteId, String subjectId,
+            String vendorId) throws Exception {
         log.info("Creating new user and logging in via OAuth2 for email={} instituteId={}", email, instituteId);
 
         InstituteSignupPolicy signupPolicy = institutePolicyService.fetchSignupPolicy(instituteId);
@@ -227,5 +250,14 @@ public class LearnerOAuth2Manager {
         createUserFromPolicy(signupPolicy, fullName, email, instituteId, subjectId, vendorId);
         log.info("User created successfully. Proceeding to login...");
         return loginUserByEmail(fullName, email, instituteId);
+    }
+
+    /**
+     * Resolves the user identifier strategy for the given institute.
+     * Returns "EMAIL" (default) if institute is not found or user_identifier is
+     * null.
+     */
+    private String resolveUserIdentifier(String instituteId) {
+        return instituteSettingsService.getUserIdentifier(instituteId);
     }
 }

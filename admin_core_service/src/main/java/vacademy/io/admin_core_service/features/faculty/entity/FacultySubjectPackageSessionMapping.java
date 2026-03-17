@@ -20,14 +20,37 @@ public class FacultySubjectPackageSessionMapping {
     private String subjectId;
     private String name;
     private String status;
+
+    @Column(name = "user_type")
+    private String userType;
+
+    @Column(name = "type_id")
+    private String typeId;
+
+    @Column(name = "access_type")
+    private String accessType;
+
+    @Column(name = "access_id")
+    private String accessId;
+
+    @Column(name = "access_permission")
+    private String accessPermission;
+
+    @Column(name = "linkage_type")
+    private String linkageType;
+
+    @Column(name = "suborg_id")
+    private String suborgId;
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    public FacultySubjectPackageSessionMapping() {}
+    public FacultySubjectPackageSessionMapping() {
+    }
 
-    public FacultySubjectPackageSessionMapping(String userId, String packageSessionId, String subjectId, String name, String status) {
+    public FacultySubjectPackageSessionMapping(String userId, String packageSessionId, String subjectId, String name,
+            String status) {
         this.userId = userId;
         this.packageSessionId = packageSessionId;
         this.subjectId = subjectId;

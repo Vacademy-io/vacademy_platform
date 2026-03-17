@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -21,6 +22,10 @@ public class GetSessionByIdResponseDTO {
     private String subject;
     private String descriptionHtml;
     private String defaultMeetLink;
+    private String defaultClassLink;
+    private String defaultClassName;
+    private String defaultClassLinkType;
+    private LearnerButtonConfigDTO learnerButtonConfig;
     private LocalDateTime startTime;
     private LocalDateTime lastEntryTime;
     private String linkType;
@@ -36,6 +41,7 @@ public class GetSessionByIdResponseDTO {
     private Boolean allowPlayPause;
     private String sessionStreamingServiceType;
     private String timezone;
+    private Map<String, Object> bbbConfig;
     private List<String> packageSessionIds;
     private List<ScheduleItem> addedSchedules;
 
@@ -47,8 +53,13 @@ public class GetSessionByIdResponseDTO {
         private String startTime;
         private String duration;
         private String link;
+        private String defaultClassLink;
+        private String defaultClassName;
+        private LearnerButtonConfigDTO learnerButtonConfig;
         private LocalDate meetingDate;
         private String timezone;
+        private Boolean dailyAttendance;
+        private String providerRecordingsJson;
     }
 
     @Getter
@@ -70,7 +81,7 @@ public class GetSessionByIdResponseDTO {
 
     @Getter
     @Setter
-    public static class Field{
+    public static class Field {
         private String id;
         private String type;
         private String label;
@@ -83,5 +94,15 @@ public class GetSessionByIdResponseDTO {
     static public class NotificationConfigResponse {
         private List<NotificationAction> addedNotificationActions;
         private List<Field> addedFields = new ArrayList<>();
+    }
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class LearnerButtonConfigDTO {
+        private boolean isVisible;
+        private String text;
+        private String url;
+        private String backgroundColor;
+        private String textColor;
     }
 }

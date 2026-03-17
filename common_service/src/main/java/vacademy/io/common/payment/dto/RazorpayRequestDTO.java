@@ -10,6 +10,8 @@ public class RazorpayRequestDTO {
     private String customerId;
     private String contact;
     private String email;
+    private String applicantId;
+    private String paymentOptionId;
 
     // Getters and setters
 }

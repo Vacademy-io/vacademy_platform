@@ -15,6 +15,8 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageReposi
 import vacademy.io.admin_core_service.features.workflow.engine.QueryNodeHandler;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
+import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
+import vacademy.io.admin_core_service.features.common.dto.request.CustomFieldValueDto;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
@@ -35,6 +37,13 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 
+import vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment;
+import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
+import vacademy.io.admin_core_service.features.fee_management.repository.AftInstallmentRepository;
+import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.common.auth.dto.UserDTO;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -50,6 +59,10 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final CustomFieldRepository customFieldRepository;
     private final PackageRepository packageRepository;
     private final ObjectMapper objectMapper;
+    private final CustomFieldValueService customFieldValueService;
+    private final StudentFeePaymentRepository studentFeePaymentRepository;
+    private final AftInstallmentRepository aftInstallmentRepository;
+    private final AuthService authService;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -76,6 +89,10 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return getAudienceResponsesByDayDifference(params);
             case "fetchPackageLMSSetting":
                 return fetchPackageLMSSetting(params);
+            case "upsertUserCustomField":
+                return upsertUserCustomField(params);
+            case "getUpcomingFeeInstallments":
+                return getUpcomingFeeInstallments(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -172,17 +189,79 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 long remainingDays = calculateRemainingDays(String.valueOf(row[0]), expiryDate);
                 mapping.put("remainingDays", remainingDays);
 
+                // --- DAYS PAST EXPIRY (for expiration email filtering) ---
+                long daysPastExpiry = calculateDaysPastExpiry(expiryDate);
+                mapping.put("daysPastExpiry", daysPastExpiry);
+
                 ssigmList.add(mapping);
             }
 
+            // TODO: Move this limit to workflow configuration level (e.g., TRIGGER node's
+            // expirationEmailMaxDaysAfterExpiry)
+            // For now, hardcoded to 2 days - only include users who are within 2 days past
+            // expiry for expiration emails
+            final int MAX_DAYS_PAST_EXPIRY_FOR_EMAIL = 2;
+
+            // Filter out users who are more than MAX_DAYS_PAST_EXPIRY_FOR_EMAIL days past
+            // their expiry
+            // This prevents sending expiration emails indefinitely to expired enrollments
+            List<Map<String, Object>> filteredList = ssigmList.stream()
+                    .filter(mapping -> {
+                        Object dpe = mapping.get("daysPastExpiry");
+                        if (dpe instanceof Number) {
+                            long daysPast = ((Number) dpe).longValue();
+                            // Include: not expired yet (daysPast <= 0) OR expired within limit
+                            return daysPast <= MAX_DAYS_PAST_EXPIRY_FOR_EMAIL;
+                        }
+                        return true; // Include if we can't determine
+                    })
+                    .toList();
+
+            log.info("Filtered SSIGM list: {} total, {} after filtering (max {} days past expiry)",
+                    ssigmList.size(), filteredList.size(), MAX_DAYS_PAST_EXPIRY_FOR_EMAIL);
+
             return Map.of(
-                    "ssigmList", ssigmList,
-                    "ssigmListCount", ssigmList.size());
+                    "ssigmList", filteredList,
+                    "ssigmListCount", filteredList.size(),
+                    "unfilteredCount", ssigmList.size());
 
         } catch (Exception e) {
             log.error("Error executing getSSIGMByStatusAndSessions query", e);
             return Map.of("error", e.getMessage());
         }
+    }
+
+    /**
+     * Calculate days past expiry.
+     * Returns: 0 if not expired, positive number if expired (e.g., 1 = expired
+     * yesterday, 2 = expired 2 days ago)
+     * 
+     * TODO: Move expiration email limit to workflow configuration level
+     */
+    private long calculateDaysPastExpiry(Date expiryDate) {
+        if (expiryDate == null) {
+            return 0; // No expiry = not expired
+        }
+
+        // Truncate both to midnight for accurate day calculation
+        Calendar todayCal = Calendar.getInstance();
+        todayCal.set(Calendar.HOUR_OF_DAY, 0);
+        todayCal.set(Calendar.MINUTE, 0);
+        todayCal.set(Calendar.SECOND, 0);
+        todayCal.set(Calendar.MILLISECOND, 0);
+
+        Calendar expiryCal = Calendar.getInstance();
+        expiryCal.setTime(expiryDate);
+        expiryCal.set(Calendar.HOUR_OF_DAY, 0);
+        expiryCal.set(Calendar.MINUTE, 0);
+        expiryCal.set(Calendar.SECOND, 0);
+        expiryCal.set(Calendar.MILLISECOND, 0);
+
+        long diffMillis = todayCal.getTimeInMillis() - expiryCal.getTimeInMillis();
+        long daysPast = diffMillis / (1000 * 60 * 60 * 24);
+
+        // Return 0 if not expired yet, otherwise return days past expiry
+        return Math.max(daysPast, 0);
     }
 
     /**
@@ -658,11 +737,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
     private Map<String, Object> getAudienceResponsesByDayDifference(Map<String, Object> params) {
         String instituteId = (String) params.get("instituteId");
-        String audienceId = (String) params.get("audienceId");
+        String audienceIdParam = (String) params.get("audienceId"); // Renamed to denote it can be multiple
         Integer daysAgo = (Integer) params.get("daysAgo");
 
         // Validate all required params
-        if (instituteId == null || daysAgo == null || audienceId == null) {
+        if (instituteId == null || daysAgo == null || audienceIdParam == null) {
             throw new RuntimeException("Missing parameters: instituteId, audienceId, or daysAgo");
         }
 
@@ -673,26 +752,36 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         Timestamp startDate = Timestamp.valueOf(startLocal);
         Timestamp endDate = Timestamp.valueOf(endLocal);
 
-        // 2. Fetch Leads (Using the specific Audience repository method)
-        List<AudienceResponse> responses = audienceResponseRepository.findLeadsByAudienceAndDateRange(
-                instituteId, audienceId, startDate, endDate);
+        // 2. Fetch Leads (Looping through comma-separated IDs)
+        List<AudienceResponse> responses = new ArrayList<>();
+
+        // Split by comma and trim whitespace (works for "id1, id2" and just "id1")
+        String[] audienceIds = audienceIdParam.split(",");
+
+        for (String aId : audienceIds) {
+            if (aId != null && !aId.trim().isEmpty()) {
+                List<AudienceResponse> audienceResponses = audienceResponseRepository.findLeadsByAudienceAndDateRange(
+                        instituteId, aId.trim(), startDate, endDate);
+                responses.addAll(audienceResponses);
+            }
+        }
 
         if (responses.isEmpty()) {
             return Map.of("leads", Collections.emptyList());
         }
 
-        // --- START CUSTOM FIELD FETCHING LOGIC ---
+        // --- START CUSTOM FIELD FETCHING LOGIC (Unchanged & Efficient) ---
+        // Since 'responses' now contains leads from ALL audiences, this bulk fetch
+        // works perfectly.
 
         // 3. Extract Response IDs to bulk fetch values
         List<String> responseIds = responses.stream().map(AudienceResponse::getId).toList();
 
-        // 4. Fetch Custom Field Values (The actual data: "9198...", "Rahul")
-        // This queries the 'custom_field_values' table
+        // 4. Fetch Custom Field Values
         List<CustomFieldValues> cfValues = customFieldValuesRepository.findBySourceTypeAndSourceIdIn(
                 "AUDIENCE_RESPONSE", responseIds);
 
-        // 5. Fetch Field Definitions (To resolve "cf_123" -> "phone number")
-        // This queries the 'custom_fields' table to get human-readable keys
+        // 5. Fetch Field Definitions
         Set<String> customFieldIds = cfValues.stream()
                 .map(CustomFieldValues::getCustomFieldId)
                 .collect(Collectors.toSet());
@@ -700,14 +789,10 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         Map<String, String> fieldIdToName = customFieldRepository.findAllById(customFieldIds).stream()
                 .collect(Collectors.toMap(
                         CustomFields::getId,
-                        // Normalize key to lowercase for easy access in SpEL (e.g., "Phone Number" ->
-                        // "phone number")
                         cf -> cf.getFieldName().toLowerCase(),
                         (k1, k2) -> k1));
 
         // 6. Group values by Response ID
-        // Result structure: { "resp_id_1": { "phone number": "999...", "name": "Rahul"
-        // } }
         Map<String, Map<String, String>> responseDataMap = new HashMap<>();
         for (CustomFieldValues cfv : cfValues) {
             String fieldName = fieldIdToName.getOrDefault(cfv.getCustomFieldId(), cfv.getCustomFieldId());
@@ -723,9 +808,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             lead.put("id", ar.getId());
             lead.put("userId", ar.getUserId());
             lead.put("createdAt", ar.getCreatedAt());
+            lead.put("workflowActivateDayAt", ar.getWorkflowActivateDayAt());
 
-            // Merge custom fields into the lead map
-            // This is what makes #this['phone number'] work in your TRANSFORM node
+            // Merge custom fields
             Map<String, String> fields = responseDataMap.getOrDefault(ar.getId(), new HashMap<>());
             lead.putAll(fields);
 
@@ -761,11 +846,6 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private Map<String, Object> fetchPackageLMSSetting(Map<String, Object> params) {
         try {
             String packageId = (String) params.get("packageId");
-            // Fallback to instituteId if packageId is missing, as per previous logic
-            if (packageId == null) {
-                packageId = (String) params.get("instituteId");
-            }
-
             String settingKey = (String) params.get("settingKey");
 
             if (packageId == null || settingKey == null) {
@@ -809,4 +889,204 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             return Map.of("error", e.getMessage());
         }
     }
+
+    /**
+     * Generic upsert of a single user custom field value.
+     * Params: userId, customFieldId, value. sourceType is "USER".
+     * Use for Moodle creds, or any other user custom field (dynamic use case).
+     * Coerces params to String so SpEL-evaluated UUIDs or other types from context
+     * work.
+     */
+    private Map<String, Object> upsertUserCustomField(Map<String, Object> params) {
+        try {
+            Object userIdObj = params.get("userId");
+            Object customFieldIdObj = params.get("customFieldId");
+            Object valueObj = params.get("value");
+
+            String userId = userIdObj != null ? String.valueOf(userIdObj).strip() : null;
+            String customFieldId = customFieldIdObj != null ? String.valueOf(customFieldIdObj).strip() : null;
+            String value = valueObj != null ? String.valueOf(valueObj) : null;
+
+            if (userId == null || userId.isBlank()) {
+                return Map.of("error", "Missing userId");
+            }
+            if (customFieldId == null || customFieldId.isBlank()) {
+                return Map.of("error", "Missing customFieldId");
+            }
+
+            CustomFieldValueDto dto = new CustomFieldValueDto();
+            dto.setCustomFieldId(customFieldId);
+            dto.setSourceType("USER");
+            dto.setSourceId(userId);
+            dto.setValue(value);
+
+            customFieldValueService.upsertCustomFieldValues(List.of(dto));
+            return Map.of(
+                    "userId", userId,
+                    "customFieldId", customFieldId,
+                    "customFieldValueUpserted", true);
+        } catch (Exception e) {
+            log.error("Error executing upsertUserCustomField", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Fee Installment Reminder — used by wf_fee_installment_reminder workflow
+    // ---------------------------------------------------------------------------
+
+    private static final int[] REMINDER_DAYS = {7, 3, 0, -3};
+    private static final int FEE_DAYS_BEFORE_WINDOW = 8;
+    private static final int FEE_DAYS_AFTER_WINDOW  = 4;
+    private static final List<String> FEE_PENDING_STATUSES = List.of("PENDING", "PARTIAL_PAID");
+
+    /**
+     * Scans student_fee_payment for installments whose due date falls within the
+     * reminder window, resolves each to a reminderType, fetches user/parent, and
+     * returns a feePaymentList ready for the SEND_EMAIL workflow node.
+     */
+    private Map<String, Object> getUpcomingFeeInstallments(Map<String, Object> params) {
+        try {
+            int daysBeforeWindow = params.containsKey("daysBeforeWindow")
+                    ? Integer.parseInt(String.valueOf(params.get("daysBeforeWindow")))
+                    : FEE_DAYS_BEFORE_WINDOW;
+            int daysAfterWindow = params.containsKey("daysAfterWindow")
+                    ? Integer.parseInt(String.valueOf(params.get("daysAfterWindow")))
+                    : FEE_DAYS_AFTER_WINDOW;
+
+            String filterInstituteId = params.containsKey("instituteId")
+                    ? String.valueOf(params.get("instituteId")) : null;
+
+            Calendar cal = Calendar.getInstance();
+            cal.add(Calendar.DAY_OF_YEAR, -daysAfterWindow);
+            Date windowStart = cal.getTime();
+            cal = Calendar.getInstance();
+            cal.add(Calendar.DAY_OF_YEAR, daysBeforeWindow);
+            Date windowEnd = cal.getTime();
+
+            log.info("[FeeReminder] Scanning payments between {} and {}", windowStart, windowEnd);
+
+            List<StudentFeePayment> payments =
+                    studentFeePaymentRepository.findPendingPaymentsInWindow(FEE_PENDING_STATUSES, windowStart, windowEnd);
+
+            if (payments.isEmpty()) {
+                log.info("[FeeReminder] No pending payments in window.");
+                return Map.of("feePaymentList", List.of());
+            }
+
+            // Optionally filter by institute
+            if (filterInstituteId != null && !filterInstituteId.isBlank()) {
+                payments = payments.stream()
+                        .filter(p -> filterInstituteId.equals(p.getInstituteId()))
+                        .collect(Collectors.toList());
+            }
+
+            // Batch fetch installments
+            List<String> installmentIds = payments.stream().map(StudentFeePayment::getIId)
+                    .filter(Objects::nonNull).distinct().collect(Collectors.toList());
+            Map<String, AftInstallment> installmentMap = installmentIds.isEmpty() ? Map.of()
+                    : aftInstallmentRepository.findAllById(installmentIds).stream()
+                            .collect(Collectors.toMap(AftInstallment::getId, i -> i));
+
+            // Batch fetch users
+            List<String> userIds = payments.stream().map(StudentFeePayment::getUserId)
+                    .distinct().collect(Collectors.toList());
+            Map<String, UserDTO> userMap = new HashMap<>();
+            try {
+                authService.getUsersFromAuthServiceByUserIds(userIds)
+                        .forEach(u -> userMap.put(u.getId(), u));
+            } catch (Exception e) {
+                log.error("[FeeReminder] Failed to fetch users: {}", e.getMessage(), e);
+            }
+
+            // Fetch parents not yet in userMap
+            List<String> parentIds = userMap.values().stream()
+                    .map(UserDTO::getLinkedParentId)
+                    .filter(pid -> pid != null && !pid.isBlank() && !userMap.containsKey(pid))
+                    .distinct().collect(Collectors.toList());
+            if (!parentIds.isEmpty()) {
+                try {
+                    authService.getUsersFromAuthServiceByUserIds(parentIds)
+                            .forEach(p -> userMap.put(p.getId(), p));
+                } catch (Exception e) {
+                    log.error("[FeeReminder] Failed to fetch parents: {}", e.getMessage(), e);
+                }
+            }
+
+            List<Map<String, Object>> feePaymentList = new ArrayList<>();
+            java.time.LocalDate today = java.time.LocalDate.now();
+
+            for (StudentFeePayment payment : payments) {
+                if (payment.getDueDate() == null) continue;
+
+                java.time.LocalDate dueDate = payment.getDueDate().toInstant()
+                        .atZone(java.time.ZoneId.systemDefault()).toLocalDate();
+                long daysDiff = java.time.temporal.ChronoUnit.DAYS.between(today, dueDate);
+
+                String reminderType = resolveReminderType(daysDiff);
+                if (reminderType == null) continue;
+
+                UserDTO user      = userMap.get(payment.getUserId());
+                String studentName  = user != null && user.getFullName()      != null ? user.getFullName()      : "";
+                String studentEmail = user != null && user.getEmail()          != null ? user.getEmail()          : "";
+                String studentPhone = user != null && user.getMobileNumber()   != null ? user.getMobileNumber()   : "";
+
+                // Prefer parent as recipient if linked
+                UserDTO recipient = user;
+                if (user != null && user.getLinkedParentId() != null && !user.getLinkedParentId().isBlank()) {
+                    UserDTO parent = userMap.get(user.getLinkedParentId());
+                    if (parent != null) recipient = parent;
+                }
+                String recipientEmail = recipient != null && recipient.getEmail()        != null ? recipient.getEmail()        : studentEmail;
+                String recipientName  = recipient != null && recipient.getFullName()     != null ? recipient.getFullName()     : studentName;
+                String recipientPhone = recipient != null && recipient.getMobileNumber() != null ? recipient.getMobileNumber() : studentPhone;
+
+                java.math.BigDecimal amountPaid = payment.getAmountPaid() != null
+                        ? payment.getAmountPaid() : java.math.BigDecimal.ZERO;
+                java.math.BigDecimal remaining  = payment.getAmountExpected().subtract(amountPaid);
+
+                AftInstallment installment = installmentMap.get(payment.getIId());
+
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("email",              recipientEmail);
+                item.put("recipientName",      recipientName);
+                item.put("studentName",        studentName);
+                item.put("mobileNumber",       recipientPhone);
+                item.put("installmentNumber",  installment != null ? installment.getInstallmentNumber() : "");
+                item.put("remainingAmount",    remaining.toPlainString());
+                item.put("amountExpected",     payment.getAmountExpected().toPlainString());
+                item.put("amountPaid",         amountPaid.toPlainString());
+                item.put("dueDate",            dueDate.toString());
+                item.put("daysDifference",     String.valueOf(daysDiff));
+                item.put("reminderType",       reminderType);
+                item.put("userId",             payment.getUserId());
+                item.put("studentFeePaymentId", payment.getId());
+                item.put("instituteId",        payment.getInstituteId() != null ? payment.getInstituteId() : "");
+                feePaymentList.add(item);
+            }
+
+            log.info("[FeeReminder] {} eligible payments resolved for reminders.", feePaymentList.size());
+            return Map.of("feePaymentList", feePaymentList);
+
+        } catch (Exception e) {
+            log.error("[FeeReminder] Error in getUpcomingFeeInstallments", e);
+            return Map.of("error", e.getMessage(), "feePaymentList", List.of());
+        }
+    }
+
+    private String resolveReminderType(long daysDiff) {
+        for (int d : REMINDER_DAYS) {
+            if (daysDiff == d) {
+                return switch (d) {
+                    case  7 -> "7_DAYS_BEFORE";
+                    case  3 -> "3_DAYS_BEFORE";
+                    case  0 -> "ON_DUE_DATE";
+                    case -3 -> "3_DAYS_AFTER";
+                    default -> null;
+                };
+            }
+        }
+        return null;
+    }
 }
+

@@ -22,6 +22,7 @@ public class SettingStrategyFactory {
         strategies.put(SettingKeyEnums.NAMING_SETTING.name(), new NameSettingStrategy());
         strategies.put(SettingKeyEnums.CERTIFICATE_SETTING.name(), new CertificateSettingStrategy());
         strategies.put(SettingKeyEnums.CUSTOM_FIELD_SETTING.name(), new CustomFieldSettingStrategy());
+        strategies.put(SettingKeyEnums.ROLE_DISPLAY_SETTING.name(), new RoleDisplaySettingStrategy());
         // strategies.put("branding", new BrandingSettingStrategy(objectMapper));
         // Add more strategies here
     }

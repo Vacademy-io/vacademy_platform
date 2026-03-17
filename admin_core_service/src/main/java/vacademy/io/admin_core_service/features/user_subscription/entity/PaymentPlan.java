@@ -47,6 +47,9 @@ public class PaymentPlan {
     @Column(name = "feature_json", columnDefinition = "TEXT")
     private String featureJson;
 
+    @Column(name = "member_count")
+    private Integer memberCount;
+
     @ManyToOne
     @JoinColumn(name = "payment_option_id") // This is the foreign key column
     @JsonIgnore
@@ -69,6 +72,7 @@ public class PaymentPlan {
         this.description = paymentPlanDTO.getDescription();
         this.tag = paymentPlanDTO.getTag();
         this.featureJson = paymentPlanDTO.getFeatureJson();
+        this.memberCount = paymentPlanDTO.getMemberCount();
         this.paymentOption = paymentOption;
     }
 
@@ -88,6 +92,7 @@ public class PaymentPlan {
                 .description(this.description)
                 .tag(this.tag)
                 .featureJson(this.featureJson)
+                .memberCount(this.memberCount)
                 .build();
     }
 }

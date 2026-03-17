@@ -19,7 +19,6 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageReposi
 import vacademy.io.admin_core_service.features.slide.enums.QuestionStatusEnum;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.common.auth.dto.UserDTO;
-import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -38,7 +37,7 @@ public class LearnerPackageService {
 
         public Page<PackageDetailDTO> getLearnerPackageDetail(
                         LearnerPackageFilterDTO learnerPackageFilterDTO,
-                        CustomUserDetails user,
+                        String userId,
                         String instituteId,
                         int pageNo,
                         int pageSize) {
@@ -50,20 +49,27 @@ public class LearnerPackageService {
                 if (StringUtils.hasText(learnerPackageFilterDTO.getType())
                                 && learnerPackageFilterDTO.getType().equalsIgnoreCase("COMPLETED")) {
                         learnerPackageDetail = getCompletedLearnerPackageDetail(learnerPackageFilterDTO, instituteId,
-                                        pageable, user);
+                                        pageable, userId);
                 } else if (StringUtils.hasText(learnerPackageFilterDTO.getType())
                                 && learnerPackageFilterDTO.getType().equalsIgnoreCase("PROGRESS")) {
                         learnerPackageDetail = getInProgressLearnerPackageDetail(learnerPackageFilterDTO, instituteId,
-                                        pageable, user);
+                                        pageable, userId);
                 } else {
                         learnerPackageDetail = getAllLearnerPackageDetail(learnerPackageFilterDTO, instituteId,
-                                        pageable, user);
+                                        pageable, userId);
                 }
 
-                // Get all instructor userIds
+                // Get all instructor userIds (faculty first; fallback to createdByUserId when
+                // no faculty mapped)
                 List<String> instructorIds = learnerPackageDetail.getContent().stream()
-                                .map(PackageDetailProjection::getFacultyUserIds)
-                                .filter(Objects::nonNull)
+                                .map(proj -> {
+                                        List<String> ids = Optional.ofNullable(proj.getFacultyUserIds())
+                                                        .orElse(List.of());
+                                        if (!ids.isEmpty())
+                                                return ids;
+                                        return Optional.ofNullable(proj.getCreatedByUserId()).map(List::of)
+                                                        .orElse(List.of());
+                                })
                                 .flatMap(List::stream)
                                 .distinct()
                                 .collect(Collectors.toList());
@@ -73,10 +79,15 @@ public class LearnerPackageService {
                 Map<String, UserDTO> userMap = userDTOS.stream()
                                 .collect(Collectors.toMap(UserDTO::getId, Function.identity()));
 
-                // Map projections to DTOs
+                // Map projections to DTOs (instructors = faculty list, or single creator as
+                // fallback)
                 List<PackageDetailDTO> dtos = learnerPackageDetail.getContent().stream().map(projection -> {
-                        List<UserDTO> instructors = Optional.ofNullable(projection.getFacultyUserIds())
-                                        .orElse(List.of()).stream()
+                        List<String> instructorIdList = Optional.ofNullable(projection.getFacultyUserIds())
+                                        .orElse(List.of());
+                        if (instructorIdList.isEmpty() && projection.getCreatedByUserId() != null) {
+                                instructorIdList = List.of(projection.getCreatedByUserId());
+                        }
+                        List<UserDTO> instructors = instructorIdList.stream()
                                         .map(userMap::get)
                                         .filter(Objects::nonNull)
                                         .collect(Collectors.toList());
@@ -113,11 +124,11 @@ public class LearnerPackageService {
                         LearnerPackageFilterDTO learnerPackageFilterDTO,
                         String instituteId,
                         Pageable pageable,
-                        CustomUserDetails user) {
+                        String userId) {
                 Page<PackageDetailProjection> learnerPackageDetail;
                 if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
                         learnerPackageDetail = packageRepository.getCompletedLearnerPackageDetail(
-                                        user.getId(),
+                                        userId,
                                         learnerPackageFilterDTO.getSearchByName(),
                                         instituteId,
                                         List.of(PackageStatusEnum.ACTIVE.name()),
@@ -131,10 +142,11 @@ public class LearnerPackageService {
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
+                                        List.of(LearnerStatusEnum.ACTIVE.name()),
                                         pageable);
                 } else {
                         learnerPackageDetail = packageRepository.getCompletedLearnerPackageDetail(
-                                        user.getId(),
+                                        userId,
                                         instituteId,
                                         learnerPackageFilterDTO.getLevelIds(),
                                         List.of(PackageStatusEnum.ACTIVE.name()),
@@ -150,6 +162,7 @@ public class LearnerPackageService {
                                         List.of(QuestionStatusEnum.ACTIVE.name()),
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
+                                        List.of(LearnerStatusEnum.ACTIVE.name()),
                                         pageable);
                 }
                 return learnerPackageDetail;
@@ -159,11 +172,11 @@ public class LearnerPackageService {
                         LearnerPackageFilterDTO learnerPackageFilterDTO,
                         String instituteId,
                         Pageable pageable,
-                        CustomUserDetails user) {
+                        String userId) {
                 Page<PackageDetailProjection> learnerPackageDetail;
                 if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
                         learnerPackageDetail = packageRepository.getAllPackagesIrrespectiveOfLearnerOperation(
-                                        user.getId(),
+                                        userId,
                                         learnerPackageFilterDTO.getSearchByName(),
                                         instituteId,
                                         List.of(PackageStatusEnum.ACTIVE.name()),
@@ -180,7 +193,7 @@ public class LearnerPackageService {
                                         pageable);
                 } else {
                         learnerPackageDetail = packageRepository.getAllLearnerPackagesIrrespectiveOfProgress(
-                                        user.getId(),
+                                        userId,
                                         instituteId,
                                         learnerPackageFilterDTO.getLevelIds(),
                                         List.of(PackageStatusEnum.ACTIVE.name()),
@@ -205,11 +218,11 @@ public class LearnerPackageService {
                         LearnerPackageFilterDTO learnerPackageFilterDTO,
                         String instituteId,
                         Pageable pageable,
-                        CustomUserDetails user) {
+                        String userId) {
                 Page<PackageDetailProjection> learnerPackageDetail;
                 if (StringUtils.hasText(learnerPackageFilterDTO.getSearchByName())) {
                         learnerPackageDetail = packageRepository.getStudentAssignedPackages(
-                                        user.getUserId(),
+                                        userId,
                                         learnerPackageFilterDTO.getSearchByName(),
                                         instituteId,
                                         List.of(PackageStatusEnum.ACTIVE.name()),
@@ -228,7 +241,7 @@ public class LearnerPackageService {
                                         pageable);
                 } else {
                         learnerPackageDetail = packageRepository.getIncompleteMappedPackages(
-                                        user.getUserId(),
+                                        userId,
                                         instituteId,
                                         learnerPackageFilterDTO.getLevelIds(),
                                         List.of(PackageStatusEnum.ACTIVE.name()),

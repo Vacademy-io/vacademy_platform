@@ -10,5 +10,6 @@ import lombok.NoArgsConstructor;
 public class UserRoleRequestDTO {
     private String userId;
     private String roleId;
+    private String sourceType;
+    private String sourceId;
 }
-

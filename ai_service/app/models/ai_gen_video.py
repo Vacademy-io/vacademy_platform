@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import uuid4
+from enum import Enum
 
 from sqlalchemy import (
     Column,
@@ -20,6 +21,39 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
+
+
+class ContentType(str, Enum):
+    """
+    Content types supported by the AI generation pipeline.
+    
+    Each type determines:
+    - How the frontend navigates between entries (time-driven vs user-driven)
+    - Which libraries are injected (GSAP, Matter.js, Swiper, etc.)
+    - The structure of entry_meta in the timeline JSON
+    """
+    VIDEO = "VIDEO"                       # Time-synced HTML overlays with audio (default)
+    QUIZ = "QUIZ"                         # Question-based assessments
+    STORYBOOK = "STORYBOOK"               # Page-by-page narratives
+    INTERACTIVE_GAME = "INTERACTIVE_GAME" # Self-contained HTML games
+    PUZZLE_BOOK = "PUZZLE_BOOK"           # Collection of puzzles
+    SIMULATION = "SIMULATION"             # Physics/economic sandboxes
+    FLASHCARDS = "FLASHCARDS"             # Spaced-repetition cards
+    MAP_EXPLORATION = "MAP_EXPLORATION"   # Interactive SVG maps
+    # New content types
+    WORKSHEET = "WORKSHEET"               # Printable/interactive homework
+    CODE_PLAYGROUND = "CODE_PLAYGROUND"   # Interactive code exercises
+    TIMELINE = "TIMELINE"                 # Chronological event visualization
+    CONVERSATION = "CONVERSATION"         # Language learning dialogues
+
+
+class NavigationType(str, Enum):
+    """
+    How the frontend navigates between timeline entries.
+    """
+    TIME_DRIVEN = "time_driven"           # Synced with audio playback (VIDEO)
+    USER_DRIVEN = "user_driven"           # User clicks prev/next (QUIZ, STORYBOOK)
+    SELF_CONTAINED = "self_contained"     # Single entry, internal state (GAME)
 
 
 class AiGenVideo(Base):
@@ -47,6 +81,11 @@ class AiGenVideo(Base):
     # Generation details
     prompt = Column(Text, nullable=True)
     language = Column(String(50), nullable=False, default="English")
+    
+    # Content type for multi-format support (VIDEO, QUIZ, STORYBOOK, etc.)
+    # VIDEO is the default for backward compatibility
+    content_type = Column(String(50), nullable=False, default="VIDEO", index=True)
+    
     error_message = Column(Text, nullable=True)
     
     # Additional metadata (can store generation options, resolution, etc.)
@@ -68,6 +107,7 @@ class AiGenVideo(Base):
             "video_id": self.video_id,
             "current_stage": self.current_stage,
             "status": self.status,
+            "content_type": self.content_type or "VIDEO",
             "file_ids": self.file_ids or {},
             "s3_urls": self.s3_urls or {},
             "prompt": self.prompt,
@@ -85,4 +125,5 @@ Index("idx_ai_gen_video_video_id", AiGenVideo.video_id)
 Index("idx_ai_gen_video_status", AiGenVideo.status)
 Index("idx_ai_gen_video_current_stage", AiGenVideo.current_stage)
 Index("idx_ai_gen_video_created_at", AiGenVideo.created_at)
+Index("idx_ai_gen_video_content_type", AiGenVideo.content_type)
 

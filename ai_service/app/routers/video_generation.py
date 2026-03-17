@@ -8,28 +8,33 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from uuid import uuid4
 from typing import Optional
+from sqlalchemy.orm import Session
+from ..db import db_dependency
 
 from ..schemas.video_generation import (
     VideoGenerationRequest,
     VideoGenerationResumeRequest,
-    VideoStatusResponse
+    VideoStatusResponse,
+    VideoUrlsResponse,
 )
 from ..services.video_generation_service import VideoGenerationService
 from ..repositories.ai_video_repository import AiVideoRepository
 from ..services.s3_service import S3Service
+from ..core.security import get_optional_user
+from ..schemas.auth import CustomUserDetails
 
 
 router = APIRouter(prefix="/video", tags=["ai-video-generation"])
 
 
-def get_video_service() -> VideoGenerationService:
+def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationService:
     """Dependency to get video generation service."""
     import logging
     logger = logging.getLogger(__name__)
     logger.info("[VIDEO_GEN_ROUTER] Creating VideoGenerationService instance")
     try:
         service = VideoGenerationService(
-            repository=AiVideoRepository(),
+            repository=AiVideoRepository(session=db),
             s3_service=S3Service()
         )
         logger.info("[VIDEO_GEN_ROUTER] VideoGenerationService created successfully")
@@ -46,7 +51,9 @@ def get_video_service() -> VideoGenerationService:
 )
 async def generate_till_script(
     payload: VideoGenerationRequest,
-    service: VideoGenerationService = Depends(get_video_service)
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    user: Optional[CustomUserDetails] = Depends(get_optional_user)
 ) -> StreamingResponse:
     """
     Generate AI video up to script stage only.
@@ -58,6 +65,13 @@ async def generate_till_script(
     """
     video_id = payload.video_id or str(uuid4())
     
+    # Inject user context if authenticated
+    if user:
+        if not payload.user_id:
+            payload.user_id = user.user_id
+        if not payload.institute_id and user.institute_id:
+            payload.institute_id = user.institute_id
+    
     async def event_generator():
         async for event in service.generate_till_stage(
             video_id=video_id,
@@ -66,7 +80,14 @@ async def generate_till_script(
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,
-            resume=False
+            resume=False,
+            target_audience=payload.target_audience,
+            target_duration=payload.target_duration,
+            content_type=payload.content_type,
+            db_session=db,
+            institute_id=payload.institute_id,
+            user_id=payload.user_id,
+            avatar_image_url=payload.avatar_image_url,
         ):
             yield f"data: {event}\n\n"
     
@@ -88,7 +109,9 @@ async def generate_till_script(
 )
 async def generate_till_mp3(
     payload: VideoGenerationRequest,
-    service: VideoGenerationService = Depends(get_video_service)
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    user: Optional[CustomUserDetails] = Depends(get_optional_user)
 ) -> StreamingResponse:
     """
     Generate AI video up to TTS (Text-to-Speech) stage.
@@ -100,6 +123,13 @@ async def generate_till_mp3(
     """
     video_id = payload.video_id or str(uuid4())
     
+    # Inject user context if authenticated
+    if user:
+        if not payload.user_id:
+            payload.user_id = user.user_id
+        if not payload.institute_id and user.institute_id:
+            payload.institute_id = user.institute_id
+    
     async def event_generator():
         async for event in service.generate_till_stage(
             video_id=video_id,
@@ -108,7 +138,14 @@ async def generate_till_mp3(
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,
-            resume=False
+            resume=False,
+            target_audience=payload.target_audience,
+            target_duration=payload.target_duration,
+            content_type=payload.content_type,
+            db_session=db,
+            institute_id=payload.institute_id,
+            user_id=payload.user_id,
+            avatar_image_url=payload.avatar_image_url,
         ):
             yield f"data: {event}\n\n"
     
@@ -130,7 +167,9 @@ async def generate_till_mp3(
 )
 async def generate_till_html(
     payload: VideoGenerationRequest,
-    service: VideoGenerationService = Depends(get_video_service)
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    user: Optional[CustomUserDetails] = Depends(get_optional_user)
 ) -> StreamingResponse:
     """
     Generate AI video up to HTML generation stage.
@@ -150,15 +189,30 @@ async def generate_till_html(
     """
     video_id = payload.video_id or str(uuid4())
     
+    # Inject user context if authenticated
+    if user:
+        if not payload.user_id:
+            payload.user_id = user.user_id
+        if not payload.institute_id and user.institute_id:
+            payload.institute_id = user.institute_id
+    
     async def event_generator():
         async for event in service.generate_till_stage(
             video_id=video_id,
             prompt=payload.prompt,
-            target_stage="HTML",
+            target_stage="AVATAR" if payload.generate_avatar else "HTML",
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,
-            resume=False
+            resume=False,
+            target_audience=payload.target_audience,
+            target_duration=payload.target_duration,
+            content_type=payload.content_type,
+            db_session=db,
+            institute_id=payload.institute_id,
+            user_id=payload.user_id,
+            avatar_image_url=payload.avatar_image_url,
+            generate_avatar=payload.generate_avatar,
         ):
             yield f"data: {event}\n\n"
     
@@ -180,7 +234,9 @@ async def generate_till_html(
 )
 async def generate_till_render(
     payload: VideoGenerationRequest,
-    service: VideoGenerationService = Depends(get_video_service)
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    user: Optional[CustomUserDetails] = Depends(get_optional_user)
 ) -> StreamingResponse:
     """
     Generate complete AI video including final rendering.
@@ -195,6 +251,13 @@ async def generate_till_render(
     """
     video_id = payload.video_id or str(uuid4())
     
+    # Inject user context if authenticated
+    if user:
+        if not payload.user_id:
+            payload.user_id = user.user_id
+        if not payload.institute_id and user.institute_id:
+            payload.institute_id = user.institute_id
+    
     async def event_generator():
         async for event in service.generate_till_stage(
             video_id=video_id,
@@ -203,7 +266,14 @@ async def generate_till_render(
             language=payload.language,
             captions_enabled=payload.captions_enabled,
             html_quality=payload.html_quality,
-            resume=False
+            resume=False,
+            target_audience=payload.target_audience,
+            target_duration=payload.target_duration,
+            content_type=payload.content_type,
+            db_session=db,
+            institute_id=payload.institute_id,
+            user_id=payload.user_id,
+            avatar_image_url=payload.avatar_image_url,
         ):
             yield f"data: {event}\n\n"
     
@@ -241,7 +311,9 @@ async def resume_after_script(
             prompt="",  # Not needed for resume
             target_stage=target_stage,
             language="English",  # Will use existing from DB
-            resume=True
+            resume=True,
+            generate_avatar=payload.generate_avatar,
+            avatar_image_url=payload.avatar_image_url
         ):
             yield f"data: {event}\n\n"
     
@@ -278,7 +350,9 @@ async def resume_after_mp3(
             prompt="",
             target_stage=target_stage,
             language="English",
-            resume=True
+            resume=True,
+            generate_avatar=payload.generate_avatar,
+            avatar_image_url=payload.avatar_image_url
         ):
             yield f"data: {event}\n\n"
     
@@ -313,7 +387,9 @@ async def resume_after_html(
             prompt="",
             target_stage="RENDER",
             language="English",
-            resume=True
+            resume=True,
+            generate_avatar=payload.generate_avatar,
+            avatar_image_url=payload.avatar_image_url
         ):
             yield f"data: {event}\n\n"
     
@@ -347,6 +423,46 @@ async def get_video_status(
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
     
     return VideoStatusResponse(**status)
+
+
+@router.get(
+    "/urls/{video_id}",
+    response_model=VideoUrlsResponse,
+    summary="Get HTML timeline and audio URLs for a video"
+)
+async def get_video_urls(
+    video_id: str,
+    service: VideoGenerationService = Depends(get_video_service)
+) -> VideoUrlsResponse:
+    """
+    Get HTML timeline and audio URLs for a video by video_id.
+    
+    Returns:
+    - html_url: URL to the HTML timeline file (time_based_frame.json)
+    - audio_url: URL to the audio file (narration.mp3)
+    - words_url: URL to time-synced words JSON for captions
+    - status: Current video generation status
+    - current_stage: Current generation stage
+    
+    These URLs can be used directly in frontend video players.
+    The words_url contains word-level timestamps for displaying captions.
+    """
+    status = service.get_video_status(video_id)
+    
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    
+    s3_urls = status.get("s3_urls", {})
+    
+    return VideoUrlsResponse(
+        video_id=video_id,
+        html_url=s3_urls.get("timeline"),  # HTML timeline file
+        audio_url=s3_urls.get("audio"),     # Audio file
+        words_url=s3_urls.get("words"),     # Time-synced words for captions
+        avatar_url=s3_urls.get("avatar"),   # Avatar talking-head video
+        status=status.get("status", "UNKNOWN"),
+        current_stage=status.get("current_stage", "UNKNOWN")
+    )
 
 
 __all__ = ["router"]

@@ -30,13 +30,33 @@ public class WhatsappController {
 
     @PostMapping("/send-template-whatsapp")
     public ResponseEntity<List<Map<String, Boolean>>> sendWhatsappMessages(@RequestBody WhatsappRequest request , @RequestParam(name="instituteId", required = false)String instituteId) {
-        return ResponseEntity.ok(whatsAppService.sendWhatsappMessages(request.getTemplateName(), request.getUserDetails(), request.getHeaderParams(), request.getLanguageCode(), request.getHeaderType(),instituteId));
+        // Use extended method to support COMBOT features (video, buttons)
+        return ResponseEntity.ok(whatsAppService.sendWhatsappMessagesExtended(
+            request.getTemplateName(), 
+            request.getUserDetails(), 
+            request.getHeaderParams(),
+            request.getHeaderVideoParams(),    // NEW: COMBOT video support
+            request.getButtonUrlParams(),      // NEW: COMBOT button support
+            request.getButtonIndexParams(),    // NEW: COMBOT button index
+            request.getLanguageCode(), 
+            request.getHeaderType(),
+            instituteId));
     }
 
     @PostMapping("/send-template-whatsapp/multiple")
     public ResponseEntity<String> sendWhatsappMessages(@RequestBody List<WhatsappRequest> requests , @RequestParam(name="instituteId", required = false)String instituteId) {
         for (WhatsappRequest whatsappRequest:requests){
-            whatsAppService.sendWhatsappMessages(whatsappRequest.getTemplateName(), whatsappRequest.getUserDetails(), whatsappRequest.getHeaderParams(), whatsappRequest.getLanguageCode(), whatsappRequest.getHeaderType(),instituteId);
+            // Use extended method to support COMBOT features (video, buttons)
+            whatsAppService.sendWhatsappMessagesExtended(
+                whatsappRequest.getTemplateName(), 
+                whatsappRequest.getUserDetails(), 
+                whatsappRequest.getHeaderParams(),
+                whatsappRequest.getHeaderVideoParams(),    // NEW: COMBOT video support
+                whatsappRequest.getButtonUrlParams(),      // NEW: COMBOT button support
+                whatsappRequest.getButtonIndexParams(),    // NEW: COMBOT button index
+                whatsappRequest.getLanguageCode(), 
+                whatsappRequest.getHeaderType(),
+                instituteId);
         }
         return ResponseEntity.ok("Ok!!!");
     }

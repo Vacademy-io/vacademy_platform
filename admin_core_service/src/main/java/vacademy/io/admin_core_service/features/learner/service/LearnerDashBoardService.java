@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -47,6 +48,7 @@ public class LearnerDashBoardService {
     @Value("${assessment.server.baseurl}")
     private String assessmentServerBaseUrl;
 
+    @Cacheable(value = "learnerDashboard", key = "#user.userId + '_' + #instituteId + '_' + #packageSessionId.hashCode()")
     public LeanerDashBoardDetailDTO getLearnerDashBoardDetail(String instituteId, List<String> packageSessionId, CustomUserDetails user) {
         return new LeanerDashBoardDetailDTO(
                 packageRepository.countDistinctPackagesByUserIdAndInstituteId(user.getUserId(), instituteId),

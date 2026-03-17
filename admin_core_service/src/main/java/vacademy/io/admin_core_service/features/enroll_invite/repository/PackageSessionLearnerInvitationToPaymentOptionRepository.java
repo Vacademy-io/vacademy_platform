@@ -5,14 +5,26 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                 extends JpaRepository<PackageSessionLearnerInvitationToPaymentOption, String> {
+
+        @Query("SELECT psl FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.enrollInvite.id = :enrollInviteId " +
+                        "AND psl.packageSession.id = :packageSessionId " +
+                        "AND psl.status != 'DELETED' " +
+                        "ORDER BY psl.createdAt DESC")
+        Optional<PackageSessionLearnerInvitationToPaymentOption> findActiveByEnrollInviteIdAndPackageSessionId(
+                        @Param("enrollInviteId") String enrollInviteId,
+                        @Param("packageSessionId") String packageSessionId);
+
         List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteAndStatusIn(
                         EnrollInvite enrollInvite,
                         List<String> statusList);
@@ -54,4 +66,41 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
         List<PackageSessionLearnerInvitationToPaymentOption> findByEnrollInviteIdAndStatusWithPackageSession(
                         @Param("enrollInviteId") String enrollInviteId,
                         @Param("statusList") List<String> statusList);
+
+        @Modifying
+        @Transactional
+        @Query("UPDATE PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "SET psl.status = :status " +
+                        "WHERE psl.packageSession.id IN :packageSessionIds")
+        void updateStatusByPackageSessionIds(@Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("status") String status);
+
+        @Query("SELECT DISTINCT psl.enrollInvite.id FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.packageSession.id IN :packageSessionIds")
+        List<String> findDistinctEnrollInviteIdsByPackageSessionIds(
+                        @Param("packageSessionIds") List<String> packageSessionIds);
+
+        @Query("SELECT psl.enrollInvite.id, COUNT(psl) " +
+                        "FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.enrollInvite.id IN :enrollInviteIds " +
+                        "AND psl.status != 'DELETED' " +
+                        "GROUP BY psl.enrollInvite.id")
+        List<Object[]> countActiveByEnrollInviteIds(@Param("enrollInviteIds") List<String> enrollInviteIds);
+
+        @Query("SELECT DISTINCT psl.cpoId FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.packageSession.id = :packageSessionId " +
+                        "AND psl.cpoId IS NOT NULL " +
+                        "AND psl.status = 'ACTIVE'")
+        List<String> findDistinctCpoIdsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
+        @Query(value = "SELECT DISTINCT sfp.user_plan_id, p.package_session_id " +
+                        "FROM student_fee_payment sfp " +
+                        "JOIN package_session_learner_invitation_to_payment_option p " +
+                        "ON p.cpo_id = sfp.cpo_id " +
+                        "WHERE sfp.user_plan_id IN (:userPlanIds) " +
+                        "AND p.status != 'DELETED'", nativeQuery = true)
+        List<Object[]> findPackageSessionIdsByUserPlanIds(@Param("userPlanIds") List<String> userPlanIds);
+
+        @Query("SELECT psl FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "WHERE psl.cpoId = :cpoId AND psl.status != 'DELETED'")
+        List<PackageSessionLearnerInvitationToPaymentOption> findByCpoId(@Param("cpoId") String cpoId);
 }

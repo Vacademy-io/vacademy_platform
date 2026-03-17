@@ -14,6 +14,8 @@ spec:
   tls:
     - hosts:
         - backend-stage.vacademy.io
+        - u.vacademy.io
+        - u.aanandham.uk
       secretName: vacademy-tls-secret
   rules:
     - host: backend-stage.vacademy.io
@@ -75,3 +77,23 @@ spec:
                 name: auth-service
                 port:
                   number: {{ .Values.services.auth_service.port }}
+    - host: u.vacademy.io
+      http:
+        paths:
+          - path: /s
+            pathType: Prefix
+            backend:
+              service:
+                name: media-service
+                port:
+                  number: {{ .Values.services.media_service.port }}
+    - host: u.aanandham.uk
+      http:
+        paths:
+          - path: /s
+            pathType: Prefix
+            backend:
+              service:
+                name: media-service
+                port:
+                  number: {{ .Values.services.media_service.port }}

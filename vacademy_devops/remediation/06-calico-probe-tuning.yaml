@@ -1,0 +1,26 @@
+spec:
+  template:
+    spec:
+      containers:
+        - name: calico-node
+          # Tuned probes to prevent restarts during BGP convergence
+          livenessProbe:
+            exec:
+              command:
+                - /bin/calico-node
+                - -felix-live
+                - -bird-live
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command:
+                - /bin/calico-node
+                - -felix-ready
+                - -bird-ready
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 30
+            failureThreshold: 6

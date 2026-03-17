@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.common.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -96,31 +98,59 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
    * field mapping)
    */
 
-    // In CustomFieldRepository
-    Optional<CustomFields> findTopByFieldKeyAndStatusOrderByCreatedAtDesc(String fieldKey, String status);
+  // In CustomFieldRepository
+  Optional<CustomFields> findTopByFieldKeyAndStatusOrderByCreatedAtDesc(String fieldKey, String status);
 
   /**
    * Find all DROPDOWN custom fields for an institute that are ACTIVE
-   * Uses DISTINCT ON with LOWER(field_name) to return only one record per unique field name (case-insensitive)
+   * Uses DISTINCT ON with LOWER(field_name) to return only one record per unique
+   * field name (case-insensitive)
    * Keeps the most recent one based on created_at
    */
   @Query(value = """
       SELECT DISTINCT ON (LOWER(cf.field_name)) cf.*
       FROM custom_fields cf
       WHERE cf.id IN (
-          SELECT icf.custom_field_id FROM institute_custom_fields icf 
-          WHERE icf.institute_id = :instituteId 
+          SELECT icf.custom_field_id FROM institute_custom_fields icf
+          WHERE icf.institute_id = :instituteId
           AND icf.status = :status
       )
-      AND UPPER(cf.field_type) = UPPER(:fieldType) 
+      AND UPPER(cf.field_type) = UPPER(:fieldType)
       AND cf.status = :status
       ORDER BY LOWER(cf.field_name), cf.created_at DESC, cf.form_order ASC
       """, nativeQuery = true)
   List<CustomFields> findDropdownCustomFieldsByInstituteId(
-      @Param("instituteId") String instituteId, 
+      @Param("instituteId") String instituteId,
       @Param("fieldType") String fieldType,
-      @Param("status") String status
-  );
+      @Param("status") String status);
 
+  /**
+   * Find custom field by field_key and institute_id
+   * Used for update operations to ensure we get the correct custom field for a
+   * specific institute
+   */
+  @Query(value = """
+      SELECT cf.*
+      FROM custom_fields cf
+      JOIN institute_custom_fields icf ON icf.custom_field_id = cf.id
+      WHERE cf.field_key = :fieldKey
+        AND icf.institute_id = :instituteId
+        AND icf.status = 'ACTIVE'
+        AND cf.status = 'ACTIVE'
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<CustomFields> findByFieldKeyAndInstituteId(
+      @Param("fieldKey") String fieldKey,
+      @Param("instituteId") String instituteId);
+
+  /**
+   * Find custom field by field_key with pessimistic lock to prevent race conditions
+   * Used during custom field creation to ensure no duplicates
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT cf FROM CustomFields cf WHERE cf.fieldKey = :fieldKey AND cf.status = :status ORDER BY cf.createdAt DESC")
+  Optional<CustomFields> findByFieldKeyWithLock(
+      @Param("fieldKey") String fieldKey,
+      @Param("status") String status);
 
 }

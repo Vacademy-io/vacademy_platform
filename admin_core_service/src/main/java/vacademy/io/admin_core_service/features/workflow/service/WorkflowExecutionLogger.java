@@ -433,6 +433,24 @@ public class WorkflowExecutionLogger {
             return null;
         }
 
+        // CRITICAL: Check for Hibernate proxies FIRST to avoid ByteBuddyInterceptor
+        // serialization errors
+        String className = value.getClass().getName();
+        if (className.contains("HibernateProxy") || className.contains("$$") ||
+                className.contains("ByteBuddyInterceptor") || className.contains("javassist")) {
+            // Return simple string representation instead of trying to serialize
+            try {
+                return "[Proxy: " + value.getClass().getSuperclass().getSimpleName() + "]";
+            } catch (Exception e) {
+                return "[Proxy: Unknown]";
+            }
+        }
+
+        // Also check for JPA entities from common packages
+        if (className.contains(".entity.") || className.contains(".model.") || className.contains(".domain.")) {
+            return "[Entity: " + value.getClass().getSimpleName() + "]";
+        }
+
         // Truncate long strings
         if (value instanceof String) {
             String str = (String) value;
@@ -471,8 +489,33 @@ public class WorkflowExecutionLogger {
             return map;
         }
 
+        // Return primitives and simple types as-is
+        if (value instanceof Number || value instanceof Boolean) {
+            return value;
+        }
+
+        // For other complex objects, convert to string representation
+        if (!isSimpleType(value)) {
+            return "[Object: " + value.getClass().getSimpleName() + "]";
+        }
+
         // Return other types as-is
         return value;
+    }
+
+    /**
+     * Checks if the value is a simple type that can be safely serialized.
+     */
+    private boolean isSimpleType(Object value) {
+        return value instanceof String ||
+                value instanceof Number ||
+                value instanceof Boolean ||
+                value instanceof Character ||
+                value instanceof java.util.Date ||
+                value instanceof java.time.Instant ||
+                value instanceof java.time.LocalDate ||
+                value instanceof java.time.LocalDateTime ||
+                value instanceof java.util.UUID;
     }
 
     /**

@@ -13,6 +13,12 @@ from .prompt_builder import CourseOutlinePromptBuilder
 from .parser import CourseOutlineParser
 from .image_service import ImageGenerationService
 from .content_generation_service import ContentGenerationService
+from .api_key_resolver import ApiKeyResolver
+from .token_usage_service import TokenUsageService
+from .institute_settings_service import InstituteSettingsService
+from ..models.ai_token_usage import ApiProvider, RequestType
+from ..core.exceptions import PaymentRequiredError
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +44,19 @@ class CourseOutlineGenerationService:
         parser: CourseOutlineParser,
         image_service: Optional[ImageGenerationService] = None,
         content_generation_service: Optional[ContentGenerationService] = None,
+        db_session: Optional[Session] = None,
+        institute_settings_service: Optional[InstituteSettingsService] = None,
     ) -> None:
         self._llm_client = llm_client
         self._metadata_port = metadata_port
         self._prompt_builder = prompt_builder
         self._parser = parser
         self._image_service = image_service or ImageGenerationService()
-        self._content_generation_service = content_generation_service or ContentGenerationService(llm_client)
+        self._content_generation_service = content_generation_service
+        self._db_session = db_session
+        self._institute_settings_service = institute_settings_service
+        self._llm_client = llm_client  # Store for content generation service
+        # Note: content_generation_service will be initialized later in generate_content_from_coursetree if needed
 
     async def generate_outline(
         self, request: CourseOutlineRequest
@@ -57,32 +69,130 @@ class CourseOutlineGenerationService:
                 institute_id=request.institute_id,
             )
 
-        prompt = self._prompt_builder.build_prompt(request=request, metadata=metadata)
+        # Get institute AI course prompt
+        ai_course_prompt = None
+        if self._institute_settings_service and self._db_session:
+            try:
+                ai_settings = self._institute_settings_service.get_ai_course_settings(request.institute_id)
+                ai_course_prompt = ai_settings.get("AI_COURSE_PROMPT")
+            except Exception as e:
+                logger.warning(f"Failed to fetch AI course prompt for institute {request.institute_id}: {str(e)}")
 
-        raw_output = await self._llm_client.generate_outline(
-            prompt=prompt,
-            model=request.model,
+        prompt = self._prompt_builder.build_prompt(
+            request=request,
+            metadata=metadata,
+            ai_course_prompt=ai_course_prompt
         )
+
+        # Resolve API keys (request -> database -> defaults)
+        openai_key = None
+        gemini_key = None
+        model = request.model
+        
+        if self._db_session:
+            try:
+                key_resolver = ApiKeyResolver(self._db_session)
+                openai_key, gemini_key, model = key_resolver.resolve_keys(
+                    institute_id=request.institute_id,
+                    user_id=request.user_id,
+                    request_model=request.model
+                )
+            except Exception as e:
+                logger.warning(f"Failed to resolve API keys: {str(e)}, using environment defaults")
+                # Fallback to environment defaults
+                from ..config import get_settings
+                settings = get_settings()
+                openai_key = settings.openrouter_api_key
+                gemini_key = settings.gemini_api_key
+                model = request.model or settings.llm_default_model
+        else:
+            # No DB session, use environment defaults only
+            from ..config import get_settings
+            settings = get_settings()
+            openai_key = settings.openrouter_api_key
+            gemini_key = settings.gemini_api_key
+            model = request.model or settings.llm_default_model
+
+        # Generate outline and capture token usage
+        if hasattr(self._llm_client, 'generate_outline_with_usage'):
+            raw_output, usage_info = await self._llm_client.generate_outline_with_usage(
+                prompt=prompt,
+                model=model,
+                api_key=openai_key,
+            )
+            
+            # Record token usage
+            if self._db_session and usage_info:
+                try:
+                    token_service = TokenUsageService(self._db_session)
+                    token_service.record_usage_and_deduct_credits(
+                        api_provider=ApiProvider.OPENAI,
+                        prompt_tokens=usage_info.get("prompt_tokens", 0),
+                        completion_tokens=usage_info.get("completion_tokens", 0),
+                        total_tokens=usage_info.get("total_tokens", 0),
+                        request_type=RequestType.OUTLINE,
+                        institute_id=request.institute_id,
+                        user_id=request.user_id,
+                        model=model,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to record token usage: {str(e)}")
+        else:
+            # Fallback for clients that don't support usage tracking
+            raw_output = await self._llm_client.generate_outline(
+                prompt=prompt,
+                model=model,
+                api_key=openai_key,
+            )
 
         outline_response = self._parser.parse(raw_output)
 
         # Check if practice problems/solutions are requested and add homework slides
         outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
 
-        # Generate images if requested
-        if request.generation_options and request.generation_options.generate_images:
-            banner_url, preview_url = await self._image_service.generate_images(
-                course_name=outline_response.course_metadata.course_name,
-                about_course=outline_response.course_metadata.about_the_course_html,
-                course_depth=outline_response.course_metadata.course_depth,
-                image_style=request.generation_options.image_style or "professional"
-            )
-            
-            # Update metadata with image URLs if generation was successful
-            if banner_url:
-                outline_response.course_metadata.banner_image_url = banner_url
-            if preview_url:
-                outline_response.course_metadata.preview_image_url = preview_url
+        # Generate images if requested AND parsing was successful
+        # Skip image generation if course_name is "Error" (indicates parsing failure)
+        if (request.generation_options and 
+            request.generation_options.generate_images and
+            outline_response.course_metadata.course_name and
+            outline_response.course_metadata.course_name.lower() != "error" and
+            len(outline_response.course_metadata.course_name.strip()) > 0):
+            try:
+                banner_url, preview_url, media_url, image_usage = await self._image_service.generate_images(
+                    course_name=outline_response.course_metadata.course_name,
+                    about_course=outline_response.course_metadata.about_the_course_html,
+                    course_depth=outline_response.course_metadata.course_depth,
+                    image_style=request.generation_options.image_style or "professional",
+                    gemini_key=gemini_key
+                )
+                
+                # Record image generation token usage
+                if self._db_session and image_usage and image_usage.get("total_tokens", 0) > 0:
+                    try:
+                        token_service = TokenUsageService(self._db_session)
+                        token_service.record_usage_and_deduct_credits(
+                            api_provider=ApiProvider.GEMINI,
+                            prompt_tokens=image_usage.get("prompt_tokens", 0),
+                            completion_tokens=image_usage.get("completion_tokens", 0),
+                            total_tokens=image_usage.get("total_tokens", 0),
+                            request_type=RequestType.IMAGE,
+                            institute_id=request.institute_id,
+                            user_id=request.user_id,
+                            model="gemini-2.5-flash-image",
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to record image token usage: {str(e)}")
+                
+                # Update metadata with image URLs if generation was successful
+                if banner_url:
+                    outline_response.course_metadata.banner_image_url = banner_url
+                if preview_url:
+                    outline_response.course_metadata.preview_image_url = preview_url
+                if media_url:
+                    outline_response.course_metadata.media_image_url = media_url
+            except Exception as e:
+                logger.error(f"Failed to generate course images: {str(e)}. Skipping image generation to save credits.")
+                # Don't fail the entire request if image generation fails
 
         return outline_response
 
@@ -98,7 +208,49 @@ class CourseOutlineGenerationService:
                 institute_id=request.institute_id,
             )
 
-        prompt = self._prompt_builder.build_prompt(request=request, metadata=metadata)
+        # Get institute AI course prompt
+        ai_course_prompt = None
+        if self._institute_settings_service and self._db_session:
+            try:
+                ai_settings = self._institute_settings_service.get_ai_course_settings(request.institute_id)
+                ai_course_prompt = ai_settings.get("AI_COURSE_PROMPT")
+            except Exception as e:
+                logger.warning(f"Failed to fetch AI course prompt for institute {request.institute_id}: {str(e)}")
+
+        prompt = self._prompt_builder.build_prompt(
+            request=request,
+            metadata=metadata,
+            ai_course_prompt=ai_course_prompt
+        )
+
+        # Resolve API keys (request -> database -> defaults)
+        openai_key = None
+        gemini_key = None
+        model = request.model
+        
+        if self._db_session:
+            try:
+                key_resolver = ApiKeyResolver(self._db_session)
+                openai_key, gemini_key, model = key_resolver.resolve_keys(
+                    institute_id=request.institute_id,
+                    user_id=request.user_id,
+                    request_model=request.model
+                )
+            except Exception as e:
+                logger.warning(f"Failed to resolve API keys: {str(e)}, using environment defaults")
+                # Fallback to environment defaults
+                from ..config import get_settings
+                settings = get_settings()
+                openai_key = settings.openrouter_api_key
+                gemini_key = settings.gemini_api_key
+                model = request.model or settings.llm_default_model
+        else:
+            # No DB session, use environment defaults only
+            from ..config import get_settings
+            settings = get_settings()
+            openai_key = settings.openrouter_api_key
+            gemini_key = settings.gemini_api_key
+            model = request.model or settings.llm_default_model
 
         # Send initial metadata event (matches media-service)
         yield f"```json {{\"requestId\": \"{request_id}\"}}```"
@@ -106,10 +258,38 @@ class CourseOutlineGenerationService:
         # For now, get the complete response and yield it as a single event
         # This simulates streaming but uses non-streaming API call
         try:
-            full_content = await self._llm_client.generate_outline(
-                prompt=prompt,
-                model=request.model,
-            )
+            # Generate outline and capture token usage
+            if hasattr(self._llm_client, 'generate_outline_with_usage'):
+                full_content, usage_info = await self._llm_client.generate_outline_with_usage(
+                    prompt=prompt,
+                    model=model,
+                    api_key=openai_key,
+                )
+                
+                # Record token usage
+                if self._db_session and usage_info:
+                    try:
+                        token_service = TokenUsageService(self._db_session)
+                        token_service.record_usage_and_deduct_credits(
+                            api_provider=ApiProvider.OPENAI,
+                            prompt_tokens=usage_info.get("prompt_tokens", 0),
+                            completion_tokens=usage_info.get("completion_tokens", 0),
+                            total_tokens=usage_info.get("total_tokens", 0),
+                            request_type=RequestType.OUTLINE,
+                            institute_id=request.institute_id,
+                            user_id=request.user_id,
+                            model=model,
+                            request_id=request_id,
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to record token usage: {str(e)}")
+            else:
+                # Fallback for clients that don't support usage tracking
+                full_content = await self._llm_client.generate_outline(
+                    prompt=prompt,
+                    model=model,
+                    api_key=openai_key,
+                )
 
             # Yield some thinking-like events to simulate streaming
             yield "[Thinking...]\nPlanning the course structure based on your requirements..."
@@ -122,18 +302,42 @@ class CourseOutlineGenerationService:
             # Check if practice problems/solutions are requested and add homework slides
             outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
 
-            # Generate images if requested
-            if request.generation_options and request.generation_options.generate_images:
+            # Generate images if requested AND parsing was successful
+            # Skip image generation if course_name is "Error" (indicates parsing failure)
+            if (request.generation_options and 
+                request.generation_options.generate_images and
+                outline_response.course_metadata.course_name and
+                outline_response.course_metadata.course_name.lower() != "error" and
+                len(outline_response.course_metadata.course_name.strip()) > 0):
                 yield "[Generating...]\nCreating course banner, preview, and media images..."
 
                 try:
                     # Generate images (timeouts handled individually in image service)
-                    banner_url, preview_url, media_url = await self._image_service.generate_images(
+                    banner_url, preview_url, media_url, image_usage = await self._image_service.generate_images(
                         course_name=outline_response.course_metadata.course_name,
                         about_course=outline_response.course_metadata.about_the_course_html,
                         course_depth=outline_response.course_metadata.course_depth,
-                        image_style=request.generation_options.image_style or "professional"
+                        image_style=request.generation_options.image_style or "professional",
+                        gemini_key=gemini_key
                     )
+                    
+                    # Record image generation token usage
+                    if self._db_session and image_usage and image_usage.get("total_tokens", 0) > 0:
+                        try:
+                            token_service = TokenUsageService(self._db_session)
+                            token_service.record_usage_and_deduct_credits(
+                                api_provider=ApiProvider.GEMINI,
+                                prompt_tokens=image_usage.get("prompt_tokens", 0),
+                                completion_tokens=image_usage.get("completion_tokens", 0),
+                                total_tokens=image_usage.get("total_tokens", 0),
+                                request_type=RequestType.IMAGE,
+                                institute_id=request.institute_id,
+                                user_id=request.user_id,
+                                model="gemini-2.5-flash-image",
+                                request_id=request_id,
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to record image token usage: {str(e)}")
 
                     # Update metadata with image URLs if generation was successful
                     if banner_url:
@@ -143,7 +347,14 @@ class CourseOutlineGenerationService:
                     if media_url:
                         outline_response.course_metadata.media_image_url = media_url
                 except Exception as e:
-                    logger.warning(f"Image generation failed: {str(e)}, continuing without images")
+                    logger.error(f"Failed to generate course images: {str(e)}. Skipping image generation to save credits.")
+                    # Don't fail the entire request if image generation fails
+            else:
+                # Log why images were skipped
+                if not outline_response.course_metadata.course_name or outline_response.course_metadata.course_name.lower() == "error":
+                    logger.warning("Skipping image generation: Course parsing failed (course_name is 'Error')")
+                elif not request.generation_options or not request.generation_options.generate_images:
+                    logger.debug("Skipping image generation: Not requested by user")
 
             # Yield the final processed outline as JSON (matches media-service pattern)
             try:
@@ -182,11 +393,14 @@ class CourseOutlineGenerationService:
                     "explanation": outline_response.explanation if 'outline_response' in locals() else "Error occurred"
                 })
 
+        except PaymentRequiredError:
+            # Re-raise so the router can return a proper 402 response to the caller
+            raise
         except Exception as e:
             yield f"[Error] Failed to generate outline: {str(e)}"
 
     async def generate_content_from_coursetree(
-        self, course_tree: dict, request_id: str
+        self, course_tree: dict, request_id: str, institute_id: Optional[str] = None, user_id: Optional[str] = None, language: Optional[str] = "English"
     ) -> AsyncGenerator[str, None]:
         """
         Generate content for todos in an existing coursetree.
@@ -238,10 +452,10 @@ class CourseOutlineGenerationService:
                     logger.warning(f"Failed to parse todo: {str(e)}, skipping")
                     continue
             
-            # Filter todos to only process DOCUMENT, ASSESSMENT, VIDEO, and AI_VIDEO types
+            # Filter todos to only process content types (excludes structural types like CHAPTER, MODULE, etc.)
             content_todos = [
-                todo for todo in todos 
-                if todo.type in ["DOCUMENT", "ASSESSMENT", "VIDEO", "AI_VIDEO"]
+                todo for todo in todos
+                if todo.type in ["DOCUMENT", "ASSESSMENT", "VIDEO", "VIDEO_CODE", "AI_VIDEO", "AI_VIDEO_CODE", "AI_SLIDES", "AI_STORYBOOK"]
             ]
             
             if not content_todos:
@@ -258,86 +472,205 @@ class CourseOutlineGenerationService:
                 todo_types[todo.type] = todo_types.get(todo.type, 0) + 1
             logger.info(f"Processing {len(content_todos)} content generation tasks: {todo_types}")
             
-            # Process todos concurrently (non-blocking)
-            async def process_todo_async(todo: Todo, event_queue: asyncio.Queue):
-                """Process a single todo and put all events into the queue."""
-                try:
-                    logger.info(f"Starting async content generation for todo: {todo.path} (Type: {todo.type})")
-                    event_count = 0
-                    async for content_update in self._content_generation_service.generate_content_for_todo(todo):
-                        await event_queue.put((todo.path, content_update))
-                        event_count += 1
-                    logger.info(f"Completed async content generation for todo: {todo.path} ({event_count} events)")
-                    # Signal completion
-                    await event_queue.put((todo.path, None))  # None signals completion
-                except Exception as e:
-                    logger.error(f"Error processing todo {todo.path}: {str(e)}")
-                    error_response = {
-                        "type": "SLIDE_CONTENT_ERROR",
-                        "path": todo.path,
-                        "status": False,
-                        "actionType": todo.action_type,
-                        "slideType": todo.type,
-                        "errorMessage": f"Failed to generate content: {str(e)}",
-                        "contentData": "Error generating content for this slide. Please try again or contact support.",
-                    }
-                    await event_queue.put((todo.path, json.dumps(error_response)))
-                    await event_queue.put((todo.path, None))  # Signal completion even on error
+            # Extract institute_id and user_id from course_tree if not provided
+            extracted_institute_id = institute_id
+            extracted_user_id = user_id
+            if not extracted_institute_id and isinstance(course_tree, dict):
+                # Try to get from courseMetadata or request metadata
+                course_metadata = course_tree.get("courseMetadata", {})
+                if isinstance(course_metadata, dict):
+                    extracted_institute_id = extracted_institute_id or course_metadata.get("instituteId") or course_metadata.get("institute_id")
+                    extracted_user_id = extracted_user_id or course_metadata.get("userId") or course_metadata.get("user_id")
             
-            # Create event queue to merge events from all concurrent tasks
-            event_queue = asyncio.Queue()
+            # Create or update content generation service with DB session and IDs
+            if not self._content_generation_service:
+                from .content_generation_service import ContentGenerationService
+                self._content_generation_service = ContentGenerationService(
+                    llm_client=self._llm_client,
+                    db_session=self._db_session,
+                    institute_id=extracted_institute_id,
+                    user_id=extracted_user_id,
+                )
+            else:
+                # Update existing service with IDs and DB session
+                self._content_generation_service._institute_id = extracted_institute_id or self._content_generation_service._institute_id
+                self._content_generation_service._user_id = extracted_user_id or self._content_generation_service._user_id
+                self._content_generation_service._db_session = self._db_session or self._content_generation_service._db_session
             
-            # Create tasks for all todos (they run concurrently)
-            tasks = []
+            # Inject request-level language into todo metadata if not already set
+            effective_language = language or "English"
             for todo in content_todos:
-                task = asyncio.create_task(process_todo_async(todo, event_queue))
-                tasks.append(task)
-            
-            # Track completed todos
-            completed_todos = set()
-            
-            # Stream events as they arrive from any task
-            while len(completed_todos) < len(content_todos):
-                try:
-                    # Wait for next event with a timeout to periodically check task status
+                if todo.metadata is None:
+                    todo.metadata = {}
+                if not todo.metadata.get("language"):
+                    todo.metadata["language"] = effective_language
+
+            # ── Parallel content generation with dependency awareness ──
+            # Separate independent todos from dependent homework→solution pairs.
+            # Independent todos run concurrently (semaphore-limited); dependent pairs run sequentially.
+            CONCURRENCY = 5  # Max parallel LLM calls (tune based on API rate limits)
+            semaphore = asyncio.Semaphore(CONCURRENCY)
+
+            independent_todos = []
+            dependent_pairs = []  # list of (homework_todo, solution_todo)
+
+            i = 0
+            while i < len(content_todos):
+                todo = content_todos[i]
+                title_lower = (todo.title or todo.name or "").lower()
+
+                # Check if this is a homework slide followed by its solution
+                is_homework = (
+                    "assignment -" in title_lower
+                    or "homework questions" in title_lower
+                )
+                if is_homework and i + 1 < len(content_todos):
+                    next_todo = content_todos[i + 1]
+                    next_title_lower = (next_todo.title or next_todo.name or "").lower()
+                    if "assignment solutions" in next_title_lower or "homework solutions" in next_title_lower:
+                        dependent_pairs.append((todo, next_todo))
+                        i += 2
+                        continue
+
+                independent_todos.append(todo)
+                i += 1
+
+            logger.info(
+                f"Content generation plan: {len(independent_todos)} independent todos (concurrency={CONCURRENCY}), "
+                f"{len(dependent_pairs)} dependent homework→solution pairs (sequential)"
+            )
+
+            generated_content_by_path = {}
+
+            # ── Phase 1: Stream independent todos in parallel via queue ──
+            # Using a queue so events are yielded to the SSE stream in real-time
+            # as each slide completes, rather than buffering until all are done.
+            if independent_todos:
+                logger.info(f"Phase 1: Processing {len(independent_todos)} independent todos in parallel...")
+                event_queue: asyncio.Queue = asyncio.Queue()
+                _SENTINEL = object()  # Signals all tasks are done
+
+                async def _process_todo_to_queue(todo: Todo):
+                    """Generate content for one todo and push events to the queue."""
+                    async with semaphore:
+                        try:
+                            logger.info(f"Starting content generation for todo: {todo.path} (Type: {todo.type})")
+                            async for content_update in self._content_generation_service.generate_content_for_todo(
+                                todo, generated_content_by_path
+                            ):
+                                await event_queue.put(content_update)
+                            logger.info(f"Completed content generation for todo: {todo.path}")
+                        except Exception as e:
+                            logger.error(f"Error processing todo {todo.path}: {str(e)}")
+                            error_response = json.dumps({
+                                "type": "SLIDE_CONTENT_ERROR",
+                                "path": todo.path,
+                                "status": False,
+                                "actionType": todo.action_type,
+                                "slideType": todo.type,
+                                "errorMessage": f"Failed to generate content: {str(e)}",
+                                "contentData": "Error generating content for this slide. Please try again or contact support.",
+                            })
+                            await event_queue.put(error_response)
+
+                # Start all tasks
+                tasks = [
+                    asyncio.create_task(_process_todo_to_queue(todo))
+                    for todo in independent_todos
+                ]
+
+                # Watchdog: wait for all tasks, then push sentinel
+                async def _signal_done():
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    await event_queue.put(_SENTINEL)
+
+                asyncio.create_task(_signal_done())
+
+                # Yield events in real-time as they arrive from any task
+                while True:
+                    event = await event_queue.get()
+                    if event is _SENTINEL:
+                        break
+                    yield event
+                    # Accumulate generated content for potential downstream use
                     try:
-                        todo_path, content_update = await asyncio.wait_for(event_queue.get(), timeout=1.0)
-                    except asyncio.TimeoutError:
-                        # Check if any tasks completed without sending completion signal
-                        for i, task in enumerate(tasks):
-                            todo = content_todos[i]
-                            if task.done() and todo.path not in completed_todos:
-                                completed_todos.add(todo.path)
-                                try:
-                                    await task  # This will raise if task had an exception
-                                except Exception as task_error:
-                                    logger.error(f"Task for {todo.path} failed: {str(task_error)}")
-                        continue
-                    
-                    # Check if this is a completion signal
-                    if content_update is None:
-                        completed_todos.add(todo_path)
-                        logger.debug(f"Todo {todo_path} completed. {len(completed_todos)}/{len(content_todos)} done.")
-                        continue
-                    
-                    # Yield the actual event
-                    yield content_update
-                    
-                except Exception as e:
-                    logger.error(f"Error processing event from queue: {str(e)}")
-                    # Check if tasks are still running
-                    for i, task in enumerate(tasks):
-                        if task.done() and content_todos[i].path not in completed_todos:
+                        data = json.loads(event)
+                        if (
+                            data.get("type") == "SLIDE_CONTENT_UPDATE"
+                            and data.get("status")
+                            and "contentData" in data
+                        ):
+                            generated_content_by_path[data["path"]] = data["contentData"]
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+            # ── Phase 2: Process dependent homework→solution pairs sequentially ──
+            if dependent_pairs:
+                logger.info(f"Phase 2: Processing {len(dependent_pairs)} homework→solution pairs sequentially...")
+                for homework_todo, solution_todo in dependent_pairs:
+                    # First generate homework questions
+                    try:
+                        logger.info(f"Starting content generation for homework todo: {homework_todo.path}")
+                        async for event in self._content_generation_service.generate_content_for_todo(
+                            homework_todo, generated_content_by_path
+                        ):
+                            yield event
                             try:
-                                await task
-                                completed_todos.add(content_todos[i].path)
-                            except Exception as task_error:
-                                logger.error(f"Task {i} (todo: {content_todos[i].path}) failed: {str(task_error)}")
-                                completed_todos.add(content_todos[i].path)  # Mark as done even on error
-                    continue
-            
+                                data = json.loads(event)
+                                if (
+                                    data.get("type") == "SLIDE_CONTENT_UPDATE"
+                                    and data.get("status")
+                                    and "contentData" in data
+                                ):
+                                    generated_content_by_path[data["path"]] = data["contentData"]
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                    except Exception as e:
+                        logger.error(f"Error processing homework todo {homework_todo.path}: {str(e)}")
+                        yield json.dumps({
+                            "type": "SLIDE_CONTENT_ERROR",
+                            "path": homework_todo.path,
+                            "status": False,
+                            "actionType": homework_todo.action_type,
+                            "slideType": homework_todo.type,
+                            "errorMessage": f"Failed to generate content: {str(e)}",
+                            "contentData": "Error generating content for this slide.",
+                        })
+
+                    # Then generate solutions (which can reference the homework content)
+                    try:
+                        logger.info(f"Starting content generation for solution todo: {solution_todo.path}")
+                        async for event in self._content_generation_service.generate_content_for_todo(
+                            solution_todo, generated_content_by_path
+                        ):
+                            yield event
+                            try:
+                                data = json.loads(event)
+                                if (
+                                    data.get("type") == "SLIDE_CONTENT_UPDATE"
+                                    and data.get("status")
+                                    and "contentData" in data
+                                ):
+                                    generated_content_by_path[data["path"]] = data["contentData"]
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                    except Exception as e:
+                        logger.error(f"Error processing solution todo {solution_todo.path}: {str(e)}")
+                        yield json.dumps({
+                            "type": "SLIDE_CONTENT_ERROR",
+                            "path": solution_todo.path,
+                            "status": False,
+                            "actionType": solution_todo.action_type,
+                            "slideType": solution_todo.type,
+                            "errorMessage": f"Failed to generate content: {str(e)}",
+                            "contentData": "Error generating content for this slide.",
+                        })
+
             logger.info("All 'todo' content generation tasks have completed.")
             
+        except PaymentRequiredError:
+            # Re-raise so the router can return a proper 402 response to the caller
+            raise
         except Exception as e:
             logger.error(f"Exception in content generation from coursetree: {str(e)}")
             yield json.dumps({
@@ -367,7 +700,9 @@ class CourseOutlineGenerationService:
             "exercise",
             "exercises",
             "problem set",
-            "problem sets"
+            "problem sets",
+            "assignment",
+            "assignments"
         ]
         
         has_practice_keywords = any(keyword in prompt_lower for keyword in keywords)
@@ -376,6 +711,39 @@ class CourseOutlineGenerationService:
             return outline_response
         
         logger.info("Detected practice problems/solutions keywords. Adding homework slides to each chapter.")
+        
+        # Remove any LLM-generated homework/solution slides (quiz or document). We add exactly one "Homework Questions -"
+        # and one "Homework Solutions -" DOCUMENT per chapter; the user wants only those, not extra "X Homework" or
+        # "X Homework Solution" slides from the outline.
+        def _is_llm_homework_or_solution_todo(t: Todo) -> bool:
+            title = (t.title or "").strip().lower()
+            name = (t.name or "").strip().lower()
+            # Our canonical slides we inject start with these prefixes
+            if title.startswith("assignment -") or title.startswith("assignment solutions -"):
+                return False
+            if name.startswith("assignment -") or name.startswith("assignment solutions -"):
+                return False
+
+            # LLM-generated ones look like "Spark Data Processing Homework", "X Homework Solution", "Coding Assignment", etc.
+            if "homework" in title or "homework" in name:
+                return True
+            if "assignment" in title or "assignment" in name:
+                return True
+
+            if ("solution" in title or "solution" in name) and ("homework" in title or "homework" in name):
+                return True
+            # LLM sometimes adds a standalone "Solution: [Topic]" slide (e.g. "Solution: Your First Spark Program");
+            # we only want our single "Homework Solutions -" slide per chapter.
+            if title.startswith("solution:") or title.startswith("solution -"):
+                return True
+            if name.startswith("solution:") or name.startswith("solution -"):
+                return True
+            # Quiz/assessment for practice
+            if t.type == "ASSESSMENT" and any(k in title or k in name for k in ("practice", "exercise")):
+                return True
+            return False
+
+        outline_response.todos = [t for t in outline_response.todos if not _is_llm_homework_or_solution_todo(t)]
         
         # Group todos by chapter and find insertion points
         # We need to insert homework slides right after the last slide of each chapter
@@ -461,53 +829,45 @@ class CourseOutlineGenerationService:
             # Determine order based on last todo in chapter
             last_order = last_chapter_todo.order if last_chapter_todo.order else last_chapter_idx + 1
             
-            # Create homework questions todo for this chapter
+            # Create homework questions todo for this chapter (coding/task-focused, not simple Q&A)
             homework_todo = Todo(
-                name=f"Homework Questions - {chapter_name}",
-                title=f"Homework Questions - {chapter_name}",
+                name=f"Assignment - {chapter_name}",
+                title=f"Assignment - {chapter_name}",
                 type="DOCUMENT",
                 path=homework_path,
                 action_type="ADD",
-                prompt=f"""Create a comprehensive set of homework questions based ONLY on the course content covered in {chapter_name} from the following slides in this chapter: {slide_references}.
+                prompt=f"""Create homework tasks based ONLY on the course content covered in {chapter_name} from the following slides in this chapter: {slide_references}.
 
-IMPORTANT: These homework questions should ONLY reference content from {chapter_name}. Do not include questions from other chapters.
+IMPORTANT: These homework tasks should ONLY reference content from {chapter_name}. Do not include tasks from other chapters.
 
-The homework should:
-- Include questions that test understanding of key concepts from the slides in {chapter_name} ONLY
-- Mix different question types: conceptual questions, problem-solving questions, and application questions
-- Cover all major topics from THIS chapter's slides only
-- Be appropriate for the course level
-- Include clear instructions for each question
-- Focus exclusively on the content from: {slide_references}
-
-Format the output as HTML with proper structure using headings, paragraphs, and lists.""",
+The homework must be CODING- and TASK-oriented, NOT simple question-answer type. Include exactly ONE task per chapter, such as:
+- One mini project (e.g. build a small app, implement a feature, create a script), or
+- One setup/configuration task (e.g. set up environment, configure a tool), or
+- One implementation task (e.g. implement a function, write code that does X)
+The single task must have: clear title, brief context, concrete instructions, and expected outcome. Include code snippets or starter code where relevant. Base it on THIS chapter only: {slide_references}. Format as HTML with headings, paragraphs, and code blocks.""",
                 order=last_order + 1,
                 chapter_name=chapter_document_slides[0].chapter_name,
                 module_name=chapter_document_slides[0].module_name,
                 subject_name=chapter_document_slides[0].subject_name
             )
             
-            # Create solutions todo for this chapter
+            # Create solutions todo for this chapter (hint first, then exact solution per item)
             solutions_todo = Todo(
-                name=f"Homework Solutions - {chapter_name}",
-                title=f"Homework Solutions - {chapter_name}",
+                name=f"Assignment Solutions - {chapter_name}",
+                title=f"Assignment Solutions - {chapter_name}",
                 type="DOCUMENT",
                 path=solutions_path,
                 action_type="ADD",
-                prompt=f"""Create detailed solutions for the homework questions from the previous slide in {chapter_name}.
+                prompt=f"""Create solutions for the homework tasks from the previous slide in {chapter_name}. For EACH task you MUST give: (1) HINT first, (2) then the EXACT solution.
 
-IMPORTANT: These solutions should ONLY reference content from {chapter_name}. The homework questions are based on the following slides from this chapter: {slide_references}.
+IMPORTANT: Solutions should ONLY reference content from {chapter_name}. The homework tasks are based on these slides: {slide_references}.
 
-The solutions should:
-- Provide step-by-step explanations for each homework question
-- Include reasoning and methodology
-- Show all work clearly
-- Explain why each answer is correct
-- Reference concepts ONLY from the chapter slides: {slide_references}
-- Be comprehensive and educational
-- Focus exclusively on content from {chapter_name}
+For every homework item:
+- First provide one or more HINTs (short, actionable, without giving the full answer).
+- Then provide the full EXACT solution: complete code (if coding), step-by-step commands (if setup), or full implementation with explanation.
+- Code must be complete and runnable; for setup tasks include commands and how to verify. Reference concepts only from: {slide_references}.
 
-Format the output as HTML with proper structure using headings, paragraphs, code blocks (if applicable), and lists.""",
+Format as HTML: for each task use a heading, then a "Hint" subsection, then a "Solution" subsection with code in <pre><code> and steps in lists/paragraphs.""",
                 order=last_order + 2,
                 chapter_name=chapter_document_slides[0].chapter_name,
                 module_name=chapter_document_slides[0].module_name,

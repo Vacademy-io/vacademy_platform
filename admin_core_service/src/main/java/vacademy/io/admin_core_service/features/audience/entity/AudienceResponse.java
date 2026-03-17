@@ -9,7 +9,8 @@ import java.sql.Timestamp;
 
 /**
  * Entity representing a Lead/Response submission to an Audience Campaign
- * Captures leads from multiple sources (website forms, Google Ads, Facebook Ads, etc.)
+ * Captures leads from multiple sources (website forms, Google Ads, Facebook
+ * Ads, etc.)
  */
 @Entity
 @Table(name = "audience_response")
@@ -24,17 +25,43 @@ public class AudienceResponse {
     @Column(name = "id", nullable = false, unique = true)
     private String id;
 
-    @Column(name = "audience_id", nullable = false)
+    @Column(name = "audience_id", nullable = true)
     private String audienceId;
 
     @Column(name = "user_id")
-    private String userId; // NULL until converted to student (references auth_service.users)
+    private String userId; // Parent user ID (references auth_service.users)
+
+    @Column(name = "student_user_id")
+    private String studentUserId; // Child/Student user ID - explicitly stores which child this application is for
 
     @Column(name = "source_type", nullable = false, length = 50)
     private String sourceType; // WEBSITE, GOOGLE_ADS, FACEBOOK_ADS, LINKEDIN_ADS, etc.
 
     @Column(name = "source_id", length = 100)
     private String sourceId; // Landing page ID, Ad campaign ID, etc.
+
+    @Column(name = "destination_package_session_id")
+    private String destinationPackageSessionId;
+
+    @Column(name = "enquiry_id")
+    private String enquiryId;
+
+    @Column(name = "parent_name")
+    private String parentName;
+
+    @Column(name = "parent_email")
+    private String parentEmail;
+
+    @Column(name = "parent_mobile", length = 20)
+    private String parentMobile;
+
+    /**
+     * Date used for workflow day-difference filtering.
+     * Can be offset from creation date based on audience
+     * workflow_setting.offset_day
+     */
+    @Column(name = "workflow_activate_day_at")
+    private Timestamp workflowActivateDayAt;
 
     @Column(name = "submitted_at", insertable = false, updatable = false)
     private Timestamp submittedAt;
@@ -44,6 +71,15 @@ public class AudienceResponse {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
+
+    @Column(name = "applicant_id")
+    private String applicantId;
+
+    @Column(name = "conversion_status", length = 50)
+    private String conversionStatus;
+
+    @Column(name = "overall_status", length = 50)
+    private String overallStatus;
 
     /**
      * Constructor from DTO
@@ -56,4 +92,3 @@ public class AudienceResponse {
         this.sourceId = dto.getSourceId();
     }
 }
-

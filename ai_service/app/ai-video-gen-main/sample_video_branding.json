@@ -1,0 +1,23 @@
+{
+  "VIDEO_BRANDING": {
+    "intro": {
+      "enabled": true,
+      "duration_seconds": 3.0,
+      "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:linear-gradient(160deg, #ffffff 0%, #f8f8fa 50%, #ffffff 100%);'><h1 style='color:#1a1a1a; font-size:64px; font-family:Inter,sans-serif; font-weight:300; letter-spacing:6px; margin:0; text-transform:uppercase;'>Vacademy</h1><div style='width:48px; height:1px; background:rgba(0,0,0,0.12); margin:20px 0;'></div><p style='color:rgba(0,0,0,0.35); font-size:16px; font-family:Inter,sans-serif; font-weight:400; letter-spacing:3px; text-transform:uppercase;'>Learn Smarter</p></div>"
+    },
+    "outro": {
+      "enabled": true,
+      "duration_seconds": 4.0,
+      "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:#ffffff;'><p style='color:rgba(0,0,0,0.4); font-size:15px; font-family:Inter,sans-serif; font-weight:400; letter-spacing:4px; text-transform:uppercase; margin:0 0 24px 0;'>Thank you for watching</p><div style='width:32px; height:1px; background:rgba(0,0,0,0.1); margin:0 0 24px 0;'></div><p style='color:rgba(0,0,0,0.2); font-size:13px; font-family:Inter,sans-serif; font-weight:300; letter-spacing:2px;'>Powered by Vacademy</p></div>"
+    },
+    "watermark": {
+      "enabled": true,
+      "position": "top-right",
+      "max_width": 200,
+      "max_height": 80,
+      "margin": 40,
+      "opacity": 0.5,
+      "html": "<div style='font-family:Inter,sans-serif; font-weight:300; color:rgba(0,0,0,0.2); font-size:14px; letter-spacing:2px; text-align:right;'>vacademy</div>"
+    }
+  }
+}

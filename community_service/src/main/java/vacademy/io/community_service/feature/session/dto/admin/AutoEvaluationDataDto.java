@@ -1,5 +1,6 @@
 package vacademy.io.community_service.feature.session.dto.admin;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -12,9 +13,12 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true) // Important for flexibility
 public class AutoEvaluationDataDto {
+    @JsonAlias({ "correctOptionIds", "correct_option_ids" })
     private List<String> correctOptionIds;
     private String answer;
-    // Add other fields if other question types have different data structures in autoEvaluationJson.data
+    // Add other fields if other question types have different data structures in
+    // autoEvaluationJson.data
 }

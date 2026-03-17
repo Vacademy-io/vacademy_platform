@@ -4,14 +4,16 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'ai_service/**'
-      - '.github/workflows/ai_service.yml'
+      - "ai_service/**"
+      - ".github/workflows/ai_service.yml"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
       APP_ENV: stage
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,7 +21,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         working-directory: ai_service
@@ -51,5 +53,3 @@ jobs:
           build-args: |
             APP_ENV=${{ env.APP_ENV }}
           tags: ai-service:ci
-
-

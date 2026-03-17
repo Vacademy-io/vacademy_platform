@@ -112,6 +112,30 @@ public class AuthService {
         }
     }
 
+    public UserDTO createUserFromAuthServiceForLearnerEnrollment(UserDTO userDTO, String instituteId,
+            boolean sendCred) {
+        try {
+            String url = StudentConstants.addLearnerRoute
+                    + "?instituteId=" + instituteId
+                    + "&isNotify=" + sendCred;
+
+            userDTO.setRootUser(true);
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    url,
+                    userDTO);
+
+            return objectMapper.readValue(response.getBody(), UserDTO.class);
+
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
     public UserDTO getUsersFromAuthServiceWithPasswordByUserId(String userId) {
         if (userId == null) {
             return null;
@@ -211,4 +235,119 @@ public class AuthService {
         }
     }
 
+    public List<UserDTO> createMultipleUsers(List<UserDTO> userDTOs, String instituteId, boolean toNotifiy) {
+        if (userDTOs == null || userDTOs.isEmpty()) {
+            throw new VacademyException("User DTOs list cannot be null or empty");
+        }
+        try {
+            String endpoint = AuthServiceRoutes.CREATE_MULTIPLE_USERS + "?instituteId=" + instituteId + "&isNotify="
+                    + toNotifiy;
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    userDTOs);
+
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
+            });
+        } catch (Exception e) {
+            throw new VacademyException("Failed to create multiple users: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Fetch users with their linked children from auth_service.
+     * 
+     * @param userIds List of parent user IDs to fetch
+     * @return List of ParentWithChildDTO containing parent and child user
+     *         information
+     */
+    public List<vacademy.io.common.auth.dto.ParentWithChildDTO> getUsersWithChildren(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        try {
+            String endpoint = AuthServiceRoutes.GET_USERS_WITH_CHILDREN;
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    userIds);
+
+            return objectMapper.readValue(response.getBody(),
+                    new TypeReference<List<vacademy.io.common.auth.dto.ParentWithChildDTO>>() {
+                    });
+        } catch (Exception e) {
+            throw new VacademyException("Failed to get users with children: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Fetch user by mobile number from auth_service.
+     * Handles various phone formats: +917999742868, 7999742868, 917999742868
+     * 
+     * @param mobileNumber User's phone number in any format
+     * @return UserDTO if found, null if not found
+     */
+    public UserDTO getUserByMobileNumber(String mobileNumber) {
+        if (mobileNumber == null || mobileNumber.isBlank()) {
+            return null;
+        }
+        try {
+            String endpoint = AuthServiceRoutes.GET_USER_BY_MOBILE + "?mobileNumber=" + mobileNumber;
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    null);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return objectMapper.readValue(response.getBody(), UserDTO.class);
+            }
+            return null;
+        } catch (Exception e) {
+            // A 404 from Auth Service simply means the user doesn't exist yet, which is
+            // expected for new admissions.
+            if (e.getMessage() != null && e.getMessage().contains("404")) {
+                return null;
+            }
+            throw new VacademyException("Failed to get user by mobile number: " + e.getMessage());
+        }
+    }
+
+    public void updateInstituteSettings(String instituteId, String userIdentifier) {
+        try {
+            String endpoint = AuthServiceRoutes.UPDATE_INSTITUTE_SETTINGS;
+
+            // Create a payload similar to UpdateInstituteSettingsDTO from auth_service
+            java.util.Map<String, Object> payload = new java.util.HashMap<>();
+            payload.put("instituteId", instituteId);
+            payload.put("userIdentifier", userIdentifier);
+            // Intentionally not setting settingsJson here so it remains null in the DTO,
+            // preventing accidental overwrites of existing institute settings in
+            // auth_service.
+
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.PUT.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    payload);
+
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new VacademyException("Failed to update institute settings in auth_service.");
+            }
+        } catch (Exception e) {
+            throw new VacademyException("Failed to update institute settings: " + e.getMessage());
+        }
+    }
 }

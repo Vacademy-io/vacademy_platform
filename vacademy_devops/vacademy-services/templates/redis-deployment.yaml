@@ -1,34 +1,50 @@
+# Redis Master-Replica Setup for High Availability
+# Master handles writes, Replica syncs data and can be promoted on failure
+
+---
+# Redis Master Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: redis
+  name: redis-master
   namespace: default
   labels:
     app: redis
+    role: master
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: redis
+      role: master
   template:
     metadata:
       labels:
         app: redis
+        role: master
     spec:
       containers:
         - name: redis
           image: redis:7.2-alpine
           imagePullPolicy: IfNotPresent
+          command:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --maxmemory
+            - "400mb"
+            - --maxmemory-policy
+            - "allkeys-lru"
           ports:
             - containerPort: 6379
               name: redis
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 250m
+              cpu: 150m
               memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 512Mi
           livenessProbe:
             tcpSocket:
               port: 6379
@@ -42,3 +58,62 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
 
+---
+# Redis Replica Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-replica
+  namespace: default
+  labels:
+    app: redis
+    role: replica
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      role: replica
+  template:
+    metadata:
+      labels:
+        app: redis
+        role: replica
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - redis-server
+            - --replicaof
+            - redis-master
+            - "6379"
+            - --appendonly
+            - "yes"
+            - --maxmemory
+            - "400mb"
+            - --maxmemory-policy
+            - "allkeys-lru"
+          ports:
+            - containerPort: 6379
+              name: redis
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5

@@ -25,8 +25,17 @@ class ContentGenerationRequest(BaseModel):
         default=None,
         description="Institute identifier (optional, for logging/context)"
     )
+    user_id: Optional[str] = Field(
+        default=None,
+        description="User identifier (optional, for logging/context)"
+    )
+    language: Optional[str] = Field(
+        default="English",
+        description="Language for content generation (e.g. 'English', 'Hindi', 'Spanish', 'French', 'Arabic')"
+    )
 
 
 __all__ = ["ContentGenerationRequest"]
+
 
 

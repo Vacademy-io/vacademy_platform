@@ -6,6 +6,13 @@ pydantic-settings==2.6.1
 python-dotenv==1.0.1
 httpx==0.27.2
 boto3==1.34.0
-
-
-
+sse-starlette==1.6.5
+edge-tts
+moviepy==1.0.3
+playwright==1.49.1
+beautifulsoup4==4.12.3
+google-cloud-texttospeech>=2.17.0
+faster-whisper
+python-jose[cryptography]==3.3.0
+nltk
+rembg

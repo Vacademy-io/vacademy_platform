@@ -21,6 +21,10 @@ public interface ScheduleDTO {
     String getLinkType();
     String getSessionStreamingServiceType();
     String getDefaultMeetLink();
+    String getDefaultClassLink();
+    String getDefaultClassLinkType();
+    String getDefaultClassName();
+    String getLearnerButtonConfig();
     String getWaitingRoomLink();
     Integer getWaitingRoomTime();
     String getRegistrationFormLinkForPublicSessions();
@@ -41,4 +45,6 @@ public interface ScheduleDTO {
     String getTimezone();
     Boolean getAllowRewind();
     Boolean getAllowPlayPause();
+    Boolean getDailyAttendance();
+    String getProviderRecordingsJson();
 }

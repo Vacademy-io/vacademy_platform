@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 import argparse
-from tqdm import tqdm
+
 
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
@@ -32,215 +32,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     libs = f"file://{Path.cwd()}/assets/libs"
     page.set_viewport_size({"width": width, "height": height})
     # Install updater that creates/removes/positions shadow-root wrapped snippets and scales to fit.
-    page.add_init_script(
-        """
-        window.__activeSnippets = new Map();
-        window.__updateSnippets = async (entries) => {
-          const activeIds = new Set(entries.map(e => e.id));
-          
-          // Remove no longer active snippets
-          for (const [id, host] of Array.from(window.__activeSnippets.entries())) {
-            if (!activeIds.has(id)) {
-              try { host.remove(); } catch (e) {}
-              window.__activeSnippets.delete(id);
-            }
-          }
 
-          const promises = [];
-
-          // Add/update active snippets
-          for (const e of entries) {
-            let host = window.__activeSnippets.get(e.id);
-            if (!host) {
-              host = document.createElement('div');
-              host.id = e.id;
-              host.style.position = 'absolute';
-              host.style.overflow = 'hidden';
-              host.style.pointerEvents = 'none';
-              host.style.background = 'transparent';
-              document.body.appendChild(host);
-
-              // Use Light DOM (direct append) so scripts like GSAP can find elements
-              const root = host; 
-              const wrapper = document.createElement('div');
-                  wrapper.className = 'content-wrapper'; // Use class instead of ID to avoid dupes
-                  wrapper.style.position = 'absolute';
-                  wrapper.style.left = '0px';
-                  wrapper.style.top = '0px';
-                  wrapper.style.transformOrigin = 'top left';
-                  // Force centering
-                  wrapper.style.display = 'flex';
-                  wrapper.style.flexDirection = 'column';
-                  wrapper.style.justifyContent = 'center';
-                  wrapper.style.alignItems = 'center';
-                  wrapper.style.textAlign = 'center';
-
-                  wrapper.innerHTML = e.html; // snippet HTML
-                  root.appendChild(wrapper);
-                  
-                  // Manually activate scripts injected via innerHTML
-                  wrapper.querySelectorAll('script').forEach(oldScript => {
-                    const newScript = document.createElement('script');
-                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-                    oldScript.parentNode.replaceChild(newScript, oldScript);
-                  });
-
-                  // Re-run Prism highlighting for any new code blocks
-                  if (window.Prism) {
-                     window.Prism.highlightAllUnder(wrapper);
-                  }
-
-                  // Render KaTeX math
-                  if (window.renderMathInElement) {
-                      window.renderMathInElement(wrapper, {
-                          delimiters: [
-                              {left: '$$', right: '$$', display: true},
-                              {left: '$', right: '$', display: false}
-                          ]
-                      });
-                  }
-
-                  // Trigger Mermaid (Robust)
-                  if (window.mermaid) {
-                      if (!window.mermaidInitialized) {
-                          window.mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
-                          window.mermaidInitialized = true;
-                      }
-                      
-                      const nodes = wrapper.querySelectorAll('.mermaid, pre > code.language-mermaid, div.mermaid');
-                      if (nodes.length > 0) {
-                          const p = Promise.all(Array.from(nodes).map(async (el, index) => {
-                              const id = 'mermaid-' + e.id + '-' + index + '-' + Math.round(Math.random() * 10000);
-                              try {
-                                  let graphDefinition = el.textContent.trim();
-                                  if (!graphDefinition) return;
-                                  
-                                  if (el.tagName.toLowerCase() === 'code' && el.parentElement.tagName.toLowerCase() === 'pre') {
-                                      const div = document.createElement('div');
-                                      div.id = id;
-                                      div.className = 'mermaid-diagram';
-                                      div.style.display = 'flex';
-                                      div.style.justifyContent = 'center';
-                                      el.parentElement.replaceWith(div);
-                                  } else {
-                                      el.id = id;
-                                  }
-                                  
-                                  const { svg } = await window.mermaid.render(id, graphDefinition);
-                                  const successContainer = document.getElementById(id);
-                                  if (successContainer) successContainer.innerHTML = svg;
-                              } catch (err) {
-                                  console.error('Mermaid render error for id ' + id, err);
-                                  const errorContainer = document.getElementById(id);
-                                  if (errorContainer) {
-                                    errorContainer.innerHTML = '<div style="color:red;border:1px solid red;padding:5px;font-size:10px;">Mermaid Error: ' + err.message + '</div>';
-                                  }
-                              }
-                          }));
-                          promises.push(p);
-                      }
-                  }
-
-
-                  // Ensure we append to #world-layer
-                  const world = document.getElementById('world-layer') || document.body;
-                  world.appendChild(host);
-                  window.__activeSnippets.set(e.id, host);
-
-              const scaleToFit = () => {
-                const targetW = host.clientWidth;
-                const targetH = host.clientHeight;
-                const rect = wrapper.getBoundingClientRect();
-                const rawW = rect.width || wrapper.scrollWidth || 1;
-                const rawH = rect.height || wrapper.scrollHeight || 1;
-                const scale = Math.min(targetW / rawW, targetH / rawH);
-                wrapper.style.transform = `scale(${scale})`;
-                const scaledW = rawW * scale;
-                const scaledH = rawH * scale;
-                const offsetX = Math.max(0, (targetW - scaledW) / 2);
-                const offsetY = Math.max(0, (targetH - scaledH) / 2);
-                wrapper.style.left = offsetX + 'px';
-                wrapper.style.top = offsetY + 'px';
-              };
-              // Initial scale after layout
-              requestAnimationFrame(scaleToFit);
-              // Recompute when media loads
-              wrapper.querySelectorAll('img,video').forEach((el) => {
-                if (el.complete) {
-                  requestAnimationFrame(scaleToFit);
-                } else {
-                  el.addEventListener('load', () => requestAnimationFrame(scaleToFit), { once: true });
-                }
-              });
-            }
-
-            // Always update geometry (in case dimensions/position change)
-            host.style.left = (e.x | 0) + 'px';
-            host.style.top = (e.y | 0) + 'px';
-            host.style.width = (e.w | 0) + 'px';
-            host.style.height = (e.h | 0) + 'px';
-            if (typeof e.z !== 'undefined') host.style.zIndex = String(e.z);
-          }
-          await Promise.all(promises);
-        };
-        // Caption helper: unique caption host (id: caption)
-        window.__updateCaption = (entryOrNull) => {
-          const id = 'caption';
-          if (!entryOrNull) {
-            const host = window.__activeSnippets.get(id);
-            if (host) { try { host.remove(); } catch (e) {}; window.__activeSnippets.delete(id); }
-            return;
-          }
-          const e = entryOrNull;
-          let host = window.__activeSnippets.get(id);
-          if (!host) {
-            host = document.createElement('div');
-            host.id = id;
-            host.style.position = 'absolute';
-            host.style.overflow = 'hidden';
-            host.style.pointerEvents = 'none';
-            host.style.background = 'transparent';
-            document.body.appendChild(host);
-            const root = host.attachShadow({ mode: 'open' });
-            const wrapper = document.createElement('div');
-            wrapper.id = 'content-wrapper';
-            wrapper.style.position = 'absolute';
-            wrapper.style.left = '0px';
-            wrapper.style.top = '0px';
-            wrapper.style.transformOrigin = 'top left';
-            root.appendChild(wrapper);
-            // Append to UI layer (HUD)
-            const ui = document.getElementById('ui-layer') || document.body;
-            ui.appendChild(host);
-            window.__activeSnippets.set(id, host);
-          }
-          const root = host.shadowRoot;
-          const wrapper = root.getElementById('content-wrapper');
-          wrapper.innerHTML = e.html;
-          // position and scale
-          host.style.left = (e.x | 0) + 'px';
-          host.style.top = (e.y | 0) + 'px';
-          host.style.width = (e.w | 0) + 'px';
-          host.style.height = (e.h | 0) + 'px';
-          requestAnimationFrame(() => {
-            const targetW = host.clientWidth;
-            const targetH = host.clientHeight;
-            const rect = wrapper.getBoundingClientRect();
-            const rawW = rect.width || wrapper.scrollWidth || 1;
-            const rawH = rect.height || wrapper.scrollHeight || 1;
-            const scale = Math.min(targetW / rawW, targetH / rawH);
-            wrapper.style.transform = `scale(${scale})`;
-            const scaledW = rawW * scale;
-            const scaledH = rawH * scale;
-            const offsetX = Math.max(0, (targetW - scaledW) / 2);
-            const offsetY = Math.max(0, (targetH - scaledH) / 2);
-            wrapper.style.left = offsetX + 'px';
-            wrapper.style.top = offsetY + 'px';
-          });
-        };
-        """
-    )
 
     page.add_init_script(
         """
@@ -347,40 +139,78 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     )
 
     # Base content with background color. HTML overlays are transparent.
-    # We also inject educational libraries here (KaTeX, Prism, Mermaid, GSAP).
+    # We inject educational libraries: KaTeX, Prism, Mermaid, GSAP, Vivus, Rough Notation, Howler
     html_content = """
             <!DOCTYPE html>
             <html>
               <head>
                 <meta charset="utf-8" />
                 
-                <!-- KaTeX for Math -->
-                <link rel="stylesheet" href="REPLACE_LIBS/katex.min.css">
-                <script defer src="REPLACE_LIBS/katex.min.js"></script>
-                <script defer src="REPLACE_LIBS/auto-render.min.js"></script>
+                <!-- GSAP -->
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MorphSVGPlugin.min.js"></script>
+                <script>
+                    if (typeof window.MorphSVGPlugin === 'undefined') {
+                        window.MorphSVGPlugin = { version: '3.12.5', name: 'MorphSVGPlugin', default: {} };
+                    }
+                </script>
 
-                <!-- Prism.js for Syntax Highlighting (Monokai theme) -->
-                <link href="REPLACE_LIBS/prism-okaidia.min.css" rel="stylesheet" />
-                <script src="REPLACE_LIBS/prism.min.js"></script>
-                <script src="REPLACE_LIBS/prism-python.min.js"></script>
-                <script src="REPLACE_LIBS/prism-javascript.min.js"></script>
-                <script src="REPLACE_LIBS/prism-css.min.js"></script>
-                <script src="REPLACE_LIBS/prism-json.min.js"></script>
-                <script src="REPLACE_LIBS/prism-bash.min.js"></script>
+                <!-- Mermaid -->
+                <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 
-                <!-- Mermaid.js for Diagrams -->
-                <script src="REPLACE_LIBS/mermaid.min.js"></script>
+                <!-- Rough Notation -->
+                <script src="https://unpkg.com/rough-notation/lib/rough-notation.iife.js"></script>
 
-                <!-- GSAP for Animations -->
-                <script src="REPLACE_LIBS/gsap.min.js"></script>
-                <script src="REPLACE_LIBS/TextPlugin.min.js"></script>
-                <script src="REPLACE_LIBS/MotionPathPlugin.min.js"></script>
+                <!-- Vivus -->
+                <script src="https://cdn.jsdelivr.net/npm/vivus@0.4.6/dist/vivus.min.js"></script>
+
+                <!-- KaTeX -->
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+                <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+                <!-- Prism -->
+                <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+
+                <!-- Howler -->
+                <script src="https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"></script>
 
                 <style>
                   html, body { margin:0; padding:0; width:100%; height:100%; background:REPLACE_BG; overflow:hidden; }
                   body { position:relative; }
-                  /* Ensure code blocks don't overflow */
                   pre { white-space: pre-wrap; word-wrap: break-word; }
+
+                  /* Visual cues for interactive elements */
+                  .hover-target:hover { outline: 2px dashed #3b82f6; cursor: grab; }
+                  .is-dragging { outline: 2px solid #3b82f6; cursor: grabbing; user-select: none; }
+                  [contenteditable="true"] { outline: 2px solid #22c55e; cursor: text; min-width: 10px; }
+
+                  /* Key Takeaway Card */
+                  .key-takeaway { display: flex; align-items: center; gap: 20px; padding: 24px 32px; border-left: 5px solid #10b981; background: rgba(16, 185, 129, 0.1); margin: 20px 0; }
+                  .takeaway-icon { font-size: 48px; }
+                  .takeaway-label { font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: #10b981; font-weight: 700; }
+                  .takeaway-text { font-size: 28px; margin-top: 8px; font-weight: 600; }
+
+                  /* Wrong vs Right Pattern */
+                  .wrong-right-container { display: flex; gap: 40px; width: 100%; }
+                  .wrong-box, .right-box { flex: 1; padding: 24px; border-radius: 12px; }
+                  .wrong-box { border: 3px solid #ef4444; background: rgba(239, 68, 68, 0.1); }
+                  .right-box { border: 3px solid #10b981; background: rgba(16, 185, 129, 0.1); }
+                  .wr-header { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+                  .wrong-box .wr-header { color: #ef4444; }
+                  .right-box .wr-header { color: #10b981; }
+                  .wr-icon { font-size: 24px; margin-right: 8px; }
+                  .wr-text { font-size: 24px; }
+
+                  /* Cutout asset images — transparent background, subtle depth */
+                  .generated-image[data-cutout="true"] {
+                    background: transparent;
+                    mix-blend-mode: normal;
+                    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
+                  }
                 </style>
               </head>
               <body>
@@ -391,19 +221,217 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                 <div id="ui-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999;"></div>
 
                 <script>
-                  // Initialize Mermaid
-                  if (window.mermaid) {
-                      mermaid.initialize({ startOnLoad: false, theme: 'dark' });
-                  }
-                  
-                  // Initialize GSAP for frame-by-frame rendering
-                  // we pause the timeline so we can manually seek it in perfect sync with video frames
-                  gsap.ticker.remove(gsap.ticker.tick);
-                  gsap.globalTimeline.pause();
+                  // ========== AI VIDEO HELPER FUNCTIONS ==========
+
+                  // Re-render Math using KaTeX
+                  window.renderMath = function(selector) {
+                      if (window.renderMathInElement && window.katex) {
+                           const el = selector ? (typeof selector === 'string' ? document.querySelector(selector) : selector) : document.body;
+                           if(el) {
+                               try {
+                                   renderMathInElement(el, {
+                                      delimiters: [
+                                          {left: '$$', right: '$$', display: true},
+                                          {left: '$', right: '$', display: false},
+                                          {left: '\\\\(', right: '\\\\)', display: false},
+                                          {left: '\\\\[', right: '\\\\]', display: true}
+                                      ],
+                                      throwOnError : false
+                                  });
+                               } catch (e) {
+                                   console.warn('KaTeX render error:', e);
+                               }
+                           }
+                      }
+                  };
+
+                  // Highlight Code using Prism
+                  window.highlightCode = function() {
+                      if (window.Prism) {
+                          Prism.highlightAll();
+                      }
+                  };
+
+                  // SVG drawing animation
+                  window.animateSVG = function(svgId, duration, callback) {
+                    if (window.Vivus) {
+                      var cb = typeof callback === 'function' ? callback : undefined;
+                      try {
+                          let target = svgId;
+                          if (typeof svgId === 'string' && !svgId.startsWith('#') && !document.getElementById(svgId)) {
+                               new Vivus(svgId, {
+                                duration: duration || 100,
+                                type: 'oneByOne',
+                                animTimingFunction: Vivus.EASE_OUT
+                              }, cb);
+                          } else {
+                               new Vivus(svgId, {
+                                duration: duration || 100,
+                                type: 'oneByOne',
+                                animTimingFunction: Vivus.EASE_OUT
+                              }, cb);
+                          }
+                      } catch(e) { console.warn('Vivus init error', e); }
+                    }
+                  };
+
+                  // Hand-drawn annotation
+                  window.annotate = function(selectorOrEl, options) {
+                    if (window.RoughNotation) {
+                      const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+                      if (el) {
+                        const annotation = RoughNotation.annotate(el, {
+                          type: options.type || 'underline',
+                          color: options.color || '#dc2626',
+                          strokeWidth: options.strokeWidth || 3,
+                          padding: options.padding || 5,
+                          animationDuration: options.duration || 800
+                        });
+                        annotation.show();
+                        return annotation;
+                      }
+                    }
+                    return null;
+                  };
+
+                  // Simple fade in
+                  window.fadeIn = function(selector, duration, delay) {
+                    try {
+                        gsap.fromTo(selector, 
+                          {opacity: 0}, 
+                          {opacity: 1, duration: duration || 0.5, delay: delay || 0, ease: 'power2.out'}
+                        );
+                    } catch (e) { console.warn('fadeIn error', e); }
+                  };
+
+                  // Typewriter effect
+                  window.typewriter = function(selectorOrEl, duration, delay) {
+                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+                    if (!el) return;
+                    const text = el.textContent;
+                    el.textContent = '';
+                    el.style.opacity = '1';
+                    let i = 0;
+                    const speed = (duration || 1) * 1000 / text.length;
+                    setTimeout(() => {
+                      const interval = setInterval(() => {
+                        if (i < text.length) {
+                          el.textContent += text.charAt(i);
+                          i++;
+                        } else {
+                          clearInterval(interval);
+                        }
+                      }, speed);
+                    }, (delay || 0) * 1000);
+                  };
+
+                  // Pop in with scale
+                  window.popIn = function(selector, duration, delay) {
+                    try {
+                        gsap.fromTo(selector,
+                          {opacity: 0, scale: 0.85},
+                          {opacity: 1, scale: 1, duration: duration || 0.4, delay: delay || 0, ease: 'back.out(1.7)'}
+                        );
+                    } catch (e) { console.warn('popIn error', e); }
+                  };
+
+                  // Slide up from below
+                  window.slideUp = function(selector, duration, delay) {
+                    try {
+                        gsap.fromTo(selector,
+                          {opacity: 0, y: 30},
+                          {opacity: 1, y: 0, duration: duration || 0.5, delay: delay || 0, ease: 'power2.out'}
+                        );
+                    } catch (e) { console.warn('slideUp error', e); }
+                  };
+
+                  // Reveal lines with stagger
+                  window.revealLines = function(selectorOrEl, staggerDelay) {
+                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
+                    if (!el) return;
+                    const lines = el.querySelectorAll('.line');
+                    if (lines.length === 0) {
+                      window.fadeIn(el, 0.5);
+                      return;
+                    }
+                    gsap.fromTo(lines,
+                      {opacity: 0, y: 20},
+                      {opacity: 1, y: 0, duration: 0.4, stagger: staggerDelay || 0.3, ease: 'power2.out'}
+                    );
+                  };
+
+                  // Show text then annotate
+                  window.showThenAnnotate = function(textSelector, termSelector, annotationType, annotationColor, textDelay, annotationDelay) {
+                    window.fadeIn(textSelector, 0.5, textDelay || 0);
+                    setTimeout(() => {
+                      window.annotate(termSelector, {
+                        type: annotationType || 'underline',
+                        color: annotationColor || '#dc2626',
+                        duration: 600
+                      });
+                    }, ((textDelay || 0) + (annotationDelay || 0.8)) * 1000);
+                  };
+
+                  window.sounds = {
+                    pop: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
+                    click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
+                    whoosh: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
+                    success: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3'
+                  };
+
+                  window.playSound = function(soundName) {
+                    if (window.sounds && window.sounds[soundName]) {
+                      const audio = new Audio(window.sounds[soundName]);
+                      audio.volume = 0.5;
+                      audio.play().catch(e => console.log('Sound play failed:', e));
+                    }
+                  };
+
+                  // Render Mermaid
+                  window.renderMermaid = function(selector) {
+                      if (window.mermaid) {
+                          try {
+                              mermaid.init(undefined, selector ? document.querySelectorAll(selector) : document.querySelectorAll('.mermaid'));
+                          } catch (e) {
+                              console.error('Mermaid render error:', e);
+                          }
+                      }
+                  };
+
+                  // Initialize
+                  window.addEventListener('load', () => {
+                      if(window.gsap) {
+                         if(window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
+                         if(window.MorphSVGPlugin && typeof window.MorphSVGPlugin.version === 'string') {
+                             try { gsap.registerPlugin(MorphSVGPlugin); } catch(e) { console.warn('MorphSVG registration failed', e); }
+                         }
+                      }
+
+                      if (window.RoughNotation && !window.RoughNotation.annotateAll) {
+                          window.RoughNotation.annotateAll = function(annotations) {
+                              if (Array.isArray(annotations) && window.RoughNotation.annotationGroup) {
+                                   const group = window.RoughNotation.annotationGroup(annotations);
+                                   group.show();
+                              } else if (Array.isArray(annotations)) {
+                                   annotations.forEach(a => a.show && a.show());
+                              }
+                          };
+                      }
+
+                      if(window.mermaid) mermaid.initialize({startOnLoad:true});
+                      if(window.renderMathInElement && window.katex) window.renderMath();
+                      if(window.Prism) window.highlightCode();
+                      
+                      // Pause global timeline for frame rendering
+                      if (window.gsap) {
+                          gsap.ticker.remove(gsap.ticker.tick);
+                          gsap.globalTimeline.pause();
+                      }
+                  });
                 </script>
               </body>
             </html>
-            """.replace("REPLACE_BG", background_color).replace("REPLACE_LIBS", libs)
+            """.replace("REPLACE_BG", background_color)
     
     temp_html_path = Path.cwd() / ".render_page.html"
     temp_html_path.write_text(html_content, encoding="utf-8")
@@ -431,7 +459,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   host = document.createElement('div');
                   host.id = e.id;
                   host.style.position = 'absolute';
-                  host.style.overflow = 'hidden';
+                  host.style.overflow = 'visible'; // Allow annotations to flow outside
                   host.style.pointerEvents = 'none';
                   host.style.background = 'transparent';
                   host.style.pointerEvents = 'none';
@@ -457,11 +485,11 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   // Inject CSS into Shadow DOM for KaTeX and Prism
                   const katexCss = document.createElement('link');
                   katexCss.rel = 'stylesheet';
-                  katexCss.href = 'REPLACE_LIBS/katex.min.css';
+                  katexCss.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
                   
                   const prismCss = document.createElement('link');
                   prismCss.rel = 'stylesheet';
-                  prismCss.href = 'REPLACE_LIBS/prism-okaidia.min.css';
+                  prismCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css';
 
                   root.appendChild(katexCss);
                   root.appendChild(prismCss);
@@ -494,38 +522,57 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                       const originalCode = oldScript.textContent;
                       const scopedCode = `
                         (function(scope) {
+                            // Helper to resolve selectors in this shadow root
+                            const resolve = (s) => {
+                                const el = (typeof s === 'string' ? scope.querySelector(s) : s);
+                                if (!el && typeof s === 'string') console.warn('Scoped resolve failed for:', s);
+                                return el;
+                            };
+                            const resolveAll = (s) => (typeof s === 'string' ? scope.querySelectorAll(s) : s);
+
+                            // Proxy global helpers to use scoped resolution
+                            const annotate = (target, opts) => {
+                                console.log('Proxy annotate:', target, opts);
+                                try { window.annotate(resolve(target), opts); } catch(e) { console.error('Annotate error:', e); }
+                            };
+                            const typewriter = (target, dur, del) => window.typewriter(resolve(target), dur, del);
+                            const fadeIn = (target, dur, del) => window.fadeIn(resolve(target), dur, del);
+                            const popIn = (target, dur, del) => window.popIn(resolve(target), dur, del);
+                            const slideUp = (target, dur, del) => window.slideUp(resolve(target), dur, del);
+                            const revealLines = (target, stag) => window.revealLines(resolve(target), stag);
+                            const showThenAnnotate = (txt, term, type, col, txtDel, annDel) => {
+                                console.log('Proxy showThenAnnotate:', txt, term);
+                                window.showThenAnnotate(resolve(txt), resolve(term), type, col, txtDel, annDel);
+                            };
+                            const animateSVG = (id, dur, cb) => window.animateSVG(resolve(id) || id, dur, cb);
+
                             // Creator of scoped GSAP instance
                             const createScopedGsap = () => {
                                 const g = { ...window.gsap }; // shallow clone
                                 
-                                const resolve = (target) => {
+                                const resolveGsap = (target) => {
                                     if (typeof target === 'string') {
                                         return Array.from(scope.querySelectorAll(target));
                                     }
                                     return target;
                                 };
 
-                                g.to = (target, vars) => window.gsap.to(resolve(target), vars);
-                                g.from = (target, vars) => window.gsap.from(resolve(target), vars);
-                                g.fromTo = (target, f, t) => window.gsap.fromTo(resolve(target), f, t);
-                                g.set = (target, vars) => window.gsap.set(resolve(target), vars);
+                                g.to = (target, vars) => window.gsap.to(resolveGsap(target), vars);
+                                g.from = (target, vars) => window.gsap.from(resolveGsap(target), vars);
+                                g.fromTo = (target, f, t) => window.gsap.fromTo(resolveGsap(target), f, t);
+                                g.set = (target, vars) => window.gsap.set(resolveGsap(target), vars);
                                 g.timeline = (vars) => {
                                     const tl = window.gsap.timeline(vars);
-                                    // Wrap timeline methods if needed, but usually .to/.from are called on tl
-                                    // For now, let's assume simple usage. 
-                                    // Getting extensive with timeline proxying is complex. 
-                                    // Let's rely on g.from/g.to interactions.
-                                    // Ideally we proxy the timeline object too:
                                     const explicitProxy = (tlInstance) => {
                                         const originalTo = tlInstance.to.bind(tlInstance);
                                         const originalFrom = tlInstance.from.bind(tlInstance);
                                         const originalFromTo = tlInstance.fromTo.bind(tlInstance);
                                         const originalSet = tlInstance.set.bind(tlInstance);
                                         
-                                        tlInstance.to = (t, v, p) => { originalTo(resolve(t), v, p); return tlInstance; };
-                                        tlInstance.from = (t, v, p) => { originalFrom(resolve(t), v, p); return tlInstance; };
-                                        tlInstance.fromTo = (t, f, to, p) => { originalFromTo(resolve(t), f, to, p); return tlInstance; };
-                                        tlInstance.set = (t, v, p) => { originalSet(resolve(t), v, p); return tlInstance; };
+                                        tlInstance.to = (t, v, p) => { originalTo(resolveGsap(t), v, p); return tlInstance; };
+                                        tlInstance.from = (t, v, p) => { originalFrom(resolveGsap(t), v, p); return tlInstance; };
+                                        tlInstance.fromTo = (t, f, to, p) => { originalFromTo(resolveGsap(t), f, to, p); return tlInstance; };
+                                        tlInstance.set = (t, v, p) => { originalSet(resolveGsap(t), v, p); return tlInstance; };
                                         return tlInstance;
                                     };
                                     return explicitProxy(tl);
@@ -534,7 +581,6 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                             };
 
                             const gsap = createScopedGsap();
-                            // Also expose standard ScrollTrigger? Not relevant for video.
                             
                             try {
                                 ${originalCode}
@@ -1179,6 +1225,7 @@ def render_video_from_json(
     alignment_json_path: str = "",
     character_pose: str = "",
     avatar_video_path: str = "",
+    audio_delay: float = 0.0,
 ) -> Path:
     """
     Render a portrait video by placing timed HTML overlays (from JSON) on a 1080x1920 canvas
@@ -1275,8 +1322,28 @@ def render_video_from_json(
         entry["html"] = _convert_file_urls_to_data_uris(h)
 
     audio_clip = AudioFileClip(str(audio_p))
-    duration: float = float(audio_clip.duration)
+    audio_duration: float = float(audio_clip.duration)
+    
+    # Calculate total video duration from timeline (which includes intro/outro if present)
+    # The timeline now has branding entries that extend beyond the audio
+    timeline_max_end = max((float(e.get("exitTime", 0)) for e in timeline), default=audio_duration)
+    
+    # If audio_delay is specified, the audio starts after intro, so total duration is:
+    # intro_duration + audio_duration + outro_duration
+    # The timeline already accounts for this, so we use the timeline's max end time
+    duration: float = max(audio_duration + audio_delay, timeline_max_end)
     total_frames = int(math.ceil(duration * fps))
+    
+    print(f"DEBUG: Audio duration: {audio_duration}s")
+    print(f"DEBUG: Audio delay (intro): {audio_delay}s")
+    print(f"DEBUG: Timeline max end: {timeline_max_end}s")
+    print(f"DEBUG: Total video duration: {duration}s")
+    print(f"DEBUG: Total frames to render: {total_frames}")
+    
+    # Apply audio delay - audio will start after the intro
+    if audio_delay > 0:
+        print(f"DEBUG: Applying audio delay of {audio_delay}s for intro silence")
+        audio_clip = audio_clip.with_start(audio_delay)
 
     caption_segments: List[Dict[str, Any]] = []
     caption_words: List[Dict[str, Any]] = []
@@ -1292,6 +1359,13 @@ def render_video_from_json(
         if not settings_p.exists():
             raise FileNotFoundError(f"Caption settings JSON not found: {settings_p}")
         words = _load_words(words_p)
+        
+        # Offset caption word timings by audio_delay (for intro silence)
+        if audio_delay > 0:
+            for word in words:
+                word["start"] = float(word.get("start", 0)) + audio_delay
+                word["end"] = float(word.get("end", 0)) + audio_delay
+        
         caption_words = words
         caption_settings = _load_caption_settings(settings_p)
         caption_segments = _build_caption_segments(words, caption_settings["gap_threshold_seconds"])
@@ -1431,7 +1505,7 @@ def render_video_from_json(
         if not show_character:
             page.evaluate("() => window.__updateCharacter && window.__updateCharacter(null)")
 
-        for frame_index in tqdm(range(total_frames), total=total_frames, desc="Rendering frames", unit="frame"):
+        for frame_index in range(total_frames):
             t = frame_index / float(fps)
             active = _active_entries_at(timeline, t)
             # Add branding if enabled
@@ -1756,6 +1830,7 @@ def _parse_args(argv: List[str]):
     parser.add_argument("--alignment-json", default="", help="Path to Gentle alignment JSON with phonemes")
     parser.add_argument("--character-pose", default="", help="Pose name override for the animated character")
     parser.add_argument("--avatar-video", default="", help="Path to generated avatar video loop/clip")
+    parser.add_argument("--audio-delay", type=float, default=0.0, help="Delay audio start by this many seconds (for intro silence)")
     return parser.parse_args(argv[1:])
 
 
@@ -1782,6 +1857,7 @@ if __name__ == "__main__":
         alignment_json_path=args.alignment_json,
         character_pose=args.character_pose,
         avatar_video_path=args.avatar_video,
+        audio_delay=args.audio_delay,
     )
     print(f"Video written to: {result_path}")
 

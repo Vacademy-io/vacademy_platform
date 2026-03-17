@@ -15,4 +15,5 @@ public class PackageSessionToPaymentOptionDTO {
     private PaymentOptionDTO paymentOption;
     private String enrollInviteId;
     private String status;
+    private String cpoId;
 }

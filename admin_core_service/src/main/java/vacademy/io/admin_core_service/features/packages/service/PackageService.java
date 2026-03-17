@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.packages.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
@@ -42,6 +43,7 @@ public class PackageService {
     @Autowired
     private SessionService sessionService;
 
+    @Transactional(readOnly = true)
     public Page<PackageDetailDTO> getcourseCatalogDetail(
             LearnerPackageFilterDTO learnerPackageFilterDTO,
             String instituteId,
@@ -66,6 +68,8 @@ public class PackageService {
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageIds(),
+                    learnerPackageFilterDTO.getPackageSessionIds(),
                     pageable);
         } else {
             learnerPackageDetail = packageRepository.getCatalogPackageDetail(
@@ -83,6 +87,8 @@ public class PackageService {
                     List.of(QuestionStatusEnum.ACTIVE.name()),
                     List.of(SlideStatus.DRAFT.name(), SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                     List.of(ChapterStatus.ACTIVE.name()),
+                    learnerPackageFilterDTO.getPackageIds(),
+                    learnerPackageFilterDTO.getPackageSessionIds(),
                     pageable);
         }
 
@@ -135,6 +141,7 @@ public class PackageService {
         return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
     }
 
+    @Transactional(readOnly = true)
     public PackageDetailDTO getPackageDetailById(
             String packageId) {
         Optional<PackageDetailProjection> optionalProjection = packageRepository

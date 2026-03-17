@@ -17,6 +17,8 @@ public class UserRoleDTO {
     private String roleName;
     private String status;
     private String roleId;
+    private String sourceType;
+    private String sourceId;
 
     public UserRoleDTO(UserRole userRole) {
         this.roleName = userRole.getRole().getName();
@@ -24,12 +26,16 @@ public class UserRoleDTO {
         this.roleId = userRole.getRole().getId();
         this.id = userRole.getId();
         this.instituteId = userRole.getInstituteId();
+        this.sourceType = userRole.getSourceType();
+        this.sourceId = userRole.getSourceId();
     }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof UserRoleDTO)) return false;
+        if (this == o)
+            return true;
+        if (!(o instanceof UserRoleDTO))
+            return false;
         UserRoleDTO that = (UserRoleDTO) o;
         return Objects.equals(roleName, that.roleName);
     }

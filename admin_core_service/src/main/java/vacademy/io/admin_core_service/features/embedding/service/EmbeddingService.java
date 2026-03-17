@@ -17,6 +17,9 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
+import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
+import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
+import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +38,7 @@ public class EmbeddingService {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final AiTokenUsageService aiTokenUsageService;
 
     /**
      * Generate embeddings for the given text using OpenRouter API
@@ -77,11 +81,36 @@ public class EmbeddingService {
             log.info("[Embedding] Successfully generated embedding with {} dimensions",
                     openRouterResponse.getData().get(0).getEmbedding().size());
 
+            // Log token usage
+            logTokenUsage(openRouterResponse, model);
+
             return convertToEmbeddingResponse(openRouterResponse);
 
         } catch (Exception e) {
             log.error("[Embedding] Error generating embedding: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to generate embedding: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Log token usage from embedding response
+     */
+    private void logTokenUsage(OpenRouterEmbeddingResponse response, String model) {
+        try {
+            if (response.getUsage() != null) {
+                int promptTokens = response.getUsage().getPromptTokens();
+
+                aiTokenUsageService.recordUsageAsync(
+                        ApiProvider.OPENAI,
+                        RequestType.EMBEDDING,
+                        model,
+                        promptTokens,
+                        0, // Embeddings don't have completion tokens
+                        null,
+                        null);
+            }
+        } catch (Exception e) {
+            log.warn("[Embedding] Failed to log token usage: {}", e.getMessage());
         }
     }
 

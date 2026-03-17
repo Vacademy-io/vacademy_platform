@@ -1,3 +1,5 @@
+# Redis Master Service - Primary service for all writes and reads
+# Your application should connect to this service via REDIS_HOST=redis
 apiVersion: v1
 kind: Service
 metadata:
@@ -12,6 +14,49 @@ spec:
       targetPort: 6379
       protocol: TCP
       name: redis
+  # Point to master for write operations
   selector:
     app: redis
+    role: master
 
+---
+# Redis Master Headless Service (for replica discovery)
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-master
+  namespace: default
+  labels:
+    app: redis
+    role: master
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+  selector:
+    app: redis
+    role: master
+
+---
+# Redis Replica Service (for read-only queries if needed)
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-replica
+  namespace: default
+  labels:
+    app: redis
+    role: replica
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+  selector:
+    app: redis
+    role: replica

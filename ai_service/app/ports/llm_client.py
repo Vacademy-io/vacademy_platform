@@ -11,13 +11,15 @@ class OutlineLLMClient(Protocol):
     or concrete vendor implementation.
     """
 
-    async def generate_outline(self, prompt: str, model: str | None) -> str:
+    async def generate_outline(self, prompt: str, model: str | None, api_key: str | None = None) -> str:
         """
         Generate a course outline given a fully constructed prompt.
 
         :param prompt: Final prompt string including any templates/context.
         :param model: Optional model identifier; when None, implementation
                       should fall back to a sensible default model.
+        :param api_key: Optional API key to use; when None, implementation
+                       should fall back to default/configured key.
         :return: Raw string response from the LLM (may contain markdown/JSON).
         """
         raise NotImplementedError

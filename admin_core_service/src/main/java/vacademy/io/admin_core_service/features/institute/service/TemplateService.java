@@ -4,6 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute.dto.template.*;
@@ -176,7 +179,9 @@ public class TemplateService {
 
     /**
      * Get all templates for an institute
+     * @deprecated Use getTemplatesByInstitutePaginated instead to avoid memory issues
      */
+    @Deprecated
     public List<TemplateResponse> getTemplatesByInstitute(String instituteId) {
         log.info("Getting all templates for institute: {}", instituteId);
 
@@ -184,6 +189,35 @@ public class TemplateService {
         return templates.stream()
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Get paginated templates for an institute (returns summary without content)
+     * This method is optimized to prevent memory issues by excluding large fields
+     */
+    public PagedTemplateResponse getTemplatesByInstitutePaginated(String instituteId, int pageNo, int pageSize) {
+        log.info("Getting paginated templates for institute: {}, page: {}, size: {}", instituteId, pageNo, pageSize);
+
+        // Convert pageNo from 1-based to 0-based (if needed) or use as-is if already 0-based
+        // Based on PageConstants, DEFAULT_PAGE_NUMBER is "0", so we'll use it as-is
+        Pageable pageable = PageRequest.of(pageNo, pageSize);
+        Page<Template> templatePage = templateRepository.findByInstituteIdOrderByCreatedAtDescPageable(instituteId, pageable);
+
+        List<TemplateSummaryResponse> summaryList = templatePage.getContent().stream()
+                .map(this::convertToSummaryResponse)
+                .collect(Collectors.toList());
+
+        int totalPages = templatePage.getTotalPages();
+        
+        return PagedTemplateResponse.builder()
+                .content(summaryList)
+                .pageNumber(pageNo)
+                .pageSize(pageSize)
+                .totalElements(templatePage.getTotalElements())
+                .totalPages(totalPages)
+                .last(pageNo >= totalPages - 1)
+                .first(pageNo == 0)
+                .build();
     }
 
     /**
@@ -329,6 +363,28 @@ public class TemplateService {
                 .contentType(template.getContentType())
                 .settingJson(settingJson)
                 .dynamicParameters(dynamicParameters)
+                .canDelete(template.getCanDelete())
+                .status(template.getStatus())
+                .templateCategory(template.getTemplateCategory())
+                .createdAt(template.getCreatedAt())
+                .updatedAt(template.getUpdatedAt())
+                .createdBy(template.getCreatedBy())
+                .updatedBy(template.getUpdatedBy())
+                .build();
+    }
+
+    /**
+     * Convert Template entity to TemplateSummaryResponse DTO (excludes large fields)
+     */
+    private TemplateSummaryResponse convertToSummaryResponse(Template template) {
+        return TemplateSummaryResponse.builder()
+                .id(template.getId())
+                .type(template.getType())
+                .vendorId(template.getVendorId())
+                .instituteId(template.getInstituteId())
+                .name(template.getName())
+                .subject(template.getSubject())
+                .contentType(template.getContentType())
                 .canDelete(template.getCanDelete())
                 .status(template.getStatus())
                 .templateCategory(template.getTemplateCategory())

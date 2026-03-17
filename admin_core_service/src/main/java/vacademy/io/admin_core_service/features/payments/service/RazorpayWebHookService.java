@@ -15,9 +15,18 @@ import vacademy.io.admin_core_service.features.user_subscription.service.Payment
 import vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import vacademy.io.common.payment.enums.PaymentType;
+import vacademy.io.admin_core_service.features.enrollment_policy.service.RenewalPaymentService;
+import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
+import vacademy.io.admin_core_service.features.fee_management.service.SchoolFeeReceiptService;
+import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.common.logging.SentryLogger;
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.math.BigDecimal;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -52,6 +61,30 @@ public class RazorpayWebHookService {
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    private RenewalPaymentService renewalPaymentService;
+
+    @Autowired
+    private FeeLedgerAllocationService feeLedgerAllocationService;
+
+    @Autowired
+    private SchoolFeeReceiptService schoolFeeReceiptService;
+
+    @Autowired
+    private UserPlanService userPlanService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.service.ApplicationFeeReceiptService applicationFeeReceiptService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.auth_service.service.AuthService authService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository audienceResponseRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository paymentOptionRepository;
 
     /**
      * Processes Razorpay webhook events
@@ -121,14 +154,7 @@ public class RazorpayWebHookService {
             if (orderId == null) {
                 log.error("Missing 'orderId' in payment notes for payment_id: {}",
                         paymentEntity.get("id").asText());
-                SentryLogger.logError(new IllegalStateException("Missing orderId in payment notes"),
-                        "Razorpay webhook missing orderId in payment notes", Map.of(
-                                "payment.vendor", "RAZORPAY",
-                                "payment.id", paymentEntity.has("id") ? paymentEntity.get("id").asText() : "unknown",
-                                "institute.id", instituteId,
-                                "webhook.id", webhookId != null ? webhookId : "unknown",
-                                "payment.webhook.event", eventType,
-                                "operation", "extractOrderId"));
+
                 updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Missing orderId in payment notes");
                 return ResponseEntity.status(400).body("Missing orderId in payment notes");
             }
@@ -136,8 +162,22 @@ public class RazorpayWebHookService {
             // Step 8: Update webhook with order details
             webHookService.updateWebHook(webhookId, payload, orderId, eventType);
 
-            // Step 9: Handle different event types
-            handleRazorpayEvent(eventType, orderId, instituteId, paymentEntity);
+            // Step 9: Check payment type and route accordingly
+            String paymentType = extractPaymentType(paymentEntity);
+
+            if (paymentType != null && PaymentType.RENEWAL.name().equals(paymentType)) {
+                log.info("Processing RENEWAL payment webhook for orderId: {}", orderId);
+                handleRenewalPayment(eventType, orderId, instituteId, paymentEntity);
+            } else if (paymentType != null && PaymentType.SCHOOL.name().equals(paymentType)) {
+                log.info("Processing SCHOOL payment webhook for orderId: {}", orderId);
+                handleSchoolPayment(eventType, orderId, instituteId, paymentEntity);
+            } else if (paymentType != null && PaymentType.APPLICATION_FEE.name().equals(paymentType)) {
+                log.info("Processing APPLICATION_FEE payment webhook for orderId: {}", orderId);
+                handleApplicationFeePayment(eventType, orderId, instituteId, paymentEntity);
+            } else {
+                // Handle initial payment events
+                handleRazorpayEvent(eventType, orderId, instituteId, paymentEntity);
+            }
 
             // Step 10: Mark webhook as processed
             updateWebhookStatus(webhookId, WebHookStatus.PROCESSED, null);
@@ -196,6 +236,195 @@ public class RazorpayWebHookService {
 
             default:
                 log.info("Unhandled but valid event type: {}. Acknowledging.", eventType);
+                break;
+        }
+    }
+
+    /**
+     * Handles APPLICATION_FEE payment webhook events.
+     * Called when payment_type = APPLICATION_FEE is present in Razorpay notes.
+     * Uses updatePaymentLogOnly to avoid triggering donation/enrollment
+     * post-payment logic
+     * (since userPlan is null for applicant payments).
+     */
+    private void handleApplicationFeePayment(String eventType, String orderId, String instituteId,
+            JsonNode paymentEntity) {
+
+        log.info("handleApplicationFeePayment: eventType={}, orderId={}, instituteId={}", eventType, orderId,
+                instituteId);
+
+        switch (eventType) {
+            case "order.paid":
+            case "payment.captured": {
+                try {
+                    // 1. Load PaymentLog by orderId to extract applicant context
+                    java.util.Optional<vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog> logOpt = paymentLogRepository
+                            .findById(orderId);
+                    if (logOpt.isEmpty()) {
+                        // Try searching by orderId in paymentSpecificData JSON
+                        var logs = paymentLogRepository.findAllByOrderIdInOriginalRequest(orderId);
+                        if (logs.isEmpty()) {
+                            logs = paymentLogRepository.findAllByOrderIdInJson(orderId);
+                        }
+                        if (!logs.isEmpty()) {
+                            logOpt = java.util.Optional.of(logs.get(0));
+                        }
+                    }
+
+                    if (logOpt.isEmpty()) {
+                        log.warn("No PaymentLog found for APPLICATION_FEE orderId: {}", orderId);
+                        return;
+                    }
+
+                    var paymentLog = logOpt.get();
+
+                    // 2. Update PaymentLog to PAID — use updatePaymentLogOnly to bypass
+                    // donation notification (userPlan is null for applicant fees)
+                    paymentLogService.updatePaymentLogOnly(
+                            paymentLog.getId(),
+                            vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS
+                                    .name(),
+                            vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
+                            paymentLog.getPaymentSpecificData());
+
+                    log.info("APPLICATION_FEE PaymentLog marked PAID: {}", paymentLog.getId());
+
+                    // 3. Extract applicant context from paymentSpecificData
+                    String applicantId = null;
+                    String paymentOptionId = null;
+                    double amountPaid = 0.0;
+                    String transactionId = null;
+
+                    if (paymentLog.getPaymentSpecificData() != null) {
+                        try {
+                            @SuppressWarnings("unchecked")
+                            java.util.Map<String, Object> data = JsonUtil.fromJson(paymentLog.getPaymentSpecificData(),
+                                    java.util.Map.class);
+                            if (data != null) {
+                                applicantId = (String) data.get("applicantId");
+                                paymentOptionId = (String) data.get("paymentOptionId");
+                            }
+                        } catch (Exception e) {
+                            log.warn("Could not parse paymentSpecificData for orderId={}: {}", orderId, e.getMessage());
+                        }
+                    }
+
+                    // Fallback: Also check if they are directly in the Razorpay notes payload
+                    if (applicantId == null || paymentOptionId == null) {
+                        try {
+                            com.fasterxml.jackson.databind.JsonNode notesNode = paymentEntity.get("notes");
+                            if (notesNode != null) {
+                                if (applicantId == null && notesNode.has("applicantId")) {
+                                    applicantId = notesNode.get("applicantId").asText();
+                                }
+                                if (paymentOptionId == null && notesNode.has("paymentOptionId")) {
+                                    paymentOptionId = notesNode.get("paymentOptionId").asText();
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("Could not extract applicant info from Razorpay notes for orderId={}", orderId);
+                        }
+                    }
+
+                    // 4. Extract amount and transactionId from Razorpay payload
+                    try {
+                        amountPaid = paymentEntity.has("amount")
+                                ? paymentEntity.get("amount").asDouble() / 100.0 // paise → rupees
+                                : (paymentLog.getPaymentAmount() != null ? paymentLog.getPaymentAmount() : 0.0);
+                        transactionId = paymentEntity.has("id")
+                                ? paymentEntity.get("id").asText()
+                                : orderId;
+                    } catch (Exception e) {
+                        amountPaid = paymentLog.getPaymentAmount() != null ? paymentLog.getPaymentAmount() : 0.0;
+                        transactionId = orderId;
+                    }
+
+                    if (applicantId == null) {
+                        log.warn(
+                                "applicantId not found in paymentSpecificData for APPLICATION_FEE orderId: {} — skipping invoice",
+                                orderId);
+                        return;
+                    }
+
+                    // 5. Resolve recipient email and name from AudienceResponse & AuthService
+                    String recipientEmail = null;
+                    String recipientName = "Applicant";
+                    try {
+                        var arOpt = audienceResponseRepository.findByApplicantId(applicantId);
+                        if (arOpt.isPresent()) {
+                            var ar = arOpt.get();
+
+                            // Get best-effort fallback from AudienceResponse first
+                            recipientEmail = ar.getParentEmail();
+                            recipientName = ar.getParentName() != null ? ar.getParentName() : "Applicant";
+
+                            // Reliably override with real user profile from AuthService (just like offline
+                            // flow)
+                            if (ar.getUserId() != null) {
+                                try {
+                                    java.util.List<vacademy.io.common.auth.dto.UserDTO> parentUsers = authService
+                                            .getUsersFromAuthServiceByUserIds(java.util.List.of(ar.getUserId()));
+                                    if (parentUsers != null && !parentUsers.isEmpty()) {
+                                        vacademy.io.common.auth.dto.UserDTO realParent = parentUsers.get(0);
+                                        if (realParent.getEmail() != null && !realParent.getEmail().isBlank()) {
+                                            recipientEmail = realParent.getEmail();
+                                        }
+                                        if (realParent.getFullName() != null && !realParent.getFullName().isBlank()) {
+                                            recipientName = realParent.getFullName();
+                                        }
+                                    }
+                                } catch (Exception authEx) {
+                                    log.warn("API lookup for real parent account failed: {}", authEx.getMessage());
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("Could not load AudienceResponse for applicantId={}: {}", applicantId, e.getMessage());
+                    }
+
+                    // 6. Generate and email invoice PDF
+                    applicationFeeReceiptService.generateAndSendInvoice(
+                            applicantId,
+                            paymentOptionId != null ? paymentOptionId : "",
+                            paymentLog.getId(),
+                            instituteId,
+                            java.math.BigDecimal.valueOf(amountPaid),
+                            transactionId,
+                            "ONLINE",
+                            recipientEmail,
+                            recipientName);
+
+                    log.info("APPLICATION_FEE invoice generated and emailed for applicantId={}, orderId={}",
+                            applicantId, orderId);
+
+                } catch (Exception e) {
+                    log.error("Error in handleApplicationFeePayment for orderId={}: {}", orderId, e.getMessage(), e);
+                    SentryLogger.logError(e, "APPLICATION_FEE webhook processing error", java.util.Map.of(
+                            "order.id", orderId,
+                            "institute.id", instituteId));
+                }
+                break;
+            }
+            case "payment.failed": {
+                log.warn("APPLICATION_FEE payment failed for orderId: {}", orderId);
+                try {
+                    var logOpt = paymentLogRepository.findById(orderId);
+                    if (logOpt.isPresent()) {
+                        paymentLogService.updatePaymentLogOnly(
+                                logOpt.get().getId(),
+                                vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.FAILED
+                                        .name(),
+                                vacademy.io.common.payment.enums.PaymentStatusEnum.FAILED.name(),
+                                logOpt.get().getPaymentSpecificData());
+                    }
+                } catch (Exception e) {
+                    log.error("Could not mark APPLICATION_FEE payment as failed for orderId={}: {}", orderId,
+                            e.getMessage());
+                }
+                break;
+            }
+            default:
+                log.info("Unhandled APPLICATION_FEE event type: {}. Acknowledging.", eventType);
                 break;
         }
     }
@@ -296,7 +525,7 @@ public class RazorpayWebHookService {
 
     /**
      * Verifies Razorpay webhook signature using HMAC SHA256
-     * 
+     *
      * Razorpay signature format: hmac_sha256(webhook_secret, webhook_body)
      */
     private boolean verifySignature(String payload, String receivedSignature, String webhookSecret) {
@@ -433,7 +662,7 @@ public class RazorpayWebHookService {
 
     /**
      * Retrieves userId from payment_log table using order ID.
-     * 
+     *
      * @param orderId Payment log order ID
      * @return User ID or null if not found
      */
@@ -718,6 +947,118 @@ public class RazorpayWebHookService {
                     "order.id", orderId,
                     "invoice.url", invoiceUrl != null ? invoiceUrl : "unknown",
                     "operation", "storeInvoiceUrl"));
+        }
+    }
+
+    private String extractPaymentType(JsonNode paymentEntity) {
+        try {
+            JsonNode notesNode = paymentEntity.get("notes");
+            if (notesNode != null && notesNode.has("payment_type")) {
+                return notesNode.get("payment_type").asText();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to extract payment_type from payment entity", e);
+        }
+        return null;
+    }
+
+    private void handleRenewalPayment(String eventType, String orderId, String instituteId, JsonNode paymentEntity) {
+        try {
+            // Map Razorpay event to PaymentStatusEnum
+            PaymentStatusEnum paymentStatus = determinePaymentStatus(eventType);
+
+            if (paymentStatus == null) {
+                log.info("Event {} is not relevant for renewal payment status update. Skipping.", eventType);
+                return;
+            }
+
+            log.info("Processing renewal payment: orderId={}, status={}", orderId, paymentStatus);
+
+            renewalPaymentService.handleRenewalPaymentConfirmation(orderId, instituteId, paymentStatus, paymentEntity);
+
+        } catch (Exception e) {
+            log.error("Error processing renewal payment webhook", e);
+        }
+    }
+
+    private PaymentStatusEnum determinePaymentStatus(String eventType) {
+        switch (eventType) {
+            case "payment.captured":
+            case "order.paid":
+                return PaymentStatusEnum.PAID;
+            case "payment.failed":
+                return PaymentStatusEnum.FAILED;
+            case "payment.authorized":
+                return PaymentStatusEnum.PAYMENT_PENDING;
+            default:
+                return null;
+        }
+    }
+
+    private void handleSchoolPayment(String eventType, String orderId, String instituteId, JsonNode paymentEntity) {
+        log.info("Handling SCHOOL payment webhook event: {} for orderId: {}", eventType, orderId);
+
+        try {
+            Optional<PaymentLog> paymentLogOpt = paymentLogRepository.findById(orderId);
+            if (paymentLogOpt.isEmpty()) {
+                log.error("PaymentLog not found for orderId: {}", orderId);
+                return;
+            }
+            PaymentLog paymentLog = paymentLogOpt.get();
+
+            switch (eventType) {
+                case "order.paid":
+                case "payment.captured":
+                    log.info("School payment process for orderId: {}", orderId);
+
+                    extractAndSavePaymentMethod(orderId, instituteId, paymentEntity);
+                    generateAndStoreRazorpayInvoice(orderId, instituteId, paymentEntity);
+
+                    // 1. Update PaymentLog status ONLY (no regular post-payment logic)
+                    paymentLogService.updatePaymentLogOnly(orderId, PaymentLogStatusEnum.SUCCESS.name(),
+                            PaymentStatusEnum.PAID.name(), null);
+
+                    if (paymentLog.getUserPlan() != null) {
+                        String userPlanId = paymentLog.getUserPlan().getId();
+                        BigDecimal amount = paymentLog.getPaymentAmount() != null
+                                ? BigDecimal.valueOf(paymentLog.getPaymentAmount())
+                                : BigDecimal.ZERO;
+
+                        // 2. Allocate payment to fee bills
+                        feeLedgerAllocationService.allocatePayment(orderId, amount, userPlanId);
+
+                        // 3. Update UserPlan status to ACTIVE (Batch status handled as well if needed,
+                        // but normally just activating plan is enough or we rely on the normal flow.
+                        // Since plan is active, learner can access.)
+                        userPlanService.updateUserPlanStatuses(java.util.List.of(userPlanId),
+                                UserPlanStatusEnum.ACTIVE.name());
+
+                        // 4. Generate and send School Receipt
+                        String paymentId = paymentEntity.has("id") ? paymentEntity.get("id").asText() : null;
+                        schoolFeeReceiptService.generateAndSendReceipt(paymentLog.getUserId(), userPlanId, orderId,
+                                instituteId, amount, paymentId, "ONLINE");
+                    }
+                    break;
+
+                case "payment.failed":
+                    log.warn("School payment failed for orderId: {}", orderId);
+
+                    paymentLogService.updatePaymentLogOnly(orderId, PaymentLogStatusEnum.FAILED.name(),
+                            PaymentStatusEnum.FAILED.name(), null);
+
+                    if (paymentLog.getUserPlan() != null) {
+                        String userPlanId = paymentLog.getUserPlan().getId();
+
+                        // 1. Update UserPlan back to PAYMENT_FAILED
+                        userPlanService.updateUserPlanStatuses(java.util.List.of(userPlanId),
+                                UserPlanStatusEnum.PAYMENT_FAILED.name());
+                        // Note: Batch status should ideally be updated to PAYMENT_FAILED, but updating
+                        // the plan status explicitly handles the main restriction.
+                    }
+                    break;
+            }
+        } catch (Exception e) {
+            log.error("Error processing school payment webhook for orderId: {}", orderId, e);
         }
     }
 }

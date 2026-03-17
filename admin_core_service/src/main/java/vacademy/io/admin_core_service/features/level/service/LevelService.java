@@ -92,7 +92,10 @@ public class LevelService {
         if (addLevelWithCourseDTO.getGroup() != null) {
             group = groupService.addGroup(addLevelWithCourseDTO.getGroup());
         }
-        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(),group, getStartDatePackageSessionDate(packageId, sessionId),instituteId,user,addLevelWithCourseDTO.getAddFacultyToCourse());
+        packageSessionService.createPackageSession(level, optionalSession.get(), optionalPackageEntity.get(), group,
+                getStartDatePackageSessionDate(packageId, sessionId), instituteId, user,
+                addLevelWithCourseDTO.getAddFacultyToCourse(), null,
+                addLevelWithCourseDTO.getIsParent(), addLevelWithCourseDTO.getParentId());
         return level.getId();
     }
 
@@ -144,9 +147,11 @@ public class LevelService {
 
     public void addOrUpdateLevel(AddLevelWithSessionDTO addLevelWithSessionDTO,Session session,PackageEntity packageEntity,String instituteId,CustomUserDetails user){
         Level level = createOrAddLevel(addLevelWithSessionDTO.getId(), addLevelWithSessionDTO.getNewLevel(), addLevelWithSessionDTO.getLevelName(), addLevelWithSessionDTO.getDurationInDays(), addLevelWithSessionDTO.getThumbnailFileId(),instituteId);
-        if (addLevelWithSessionDTO.isNewPackageSession()){
-            packageSessionService.createPackageSession(level,session,packageEntity,null,session.getStartDate(),instituteId,user,addLevelWithSessionDTO.getAddFacultyToCourse());
-        }else{
+        if (addLevelWithSessionDTO.isNewPackageSession()) {
+            packageSessionService.createPackageSession(level, session, packageEntity, null, session.getStartDate(),
+                    instituteId, user, addLevelWithSessionDTO.getAddFacultyToCourse(), null,
+                    addLevelWithSessionDTO.getIsParent(), addLevelWithSessionDTO.getParentId());
+        } else {
             packageSessionService.updatePackageSession(addLevelWithSessionDTO.getPackageSessionId(),addLevelWithSessionDTO.getPackageSessionStatus(),instituteId,addLevelWithSessionDTO.getAddFacultyToCourse());
         }
     }

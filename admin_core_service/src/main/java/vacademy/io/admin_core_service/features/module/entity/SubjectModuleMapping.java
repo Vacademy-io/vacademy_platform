@@ -44,4 +44,10 @@ public class SubjectModuleMapping {
         this.subject = subject;
         this.module = module;
     }
+
+    public SubjectModuleMapping(Subject subject, Module module, Integer moduleOrder) {
+        this.subject = subject;
+        this.module = module;
+        this.moduleOrder = moduleOrder;
+    }
 }

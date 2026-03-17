@@ -8,14 +8,15 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.workflow.entity.Workflow;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowSchedule;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowType;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionRepository;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowRepository;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowScheduleRepository;
+import vacademy.io.admin_core_service.features.workflow.repository.WorkflowTriggerRepository;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -27,14 +28,13 @@ public class IdempotencyService {
     private final WorkflowExecutionRepository workflowExecutionRepository;
     private final WorkflowRepository workflowRepository;
     private final WorkflowScheduleRepository workflowScheduleRepository;
-
-    private static final long PROCESSING_TIMEOUT_MINUTES = 30;
+    private final WorkflowTriggerRepository workflowTriggerRepository;
 
     @Transactional
     public WorkflowExecution markAsProcessing(String idempotencyKey, String workflowId, String scheduleId) {
         try {
             Workflow workflow = workflowRepository.findById(workflowId)
-                .orElseThrow(() -> new RuntimeException("Workflow not found: " + workflowId));
+                    .orElseThrow(() -> new RuntimeException("Workflow not found: " + workflowId));
 
             WorkflowSchedule schedule = null;
             if (scheduleId != null && !scheduleId.isBlank()) {
@@ -42,15 +42,58 @@ public class IdempotencyService {
             }
 
             WorkflowExecution execution = WorkflowExecution.builder()
-                .idempotencyKey(idempotencyKey)
-                .workflow(workflow)
-                .workflowSchedule(schedule)
-                .status(WorkflowExecutionStatus.PROCESSING)
-                .startedAt(Instant.now())
-                .build();
+                    .idempotencyKey(idempotencyKey)
+                    .workflow(workflow)
+                    .workflowSchedule(schedule)
+                    .workflowType(WorkflowType.SCHEDULED)
+                    .status(WorkflowExecutionStatus.PROCESSING)
+                    .startedAt(Instant.now())
+                    .build();
 
             WorkflowExecution saved = workflowExecutionRepository.save(execution);
-            log.debug("Created new execution record with status PROCESSING: {}", idempotencyKey);
+            log.debug("Created new SCHEDULED execution record with status PROCESSING: {}", idempotencyKey);
+            return saved;
+
+        } catch (DataIntegrityViolationException e) {
+            // Let DB enforce idempotency constraint and fail fast
+            log.error("Duplicate idempotency key detected (DB constraint violation): {}", idempotencyKey, e);
+            throw e; // rethrow as-is (so transaction rolls back)
+        }
+    }
+
+    /**
+     * Mark a trigger-based workflow execution as processing.
+     * Creates a WorkflowExecution record with type EVENT_DRIVEN.
+     *
+     * @param idempotencyKey Unique key for deduplication
+     * @param workflowId     ID of the workflow to execute
+     * @param triggerId      ID of the workflow trigger
+     * @return Created WorkflowExecution entity
+     * @throws DataIntegrityViolationException if duplicate idempotency key exists
+     */
+    @Transactional
+    public WorkflowExecution markAsProcessingForTrigger(String idempotencyKey, String workflowId, String triggerId) {
+        try {
+            Workflow workflow = workflowRepository.findById(workflowId)
+                    .orElseThrow(() -> new RuntimeException("Workflow not found: " + workflowId));
+
+            WorkflowTrigger trigger = null;
+            if (triggerId != null && !triggerId.isBlank()) {
+                trigger = workflowTriggerRepository.findById(triggerId)
+                        .orElseThrow(() -> new RuntimeException("Workflow trigger not found: " + triggerId));
+            }
+
+            WorkflowExecution execution = WorkflowExecution.builder()
+                    .idempotencyKey(idempotencyKey)
+                    .workflow(workflow)
+                    .workflowTrigger(trigger)
+                    .workflowType(WorkflowType.EVENT_DRIVEN)
+                    .status(WorkflowExecutionStatus.PROCESSING)
+                    .startedAt(Instant.now())
+                    .build();
+
+            WorkflowExecution saved = workflowExecutionRepository.save(execution);
+            log.debug("Created new EVENT_DRIVEN execution record with status PROCESSING: {}", idempotencyKey);
             return saved;
 
         } catch (DataIntegrityViolationException e) {
@@ -89,7 +132,7 @@ public class IdempotencyService {
         }
 
         WorkflowExecution execution = executionOpt.get();
-        if (execution.getStatus().equals(WorkflowExecutionStatus.COMPLETED.name())){
+        if (execution.getStatus().equals(WorkflowExecutionStatus.COMPLETED.name())) {
             return execution;
         }
         execution.setStatus(WorkflowExecutionStatus.FAILED);
@@ -113,15 +156,13 @@ public class IdempotencyService {
         log.debug("Cleared idempotency key: {}", idempotencyKey);
     }
 
-
     @Transactional(readOnly = true)
     public Map<String, Long> getStatistics() {
         return Map.of(
-            "total_entries", workflowExecutionRepository.count(),
-            "processing_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.PROCESSING),
-            "completed_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.COMPLETED),
-            "failed_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.FAILED),
-            "pending_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.PENDING)
-        );
+                "total_entries", workflowExecutionRepository.count(),
+                "processing_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.PROCESSING),
+                "completed_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.COMPLETED),
+                "failed_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.FAILED),
+                "pending_count", workflowExecutionRepository.countByStatus(WorkflowExecutionStatus.PENDING));
     }
 }

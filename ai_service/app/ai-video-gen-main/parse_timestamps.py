@@ -3,6 +3,7 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
@@ -14,9 +15,18 @@ if LOCAL_DEPS_DIR.exists() and str(LOCAL_DEPS_DIR) not in sys.path:
 PHONE_TOKEN_RE = re.compile(r"^[A-Z]{1,3}\d?$")
 SILENCE_PHONE = "sil"
 
+# Unicode categories that are part of a word (letters, marks, numbers)
+_WORD_CATEGORIES = frozenset({
+    "Lu", "Ll", "Lt", "Lm", "Lo",  # Letters
+    "Mn", "Mc", "Me",               # Combining marks (virama, matras, anusvara, etc.)
+    "Nd", "Nl", "No",               # Numbers
+})
+
 
 def is_word_char(ch: str) -> bool:
-    return ch.isalnum() or ch in {"'", "-"}
+    if ch in {"'", "-", "\u200d"}:   # ASCII apostrophe, hyphen, ZWJ
+        return True
+    return unicodedata.category(ch) in _WORD_CATEGORIES
 
 
 def words_from_alignment(characters, starts: Sequence[float], ends: Sequence[float]) -> List[Dict[str, Any]]:
@@ -132,22 +142,39 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 
 def load_alignment_payload(path: Path) -> Dict[str, Any]:
+    """
+    Load alignment data from JSON file. Supports two formats:
+    1. Character-level (Edge TTS): {"alignment": {"characters": [...], "character_start_times_seconds": [...]}}
+    2. Word-level (Whisper/Google TTS): [{"word": "...", "start": 0.0, "end": 0.5}, ...]
+    """
     data = json.loads(path.read_text())
-    if "alignment" not in data or not isinstance(data["alignment"], dict):
-        raise ValueError("Input JSON missing 'alignment' object")
-    alignment = data["alignment"]
-    characters = alignment.get("characters")
-    starts = alignment.get("character_start_times_seconds")
-    ends = alignment.get("character_end_times_seconds")
+    
+    # Check if it's already word-level format (array of word objects)
+    if isinstance(data, list):
+        # Validate it's word-level format
+        if data and isinstance(data[0], dict) and "word" in data[0] and "start" in data[0]:
+            return {"format": "word_level", "words": data}
+        else:
+            raise ValueError("Input JSON is an array but doesn't contain word objects with 'word', 'start', 'end' keys")
+    
+    # Check for character-level format
+    if "alignment" in data and isinstance(data["alignment"], dict):
+        alignment = data["alignment"]
+        characters = alignment.get("characters")
+        starts = alignment.get("character_start_times_seconds")
+        ends = alignment.get("character_end_times_seconds")
 
-    if characters is None or starts is None or ends is None:
-        raise ValueError("Alignment missing one of: characters, character_start_times_seconds, character_end_times_seconds")
+        if characters is None or starts is None or ends is None:
+            raise ValueError("Alignment missing one of: characters, character_start_times_seconds, character_end_times_seconds")
 
-    return {
-        "characters": characters,
-        "starts": starts,
-        "ends": ends,
-    }
+        return {
+            "format": "character_level",
+            "characters": characters,
+            "starts": starts,
+            "ends": ends,
+        }
+    
+    raise ValueError("Input JSON must be either character-level alignment or word-level word list")
 
 
 def main(argv: Sequence[str] = None) -> None:
@@ -173,7 +200,15 @@ def main(argv: Sequence[str] = None) -> None:
         print(exc)
         sys.exit(1)
 
-    words = words_from_alignment(payload["characters"], payload["starts"], payload["ends"])
+    # Handle both character-level and word-level formats
+    if payload.get("format") == "word_level":
+        # Already word-level, just use directly
+        words = payload["words"]
+        print(f"Loaded {len(words)} words from word-level format (Whisper/Google TTS)")
+    else:
+        # Character-level format, convert to words
+        words = words_from_alignment(payload["characters"], payload["starts"], payload["ends"])
+        print(f"Parsed {len(words)} words from character-level format (Edge TTS)")
 
     if args.with_phones:
         try:

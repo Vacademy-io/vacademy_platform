@@ -7,10 +7,26 @@ import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLo
 
 import java.util.Optional;
 
-
 public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs, String> {
 
     @Query("SELECT l FROM LiveSessionLogs l WHERE l.scheduleId = :scheduleId AND l.userSourceId = :userSourceId AND l.logType = 'ATTENDANCE_RECORDED'")
-    Optional<LiveSessionLogs> findExistingAttendanceRecord(@Param("scheduleId") String scheduleId, @Param("userSourceId") String userSourceId);
+    Optional<LiveSessionLogs> findExistingAttendanceRecord(@Param("scheduleId") String scheduleId,
+            @Param("userSourceId") String userSourceId);
+
+    /**
+     * Used by the provider sync scheduler to upsert provider-sourced attendance.
+     * Looks up by schedule + attendee email (stored in userSourceId for
+     * PROVIDER_EMAIL records).
+     */
+    @Query("""
+                SELECT l FROM LiveSessionLogs l
+                WHERE l.scheduleId = :scheduleId
+                  AND l.userSourceId = :email
+                  AND l.userSourceType = 'PROVIDER_EMAIL'
+                  AND l.logType = 'ATTENDANCE_RECORDED'
+            """)
+    Optional<LiveSessionLogs> findExistingProviderAttendanceRecord(
+            @Param("scheduleId") String scheduleId,
+            @Param("email") String email);
 
 }

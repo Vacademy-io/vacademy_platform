@@ -9,13 +9,18 @@ import lombok.Data;
 public class SlideCountProjection {
 
     private Long videoCount;
+    private Long htmlVideoCount;
+    private Long scormCount;
     private Long pdfCount;
     private Long docCount;
     private Long unknownCount;
 
     // Constructor to match the aggregation fields
-    public SlideCountProjection(Long videoCount, Long pdfCount, Long docCount, Long unknownCount) {
+    public SlideCountProjection(Long videoCount, Long htmlVideoCount, Long scormCount, Long pdfCount, Long docCount,
+            Long unknownCount) {
         this.videoCount = videoCount;
+        this.htmlVideoCount = htmlVideoCount;
+        this.scormCount = scormCount;
         this.pdfCount = pdfCount;
         this.docCount = docCount;
         this.unknownCount = unknownCount;

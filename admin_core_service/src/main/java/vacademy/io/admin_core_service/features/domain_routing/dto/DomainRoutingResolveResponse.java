@@ -29,6 +29,7 @@ public class DomainRoutingResolveResponse {
     private Boolean allowGoogleAuth;
     private Boolean allowGithubAuth;
     private Boolean allowEmailOtpAuth;
+    private Boolean allowPhoneAuth;
     private Boolean allowUsernamePasswordAuth;
     private String playStoreAppLink;
     private String appStoreAppLink;
@@ -36,4 +37,5 @@ public class DomainRoutingResolveResponse {
     private String macAppLink;
     private String learnerPortalUrl;
     private String instructorPortalUrl;
+    private boolean convertUsernamePasswordToLowercase;
 }

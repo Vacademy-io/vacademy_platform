@@ -7,7 +7,8 @@ public enum NotificationSourceType {
     INSTITUTE("institute"),
     COURSE("course"),
     SESSION("session"),
-    AUDIENCE("audience");
+    AUDIENCE("audience"),
+    APPLICATION_STAGE("application_stage");
 
     private final String value;
 
@@ -24,5 +25,3 @@ public enum NotificationSourceType {
         return value;
     }
 }
-
-

@@ -14,7 +14,10 @@ public class LearnerSlideService {
     @Autowired
     private SlideRepository slideRepository;
 
-    public List<SlideDetailWithOperationProjection> getLearnerSlides(String userId, String chapterId, CustomUserDetails user) {
-        return slideRepository.findSlideDetailsWithOperationByChapterId(userId, chapterId, List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()));
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<SlideDetailWithOperationProjection> getLearnerSlides(String userId, String chapterId,
+            CustomUserDetails user) {
+        return slideRepository.findSlideDetailsWithOperationByChapterId(userId, chapterId,
+                List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()));
     }
 }

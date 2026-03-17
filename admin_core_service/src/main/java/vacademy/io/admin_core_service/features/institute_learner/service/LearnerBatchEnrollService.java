@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtr
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
@@ -96,9 +97,21 @@ public class LearnerBatchEnrollService {
         Student student = studentRegistrationManager.createStudentFromRequest(createdUser,
                 mapToStudentExtraDetails(learnerExtraDetails));
 
-        // Get SubOrg from UserPlan if it exists (created earlier for single package
-        // session with isOrgAssociated)
+        if (userPlan != null) {
+            boolean isPending = vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum.PENDING
+                    .name().equals(userPlan.getStatus());
+            boolean isFutureDated = userPlan.getStartDate() != null
+                    && userPlan.getStartDate().after(new java.util.Date());
+
+            if (isPending || isFutureDated) {
+                log.info("UserPlan is Stacked (Status: {}, StartDate: {}). Skipping batch enrollment for user: {}",
+                        userPlan.getStatus(), userPlan.getStartDate(), userDTO.getId());
+                return createdUser;
+            }
+        }
+
         Institute existingSubOrg = null;
+
         if (userPlan != null && StringUtils.hasText(userPlan.getSubOrgId())) {
             Optional<Institute> subOrgOpt = instituteRepository.findById(userPlan.getSubOrgId());
             if (subOrgOpt.isPresent()) {
@@ -117,8 +130,8 @@ public class LearnerBatchEnrollService {
             } else {
                 packageSession = packageSessionRepository.findById(instituteStudentDetail.getPackageSessionId()).get();
             }
+            Institute suborg = null;
             if (packageSession.getIsOrgAssociated()) {
-                Institute suborg;
                 // If we have an existing SubOrg from UserPlan, use it; otherwise create/get one
                 if (existingSubOrg != null) {
                     suborg = existingSubOrg;
@@ -138,7 +151,7 @@ public class LearnerBatchEnrollService {
                     instituteStudentDetail);
             if (instituteStudentDetail.getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())) {
                 studentRegistrationManager.triggerEnrollmentWorkflow(instituteId, userDTO,
-                        instituteStudentDetail.getPackageSessionId());
+                        instituteStudentDetail.getPackageSessionId(), suborg);
             }
             customFieldValueService.addCustomFieldValue(customFieldValues,
                     CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(), studentSessionId);
@@ -175,9 +188,31 @@ public class LearnerBatchEnrollService {
 
     private void shiftLearnerToActiveStatus(List<String> packageSessionIds, String userId, String enrollInviteId,
             LearnerStatusEnum fromStatus) {
+        // First, find entries with the specified status (INVITED or PENDING_FOR_APPROVAL)
         List<StudentSessionInstituteGroupMapping> invitedMappings = studentSessionRepository
                 .findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
                         packageSessionIds, userId, List.of(fromStatus.name()));
+
+        // Also find ABANDONED_CART entries (status=ACTIVE, type=ABANDONED_CART) for paid enrollments
+        // These are created during form submission step and need to be shifted after payment
+        if (fromStatus == LearnerStatusEnum.INVITED) {
+            List<StudentSessionInstituteGroupMapping> abandonedCartMappings = studentSessionRepository
+                    .findByDestinationPackageSession_IdInAndUserIdAndStatusIn(
+                            packageSessionIds, userId, List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+            
+            // Filter to only include ABANDONED_CART type entries
+            List<StudentSessionInstituteGroupMapping> filteredAbandonedCart = abandonedCartMappings.stream()
+                    .filter(m -> LearnerSessionTypeEnum.ABANDONED_CART.name().equals(m.getType()))
+                    .toList();
+            
+            // Combine both lists, avoiding duplicates
+            if (!filteredAbandonedCart.isEmpty()) {
+                List<StudentSessionInstituteGroupMapping> combined = new java.util.ArrayList<>(invitedMappings);
+                combined.addAll(filteredAbandonedCart);
+                invitedMappings = combined;
+                log.info("Found {} ABANDONED_CART entries to shift for user: {}", filteredAbandonedCart.size(), userId);
+            }
+        }
 
         UserDTO userDTO = authService.getUsersFromAuthServiceWithPasswordByUserId(userId);
 
@@ -187,7 +222,7 @@ public class LearnerBatchEnrollService {
                         mapping,
                         LearnerStatusEnum.ACTIVE.name());
                 studentRegistrationManager.triggerEnrollmentWorkflow(mapping.getInstitute().getId(), userDTO,
-                        mapping.getDestinationPackageSession().getId());
+                        mapping.getDestinationPackageSession().getId(), mapping.getSubOrg());
                 customFieldValueService.shiftCustomField(
                         CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
                         mapping.getId(),
@@ -213,7 +248,7 @@ public class LearnerBatchEnrollService {
 
     /**
      * Process bulk learner approval requests
-     * 
+     *
      * @param request The bulk approval request containing multiple items
      * @return A result object with success count and total count
      */

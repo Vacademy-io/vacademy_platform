@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.GetSessionByIdRe
 import vacademy.io.admin_core_service.features.live_session.dto.GetSessionDetailsBySessionIdResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.NotificationQueryDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.ScheduleDTO;
+import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
 import vacademy.io.admin_core_service.features.live_session.repository.*;
 
@@ -17,6 +18,7 @@ import java.time.Duration;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +36,8 @@ public class GetSessionByIdService {
     private final LiveSessionParticipantRepository liveSessionParticipantRepository;
     @Autowired
     private final CustomFieldRepository customFieldRepository;
+    @Autowired
+    private final LiveSessionRepository liveSessionRepository;
 
     @Data
     public static class SessionDetailsResponse {
@@ -50,6 +54,7 @@ public class GetSessionByIdService {
         response.setNotifications(notifications);
         return response;
     }
+
     public GetSessionByIdResponseDTO getScheduleDetails(String sessionId) {
         List<ScheduleDTO> schedules = scheduleRepository.findSchedulesBySessionId(sessionId);
         List<LiveSessionParticipants> participants = liveSessionParticipantRepository.findBySessionId(sessionId);
@@ -74,8 +79,12 @@ public class GetSessionByIdService {
                 item.setStartTime(schedule.getScheduleStartTime().toString());
                 item.setDuration(String.valueOf(durationMinutes)); // or durationMinutes if preferred
                 item.setLink(schedule.getCustomMeetingLink());
+                item.setDefaultClassLink(schedule.getDefaultClassLink());
+                item.setDefaultClassName(schedule.getDefaultClassName());
                 item.setMeetingDate(schedule.getMeetingDate());
                 item.setTimezone(schedule.getTimezone());
+                item.setDailyAttendance(schedule.getDailyAttendance());
+                item.setProviderRecordingsJson(schedule.getProviderRecordingsJson());
                 addedSchedules.add(item);
             }
         }
@@ -98,7 +107,20 @@ public class GetSessionByIdService {
             dto.setDefaultMeetLink(first.getDefaultMeetLink());
             dto.setStartTime(first.getSessionStartTime());
             dto.setLastEntryTime(first.getLastEntryTime());
+            dto.setDefaultClassLink(first.getDefaultClassLink());
+            dto.setDefaultClassName(first.getDefaultClassName());
+            dto.setDefaultClassLinkType(first.getDefaultClassLinkType());
             dto.setLinkType(first.getLinkType());
+
+            if (first.getLearnerButtonConfig() != null) {
+                try {
+                    dto.setLearnerButtonConfig(new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                            first.getLearnerButtonConfig(), GetSessionByIdResponseDTO.LearnerButtonConfigDTO.class));
+                } catch (Exception e) {
+                    System.err.println("Error deserializing LearnerButtonConfig: " + e.getMessage());
+                }
+            }
+
             dto.setJoinLink(first.getRegistrationFormLinkForPublicSessions());
             dto.setRecurrenceType(first.getRecurrenceType());
             dto.setAccessType(first.getAccessLevel());
@@ -119,21 +141,38 @@ public class GetSessionByIdService {
         dto.setAddedSchedules(addedSchedules);
         dto.setPackageSessionIds(packageSessionIds);
 
+        // Load BBB config from LiveSession entity if available
+        if (first != null && first.getSessionId() != null) {
+            liveSessionRepository.findById(first.getSessionId()).ifPresent(liveSession -> {
+                if (liveSession.getBbbConfigJson() != null && !liveSession.getBbbConfigJson().isBlank()) {
+                    try {
+                        Map<String, Object> bbbCfg = new com.fasterxml.jackson.databind.ObjectMapper()
+                                .readValue(liveSession.getBbbConfigJson(),
+                                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                                        });
+                        dto.setBbbConfig(bbbCfg);
+                    } catch (Exception e) {
+                        System.err.println("Error deserializing bbbConfigJson: " + e.getMessage());
+                    }
+                }
+            });
+        }
+
         return dto;
     }
-
 
     public GetSessionByIdResponseDTO.NotificationConfigResponse getNotificationDetails(String sessionId) {
 
         List<NotificationQueryDTO> notifications = notificationRepository.findNotificationsBySessionId(sessionId);
-        List<CustomFieldRepository.FlatFieldProjection> flatList =
-                customFieldRepository.getSessionCustomFieldsBySessionId(sessionId);
+        List<CustomFieldRepository.FlatFieldProjection> flatList = customFieldRepository
+                .getSessionCustomFieldsBySessionId(sessionId);
         List<GetSessionByIdResponseDTO.NotificationAction> addedNotificationActions = new ArrayList<>();
 
         for (NotificationQueryDTO n : notifications) {
             GetSessionByIdResponseDTO.NotifyBy notifyBy = new GetSessionByIdResponseDTO.NotifyBy();
             notifyBy.setMail("EMAIL".equalsIgnoreCase(n.getChannel()) || "BOTH".equalsIgnoreCase(n.getChannel()));
-            notifyBy.setWhatsapp("WHATSAPP".equalsIgnoreCase(n.getChannel()) || "BOTH".equalsIgnoreCase(n.getChannel()));
+            notifyBy.setWhatsapp(
+                    "WHATSAPP".equalsIgnoreCase(n.getChannel()) || "BOTH".equalsIgnoreCase(n.getChannel()));
 
             GetSessionByIdResponseDTO.NotificationAction action = new GetSessionByIdResponseDTO.NotificationAction();
             action.setId(n.getNotificationId());
@@ -147,7 +186,7 @@ public class GetSessionByIdService {
 
         List<GetSessionByIdResponseDTO.Field> fields = new ArrayList<>();
 
-        for(CustomFieldRepository.FlatFieldProjection item : flatList){
+        for (CustomFieldRepository.FlatFieldProjection item : flatList) {
             GetSessionByIdResponseDTO.Field field = new GetSessionByIdResponseDTO.Field();
             field.setId(item.getCustomFieldId());
             field.setLabel(item.getFieldName());
@@ -176,6 +215,9 @@ public class GetSessionByIdService {
                         .linkType(p.getLinkType())
                         .sessionStreamingServiceType(p.getSessionStreamingServiceType())
                         .defaultMeetLink(p.getDefaultMeetLink())
+                        .defaultClassLink(p.getDefaultClassLink())
+                        .defaultClassLinkType(p.getDefaultClassLinkType())
+                        .learnerButtonConfig(deserializeLearnerButtonConfig(p.getLearnerButtonConfig()))
                         .waitingRoomLink(p.getWaitingRoomLink())
                         .waitingRoomTime(p.getWaitingRoomTime())
                         .registrationFormLinkForPublicSessions(p.getRegistrationFormLinkForPublicSessions())
@@ -186,9 +228,9 @@ public class GetSessionByIdService {
                         .attendanceEmailMessage(p.getAttendanceEmailMessage())
                         .coverFileId(p.getCoverFileId())
                         .subject(p.getSubject())
-                        .thumbnailFileId(p.getThumbnailFileId())                  // session-level
+                        .thumbnailFileId(p.getThumbnailFileId()) // session-level
                         .scheduleThumbnailFileId(p.getScheduleThumbnailFileId()) // schedule-level
-                        .allowPlayPause(p.getAllowPlayPause())                  // session-level
+                        .allowPlayPause(p.getAllowPlayPause()) // session-level
                         .backgroundScoreFileId(p.getBackgroundScoreFileId())
                         .status(p.getStatus())
                         .recurrenceType(p.getRecurrenceType())
@@ -200,6 +242,8 @@ public class GetSessionByIdService {
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
                         .allowRewind(p.getAllowRewind())
                         .timezone(p.getTimezone())
+                        .providerHostUrl(p.getProviderHostUrl())
+                        .providerMeetingId(p.getProviderMeetingId())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }
@@ -218,6 +262,9 @@ public class GetSessionByIdService {
                         .linkType(p.getLinkType())
                         .sessionStreamingServiceType(p.getSessionStreamingServiceType())
                         .defaultMeetLink(p.getDefaultMeetLink())
+                        .defaultClassLink(p.getDefaultClassLink())
+                        .defaultClassLinkType(p.getDefaultClassLinkType())
+                        .learnerButtonConfig(deserializeLearnerButtonConfig(p.getLearnerButtonConfig()))
                         .waitingRoomLink(p.getWaitingRoomLink())
                         .waitingRoomTime(p.getWaitingRoomTime())
                         .registrationFormLinkForPublicSessions(p.getRegistrationFormLinkForPublicSessions())
@@ -228,9 +275,9 @@ public class GetSessionByIdService {
                         .attendanceEmailMessage(p.getAttendanceEmailMessage())
                         .coverFileId(p.getCoverFileId())
                         .subject(p.getSubject())
-                        .thumbnailFileId(p.getThumbnailFileId())                  // session-level
+                        .thumbnailFileId(p.getThumbnailFileId()) // session-level
                         .scheduleThumbnailFileId(p.getScheduleThumbnailFileId()) // schedule-level
-                        .allowPlayPause(p.getAllowPlayPause())                  // session-level
+                        .allowPlayPause(p.getAllowPlayPause()) // session-level
                         .backgroundScoreFileId(p.getBackgroundScoreFileId())
                         .status(p.getStatus())
                         .recurrenceType(p.getRecurrenceType())
@@ -242,11 +289,25 @@ public class GetSessionByIdService {
                         .customWaitingRoomMediaId(p.getCustomWaitingRoomMediaId())
                         .allowRewind(p.getAllowRewind())
                         .timezone(p.getTimezone())
+                        .providerHostUrl(p.getProviderHostUrl())
+                        .providerMeetingId(p.getProviderMeetingId())
                         .build())
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found"));
     }
 
-    public String findEarliestSchedule(String sessionId){
+    public String findEarliestSchedule(String sessionId) {
         return scheduleRepository.findEarliestScheduleIdBySessionId(sessionId);
+    }
+
+    private GetSessionByIdResponseDTO.LearnerButtonConfigDTO deserializeLearnerButtonConfig(String json) {
+        if (json == null)
+            return null;
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json,
+                    GetSessionByIdResponseDTO.LearnerButtonConfigDTO.class);
+        } catch (Exception e) {
+            System.err.println("Error deserializing LearnerButtonConfig: " + e.getMessage());
+            return null;
+        }
     }
 }

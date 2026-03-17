@@ -19,6 +19,9 @@ public class CouponCodeController {
     @Autowired
     private CouponCodeService couponCodeService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.shortlink.service.ShortUrlManagementService shortUrlManagementService;
+
     /**
      * Get coupon codes by source ID and source type
      * @param sourceId The source ID to search for
@@ -28,11 +31,18 @@ public class CouponCodeController {
     @GetMapping("/by-source")
     public ResponseEntity<List<CouponCodeResponseDTO>> getCouponCodesBySource(
             @RequestParam String sourceId,
-            @RequestParam String sourceType) {
-        
+            @RequestParam String sourceType,
+            @RequestHeader(value = "x-institute-id", required = false) String instituteId) {
+
         List<CouponCode> couponCodes = couponCodeService.getCouponCodesBySource(sourceId, sourceType);
         List<CouponCodeResponseDTO> responseDTOs = couponCodes.stream()
-                .map(CouponCodeResponseDTO::fromEntity)
+                .map(c -> {
+                    String shortCode = couponCodeService.getOrGenerateShortUrl(c, instituteId);
+                    CouponCodeResponseDTO dto = CouponCodeResponseDTO.fromEntity(c);
+                    dto.setShortReferralLink(
+                            shortUrlManagementService.getAbsoluteShortUrl(instituteId, shortCode));
+                    return dto;
+                })
                 .collect(Collectors.toList());
         
         return ResponseEntity.ok(responseDTOs);
@@ -45,11 +55,18 @@ public class CouponCodeController {
      * @return The matching coupon code
      */
     @GetMapping("/by-code")
-    public ResponseEntity<CouponCodeResponseDTO> getCouponCodeByCode(@RequestParam String code) {
+    public ResponseEntity<CouponCodeResponseDTO> getCouponCodeByCode(
+            @RequestParam String code,
+            @RequestHeader(value = "x-institute-id", required = false) String instituteId) {
         Optional<CouponCode> couponCode = couponCodeService.getCouponCodeByCode(code);
         
         if (couponCode.isPresent()) {
-            return ResponseEntity.ok(CouponCodeResponseDTO.fromEntity(couponCode.get()));
+            CouponCode c = couponCode.get();
+            String shortCode = couponCodeService.getOrGenerateShortUrl(c, instituteId);
+            CouponCodeResponseDTO dto = CouponCodeResponseDTO.fromEntity(c);
+            dto.setShortReferralLink(
+                    shortUrlManagementService.getAbsoluteShortUrl(instituteId, shortCode));
+            return ResponseEntity.ok(dto);
         } else {
             return ResponseEntity.notFound().build();
         }
@@ -62,11 +79,18 @@ public class CouponCodeController {
      * @return The coupon code for the user
      */
     @GetMapping("/by-source-id")
-    public ResponseEntity<CouponCodeResponseDTO> getCouponCodeBySourceId(@RequestParam String sourceId) {
+    public ResponseEntity<CouponCodeResponseDTO> getCouponCodeBySourceId(
+            @RequestParam String sourceId,
+            @RequestHeader(value = "x-institute-id", required = false) String instituteId) {
         Optional<CouponCode> couponCode = couponCodeService.getCouponCodeBySource(sourceId, CouponSourceType.USER);
-        
+
         if (couponCode.isPresent()) {
-            return ResponseEntity.ok(CouponCodeResponseDTO.fromEntity(couponCode.get()));
+            CouponCode c = couponCode.get();
+            String shortCode = couponCodeService.getOrGenerateShortUrl(c, instituteId);
+            CouponCodeResponseDTO dto = CouponCodeResponseDTO.fromEntity(c);
+            dto.setShortReferralLink(
+                    shortUrlManagementService.getAbsoluteShortUrl(instituteId, shortCode));
+            return ResponseEntity.ok(dto);
         } else {
             return ResponseEntity.notFound().build();
         }
@@ -81,13 +105,18 @@ public class CouponCodeController {
     @PutMapping("/update-status")
     public ResponseEntity<CouponCodeResponseDTO> updateCouponCodeStatus(
             @RequestParam String code,
-            @RequestParam String status) {
-        
+            @RequestParam String status,
+            @RequestHeader(value = "x-institute-id", required = false) String instituteId) {
+
         Optional<CouponCode> couponCodeOpt = couponCodeService.getCouponCodeByCode(code);
         
         if (couponCodeOpt.isPresent()) {
             CouponCode updatedCouponCode = couponCodeService.updateCouponCodeStatus(couponCodeOpt.get(), status);
-            return ResponseEntity.ok(CouponCodeResponseDTO.fromEntity(updatedCouponCode));
+            String shortCode = couponCodeService.getOrGenerateShortUrl(updatedCouponCode, instituteId);
+            CouponCodeResponseDTO dto = CouponCodeResponseDTO.fromEntity(updatedCouponCode);
+            dto.setShortReferralLink(
+                    shortUrlManagementService.getAbsoluteShortUrl(instituteId, shortCode));
+            return ResponseEntity.ok(dto);
         } else {
             return ResponseEntity.notFound().build();
         }

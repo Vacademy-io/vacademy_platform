@@ -5,12 +5,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.AudienceDTO;
 import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadRequestDTO;
+import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadWithEnquiryRequestDTO;
+import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadWithEnquiryResponseDTO;
+import vacademy.io.admin_core_service.features.audience.dto.UpdateLeadWithEnquiryRequestDTO;
+import vacademy.io.admin_core_service.features.audience.dto.UpdateLeadWithEnquiryResponseDTO;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
-import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
-import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
-
-import java.util.List;
 
 /**
  * Public REST Controller for Audience Management
@@ -47,6 +47,27 @@ public class PublicAudienceController {
         return ResponseEntity.ok(responseId);
     }
 
+    @PostMapping("/lead/submit-with-enquiry")
+    public ResponseEntity<SubmitLeadWithEnquiryResponseDTO> submitLeadWithEnquiry(
+            @RequestBody SubmitLeadWithEnquiryRequestDTO requestDTO) {
+        SubmitLeadWithEnquiryResponseDTO response = audienceService.submitLeadWithEnquiry(requestDTO);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Update an existing lead with enquiry information
+     * PUT /open/v1/audience/lead/update-with-enquiry/{audienceResponseId}
+     * Supports partial updates - only provided fields will be updated
+     */
+    @PutMapping("/lead/update-with-enquiry/{audienceResponseId}")
+    public ResponseEntity<UpdateLeadWithEnquiryResponseDTO> updateLeadWithEnquiry(
+            @PathVariable String audienceResponseId,
+            @RequestBody UpdateLeadWithEnquiryRequestDTO requestDTO) {
+        UpdateLeadWithEnquiryResponseDTO response = audienceService.updateLeadWithEnquiry(
+                audienceResponseId, requestDTO);
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/campaign/{instituteId}/{audienceId}")
     public ResponseEntity<AudienceDTO> getCampaign(
             @PathVariable String instituteId,
@@ -56,4 +77,3 @@ public class PublicAudienceController {
         return ResponseEntity.ok(campaign);
     }
 }
-

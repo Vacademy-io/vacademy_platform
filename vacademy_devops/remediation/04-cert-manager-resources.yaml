@@ -1,0 +1,55 @@
+# cert-manager Webhook Resource Patch
+# Issue: 888+ restarts on cert-manager-webhook
+# Solution: Increase resources and tune probe settings
+#
+# Apply with: kubectl patch deployment cert-manager-webhook -n cert-manager --patch-file 04-cert-manager-resources.yaml
+
+spec:
+  template:
+    spec:
+      containers:
+        - name: cert-manager-webhook
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 6080
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 6080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+---
+# Also patch the main cert-manager deployment
+# Apply with: kubectl patch deployment cert-manager -n cert-manager --patch-file 04-cert-manager-main-patch.yaml
+
+# spec:
+#   template:
+#     spec:
+#       containers:
+#       - name: cert-manager
+#         resources:
+#           requests:
+#             cpu: "50m"
+#             memory: "64Mi"
+#           limits:
+#             cpu: "200m"
+#             memory: "128Mi"

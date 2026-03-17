@@ -51,10 +51,21 @@ public class EvaluationJsonToMapConverter {
         // Create a list to hold the correct option IDs
         List<String> correctOptionIds = new ArrayList<>();
 
-        // Extract correct option IDs from the JSON node
-        rootNode.get("data").get("correct_option_ids").forEach(optionIdNode -> {
-            correctOptionIds.add(optionIdNode.asText());
-        });
+        // Extract correct option IDs from the JSON node safely
+        JsonNode dataNode = rootNode.get("data");
+        if (dataNode != null) {
+            JsonNode correctOptionIdsNode = dataNode.get("correct_option_ids");
+            if (correctOptionIdsNode == null) {
+                // Fallback to camelCase if snake_case is missing
+                correctOptionIdsNode = dataNode.get("correctOptionIds");
+            }
+
+            if (correctOptionIdsNode != null && correctOptionIdsNode.isArray()) {
+                correctOptionIdsNode.forEach(optionIdNode -> {
+                    correctOptionIds.add(optionIdNode.asText());
+                });
+            }
+        }
 
         // Put the list of correct option IDs into the map
         map.put("correctOptionIds", correctOptionIds);
@@ -91,7 +102,6 @@ public class EvaluationJsonToMapConverter {
         // Return the populated map
         return map;
     }
-
 
     private static Map<String, Object> handleDefaultType(JsonNode rootNode) {
         Map<String, Object> map = new HashMap<>();

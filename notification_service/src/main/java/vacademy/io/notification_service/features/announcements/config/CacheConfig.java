@@ -70,13 +70,50 @@ public class CacheConfig {
                         .recordStats()
                         .build());
 
+        // Analytics caches
+        CaffeineCache outgoingTemplates = new CaffeineCache(
+                "outgoingTemplates",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(10, TimeUnit.MINUTES)
+                        .maximumSize(100)
+                        .recordStats()
+                        .build());
+
+        CaffeineCache dailyParticipation = new CaffeineCache(
+                "dailyParticipation",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(5, TimeUnit.MINUTES)
+                        .maximumSize(500)
+                        .recordStats()
+                        .build());
+
+        CaffeineCache engagementLeaderboard = new CaffeineCache(
+                "engagementLeaderboard",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(5, TimeUnit.MINUTES)
+                        .maximumSize(500)
+                        .recordStats()
+                        .build());
+
+        CaffeineCache completionCohort = new CaffeineCache(
+                "completionCohort",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(5, TimeUnit.MINUTES)
+                        .maximumSize(500)
+                        .recordStats()
+                        .build());
+
         cacheManager.setCaches(java.util.List.of(
                 usersByRole,
                 usersById,
                 facultyByPackageSessions,
                 studentsByPackageSessions,
                 usersByTags,
-                userDetails));
+                userDetails,
+                outgoingTemplates,
+                dailyParticipation,
+                engagementLeaderboard,
+                completionCohort));
 
         return cacheManager;
     }

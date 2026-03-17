@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.auth.dto.UserActivityAnalyticsDto;
-import vacademy.io.common.auth.entity.DailyUserActivitySummary;
+
 import vacademy.io.common.auth.entity.UserActivityLog;
 import vacademy.io.common.auth.entity.UserSession;
 import vacademy.io.common.auth.repository.DailyUserActivitySummaryRepository;
@@ -98,10 +98,10 @@ public class UserActivityTrackingService {
 
                 try {
 
-                        Optional<UserSession> existingSession = sessionRepository
+                        List<UserSession> existingSessions = sessionRepository
                                         .findBySessionTokenAndIsActive(sessionToken, true);
 
-                        if (existingSession.isPresent()) {
+                        if (!existingSessions.isEmpty()) {
                                 // Update existing session
                                 sessionRepository.updateLastActivityTime(sessionToken, LocalDateTime.now());
                         } else {

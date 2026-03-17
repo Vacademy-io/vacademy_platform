@@ -52,6 +52,13 @@ public class PaymentLog {
     @Column(name = "payment_amount")
     private Double paymentAmount;
 
+    /**
+     * Amount from this payment that was not allocated to any student_fee_payment
+     * (excess/overpayment). Used by fee allocation; default 0 for existing rows.
+     */
+    @Column(name = "unallocated_amount")
+    private Double unallocatedAmount;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -100,7 +107,15 @@ public class PaymentLog {
                         .path("response")
                         .path("response_data")
                         .path("transactionId")
-                        .asText(null); // default to null if missing
+                        .asText(null);
+                // If still null, try to get orderId from originalRequest which we always
+                // populate
+                if (txnId == null) {
+                    txnId = root
+                            .path("originalRequest")
+                            .path("order_id")
+                            .asText(null);
+                }
 
                 paymentLogDTO.setTransactionId(txnId);
             } catch (Exception e) {

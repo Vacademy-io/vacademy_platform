@@ -43,11 +43,44 @@ public class SessionSchedule {
 
     private String status;
 
-    @Column(name="thumbnail_file_id")
+    @Column(name = "thumbnail_file_id")
     private String thumbnailFileId;
-    @Column(name="daily_attendance")
+    @Column(name = "daily_attendance")
     private boolean dailyAttendance;
+
+    @Column(name = "default_class_link")
+    private String defaultClassLink;
+    @Column(name = "default_class_name")
+    private String defaultClassName;
+
+    @Column(name = "default_class_link_type")
+    private String defaultClassLinkType;
+
+    /**
+     * Provider meeting key (e.g. Zoho meetingKey). Used by the hourly sync
+     * scheduler.
+     */
+    @Column(name = "provider_meeting_id")
+    private String providerMeetingId;
+
+    /**
+     * Presenter-only URL from the provider (keep separate from join URL in
+     * customMeetingLink).
+     */
+    @Column(name = "provider_host_url", columnDefinition = "TEXT")
+    private String providerHostUrl;
+
+    /** Cached JSON array of MeetingRecordingDTO — updated hourly by scheduler. */
+    @Column(name = "provider_recordings_json", columnDefinition = "TEXT")
+    private String providerRecordingsJson;
+
+    /** Last time Zoho (or other provider) attendance was pulled. */
+    @Column(name = "last_attendance_sync_at")
+    private Date lastAttendanceSyncAt;
+
+    /** Last time Zoho (or other provider) recordings were pulled. */
+    @Column(name = "last_recording_sync_at")
+    private Date lastRecordingSyncAt;
 
     // Getters, Setters, etc.
 }
-

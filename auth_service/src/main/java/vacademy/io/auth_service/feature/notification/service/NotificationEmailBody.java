@@ -80,158 +80,157 @@ public class NotificationEmailBody {
                 """.formatted(name, username, password, service);
     }
 
-
     public static String createWelcomeEmailBody(
             String service,
             String name,
             String username,
             String password,
             String frontendLoginUrl,
-            String themeColor
-    ) {
+            String themeColor) {
         return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Welcome to %s</title>
-            <style>
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
-                    margin: 0;
-                    padding: 0;
-                    background-color: #fafafa;
-                    line-height: 1.6;
-                }
-                .container {
-                    max-width: 640px;
-                    margin: 40px auto;
-                    padding: 0 20px;
-                }
-                .card {
-                    background: #ffffff;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-                    border: 1px solid #eee;
-                }
-                .header {
-                    padding: 32px 40px;
-                    border-bottom: 1px solid #F0F0F0;
-                }
-                .content {
-                    padding: 40px;
-                    color: #444444;
-                }
-                .footer {
-                    padding: 24px 40px;
-                    background-color: #f8f8f8;
-                    border-top: 1px solid #F0F0F0;
-                    border-radius: 0 0 8px 8px;
-                }
-                h1 {
-                    color: %s; /* Dynamic heading color */
-                    font-size: 24px;
-                    margin: 0 0 8px 0;
-                    font-weight: 600;
-                }
-                .credentials-box {
-                    background: #FDF2E9;
-                    border-radius: 6px;
-                    padding: 24px;
-                    margin: 32px 0;
-                }
-                .credential-item {
-                    margin: 12px 0;
-                    font-size: 15px;
-                }
-                .credential-label {
-                    color: %s; /* Dynamic label color */
-                    font-weight: 500;
-                    display: block;
-                    margin-bottom: 4px;
-                }
-                .login-button {
-                    display: inline-block;
-                    padding: 12px 32px;
-                    background-color: %s; /* Dynamic button color */
-                    color: white !important;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    font-weight: 500;
-                    transition: background-color 0.2s;
-                }
-                .login-button:hover {
-                    background-color: %s; /* Darker hover */
-                }
-                .text-muted {
-                    color: #666666;
-                    font-size: 14px;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="card">
-                    <div class="header">
-                        <h1>Welcome to %s</h1>
-                        <p class="text-muted">Your account has been successfully created</p>
-                    </div>
-                    
-                    <div class="content">
-                        <p>Dear %s,</p>
-                        <p>Welcome to %s. Below are your login credentials:</p>
-                        
-                        <div class="credentials-box">
-                            <div class="credential-item">
-                                <span class="credential-label">Username</span>
-                                %s
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Welcome to %s</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
+                            margin: 0;
+                            padding: 0;
+                            background-color: #fafafa;
+                            line-height: 1.6;
+                        }
+                        .container {
+                            max-width: 640px;
+                            margin: 40px auto;
+                            padding: 0 20px;
+                        }
+                        .card {
+                            background: #ffffff;
+                            border-radius: 8px;
+                            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                            border: 1px solid #eee;
+                        }
+                        .header {
+                            padding: 32px 40px;
+                            border-bottom: 1px solid #F0F0F0;
+                        }
+                        .content {
+                            padding: 40px;
+                            color: #444444;
+                        }
+                        .footer {
+                            padding: 24px 40px;
+                            background-color: #f8f8f8;
+                            border-top: 1px solid #F0F0F0;
+                            border-radius: 0 0 8px 8px;
+                        }
+                        h1 {
+                            color: %s; /* Dynamic heading color */
+                            font-size: 24px;
+                            margin: 0 0 8px 0;
+                            font-weight: 600;
+                        }
+                        .credentials-box {
+                            background: #FDF2E9;
+                            border-radius: 6px;
+                            padding: 24px;
+                            margin: 32px 0;
+                        }
+                        .credential-item {
+                            margin: 12px 0;
+                            font-size: 15px;
+                        }
+                        .credential-label {
+                            color: %s; /* Dynamic label color */
+                            font-weight: 500;
+                            display: block;
+                            margin-bottom: 4px;
+                        }
+                        .login-button {
+                            display: inline-block;
+                            padding: 12px 32px;
+                            background-color: %s; /* Dynamic button color */
+                            color: white !important;
+                            text-decoration: none;
+                            border-radius: 6px;
+                            font-weight: 500;
+                            transition: background-color 0.2s;
+                        }
+                        .login-button:hover {
+                            background-color: %s; /* Darker hover */
+                        }
+                        .text-muted {
+                            color: #666666;
+                            font-size: 14px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="card">
+                            <div class="header">
+                                <h1>Welcome to %s</h1>
+                                <p class="text-muted">Your account has been successfully created</p>
                             </div>
-                            <div class="credential-item">
-                                <span class="credential-label">Password</span>
-                                %s
+
+                            <div class="content">
+                                <p>Dear %s,</p>
+                                <p>Welcome to %s. Below are your login credentials:</p>
+
+                                <div class="credentials-box">
+                                    <div class="credential-item">
+                                        <span class="credential-label">Username</span>
+                                        %s
+                                    </div>
+                                    <div class="credential-item">
+                                        <span class="credential-label">Password</span>
+                                        %s
+                                    </div>
+                                </div>
+
+                                <p style="text-align: center; margin: 32px 0;">
+                                    <a href="%s" class="login-button">Access Your Account</a>
+                                </p>
+
+                                <p class="text-muted">Please keep your credentials secure and do not share them with anyone.</p>
+                            </div>
+
+                            <div class="footer">
+                                <p class="text-muted" style="margin: 0;">
+                                    Best regards,<br>
+                                    <strong>%s Team</strong>
+                                </p>
                             </div>
                         </div>
-                        
-                        <p style="text-align: center; margin: 32px 0;">
-                            <a href="%s" class="login-button">Access Your Account</a>
-                        </p>
-                        
-                        <p class="text-muted">Please keep your credentials secure and do not share them with anyone.</p>
                     </div>
-                    
-                    <div class="footer">
-                        <p class="text-muted" style="margin: 0;">
-                            Best regards,<br>
-                            <strong>%s Team</strong>
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-        """.formatted(
-                service,           // title
-                themeColor,        // h1 color
-                themeColor,        // label color
-                themeColor,        // button color
-                darkenWelcomeColor(themeColor), // hover color (optional helper below)
-                service, name, service,
-                username, password,
-                frontendLoginUrl,
-                service
-        );
+                </body>
+                </html>
+                """
+                .formatted(
+                        service, // title
+                        themeColor, // h1 color
+                        themeColor, // label color
+                        themeColor, // button color
+                        darkenWelcomeColor(themeColor), // hover color (optional helper below)
+                        service, name, service,
+                        username, password,
+                        frontendLoginUrl,
+                        service);
     }
 
     private static String darkenWelcomeColor(String hexColor) {
         try {
             java.awt.Color color = java.awt.Color.decode(hexColor);
-            int r = (int)(color.getRed() * 0.85);
-            int g = (int)(color.getGreen() * 0.85);
-            int b = (int)(color.getBlue() * 0.85);
+            int r = (int) (color.getRed() * 0.85);
+            int g = (int) (color.getGreen() * 0.85);
+            int b = (int) (color.getBlue() * 0.85);
             return String.format("#%02x%02x%02x", r, g, b);
         } catch (Exception e) {
             return hexColor; // fallback
         }
     }
+
     public static String sendUserPasswords(String service) {
         return """
                 <!DOCTYPE html>
@@ -332,7 +331,7 @@ public class NotificationEmailBody {
                                 font-family: Arial, sans-serif;
                                 margin: 0;
                                 padding: 0;
-                                background-color: #F4F4F4; 
+                                background-color: #F4F4F4;
                             }
                             .container {
                                 max-width: 600px;
@@ -400,7 +399,7 @@ public class NotificationEmailBody {
                                 <p style="text-align:center;">
                                     <a class="login-button" href="%s" target="_blank">Login to Your Account</a>
                                 </p>
-                           
+
                             </div>
                             <div class="footer">
                                 <p>Best regards,<br> %s Team</p>
@@ -408,7 +407,8 @@ public class NotificationEmailBody {
                         </div>
                     </body>
                     </html>
-                """.formatted(service, service, name, username, password, LEARNER_LOGIN_URL, service, service);
+                """
+                .formatted(service, service, name, username, password, LEARNER_LOGIN_URL, service, service);
     }
 
     public static String createCredentialsFoundEmailBody(
@@ -420,135 +420,135 @@ public class NotificationEmailBody {
             String themeColor // <-- NEW PARAMETER
     ) {
         return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Access Your Account - %s</title>
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
-                margin: 0;
-                padding: 0;
-                background-color: #fafafa;
-                line-height: 1.6;
-            }
-            .container {
-                max-width: 640px;
-                margin: 40px auto;
-                padding: 0 20px;
-            }
-            .card {
-                background: #ffffff;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-                border: 1px solid #eee;
-            }
-            .header {
-                padding: 32px 40px;
-                border-bottom: 1px solid #F0F0F0;
-            }
-            .content {
-                padding: 40px;
-                color: #444444;
-            }
-            .footer {
-                padding: 24px 40px;
-                background-color: #f8f8f8;
-                border-top: 1px solid #F0F0F0;
-                border-radius: 0 0 8px 8px;
-            }
-            h1 {
-                color: %s; /* Dynamic heading color */
-                font-size: 24px;
-                margin: 0 0 8px 0;
-                font-weight: 600;
-            }
-            .credentials-box {
-                background: #FDF2E9;
-                border-radius: 6px;
-                padding: 24px;
-                margin: 32px 0;
-            }
-            .credential-item {
-                margin: 12px 0;
-                font-size: 15px;
-            }
-            .credential-label {
-                color: %s; /* Dynamic label color */
-                font-weight: 500;
-                display: block;
-                margin-bottom: 4px;
-            }
-            .login-button {
-                display: inline-block;
-                padding: 12px 32px;
-                background-color: %s; /* Dynamic button color */
-                color: white !important;
-                text-decoration: none;
-                border-radius: 6px;
-                font-weight: 500;
-                transition: background-color 0.2s;
-            }
-            .login-button:hover {
-                background-color: %s; /* Slightly darker hover */
-            }
-            .text-muted {
-                color: #666666;
-                font-size: 14px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="card">
-                <div class="header">
-                    <h1>Account Found on %s</h1>
-                    <p class="text-muted">We've located your credentials</p>
-                </div>
-                
-                <div class="content">
-                    <p>Dear %s,</p>
-                    <p>We found existing login credentials associated with this email. For your convenience, we've preserved them below so you can continue using %s:</p>
-                    
-                    <div class="credentials-box">
-                        <div class="credential-item">
-                            <span class="credential-label">Username</span>
-                            %s
-                        </div>
-                        <div class="credential-item">
-                            <span class="credential-label">Password</span>
-                            %s
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Access Your Account - %s</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
+                            margin: 0;
+                            padding: 0;
+                            background-color: #fafafa;
+                            line-height: 1.6;
+                        }
+                        .container {
+                            max-width: 640px;
+                            margin: 40px auto;
+                            padding: 0 20px;
+                        }
+                        .card {
+                            background: #ffffff;
+                            border-radius: 8px;
+                            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                            border: 1px solid #eee;
+                        }
+                        .header {
+                            padding: 32px 40px;
+                            border-bottom: 1px solid #F0F0F0;
+                        }
+                        .content {
+                            padding: 40px;
+                            color: #444444;
+                        }
+                        .footer {
+                            padding: 24px 40px;
+                            background-color: #f8f8f8;
+                            border-top: 1px solid #F0F0F0;
+                            border-radius: 0 0 8px 8px;
+                        }
+                        h1 {
+                            color: %s; /* Dynamic heading color */
+                            font-size: 24px;
+                            margin: 0 0 8px 0;
+                            font-weight: 600;
+                        }
+                        .credentials-box {
+                            background: #FDF2E9;
+                            border-radius: 6px;
+                            padding: 24px;
+                            margin: 32px 0;
+                        }
+                        .credential-item {
+                            margin: 12px 0;
+                            font-size: 15px;
+                        }
+                        .credential-label {
+                            color: %s; /* Dynamic label color */
+                            font-weight: 500;
+                            display: block;
+                            margin-bottom: 4px;
+                        }
+                        .login-button {
+                            display: inline-block;
+                            padding: 12px 32px;
+                            background-color: %s; /* Dynamic button color */
+                            color: white !important;
+                            text-decoration: none;
+                            border-radius: 6px;
+                            font-weight: 500;
+                            transition: background-color 0.2s;
+                        }
+                        .login-button:hover {
+                            background-color: %s; /* Slightly darker hover */
+                        }
+                        .text-muted {
+                            color: #666666;
+                            font-size: 14px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="card">
+                            <div class="header">
+                                <h1>Account Found on %s</h1>
+                                <p class="text-muted">We've located your credentials</p>
+                            </div>
+
+                            <div class="content">
+                                <p>Dear %s,</p>
+                                <p>We found existing login credentials associated with this email. For your convenience, we've preserved them below so you can continue using %s:</p>
+
+                                <div class="credentials-box">
+                                    <div class="credential-item">
+                                        <span class="credential-label">Username</span>
+                                        %s
+                                    </div>
+                                    <div class="credential-item">
+                                        <span class="credential-label">Password</span>
+                                        %s
+                                    </div>
+                                </div>
+
+                                <p style="text-align: center; margin: 32px 0;">
+                                    <a href="%s" class="login-button">Continue to %s</a>
+                                </p>
+
+                                <p class="text-muted">If you didn’t request this, please ignore the message or reset your password from the login page.</p>
+                            </div>
+
+                            <div class="footer">
+                                <p class="text-muted" style="margin: 0;">
+                                    Best regards,<br>
+                                    <strong>%s Team</strong>
+                                </p>
+                            </div>
                         </div>
                     </div>
-                    
-                    <p style="text-align: center; margin: 32px 0;">
-                        <a href="%s" class="login-button">Continue to %s</a>
-                    </p>
-                    
-                    <p class="text-muted">If you didn’t request this, please ignore the message or reset your password from the login page.</p>
-                </div>
-                
-                <div class="footer">
-                    <p class="text-muted" style="margin: 0;">
-                        Best regards,<br>
-                        <strong>%s Team</strong>
-                    </p>
-                </div>
-            </div>
-        </div>
-    </body>
-    </html>
-    """.formatted(
-                service,                // <title>
-                themeColor,             // h1 color
-                themeColor,             // label color
-                themeColor,             // button color
-                darkenShowCredentialColor(themeColor),// hover color
-                service, name, service,
-                username, password,
-                frontendLoginUrl, service,
-                service
-        );
+                </body>
+                </html>
+                """
+                .formatted(
+                        service, // <title>
+                        themeColor, // h1 color
+                        themeColor, // label color
+                        themeColor, // button color
+                        darkenShowCredentialColor(themeColor), // hover color
+                        service, name, service,
+                        username, password,
+                        frontendLoginUrl, service,
+                        service);
     }
 
     /**
@@ -558,22 +558,324 @@ public class NotificationEmailBody {
     private static String darkenShowCredentialColor(String hexOrName) {
         try {
             java.awt.Color color = java.awt.Color.decode(
-                    hexOrName.startsWith("#") ? hexOrName :
-                            switch (hexOrName.toLowerCase()) {
-                                case "purple" -> "#800080";
-                                case "blue"   -> "#0000FF";
-                                case "red"    -> "#FF0000";
-                                case "green"  -> "#008000";
-                                default       -> "#333333"; // fallback
-                            }
-            );
-            int r = (int)(color.getRed() * 0.85);
-            int g = (int)(color.getGreen() * 0.85);
-            int b = (int)(color.getBlue() * 0.85);
+                    hexOrName.startsWith("#") ? hexOrName : switch (hexOrName.toLowerCase()) {
+                        case "purple" -> "#800080";
+                        case "blue" -> "#0000FF";
+                        case "red" -> "#FF0000";
+                        case "green" -> "#008000";
+                        default -> "#333333"; // fallback
+                    });
+            int r = (int) (color.getRed() * 0.85);
+            int g = (int) (color.getGreen() * 0.85);
+            int b = (int) (color.getBlue() * 0.85);
             return String.format("#%02x%02x%02x", r, g, b);
         } catch (Exception e) {
             return hexOrName;
         }
+    }
+
+    /**
+     * Email template for NEW learner enrollment.
+     * Used when a new user is enrolled in a course for the first time.
+     */
+    public static String createLearnerEnrollmentNewUserEmailBody(
+            String instituteName,
+            String name,
+            String username,
+            String password,
+            String loginUrl,
+            String themeColor) {
+        return """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Course Enrollment - %s</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
+                            margin: 0;
+                            padding: 0;
+                            background-color: #fafafa;
+                            line-height: 1.6;
+                        }
+                        .container {
+                            max-width: 640px;
+                            margin: 40px auto;
+                            padding: 0 20px;
+                        }
+                        .card {
+                            background: #ffffff;
+                            border-radius: 8px;
+                            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                            border: 1px solid #eee;
+                        }
+                        .header {
+                            padding: 32px 40px;
+                            border-bottom: 1px solid #F0F0F0;
+                        }
+                        .content {
+                            padding: 40px;
+                            color: #444444;
+                        }
+                        .footer {
+                            padding: 24px 40px;
+                            background-color: #f8f8f8;
+                            border-top: 1px solid #F0F0F0;
+                            border-radius: 0 0 8px 8px;
+                        }
+                        h1 {
+                            color: %s;
+                            font-size: 24px;
+                            margin: 0 0 8px 0;
+                            font-weight: 600;
+                        }
+                        .credentials-box {
+                            background: #FDF2E9;
+                            border-radius: 6px;
+                            padding: 24px;
+                            margin: 32px 0;
+                        }
+                        .credential-item {
+                            margin: 12px 0;
+                            font-size: 15px;
+                        }
+                        .credential-label {
+                            color: %s;
+                            font-weight: 500;
+                            display: block;
+                            margin-bottom: 4px;
+                        }
+                        .login-button {
+                            display: inline-block;
+                            padding: 12px 32px;
+                            background-color: %s;
+                            color: white !important;
+                            text-decoration: none;
+                            border-radius: 6px;
+                            font-weight: 500;
+                            transition: background-color 0.2s;
+                        }
+                        .login-button:hover {
+                            background-color: %s;
+                        }
+                        .text-muted {
+                            color: #666666;
+                            font-size: 14px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="card">
+                            <div class="header">
+                                <h1>You're Enrolled!</h1>
+                                <p class="text-muted">Your course enrollment is complete</p>
+                            </div>
+
+                            <div class="content">
+                                <p>Dear %s,</p>
+                                <p>You've been successfully enrolled in your course, and your account is ready to use.</p>
+
+                                <div class="credentials-box">
+                                    <p style="margin: 0 0 16px 0; font-weight: 500;">Login Details</p>
+                                    <div class="credential-item">
+                                        <span class="credential-label">Username</span>
+                                        %s
+                                    </div>
+                                    <div class="credential-item">
+                                        <span class="credential-label">Password</span>
+                                        %s
+                                    </div>
+                                </div>
+
+                                <p style="text-align: center; margin: 32px 0;">
+                                    <a href="%s" class="login-button">Access Your Account</a>
+                                </p>
+
+                                <p class="text-muted">For security, please keep your login details private. If you need any help, feel free to reach out.</p>
+                            </div>
+
+                            <div class="footer">
+                                <p class="text-muted" style="margin: 0;">
+                                    Best regards,<br>
+                                    <strong>%s</strong>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                .formatted(
+                        instituteName, // title
+                        themeColor, // h1 color
+                        themeColor, // label color
+                        themeColor, // button color
+                        darkenWelcomeColor(themeColor), // hover color
+                        name,
+                        username, password,
+                        loginUrl,
+                        instituteName);
+    }
+
+    /**
+     * Email template for EXISTING learner enrollment.
+     * Used when an existing user is enrolled in a new course - their credentials
+     * are retained.
+     */
+    public static String createLearnerEnrollmentExistingUserEmailBody(
+            String instituteName,
+            String name,
+            String username,
+            String password,
+            String loginUrl,
+            String themeColor) {
+        return """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Course Enrollment - %s</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif;
+                            margin: 0;
+                            padding: 0;
+                            background-color: #fafafa;
+                            line-height: 1.6;
+                        }
+                        .container {
+                            max-width: 640px;
+                            margin: 40px auto;
+                            padding: 0 20px;
+                        }
+                        .card {
+                            background: #ffffff;
+                            border-radius: 8px;
+                            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                            border: 1px solid #eee;
+                        }
+                        .header {
+                            padding: 32px 40px;
+                            border-bottom: 1px solid #F0F0F0;
+                        }
+                        .content {
+                            padding: 40px;
+                            color: #444444;
+                        }
+                        .footer {
+                            padding: 24px 40px;
+                            background-color: #f8f8f8;
+                            border-top: 1px solid #F0F0F0;
+                            border-radius: 0 0 8px 8px;
+                        }
+                        h1 {
+                            color: %s;
+                            font-size: 24px;
+                            margin: 0 0 8px 0;
+                            font-weight: 600;
+                        }
+                        .credentials-box {
+                            background: #FDF2E9;
+                            border-radius: 6px;
+                            padding: 24px;
+                            margin: 32px 0;
+                        }
+                        .credential-item {
+                            margin: 12px 0;
+                            font-size: 15px;
+                        }
+                        .credential-label {
+                            color: %s;
+                            font-weight: 500;
+                            display: block;
+                            margin-bottom: 4px;
+                        }
+                        .login-button {
+                            display: inline-block;
+                            padding: 12px 32px;
+                            background-color: %s;
+                            color: white !important;
+                            text-decoration: none;
+                            border-radius: 6px;
+                            font-weight: 500;
+                            transition: background-color 0.2s;
+                        }
+                        .login-button:hover {
+                            background-color: %s;
+                        }
+                        .text-muted {
+                            color: #666666;
+                            font-size: 14px;
+                        }
+                        .info-note {
+                            background: #e8f4fd;
+                            border-left: 4px solid %s;
+                            padding: 12px 16px;
+                            margin: 20px 0;
+                            font-size: 14px;
+                            color: #444;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="card">
+                            <div class="header">
+                                <h1>You're Enrolled!</h1>
+                                <p class="text-muted">Your course enrollment is complete</p>
+                            </div>
+
+                            <div class="content">
+                                <p>Dear %s,</p>
+                                <p>You've been successfully enrolled in your course, and your account is ready to use.</p>
+
+                                <div class="credentials-box">
+                                    <p style="margin: 0 0 16px 0; font-weight: 500;">Login Details</p>
+                                    <div class="credential-item">
+                                        <span class="credential-label">Username</span>
+                                        %s
+                                    </div>
+                                    <div class="credential-item">
+                                        <span class="credential-label">Password</span>
+                                        %s
+                                    </div>
+                                </div>
+
+                                <p style="text-align: center; margin: 32px 0;">
+                                    <a href="%s" class="login-button">Access Your Account</a>
+                                </p>
+
+                                <div class="info-note">
+                                    If you've previously created an account with this email, your existing credentials have been retained so you can continue without interruption.
+                                </div>
+
+                                <p class="text-muted">For security, please keep your login details private. If you don't recognize this activity or would like to reset your password, you can do so from the login page.</p>
+
+                                <p class="text-muted">If you need any help, feel free to reach out.</p>
+                            </div>
+
+                            <div class="footer">
+                                <p class="text-muted" style="margin: 0;">
+                                    Best regards,<br>
+                                    <strong>%s</strong>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+                .formatted(
+                        instituteName, // title
+                        themeColor, // h1 color
+                        themeColor, // label color
+                        themeColor, // button color
+                        darkenWelcomeColor(themeColor), // hover color
+                        themeColor, // info-note border color
+                        name,
+                        username, password,
+                        loginUrl,
+                        instituteName);
     }
 
 }

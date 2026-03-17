@@ -7,7 +7,7 @@ This service handles:
 3. Returning S3 URLs for the generated images
 """
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 import logging
 import time
 import re
@@ -51,14 +51,20 @@ class ImageGenerationService:
         self._gemini_api_key = gemini_api_key
         self._openrouter_api_key = openrouter_api_key
         self._llm_model = llm_model or "google/gemini-2.5-pro"
+        # Shared HTTP client for connection pooling (reuses DNS/TLS across image calls)
+        self._http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(60.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        )
 
     async def generate_images(
         self,
         course_name: str,
         about_course: str,
         course_depth: int,
-        image_style: str = "professional"
-    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        image_style: str = "professional",
+        gemini_key: Optional[str] = None
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Dict[str, int]]:
         """
         Generate banner, preview, and media images for a course.
         
@@ -67,10 +73,12 @@ class ImageGenerationService:
             about_course: Course description
             course_depth: Course hierarchy depth
             image_style: Style preference for images
+            gemini_key: Optional Gemini API key (overrides instance default)
         
         Returns:
-            Tuple of (banner_image_url, preview_image_url, media_image_url)
-            Returns (None, None, None) if generation fails or S3 is not configured
+            Tuple of (banner_image_url, preview_image_url, media_image_url, total_usage_dict)
+            Returns (None, None, None, empty_usage) if generation fails or S3 is not configured
+            total_usage_dict contains aggregated token usage across all image generations
         """
         try:
             logger.info(f"Generating images for course: {course_name}")
@@ -78,7 +86,9 @@ class ImageGenerationService:
             # If S3 is not configured, return None
             if not self._s3_client or not self._s3_bucket:
                 logger.warning("S3 client or bucket not configured. Skipping image generation.")
-                return None, None, None
+                return None, None, None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            
+            total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
             # Get optimal search keyword from LLM for image search
             try:
@@ -87,78 +97,77 @@ class ImageGenerationService:
                 logger.warning(f"Keyword generation failed: {str(e)}, using course name")
                 base_search_query = course_name
 
-            # Generate banner image using Gemini with individual timeout
+            # Build all three prompts upfront
             banner_prompt = generate_banner_prompt(
                 course_name=course_name,
                 base_search_query=base_search_query,
                 about_course=about_course,
                 image_style=image_style
             )
-            try:
-                banner_url = await asyncio.wait_for(
-                    self._generate_and_upload_banner(
-                        course_name=course_name,
-                        prompt=banner_prompt
-                    ),
-                    timeout=15.0  # 15 seconds for banner
-                )
-            except asyncio.TimeoutError:
-                logger.warning("Banner generation timed out")
-                banner_url = None
-            except Exception as e:
-                logger.error(f"Banner generation failed: {str(e)}")
-                banner_url = None
-
-            # Generate preview image using Gemini with individual timeout (different prompt for variety)
             preview_prompt = generate_preview_prompt(
                 course_name=course_name,
                 base_search_query=base_search_query,
                 about_course=about_course,
                 image_style=image_style
             )
-            try:
-                preview_url = await asyncio.wait_for(
-                    self._generate_and_upload_preview(
-                        course_name=course_name,
-                        prompt=preview_prompt
-                    ),
-                    timeout=15.0  # 15 seconds for preview
-                )
-            except asyncio.TimeoutError:
-                logger.warning("Preview generation timed out")
-                preview_url = None
-            except Exception as e:
-                logger.error(f"Preview generation failed: {str(e)}")
-                preview_url = None
-
-            # Generate media image using Gemini with individual timeout (different prompt for variety)
             media_prompt = generate_media_prompt(
                 course_name=course_name,
                 base_search_query=base_search_query,
                 about_course=about_course,
                 image_style=image_style
             )
-            try:
-                media_url = await asyncio.wait_for(
-                    self._generate_and_upload_media(
-                        course_name=course_name,
-                        prompt=media_prompt
+
+            # Generate ALL three images in parallel (they are independent I/O calls)
+            logger.info(f"Starting parallel image generation for course: {course_name}")
+            results = await asyncio.gather(
+                asyncio.wait_for(
+                    self._generate_and_upload_banner(
+                        course_name=course_name, prompt=banner_prompt, gemini_key=gemini_key
                     ),
-                    timeout=15.0  # 15 seconds for media
-                )
-            except asyncio.TimeoutError:
-                logger.warning("Media image generation timed out")
-                media_url = None
-            except Exception as e:
-                logger.error(f"Media image generation failed: {str(e)}")
-                media_url = None
-            
-            logger.info(f"Successfully generated images. Banner: {banner_url}, Preview: {preview_url}, Media: {media_url}")
-            return banner_url, preview_url, media_url
+                    timeout=60.0
+                ),
+                asyncio.wait_for(
+                    self._generate_and_upload_preview(
+                        course_name=course_name, prompt=preview_prompt, gemini_key=gemini_key
+                    ),
+                    timeout=60.0
+                ),
+                asyncio.wait_for(
+                    self._generate_and_upload_media(
+                        course_name=course_name, prompt=media_prompt, gemini_key=gemini_key
+                    ),
+                    timeout=60.0
+                ),
+                return_exceptions=True  # Don't fail all if one image fails
+            )
+
+            # Unpack results, handling individual failures gracefully
+            empty_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            image_labels = ["Banner", "Preview", "Media"]
+            urls = []
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    if isinstance(result, asyncio.TimeoutError):
+                        logger.warning(f"{image_labels[i]} generation timed out")
+                    else:
+                        logger.error(f"{image_labels[i]} generation failed: {str(result)}")
+                    urls.append(None)
+                else:
+                    url, usage = result
+                    urls.append(url)
+                    total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                    total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                    total_usage["total_tokens"] += usage.get("total_tokens", 0)
+
+            banner_url, preview_url, media_url = urls[0], urls[1], urls[2]
+
+            logger.info(f"Successfully generated images (parallel). Banner: {banner_url}, Preview: {preview_url}, Media: {media_url}")
+            logger.info(f"Total token usage for images: {total_usage}")
+            return banner_url, preview_url, media_url, total_usage
             
         except Exception as e:
             logger.error(f"Failed to generate images: {str(e)}")
-            return None, None, None
+            return None, None, None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     def _slugify(self, text: str) -> str:
         """Convert text to slug format (lowercase, dashes)"""
@@ -167,26 +176,28 @@ class ImageGenerationService:
     async def _generate_and_upload_banner(
         self,
         course_name: str,
-        prompt: str
-    ) -> Optional[str]:
+        prompt: str,
+        gemini_key: Optional[str] = None
+    ) -> Tuple[Optional[str], Dict[str, int]]:
         """
         Generate banner image (16:9 aspect ratio) using Gemini and upload to S3.
 
         Args:
             course_name: Name of the course
             prompt: Image generation prompt
+            gemini_key: Optional Gemini API key (overrides instance default)
 
         Returns:
-            S3 URL of the uploaded banner image or None
+            Tuple of (S3 URL, usage_dict) where usage_dict contains token usage
         """
         try:
             logger.debug(f"Generating banner for: {course_name}")
 
             # Generate image using Gemini
-            image_data = await self._call_image_generation_llm(prompt, 1200, 400)
+            image_data, usage_info = await self._call_image_generation_llm(prompt, 1200, 400, gemini_key=gemini_key)
             
             if not image_data:
-                return None
+                return None, usage_info
 
             # Upload to S3
             slugified = self._slugify(course_name)
@@ -203,35 +214,37 @@ class ImageGenerationService:
             s3_url = f"https://{self._s3_bucket}.s3.amazonaws.com/{filename}"
             logger.info(f"Banner uploaded to S3: {s3_url}")
 
-            return s3_url
+            return s3_url, usage_info
                 
         except Exception as e:
             logger.error(f"Banner generation failed: {str(e)}")
-            return None
+            return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     async def _generate_and_upload_preview(
         self,
         course_name: str,
-        prompt: str
-    ) -> Optional[str]:
+        prompt: str,
+        gemini_key: Optional[str] = None
+    ) -> Tuple[Optional[str], Dict[str, int]]:
         """
         Generate preview image (16:9 aspect ratio) using Gemini and upload to S3.
 
         Args:
             course_name: Name of the course
             prompt: Image generation prompt
+            gemini_key: Optional Gemini API key (overrides instance default)
 
         Returns:
-            S3 URL of the uploaded preview image or None
+            Tuple of (S3 URL, usage_dict) where usage_dict contains token usage
         """
         try:
             logger.debug(f"Generating preview for: {course_name}")
 
             # Generate image using Gemini
-            image_data = await self._call_image_generation_llm(prompt, 400, 300)
+            image_data, usage_info = await self._call_image_generation_llm(prompt, 400, 300, gemini_key=gemini_key)
             
             if not image_data:
-                return None
+                return None, usage_info
 
             # Upload to S3
             slugified = self._slugify(course_name)
@@ -248,35 +261,37 @@ class ImageGenerationService:
             s3_url = f"https://{self._s3_bucket}.s3.amazonaws.com/{filename}"
             logger.info(f"Preview uploaded to S3: {s3_url}")
 
-            return s3_url
+            return s3_url, usage_info
                 
         except Exception as e:
             logger.error(f"Preview generation failed: {str(e)}")
-            return None
+            return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     async def _generate_and_upload_media(
         self,
         course_name: str,
-        prompt: str
-    ) -> Optional[str]:
+        prompt: str,
+        gemini_key: Optional[str] = None
+    ) -> Tuple[Optional[str], Dict[str, int]]:
         """
         Generate media image (16:9 aspect ratio) using Gemini and upload to S3.
 
         Args:
             course_name: Name of the course
             prompt: Image generation prompt
+            gemini_key: Optional Gemini API key (overrides instance default)
 
         Returns:
-            S3 URL of the uploaded media image or None
+            Tuple of (S3 URL, usage_dict) where usage_dict contains token usage
         """
         try:
             logger.debug(f"Generating media image for: {course_name}")
 
             # Generate image using Gemini
-            image_data = await self._call_image_generation_llm(prompt, 800, 800)
+            image_data, usage_info = await self._call_image_generation_llm(prompt, 800, 800, gemini_key=gemini_key)
             
             if not image_data:
-                return None
+                return None, usage_info
 
             # Upload to S3
             slugified = self._slugify(course_name)
@@ -293,13 +308,19 @@ class ImageGenerationService:
             s3_url = f"https://{self._s3_bucket}.s3.amazonaws.com/{filename}"
             logger.info(f"Media image uploaded to S3: {s3_url}")
 
-            return s3_url
+            return s3_url, usage_info
                 
         except Exception as e:
             logger.error(f"Media image generation failed: {str(e)}")
-            return None
+            return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     
-    async def _call_image_generation_llm(self, prompt: str, width: int, height: int) -> Optional[bytes]:
+    async def _call_image_generation_llm(
+        self, 
+        prompt: str, 
+        width: int, 
+        height: int, 
+        gemini_key: Optional[str] = None
+    ) -> Tuple[Optional[bytes], Dict[str, int]]:
         """
         Generate image using Google Generative AI (Gemini).
 
@@ -307,45 +328,61 @@ class ImageGenerationService:
             prompt: Image generation prompt
             width: Image width
             height: Image height
+            gemini_key: Optional Gemini API key (overrides instance default)
 
         Returns:
-            Image bytes or None if generation fails
+            Tuple of (image_bytes, usage_dict) where usage_dict contains:
+            - prompt_tokens: int
+            - completion_tokens: int (usually 0 for image generation)
+            - total_tokens: int
         """
         try:
-            if not self._gemini_api_key:
-                return None
+            # Use provided key or fall back to instance default
+            effective_key = gemini_key or self._gemini_api_key
+            if not effective_key:
+                return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key={self._gemini_api_key}",
-                    headers={
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "contents": [
-                            {
-                                "parts": [
-                                    {
-                                        "text": prompt
-                                    }
-                                ]
-                            }
-                        ],
-                        "generationConfig": {
-                            "imageConfig": {
-                                "aspectRatio": "16:9"
-                            },
-                            "responseModalities": ["IMAGE"]
+            # Use the shared HTTP client for connection pooling
+            response = await self._http_client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={effective_key}",
+                headers={
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "contents": [
+                        {
+                            "parts": [
+                                {
+                                    "text": prompt
+                                }
+                            ]
                         }
-                    },
-                    timeout=60.0  # Increased timeout for image generation
-                )
+                    ],
+                    "generationConfig": {
+                        "imageConfig": {
+                            "aspectRatio": "16:9"
+                        },
+                        "responseModalities": ["IMAGE"]
+                    }
+                },
+                timeout=60.0  # Increased timeout for image generation
+            )
 
             if response.status_code != 200:
                 logger.error(f"Gemini API error: {response.text}")
-                return None
+                return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
             data = response.json()
+            
+            # Extract usage information if available
+            usage_info = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            if "usageMetadata" in data:
+                usage_meta = data["usageMetadata"]
+                usage_info = {
+                    "prompt_tokens": usage_meta.get("promptTokenCount", 0),
+                    "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
+                    "total_tokens": usage_meta.get("totalTokenCount", 0),
+                }
 
             # Check if response has inlineData directly
             if "inlineData" in data:
@@ -357,10 +394,10 @@ class ImageGenerationService:
                     import base64
                     try:
                         image_bytes = base64.b64decode(data_b64)
-                        return image_bytes
+                        return image_bytes, usage_info
                     except Exception as decode_err:
                         logger.error(f"Base64 decode error: {decode_err}")
-                        return None
+                        return None, usage_info
 
             # Fallback: Gemini API returns candidates with content parts
             if "candidates" in data and len(data["candidates"]) > 0:
@@ -376,16 +413,16 @@ class ImageGenerationService:
                                 import base64
                                 try:
                                     image_bytes = base64.b64decode(data_b64)
-                                    return image_bytes
+                                    return image_bytes, usage_info
                                 except Exception as decode_err:
                                     logger.error(f"Base64 decode error: {decode_err}")
-                                    return None
+                                    return None, usage_info
 
-            return None
+            return None, usage_info
 
         except Exception as e:
             logger.error(f"Gemini image generation failed: {str(e)}")
-            return None
+            return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     async def _get_image_search_keyword(self, course_name: str, about_course: str) -> str:
         """
@@ -419,27 +456,27 @@ Examples:
 Return ONLY the keyword, nothing else:
 """
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self._openrouter_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self._llm_model,  # Use same model as course outline
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.3,  # Match course outline temperature
-                        "max_tokens": 10
-                    },
-                    timeout=30.0
-                )
+            # Use the shared HTTP client for connection pooling
+            response = await self._http_client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self._openrouter_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": self._llm_model,  # Use same model as course outline
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,  # Match course outline temperature
+                    "max_tokens": 10
+                },
+                timeout=30.0
+            )
 
-                if response.status_code == 200:
-                    data = response.json()
-                    keyword = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                    if keyword:
-                        return keyword
+            if response.status_code == 200:
+                data = response.json()
+                keyword = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if keyword:
+                    return keyword
 
         except Exception as e:
             logger.warning(f"Keyword generation failed: {str(e)}")

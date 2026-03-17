@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 import uuid
 import json
@@ -14,6 +14,7 @@ from ..schemas.course_outline import (
     CourseUserPromptRequest
 )
 from ..services.course_outline_service import CourseOutlineGenerationService
+from ..core.exceptions import PaymentRequiredError
 
 
 router = APIRouter(prefix="/course", tags=["course-outline"])
@@ -33,7 +34,13 @@ async def generate_course_outline(
     based on user prompt, optional existing course tree, and optional course
     metadata from admin-core-service.
     """
-    return await service.generate_outline(payload)
+    try:
+        return await service.generate_outline(payload)
+    except PaymentRequiredError as exc:
+        raise HTTPException(
+            status_code=402,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(
@@ -44,7 +51,8 @@ async def generate_course_outline(
 async def stream_course_outline(
     institute_id: str,
     payload: CourseUserPromptRequest,
-    model: Optional[str] = None,
+    model: Optional[str] = Query(default=None, description="Optional LLM model to use"),
+    user_id: Optional[str] = Query(default=None, description="Optional user identifier for user-level API key lookup"),
     service: CourseOutlineGenerationService = Depends(get_course_outline_service),
 ) -> StreamingResponse:
     """
@@ -52,13 +60,14 @@ async def stream_course_outline(
     Returns Server-Sent Events stream with outline generation progress.
 
     Args:
-        model: Optional LLM model to use. Defaults to LLM_DEFAULT_MODEL from environment.
+        institute_id: Institute identifier (required, from query parameter).
+        user_id: Optional user identifier for user-level API key lookup (waterfall priority).
+        model: Optional LLM model to use. Defaults to database default or LLM_DEFAULT_MODEL from environment.
         payload: Request containing user prompt, course tree, and course depth.
-        institute_id: Institute identifier.
     """
     # Convert CourseUserPromptRequest to internal CourseOutlineRequest
     # Use provided model or fall back to settings default
-    final_model = model or get_settings().llm_default_model
+    final_model = model or payload.model or get_settings().llm_default_model
 
     internal_request = CourseOutlineRequest(
         institute_id=institute_id,
@@ -66,15 +75,25 @@ async def stream_course_outline(
         existing_course_tree=json.loads(payload.course_tree) if payload.course_tree else None,
         model=final_model,
         course_depth=payload.course_depth,
-        generation_options=payload.generation_options
+        generation_options=payload.generation_options,
+        user_id=user_id  # Extracted from query parameter for waterfall key resolution
+        # NOTE: Keys are NOT accepted from frontend - resolved automatically from DB (user → institute) or env
     )
 
     request_id = str(uuid.uuid4())
 
     async def event_generator():
-        async for event in service.stream_outline_events(internal_request, request_id):
-            # Format as SSE: "data: <content>\n\n"
-            yield f"data: {event}\n\n"
+        try:
+            async for event in service.stream_outline_events(internal_request, request_id):
+                # Format as SSE: "data: <content>\n\n"
+                yield f"data: {event}\n\n"
+        except PaymentRequiredError as exc:
+            error_payload = json.dumps({
+                "type": "ERROR",
+                "code": 402,
+                "message": str(exc),
+            })
+            yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(
         event_generator(),

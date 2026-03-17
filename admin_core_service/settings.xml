@@ -12,10 +12,6 @@
             <id>github</id>
             <repositories>
                 <repository>
-                    <id>central</id>
-                    <url>https://repo1.maven.org/maven2</url>
-                </repository>
-                <repository>
                     <id>github</id>
                     <url>https://maven.pkg.github.com/Vacademy-io/vacademy_platform</url>
                     <snapshots>
@@ -23,9 +19,28 @@
                     </snapshots>
                 </repository>
             </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>central-plugins</id>
+                    <url>https://repo1.maven.org/maven2</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>false</enabled>
+                    </snapshots>
+                </pluginRepository>
+            </pluginRepositories>
         </profile>
     </profiles>
 
+    <mirrors>
+        <mirror>
+            <id>central-mirror</id>
+            <mirrorOf>central</mirrorOf>
+            <url>https://repo1.maven.org/maven2</url>
+        </mirror>
+    </mirrors>
 
     <servers>
         <server>

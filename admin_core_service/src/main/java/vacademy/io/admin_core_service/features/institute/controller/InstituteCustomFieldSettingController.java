@@ -24,4 +24,11 @@ public class InstituteCustomFieldSettingController {
         return instituteSettingManager.updateCustomFieldSetting(userDetails, instituteId, request, isPresent);
 
     }
+
+    @GetMapping("/list-with-usage")
+    public ResponseEntity<java.util.List<vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldUsageDTO>> getCustomFieldsWithUsage(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(instituteSettingManager.getCustomFieldsWithUsage(instituteId));
+    }
 }

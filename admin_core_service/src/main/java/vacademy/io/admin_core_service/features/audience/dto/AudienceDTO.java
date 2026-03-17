@@ -33,6 +33,8 @@ public class AudienceDTO {
     private String jsonWebMetadata;
     private String toNotify; // Comma-separated emails for additional notification recipients
     private Boolean sendRespondentEmail; // Whether to send email to the respondent
+    private String sessionId; // References session(id)
+    private String settingJson; // JSON settings for the audience campaign
     private String createdByUserId;
 
     // Custom fields for the form

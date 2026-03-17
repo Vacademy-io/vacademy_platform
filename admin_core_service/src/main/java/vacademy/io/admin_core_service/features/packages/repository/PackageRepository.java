@@ -31,8 +31,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
     @Query(value = "SELECT DISTINCT l.* FROM level l " +
             "JOIN package_session ps ON l.id = ps.level_id " +
-            "JOIN package p ON ps.package_id = p.id " +
-            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "JOIN package_institute pi ON ps.package_id = pi.package_id " +
             "WHERE pi.institute_id = :instituteId AND l.status IN (:statusList) AND ps.status IN (:statusList)", nativeQuery = true)
     List<LevelProjection> findDistinctLevelsByInstituteIdAndStatusIn(@Param("instituteId") String instituteId,
             @Param("statusList") List<String> statusList);
@@ -78,7 +77,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             "JOIN student_session_institute_group_mapping ssgm ON ssgm.package_session_id = ps.id " +
             "WHERE ssgm.institute_id = :instituteId " +
             "AND ssgm.user_id = :userId " +
-            "AND p.status != 'DELETED'", nativeQuery = true)
+            "AND p.status != 'DELETED' " +
+            "AND ps.status != 'DELETED' " +
+            "AND ssgm.status != 'DELETED'", nativeQuery = true)
     List<PackageEntity> findDistinctPackagesByUserIdAndInstituteId(
             @Param("userId") String userId,
             @Param("instituteId") String instituteId);
@@ -88,7 +89,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             "JOIN student_session_institute_group_mapping ssgm ON ssgm.package_session_id = ps.id " +
             "WHERE ssgm.institute_id = :instituteId " +
             "AND ssgm.user_id = :userId " +
-            "AND p.status != 'DELETED'", nativeQuery = true)
+            "AND p.status != 'DELETED' " +
+            "AND ps.status != 'DELETED' " +
+            "AND ssgm.status != 'DELETED'", nativeQuery = true)
     Integer countDistinctPackagesByUserIdAndInstituteId(
             @Param("userId") String userId,
             @Param("instituteId") String instituteId);
@@ -109,13 +112,18 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             "AND ps.status != 'DELETED' and ps.level_id != 'DEFAULT' ", nativeQuery = true)
     Long countDistinctLevelsByInstituteId(@Param("instituteId") String instituteId);
 
-    @Query(value = "SELECT DISTINCT TRIM(tag) FROM package p " +
-            "JOIN package_institute pi ON p.id = pi.package_id, " +
-            "LATERAL unnest(string_to_array(p.comma_separated_tags, ',')) AS tag " +
-            "WHERE pi.institute_id = :instituteId " +
-            "AND p.status != 'DELETED' " +
-            "AND p.comma_separated_tags IS NOT NULL " +
-            "AND p.comma_separated_tags != ''", nativeQuery = true)
+    @Query(value = """
+            SELECT DISTINCT TRIM(t.tag)
+            FROM package_institute pi
+            JOIN package p ON pi.package_id = p.id
+            CROSS JOIN LATERAL unnest(string_to_array(p.comma_separated_tags, ',')) AS t(tag)
+            WHERE pi.institute_id = :instituteId
+            AND p.status != 'DELETED'
+            AND p.comma_separated_tags IS NOT NULL
+            AND p.comma_separated_tags != ''
+            AND TRIM(t.tag) != ''
+            ORDER BY 1 ASC
+            """, nativeQuery = true)
     List<String> findAllDistinctTagsByInstituteId(@Param("instituteId") String instituteId);
 
     @Query(value = "SELECT DISTINCT p.* FROM package p " +
@@ -204,6 +212,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ), 0.0) AS rating,
 
                 /* 2. Session Identifiers */
+                ps.id AS packageSessionId,
                 MIN(l.id) AS levelId,
                 MIN(l.level_name) AS levelName,
 
@@ -216,6 +225,11 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN package_session ps ON ps.package_id = p.id
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
+
+            JOIN student_session_institute_group_mapping ssigm
+                ON ssigm.package_session_id = ps.id
+                AND ssigm.user_id = :userId
+                AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
 
             LEFT JOIN learner_operation lo
                 ON lo.source = 'PACKAGE_SESSION'
@@ -315,6 +329,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             JOIN package_session ps ON ps.package_id = p.id
                             JOIN level l ON l.id = ps.level_id
                             JOIN package_institute pi ON pi.package_id = p.id
+                            JOIN student_session_institute_group_mapping ssigm
+                                ON ssigm.package_session_id = ps.id
+                                AND ssigm.user_id = :userId
+                                AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
                             LEFT JOIN learner_operation lo
                                 ON lo.source = 'PACKAGE_SESSION'
                                 AND lo.source_id = ps.id
@@ -372,6 +390,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("mappingStatuses") List<String> mappingStatuses,
             Pageable pageable);
 
     // to do: here I have hard coded the rating of course
@@ -417,6 +436,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 MIN(l.level_name) AS levelName,
 
                 ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
+                p.created_by_user_id AS createdByUserId,
 
                 /* Fixed: Return only current level ID */
                 ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
@@ -425,6 +445,13 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN package_session ps ON ps.package_id = p.id
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
+
+            JOIN package_institute pi ON pi.package_id = p.id
+
+            JOIN student_session_institute_group_mapping ssigm
+                ON ssigm.package_session_id = ps.id
+                AND ssigm.user_id = :userId
+                AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
 
             LEFT JOIN learner_operation lo
                 ON lo.source = 'PACKAGE_SESSION'
@@ -510,6 +537,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             JOIN package_session ps ON ps.package_id = p.id
                             JOIN level l ON l.id = ps.level_id
                             JOIN package_institute pi ON pi.package_id = p.id
+                            JOIN student_session_institute_group_mapping ssigm
+                                ON ssigm.package_session_id = ps.id
+                                AND ssigm.user_id = :userId
+                                AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
                             LEFT JOIN learner_operation lo ON lo.source = 'PACKAGE_SESSION' AND lo.source_id = ps.id
                                 AND (:userId IS NULL OR lo.user_id = :userId)
                                 AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
@@ -550,6 +581,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("mappingStatuses") List<String> mappingStatuses,
             Pageable pageable);
 
     // to do: here I have hard coded the rating of course
@@ -599,7 +631,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 ELSE NULL
                             END
                         ), NULL
-                    ) AS facultyUserIds
+                    ) AS facultyUserIds,
+                    p.created_by_user_id AS createdByUserId
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
                 JOIN level l ON l.id = ps.level_id
@@ -658,6 +691,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                    AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
                     AND (
                         :name IS NULL OR
                         LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
@@ -672,7 +706,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                    p.course_depth, p.course_html_description, p.created_at,
+                    p.course_depth, p.course_html_description, p.created_at, p.created_by_user_id,
                     ps_read_time.total_read_time_minutes
             """, countQuery = """
                 SELECT COUNT(DISTINCT p.id)
@@ -693,6 +727,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                    AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
                     AND (
                         :name IS NULL OR
                         LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')) OR
@@ -717,6 +752,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("createdByUserId") String createdByUserId,
             Pageable pageable);
 
     @Query(value = """
@@ -831,6 +867,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                 AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                 AND (
                     :#{#userIds == null || #userIds.isEmpty()} = true
                     OR EXISTS (
@@ -879,6 +917,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                             AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                            AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                             AND (
                                 :#{#userIds == null || #userIds.isEmpty()} = true
                                 OR EXISTS (
@@ -915,6 +955,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("packageIds") List<String> packageIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
             Pageable pageable);
 
     @Query(value = """
@@ -1107,6 +1149,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                    AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                    AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true
                         OR EXISTS (
@@ -1154,6 +1198,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                         AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                         AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                        AND (:#{#packageIds == null || #packageIds.isEmpty()} = true OR p.id IN (:packageIds))
+                        AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ps.id IN (:packageSessionIds))
                         AND (
                             :#{#facultyIds == null || #facultyIds.isEmpty()} = true
                             OR EXISTS (
@@ -1189,6 +1235,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("packageIds") List<String> packageIds,
+            @Param("packageSessionIds") List<String> packageSessionIds,
             Pageable pageable);
 
     @Query(value = """
@@ -1222,6 +1270,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
                     ), 0.0) AS rating,
                     COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
+                    ps.id AS packageSessionId,
                     MIN(l.id) AS levelId,
                     MIN(l.level_name) AS levelName,
                     ARRAY_REMOVE(
@@ -1235,6 +1284,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             END
                         ), NULL
                     ) AS facultyUserIds,
+                    p.created_by_user_id AS createdByUserId,
                     (
                         SELECT ARRAY_AGG(DISTINCT l2.id)
                         FROM package_session ps2
@@ -1301,6 +1351,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
             AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                    AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true
                         OR EXISTS (
@@ -1324,7 +1375,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                     p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                     p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                    p.course_depth, p.course_html_description, p.created_at,
+                    p.course_depth, p.course_html_description, p.created_at, p.created_by_user_id,
                     ps_read_time.total_read_time_minutes
             """, countQuery = """
                 SELECT COUNT(DISTINCT p.id)
@@ -1347,6 +1398,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
             AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
+                    AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true
                         OR EXISTS (
@@ -1382,6 +1434,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("questionStatusList") List<String> questionStatusList,
             @Param("slideStatusList") List<String> slideStatusList,
             @Param("chapterPackageStatusList") List<String> chapterPackageStatusList,
+            @Param("createdByUserId") String createdByUserId,
             Pageable pageable);
 
     @Query(value = """
@@ -1419,6 +1472,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#ratingStatuses == null || #ratingStatuses.isEmpty()} = true OR r.status IN (:ratingStatuses))
                 ), 0.0) AS rating,
 
+                ps.id AS packageSessionId,
                 MIN(l.id) AS levelId,
                 MIN(l.level_name) AS levelName,
 
@@ -1835,10 +1889,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ), 0.0) AS rating,
 
                 /* 2. Session/Level Identifiers */
+                ps.id AS packageSessionId,
                 MIN(l.id) AS levelId,
                 MIN(l.level_name) AS levelName,
 
                 ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
+                p.created_by_user_id AS createdByUserId,
 
                 /* 3. Return only current Level ID */
                 ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
@@ -1933,7 +1989,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
+                p.course_depth, p.course_html_description, p.created_at, p.created_by_user_id,
                 ps.id /* 4. Added Grouping by Session */
             """,
 
@@ -2039,6 +2095,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 MIN(l.level_name) AS levelName,
 
                 ARRAY_REMOVE(ARRAY_AGG(DISTINCT fspm.user_id), NULL) AS facultyUserIds,
+                p.created_by_user_id AS createdByUserId,
 
                 /* Fixed: Return only current level ID */
                 ARRAY[CAST(MIN(l.id) AS text)] AS levelIds
@@ -2122,7 +2179,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.id, p.package_name, p.thumbnail_file_id, p.is_course_published_to_catalaouge,
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
-                p.course_depth, p.course_html_description, p.created_at,
+                p.course_depth, p.course_html_description, p.created_at, p.created_by_user_id,
                 ps.id
             """,
 
@@ -2356,24 +2413,154 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("packageStatuses") List<String> packageStatuses,
             @Param("facultyMappingStatuses") List<String> facultyMappingStatuses);
 
+    /**
+     * V2: Get detailed package information where teacher is either creator or
+     * assigned as faculty
+     * Includes DELETED filter and pagination support
+     */
     @Query(value = """
-                -- CTE to find the cheapest payment plan for each session, respecting the 'DEFAULT' tag
+            SELECT DISTINCT
+                p.*,
+                CASE
+                    WHEN p.created_by_user_id = :teacherId AND COALESCE(faculty_assignments.assignment_count, 0) > 0 THEN 'BOTH'
+                    WHEN p.created_by_user_id = :teacherId THEN 'CREATOR'
+                    ELSE 'FACULTY_ASSIGNED'
+                END as teacher_relationship_type,
+                COALESCE(faculty_assignments.assignment_count, 0) as faculty_assignment_count,
+                faculty_assignments.assigned_subjects,
+                -- Session details
+                s.id as session_id,
+                s.session_name,
+                s.status as session_status,
+                s.start_date as session_start_date,
+                -- Level details
+                l.id as level_id,
+                l.level_name,
+                l.duration_in_days,
+                l.status as level_status,
+                l.thumbnail_file_id as level_thumbnail_file_id,
+                l.created_at as level_created_at,
+                l.updated_at as level_updated_at,
+                -- Package Session details
+                ps_info.package_session_ids,
+                ps_info.package_session_count,
+                ps_info.package_session_statuses
+            FROM package p
+            LEFT JOIN (
+                SELECT
+                    ps.package_id,
+                    COUNT(DISTINCT fspsm.id) as assignment_count,
+                    STRING_AGG(DISTINCT s.subject_name, ', ') as assigned_subjects
+                FROM package_session ps
+                JOIN faculty_subject_package_session_mapping fspsm ON fspsm.package_session_id = ps.id
+                LEFT JOIN subject s ON s.id = fspsm.subject_id
+                WHERE fspsm.user_id = :teacherId
+                AND (:#{#facultyMappingStatuses == null || #facultyMappingStatuses.isEmpty()} = true
+                     OR fspsm.status IN (:facultyMappingStatuses))
+                AND ps.status != 'DELETED'
+                AND ps.status != 'INVITED'
+                GROUP BY ps.package_id
+            ) faculty_assignments ON faculty_assignments.package_id = p.id
+            LEFT JOIN (
+                SELECT
+                    ps.package_id,
+                    STRING_AGG(DISTINCT ps.id, ', ') as package_session_ids,
+                    COUNT(DISTINCT ps.id) as package_session_count,
+                    STRING_AGG(DISTINCT ps.status, ', ') as package_session_statuses
+                FROM package_session ps
+                WHERE ps.status != 'DELETED'
+                AND ps.status != 'INVITED'
+                GROUP BY ps.package_id
+            ) ps_info ON ps_info.package_id = p.id
+            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED' AND ps_first.status != 'INVITED'
+            LEFT JOIN session s ON s.id = ps_first.session_id
+            LEFT JOIN level l ON l.id = ps_first.level_id
+            WHERE (
+                -- Teacher created the package
+                p.created_by_user_id = :teacherId
+                OR
+                -- Teacher is assigned as faculty to any package session
+                faculty_assignments.package_id IS NOT NULL
+            )
+            AND p.status != 'DELETED'
+            AND (:#{#packageStatuses == null || #packageStatuses.isEmpty()} = true
+                 OR p.status IN (:packageStatuses))
+            ORDER BY p.created_at DESC
+            """, countQuery = """
+            SELECT COUNT(*)
+            FROM (
+                SELECT DISTINCT
+                    p.id,
+                    CASE
+                        WHEN p.created_by_user_id = :teacherId AND COALESCE(faculty_assignments.assignment_count, 0) > 0 THEN 'BOTH'
+                        WHEN p.created_by_user_id = :teacherId THEN 'CREATOR'
+                        ELSE 'FACULTY_ASSIGNED'
+                    END as teacher_relationship_type,
+                    s.id as session_id,
+                    l.id as level_id
+                FROM package p
+                LEFT JOIN (
+                    SELECT
+                        ps.package_id,
+                        COUNT(DISTINCT fspsm.id) as assignment_count
+                FROM package_session ps
+                JOIN faculty_subject_package_session_mapping fspsm ON fspsm.package_session_id = ps.id
+                WHERE fspsm.user_id = :teacherId
+                AND (:#{#facultyMappingStatuses == null || #facultyMappingStatuses.isEmpty()} = true
+                     OR fspsm.status IN (:facultyMappingStatuses))
+                AND ps.status != 'DELETED'
+                AND ps.status != 'INVITED'
+                GROUP BY ps.package_id
+            ) faculty_assignments ON faculty_assignments.package_id = p.id
+            LEFT JOIN (
+                SELECT
+                    ps.package_id,
+                    STRING_AGG(DISTINCT ps.id, ', ') as package_session_ids,
+                    COUNT(DISTINCT ps.id) as package_session_count,
+                    STRING_AGG(DISTINCT ps.status, ', ') as package_session_statuses
+                FROM package_session ps
+                WHERE ps.status != 'DELETED'
+                AND ps.status != 'INVITED'
+                GROUP BY ps.package_id
+            ) ps_info ON ps_info.package_id = p.id
+            LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED' AND ps_first.status != 'INVITED'
+                LEFT JOIN session s ON s.id = ps_first.session_id
+                LEFT JOIN level l ON l.id = ps_first.level_id
+                WHERE (
+                    p.created_by_user_id = :teacherId
+                    OR
+                    faculty_assignments.package_id IS NOT NULL
+                )
+                AND p.status != 'DELETED'
+                AND (:#{#packageStatuses == null || #packageStatuses.isEmpty()} = true
+                     OR p.status IN (:packageStatuses))
+            ) distinct_rows
+            """, nativeQuery = true)
+    Page<Map<String, Object>> findTeacherPackagesWithRelationshipDetailsV2(
+            @Param("teacherId") String teacherId,
+            @Param("packageStatuses") List<String> packageStatuses,
+            @Param("facultyMappingStatuses") List<String> facultyMappingStatuses,
+            Pageable pageable);
+
+    @Query(value = """
+                -- CTE: package_session + default enroll_invite -> pick recent psli -> its payment_option -> min price plan
                 WITH payment_info AS (
                     SELECT
                         ps.id AS package_session_id,
                         ei.id AS enroll_invite_id,
+                        psli.id AS psli_id,
                         po.id AS payment_option_id,
                         po.type AS payment_option_type,
                         po.status AS payment_option_status,
+                        pp.id AS payment_plan_id,
                         pp.actual_price,
                         pp.currency,
-                        pp.id AS payment_plan_id, -- Added payment plan ID
-                        ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY pp.actual_price ASC NULLS LAST) as row_num
+                        ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY psli.updated_at DESC NULLS LAST, pp.actual_price ASC NULLS LAST) as row_num
                     FROM package_session ps
                     LEFT JOIN package_session_learner_invitation_to_payment_option psli ON ps.id = psli.package_session_id
                         AND (:#{#psliStatus == null || #psliStatus.isEmpty()} = true OR psli.status IN (:psliStatus))
                     LEFT JOIN enroll_invite ei ON ei.id = psli.enroll_invite_id
-                        AND ei.tag = 'DEFAULT' -- Important filter included here
+                        AND ei.tag = 'DEFAULT'
                         AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
                     LEFT JOIN payment_option po ON po.id = psli.payment_option_id
                         AND (:#{#paymentOptionStatus == null || #paymentOptionStatus.isEmpty()} = true OR po.status IN (:paymentOptionStatus))
@@ -2409,18 +2596,21 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     ), 0.0) AS rating,
                     COALESCE(ps_read_time.total_read_time_minutes, 0) AS readTimeInMinutes,
 
-                    -- Selecting details from the cheapest plan (row_num = 1)
+                    -- Default invite -> recent psli -> its payment_option -> min price plan (row_num = 1)
                     payment_info.enroll_invite_id AS enrollInviteId,
+                    payment_info.psli_id AS psliId,
                     payment_info.payment_option_id AS paymentOptionId,
                     payment_info.payment_option_type AS paymentOptionType,
                     payment_info.payment_option_status AS paymentOptionStatus,
+                    payment_info.payment_plan_id AS paymentPlanId,
                     payment_info.actual_price AS minPlanActualPrice,
                     payment_info.currency AS currency,
 
                     -- Faculty User IDs aggregation
                     ARRAY_REMOVE(
                         ARRAY_AGG(DISTINCT fspm.user_id), NULL
-                    ) AS facultyUserIds
+                    ) AS facultyUserIds,
+                    p.created_by_user_id AS createdByUserId
 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
@@ -2433,7 +2623,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND fspm.subject_id IS NULL
                     AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true OR fspm.status IN (:facultyPackageSessionStatus))
 
-                -- Join to our pre-calculated payment info CTE
+                -- Join to payment info: default invite, last updated payment_option and its plan
                 LEFT JOIN payment_info
                     ON ps.id = payment_info.package_session_id AND payment_info.row_num = 1
 
@@ -2489,6 +2679,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
                     AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
                     AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
+                    AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
                         EXISTS (
@@ -2502,13 +2693,16 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     )
                 GROUP BY
                     p.id,
+                    p.created_by_user_id,
                     ps.id,
                     l.id,
                     ps_read_time.total_read_time_minutes,
                     payment_info.enroll_invite_id,
+                    payment_info.psli_id,
                     payment_info.payment_option_id,
                     payment_info.payment_option_type,
                     payment_info.payment_option_status,
+                    payment_info.payment_plan_id,
                     payment_info.actual_price,
                     payment_info.currency
             """, countQuery = """
@@ -2518,23 +2712,24 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
             WHERE
-                p.is_course_published_to_catalaouge = true
-                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
-                AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
+                    p.is_course_published_to_catalaouge = true
+                    AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                    AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
-                AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
-                AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
-                AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
-                AND (
+                    AND (:#{#levelStatus == null || #levelStatus.isEmpty()} = true OR l.status IN (:levelStatus))
+                    AND (:name IS NULL OR LOWER(p.package_name) LIKE LOWER(CONCAT('%', :name, '%')))
+                    AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
+                    AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
+                    AND (
                     :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
                     EXISTS (
-                        SELECT 1
-                        FROM faculty_subject_package_session_mapping fspm_sub
-                        WHERE fspm_sub.package_session_id = ps.id
-                          AND fspm_sub.user_id IN (:facultyIds)
-                          AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
-                               OR fspm_sub.status IN (:facultyPackageSessionStatus))
+                            SELECT 1
+                            FROM faculty_subject_package_session_mapping fspm_sub
+                            WHERE fspm_sub.package_session_id = ps.id
+                              AND fspm_sub.user_id IN (:facultyIds)
+                              AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
+                                   OR fspm_sub.status IN (:facultyPackageSessionStatus))
                     )
                 )
             """, nativeQuery = true)
@@ -2557,25 +2752,28 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("psliStatus") List<String> psliStatus,
             @Param("paymentOptionStatus") List<String> paymentOptionStatus,
             @Param("paymentPlanStatus") List<String> paymentPlanStatus,
+            @Param("createdByUserId") String createdByUserId,
             Pageable pageable);
 
     @Query(value = """
-                -- CTE LOGIC FIXED: Now starts from package_session to include all sessions
+                -- CTE: package_session + default enroll_invite -> pick recent psli -> its payment_option -> min price plan
                 WITH payment_info AS (
                     SELECT
-                        ps.id AS package_session_id, -- Select the session ID directly from the source
+                        ps.id AS package_session_id,
                         e.id AS enroll_invite_id,
+                        psli.id AS psli_id,
                         po.id AS payment_option_id,
                         po.type AS payment_option_type,
+                        po.status AS payment_option_status,
                         pp.id AS payment_plan_id,
                         pp.actual_price,
                         pp.currency,
-                        -- Partition by the main session ID
-                        ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY pp.actual_price ASC NULLS LAST) as row_num
-                    FROM package_session ps -- START FROM package_session
+                        ROW_NUMBER() OVER(PARTITION BY ps.id ORDER BY psli.updated_at DESC NULLS LAST, pp.actual_price ASC NULLS LAST) as row_num
+                    FROM package_session ps
                     LEFT JOIN package_session_learner_invitation_to_payment_option psli ON ps.id = psli.package_session_id
                         AND (:#{#psliStatus == null || #psliStatus.isEmpty()} = true OR psli.status IN (:psliStatus))
                     LEFT JOIN enroll_invite e ON e.id = psli.enroll_invite_id
+                        AND e.tag = 'DEFAULT'
                         AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR e.status IN (:enrollInviteStatus))
                     LEFT JOIN payment_option po ON po.id = psli.payment_option_id
                         AND (:#{#paymentOptionStatus == null || #paymentOptionStatus.isEmpty()} = true OR po.status IN (:paymentOptionStatus))
@@ -2633,13 +2831,17 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         WHERE ps2.package_id = p.id
                     ) AS levelIds,
 
-                    -- ALIASES FIXED: Aliases now match the Projection interface getters
+                    -- Default invite -> recent psli -> its payment_option -> min price plan
                     payment_info.enroll_invite_id AS enrollInviteId,
+                    payment_info.psli_id AS psliId,
                     payment_info.payment_option_id AS paymentOptionId,
                     payment_info.payment_option_type AS paymentOptionType,
+                    payment_info.payment_option_status AS paymentOptionStatus,
                     payment_info.payment_plan_id AS paymentPlanId,
-                    payment_info.actual_price AS minPlanActualPrice, -- FIXED ALIAS
-                    payment_info.currency AS currency                -- FIXED ALIAS
+                    payment_info.actual_price AS minPlanActualPrice,
+                    payment_info.currency AS currency,
+                    ps.available_slots AS availableSlots,
+                    p.created_by_user_id AS createdByUserId
 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
@@ -2654,7 +2856,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         OR fspm.status IN (:facultyPackageSessionStatus)
                     )
 
-                -- Join to our pre-calculated payment info CTE, only taking the cheapest plan
+                -- Join to payment info: default invite, recent psli, its payment_option and plan
                 LEFT JOIN payment_info
                     ON ps.id = payment_info.package_session_id AND payment_info.row_num = 1
 
@@ -2710,6 +2912,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
+                    AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
                         EXISTS (
@@ -2725,12 +2928,15 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
                 GROUP BY
                     p.id,
+                    p.created_by_user_id,
                     ps.id,
                     l.id,
                     ps_read_time.total_read_time_minutes,
                     payment_info.enroll_invite_id,
+                    payment_info.psli_id,
                     payment_info.payment_option_id,
                     payment_info.payment_option_type,
+                    payment_info.payment_option_status,
                     payment_info.payment_plan_id,
                     payment_info.actual_price,
                     payment_info.currency
@@ -2749,6 +2955,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                     AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
                     AND (:#{#tags == null || #tags.isEmpty()} = true OR string_to_array(p.comma_separated_tags, ',') && CAST(ARRAY[:tags] AS text[]))
+                    AND (:#{#createdByUserId == null || #createdByUserId.isEmpty()} = true OR p.created_by_user_id = :createdByUserId)
                     AND (
                         :#{#facultyIds == null || #facultyIds.isEmpty()} = true OR
                         EXISTS (
@@ -2781,6 +2988,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("psliStatus") List<String> psliStatus,
             @Param("paymentOptionStatus") List<String> paymentOptionStatus,
             @Param("paymentPlanStatus") List<String> paymentPlanStatus,
+            @Param("createdByUserId") String createdByUserId,
             Pageable pageable);
 
     @Query(value = """

@@ -15,10 +15,8 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
 @Service
 public class HtmlImageConverter {
-
 
     private final AmazonS3 s3Client;
     private final FileMetadataRepository fileMetadataRepository;
@@ -49,7 +47,7 @@ public class HtmlImageConverter {
         while (matcher.find()) {
             // Extract the image format (e.g., png, jpeg) and base64 data
             String imageFormat = matcher.group(1); // e.g., "png"
-            String base64Data = matcher.group(2);  // e.g., "iVBORw0KGgoAAAANSUhEUg..."
+            String base64Data = matcher.group(2); // e.g., "iVBORw0KGgoAAAANSUhEUg..."
 
             // Upload the base64 image to S3
             String networkImageUrl = uploadBase64File(base64Data, imageFormat);
@@ -72,7 +70,7 @@ public class HtmlImageConverter {
      * @return The network URL of the uploaded image.
      * @throws IOException If an error occurs during file upload.
      */
-    private String uploadBase64File(String base64, String imageFormat) throws IOException {
+    public String uploadBase64File(String base64, String imageFormat) throws IOException {
         // Decode the base64 string into a byte array
         byte[] fileBytes = Base64.getDecoder().decode(base64);
         if (imageFormat.equals("svg+xml"))
@@ -93,8 +91,7 @@ public class HtmlImageConverter {
                 "image/" + imageFormat, // Set the content type (e.g., "image/png")
                 key,
                 "SERVICE_UPLOAD",
-                "SERVICE_UPLOAD"
-        );
+                "SERVICE_UPLOAD");
 
         // Save the metadata
         fileMetadataRepository.save(metadata);
@@ -103,12 +100,10 @@ public class HtmlImageConverter {
         return "https://" + publicBucket + ".s3.amazonaws.com/" + key;
     }
 
-
     public String convertBase64ToUrls(String html) throws IOException {
         // replace base64 images in img tags with network URLs
         html = convertBase64ImagesToNetworkImages(html);
         return html;
     }
-
 
 }

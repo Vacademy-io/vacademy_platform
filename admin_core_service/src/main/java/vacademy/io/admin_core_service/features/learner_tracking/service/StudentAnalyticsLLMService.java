@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
+import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
+import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
+import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 
 import java.time.Duration;
 import java.util.List;
@@ -35,9 +38,14 @@ public class StudentAnalyticsLLMService {
 
         private final WebClient webClient;
         private final ObjectMapper objectMapper;
+        private final AiTokenUsageService aiTokenUsageService;
 
-        public StudentAnalyticsLLMService(@Value("${openrouter.api.key}") String apiKey, ObjectMapper objectMapper) {
+        public StudentAnalyticsLLMService(
+                        @Value("${openrouter.api.key}") String apiKey,
+                        ObjectMapper objectMapper,
+                        AiTokenUsageService aiTokenUsageService) {
                 this.objectMapper = objectMapper;
+                this.aiTokenUsageService = aiTokenUsageService;
 
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
@@ -113,7 +121,37 @@ public class StudentAnalyticsLLMService {
                                 .retrieve()
                                 .bodyToMono(String.class)
                                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
+                                .doOnNext(response -> logTokenUsage(response, model))
                                 .flatMap(response -> parseResponse(response, model));
+        }
+
+        /**
+         * Log token usage from API response
+         */
+        private void logTokenUsage(String responseBody, String model) {
+                try {
+                        JsonNode root = objectMapper.readTree(responseBody);
+                        JsonNode usage = root.get("usage");
+
+                        if (usage != null) {
+                                int promptTokens = usage.has("prompt_tokens") ? usage.get("prompt_tokens").asInt() : 0;
+                                int completionTokens = usage.has("completion_tokens")
+                                                ? usage.get("completion_tokens").asInt()
+                                                : 0;
+
+                                aiTokenUsageService.recordUsageAsync(
+                                                ApiProvider.OPENAI,
+                                                RequestType.ANALYTICS,
+                                                model,
+                                                promptTokens,
+                                                completionTokens,
+                                                null, // No institute ID in this context
+                                                null // No user ID in this context
+                                );
+                        }
+                } catch (Exception e) {
+                        log.warn("Failed to log token usage: {}", e.getMessage());
+                }
         }
 
         private String createStudentAnalysisPrompt(String rawJson, String activityType) {

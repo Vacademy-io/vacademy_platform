@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.live_session.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,13 +32,40 @@ public class GetLiveSessionService {
     @Autowired
     private LiveSessionNotificationProcessor notificationProcessor;
 
-    @Autowired
-    private ScheduleNotificationRepository scheduleNotificationRepository;
+        @Autowired
 
-    public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
+        private ScheduleNotificationRepository scheduleNotificationRepository;
 
-        List<LiveSessionRepository.LiveSessionListProjection> projections =
-                sessionRepository.findCurrentlyLiveSessions(instituteId);
+        private GroupedSessionsByDateDTO createGroupedSessionsByDateDTO(Date date, List<LiveSessionListDTO> sessions) {
+                String defaultLink = null;
+                String defaultName = null;
+
+                // Find first non-null config/link and clear default link/name from sessions
+                for (LiveSessionListDTO session : sessions) {
+                        // LearnerButtonConfig should remain in session and NOT be moved to group level.
+
+                        if (session.getDefaultClassLink() != null) {
+                                if (defaultLink == null) {
+                                        defaultLink = session.getDefaultClassLink();
+                                }
+                                session.setDefaultClassLink(null);
+                        }
+                        if (session.getDefaultClassName() != null) {
+                                if (defaultName == null) {
+                                        defaultName = session.getDefaultClassName();
+                                }
+                                session.setDefaultClassName(null);
+                        }
+                }
+
+                // Pass null for learnerButtonConfig so it is excluded from group level response
+                return new GroupedSessionsByDateDTO(date, sessions, null, defaultLink, defaultName);
+        }
+
+        public List<LiveSessionListDTO> getLiveSession(String instituteId, CustomUserDetails user) {
+
+                List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
+                                .findCurrentlyLiveSessions(instituteId);
 
         return projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
@@ -55,13 +83,17 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink(),
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
     }
 
-    public List<GroupedSessionsByDateDTO> getUpcomingSession(String instituteId, CustomUserDetails user) {
-        List<LiveSessionRepository.LiveSessionListProjection> projections =
-                sessionRepository.findUpcomingSessions(instituteId);
+        public List<GroupedSessionsByDateDTO> getUpcomingSession(String instituteId, CustomUserDetails user) {
+                List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
+                                .findUpcomingSessions(instituteId);
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
@@ -79,7 +111,11 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink(),
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
         // Group by date
@@ -95,9 +131,9 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-    public List<GroupedSessionsByDateDTO> getPreviousSession(String instituteId, CustomUserDetails user) {
-        List<LiveSessionRepository.LiveSessionListProjection> projections =
-                sessionRepository.findPreviousSessions(instituteId);
+        public List<GroupedSessionsByDateDTO> getPreviousSession(String instituteId, CustomUserDetails user) {
+                List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
+                                .findPreviousSessions(instituteId);
 
         List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
@@ -115,7 +151,11 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink(),
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
         // Group by date
@@ -192,7 +232,11 @@ public class GetLiveSessionService {
                         p.getSubject(),
                         p.getMeetingLink(),
                         p.getRegistrationFormLinkForPublicSessions(),
-                        p.getTimezone()
+                        p.getTimezone(),
+                        deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                        p.getDefaultClassLink(),
+                        p.getDefaultClassName(),
+                        p.getLinkType()
                 );
                 uniqueSessions.put(sessionId, dto);
             }
@@ -222,7 +266,11 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink(),
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
         // Group by date
@@ -258,7 +306,11 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink(),
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
         // Group by date
@@ -274,35 +326,18 @@ public class GetLiveSessionService {
                 .toList();
     }
 
-    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(String batchId, String userId, CustomUserDetails user) {
-        // Get sessions for batch
-        List<LiveSessionRepository.LiveSessionListProjection> batchProjections =
-                new ArrayList<>();
-        if (StringUtils.hasText(batchId)){
-            batchProjections = sessionRepository.findUpcomingSessionsForBatch(batchId);
-        }
+    @Cacheable(value = "liveAndUpcomingSessions", key = "#batchId + '_' + #userId + '_' + #page + '_' + #size + '_' + #startDate + '_' + #endDate")
+    public List<GroupedSessionsByDateDTO> getLiveAndUpcomingSessionsForUserAndBatch(
+            String batchId, String userId, int page, Integer size, String startDate, String endDate, CustomUserDetails user) {
+        // Calculate offset for pagination (only if size is provided)
+        Integer offset = (size != null) ? page * size : null;
         
-        // Get sessions for user
-        System.out.println("userid is:"+userId);
-        List<LiveSessionRepository.LiveSessionListProjection> userProjections =
-                sessionRepository.findUpcomingSessionsForUser(userId);
+        // Optimized: Single query that fetches both batch and user sessions with database-level deduplication
+        List<LiveSessionRepository.LiveSessionListProjection> projections = 
+                sessionRepository.findUpcomingSessionsForUserAndBatchWithFilters(batchId, userId, startDate, endDate, offset, size);
 
-        // Combine both lists and remove duplicates based on sessionId and scheduleId
-        Map<String, LiveSessionRepository.LiveSessionListProjection> uniqueSessions = new LinkedHashMap<>();
-        
-        // Add batch sessions
-        for (LiveSessionRepository.LiveSessionListProjection p : batchProjections) {
-            String key = p.getSessionId() + "_" + p.getScheduleId();
-            uniqueSessions.put(key, p);
-        }
-        
-        // Add user sessions (will override batch sessions if same key exists)
-        for (LiveSessionRepository.LiveSessionListProjection p : userProjections) {
-            String key = p.getSessionId() + "_" + p.getScheduleId();
-            uniqueSessions.put(key, p);
-        }
-
-        List<LiveSessionListDTO> flatList = uniqueSessions.values().stream().map(p -> new LiveSessionListDTO(
+        // Map projections to DTOs
+        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),
@@ -318,21 +353,24 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink(),
+                p.getDefaultClassName(),
+                p.getLinkType()
         )).toList();
 
-        // Group by date
-        return flatList.stream()
-                .collect(Collectors.groupingBy(
-                        LiveSessionListDTO::getMeetingDate,
-                        TreeMap::new, // to keep dates sorted
-                        Collectors.toList()
-                ))
-                .entrySet()
-                .stream()
-                .map(entry -> new GroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
-                .toList();
-    }
+                // Group by date
+                return flatList.stream()
+                                .collect(Collectors.groupingBy(
+                                                LiveSessionListDTO::getMeetingDate,
+                                                TreeMap::new, // to keep dates sorted
+                                                Collectors.toList()))
+                                .entrySet()
+                                .stream()
+                                .map(entry -> createGroupedSessionsByDateDTO(entry.getKey(), entry.getValue()))
+                                .toList();
+        }
 
     public SessionSearchResponse searchSessions(SessionSearchRequest request, CustomUserDetails user) {
         // Create pageable object
@@ -360,7 +398,11 @@ public class GetLiveSessionService {
                 p.getSubject(),
                 p.getMeetingLink(),
                 p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone()
+                p.getTimezone(),
+                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                p.getDefaultClassLink(),
+                p.getDefaultClassName(),
+                p.getLinkType()
             ))
             .collect(Collectors.toList());
         
@@ -442,5 +484,17 @@ public class GetLiveSessionService {
         return type + " is deleted";
     }
 
+        private vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO deserializeLearnerButtonConfig(
+                        String json) {
+                if (json == null)
+                        return null;
+                try {
+                        return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json,
+                                        vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO.class);
+                } catch (Exception e) {
+                        System.err.println("Error deserializing LearnerButtonConfig: " + e.getMessage());
+                        return null;
+                }
+        }
 
 }

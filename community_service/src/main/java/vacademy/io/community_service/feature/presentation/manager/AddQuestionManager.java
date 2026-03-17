@@ -149,13 +149,17 @@ public class AddQuestionManager {
         List<Option> options = new ArrayList<>();
         MCQEvaluationDTO requestEvaluation = (MCQEvaluationDTO) questionEvaluationService.getEvaluationJson(questionRequest.getAutoEvaluationJson(), MCQEvaluationDTO.class);
         List<String> correctOptionIds = new ArrayList<>();
-        for (OptionDTO optionDTO : questionRequest.getOptions()) {
+        List<OptionDTO> requestOptions = questionRequest.getOptions();
+        for (int idx = 0; idx < requestOptions.size(); idx++) {
+            OptionDTO optionDTO = requestOptions.get(idx);
             Option option = new Option();
             UUID optionId = UUID.randomUUID();
             option.setId(optionId.toString());
             option.setText(AssessmentRichTextData.fromDTO(optionDTO.getText()));
             option.setQuestion(question);
             option.setMediaId(optionDTO.getMediaId());
+            // Persist the option's position so ordering is deterministic across all clients
+            option.setOptionOrder(optionDTO.getOptionOrder() != null ? optionDTO.getOptionOrder() : idx);
 
             if (requestEvaluation.getData().getCorrectOptionIds().contains(String.valueOf(optionDTO.getPreviewId()))) {
                 correctOptionIds.add(optionId.toString());

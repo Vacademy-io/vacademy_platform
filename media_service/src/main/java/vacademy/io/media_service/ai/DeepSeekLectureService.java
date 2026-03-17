@@ -16,6 +16,7 @@ import vacademy.io.media_service.util.JsonUtils;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -26,7 +27,8 @@ public class DeepSeekLectureService {
     @Autowired
     private ExternalAIApiServiceImpl deepSeekApiService;
 
-    public String generateLecturePlannerFromPrompt(String userPrompt, String lectureDuration, String language, String methodOfTeaching, TaskStatus taskStatus, String level, Integer attempt) {
+    public String generateLecturePlannerFromPrompt(String userPrompt, String lectureDuration, String language,
+            String methodOfTeaching, TaskStatus taskStatus, String level, Integer attempt) {
         if (attempt >= 3) {
             throw new VacademyException("No response from DeepSeek");
         }
@@ -36,30 +38,37 @@ public class DeepSeekLectureService {
             Map<String, Object> promptMap = Map.of("userPrompt", userPrompt,
                     "language", (language == null || language.isEmpty()) ? "en" : language,
                     "lectureDuration", lectureDuration,
-                    "methodOfTeaching", (methodOfTeaching == null || methodOfTeaching.isEmpty()) ? "Concept First" : methodOfTeaching,
+                    "methodOfTeaching",
+                    (methodOfTeaching == null || methodOfTeaching.isEmpty()) ? "Concept First" : methodOfTeaching,
                     "level", level);
             Prompt prompt = new PromptTemplate(template)
                     .create(promptMap);
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-09-2025", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-09-2025",
+                    prompt.getContents().trim(), 30000,
+                    "lecture", getInstituteUUID(taskStatus), null);
             if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()) {
-                return generateLecturePlannerFromPrompt(userPrompt, lectureDuration, language, methodOfTeaching, taskStatus, level, attempt + 1);
+                return generateLecturePlannerFromPrompt(userPrompt, lectureDuration, language, methodOfTeaching,
+                        taskStatus, level, attempt + 1);
             }
             String resultJson = response.getChoices().get(0).getMessage().getContent();
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), validJson, "Lecture Planner Generated");
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), validJson,
+                    "Lecture Planner Generated");
 
             return validJson;
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage(), e.getMessage());
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage(),
+                    e.getMessage());
             throw new VacademyException("Failed to generate: " + e.getMessage());
         }
     }
 
-    public String generateLectureFeedback(String text, String convertedAudioResponseString, TaskStatus taskStatus, int attempt, String audioPace) {
+    public String generateLectureFeedback(String text, String convertedAudioResponseString, TaskStatus taskStatus,
+            int attempt, String audioPace) {
 
         if (attempt >= 3) {
             throw new VacademyException("No response from DeepSeek");
@@ -76,20 +85,40 @@ public class DeepSeekLectureService {
 
             taskStatusService.convertMapToJsonAndStore(promptMap, taskStatus);
 
-            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-09-2025", prompt.getContents().trim(), 30000);
+            DeepSeekResponse response = deepSeekApiService.getChatCompletion("google/gemini-2.5-flash-preview-09-2025",
+                    prompt.getContents().trim(), 30000,
+                    "lecture", getInstituteUUID(taskStatus), null);
 
-            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty() || response.getChoices().get(0).getMessage().getContent().isEmpty()) {
+            if (Objects.isNull(response) || Objects.isNull(response.getChoices()) || response.getChoices().isEmpty()
+                    || response.getChoices().get(0).getMessage().getContent().isEmpty()) {
                 return generateLectureFeedback(text, convertedAudioResponseString, taskStatus, attempt + 1, audioPace);
             }
             String resultJson = response.getChoices().get(0).getMessage().getContent();
             String validJson = JsonUtils.extractAndSanitizeJson(resultJson);
 
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), validJson, "Lecture Feedback Generated");
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.COMPLETED.name(), validJson,
+                    "Lecture Feedback Generated");
 
             return validJson;
         } catch (Exception e) {
-            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage(), e.getMessage());
+            taskStatusService.updateTaskStatus(taskStatus, TaskStatusEnum.FAILED.name(), e.getMessage(),
+                    e.getMessage());
             throw new VacademyException("Failed to generate: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Helper method to extract institute UUID from TaskStatus.
+     */
+    private UUID getInstituteUUID(TaskStatus taskStatus) {
+        if (taskStatus == null || taskStatus.getInstituteId() == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(taskStatus.getInstituteId());
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid institute ID format: {}", taskStatus.getInstituteId());
+            return null;
         }
     }
 }

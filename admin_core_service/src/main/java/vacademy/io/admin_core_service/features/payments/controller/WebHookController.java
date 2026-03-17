@@ -3,7 +3,9 @@ package vacademy.io.admin_core_service.features.payments.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.payments.service.CashfreeWebHookService;
 import vacademy.io.admin_core_service.features.payments.service.EwayPoolingService;
+import vacademy.io.admin_core_service.features.payments.service.PhonePeWebHookService;
 import vacademy.io.admin_core_service.features.payments.service.RazorpayWebHookService;
 import vacademy.io.admin_core_service.features.payments.service.StripeWebHookService;
 
@@ -19,6 +21,12 @@ public class WebHookController {
     @Autowired
     private EwayPoolingService ewayPoolingService;
 
+    @Autowired
+    private PhonePeWebHookService phonePeWebHookService;
+
+    @Autowired
+    private CashfreeWebHookService cashfreeWebHookService;
+
     @PostMapping("/webhook/callback/stripe")
     public ResponseEntity<String> handleStripeWebhook(
             @RequestBody String payload,
@@ -33,6 +41,24 @@ public class WebHookController {
             @RequestHeader("X-Razorpay-Signature") String signature) {
 
         return razorpayWebHookService.processWebHook(payload, signature);
+    }
+
+    @PostMapping("/webhook/callback/phonepe")
+    public ResponseEntity<String> handlePhonePeWebhook(
+            @RequestBody String payload,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam(value = "instituteId", required = false) String instituteId) {
+
+        return phonePeWebHookService.processWebHook(payload, authHeader, instituteId);
+    }
+
+    @PostMapping("/webhook/callback/cashfree")
+    public ResponseEntity<String> handleCashfreeWebhook(
+            @RequestBody String payload,
+            @RequestHeader(value = "x-webhook-signature", required = false) String signature,
+            @RequestParam(value = "instituteId", required = false) String instituteId) {
+
+        return cashfreeWebHookService.processWebHook(payload, signature, instituteId);
     }
 
 }

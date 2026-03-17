@@ -51,19 +51,21 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
     private ReferralBenefitOrchestrator referralBenefitOrchestrator;
 
     @Autowired
-    private AuthService authService;    @Override
+    private AuthService authService;
+
+    @Override
     public LearnerEnrollResponseDTO enrollLearnerToBatch(UserDTO userDTO,
-            LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
-            String instituteId,
-            EnrollInvite enrollInvite,
-            PaymentOption paymentOption,
-            UserPlan userPlan,
-            Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
+                                                         LearnerPackageSessionsEnrollDTO learnerPackageSessionsEnrollDTO,
+                                                         String instituteId,
+                                                         EnrollInvite enrollInvite,
+                                                         PaymentOption paymentOption,
+                                                         UserPlan userPlan,
+                                                         Map<String, Object> extraData, LearnerExtraDetails learnerExtraDetails) {
         // Use startDate from DTO if provided, otherwise default to current date
-        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null 
-                ? learnerPackageSessionsEnrollDTO.getStartDate() 
+        Date enrollmentDate = learnerPackageSessionsEnrollDTO.getStartDate() != null
+                ? learnerPackageSessionsEnrollDTO.getStartDate()
                 : new Date();
-        
+
         List<InstituteStudentDetails> instituteStudentDetails = new ArrayList<>();
         if (paymentOption.isRequireApproval()) {
             String status = LearnerStatusEnum.PENDING_FOR_APPROVAL.name();
@@ -90,7 +92,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
                         null,
                         enrollInvite.getLearnerAccessDays() != null ? enrollInvite.getLearnerAccessDays().toString()
                                 : null,
-                        packageSessionId, userPlan.getId(), null, null);
+                        packageSessionId, userPlan.getId(), null, null, null);
                 instituteStudentDetails.add(detail);
             }
         } else {
@@ -100,7 +102,7 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
             for (String packageSessionId : packageSessionIds) {
                 InstituteStudentDetails instituteStudentDetail = new InstituteStudentDetails(instituteId,
                         packageSessionId, null, status, enrollmentDate, null,
-                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(), null, null);
+                        (accessDays != null ? accessDays.toString() : null), null, userPlan.getId(), null, null, null);
                 instituteStudentDetails.add(instituteStudentDetail);
             }
         }
@@ -121,12 +123,37 @@ public class DonationPaymentOptionOperation implements PaymentOptionOperationStr
 
         LearnerEnrollResponseDTO learnerEnrollResponseDTO = new LearnerEnrollResponseDTO();
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
-            PaymentResponseDTO paymentResponseDTO = paymentService.handlePayment(
-                    user,
-                    learnerPackageSessionsEnrollDTO,
-                    instituteId,
-                    enrollInvite,
-                    userPlan);
+
+            if (extraData.containsKey("OVERRIDE_TOTAL_AMOUNT")) {
+                Object amountObj = extraData.get("OVERRIDE_TOTAL_AMOUNT");
+                if (amountObj instanceof Number) {
+                    Double amount = ((Number) amountObj).doubleValue();
+                    learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(amount);
+                }
+            }
+
+            if (extraData.containsKey("PARENT_PAYMENT_LOG_ID")) {
+                String parentLogId = (String) extraData.get("PARENT_PAYMENT_LOG_ID");
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setOrderId(parentLogId);
+            }
+
+            PaymentResponseDTO paymentResponseDTO;
+            if (extraData.containsKey("SKIP_PAYMENT_INITIATION")
+                    && Boolean.TRUE.equals(extraData.get("SKIP_PAYMENT_INITIATION"))) {
+                paymentResponseDTO = paymentService.handlePaymentWithoutGateway(
+                        user,
+                        learnerPackageSessionsEnrollDTO,
+                        instituteId,
+                        enrollInvite,
+                        userPlan);
+            } else {
+                paymentResponseDTO = paymentService.handlePayment(
+                        user,
+                        learnerPackageSessionsEnrollDTO,
+                        instituteId,
+                        enrollInvite,
+                        userPlan);
+            }
             learnerEnrollResponseDTO.setPaymentResponse(paymentResponseDTO);
         }
         learnerEnrollResponseDTO.setUser(user);

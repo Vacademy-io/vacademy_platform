@@ -10,13 +10,12 @@ import lombok.Setter;
 
 import java.util.List;
 
-
 @Getter
 @Setter
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AiGeneratedQuestionJsonDto {
-    private Integer questionNumber;
+    private String questionNumber;
     @JsonSetter(nulls = Nulls.SKIP, contentNulls = Nulls.SKIP)
     private QuestionContent question;
     private List<Option> options;
@@ -28,11 +27,11 @@ public class AiGeneratedQuestionJsonDto {
     private DifficultyLevel level;
 
     // Getters and Setters
-    public Integer getQuestionNumber() {
+    public String getQuestionNumber() {
         return questionNumber;
     }
 
-    public void setQuestionNumber(Integer questionNumber) {
+    public void setQuestionNumber(String questionNumber) {
         this.questionNumber = questionNumber;
     }
 

@@ -2,7 +2,9 @@ package vacademy.io.admin_core_service.features.enroll_invite.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.AssignCpoToPackageSessionDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
@@ -43,9 +45,25 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
         if (enrollInvite == null)
             return Collections.emptyList();
 
-        return Optional
+        List<PackageSessionLearnerInvitationToPaymentOption> allMappings = Optional
                 .ofNullable(repository.findByEnrollInviteAndStatusIn(enrollInvite, List.of(StatusEnum.ACTIVE.name())))
                 .orElse(Collections.emptyList());
+
+        // Deduplicate: Group by packageSessionId and keep only the latest by createdAt
+        java.util.Map<String, PackageSessionLearnerInvitationToPaymentOption> latestMappingsMap = allMappings.stream()
+                .filter(m -> m.getPackageSession() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        m -> m.getPackageSession().getId(),
+                        m -> m,
+                        (existing, replacement) -> {
+                            if (existing.getCreatedAt() == null)
+                                return replacement;
+                            if (replacement.getCreatedAt() == null)
+                                return existing;
+                            return existing.getCreatedAt().isAfter(replacement.getCreatedAt()) ? existing : replacement;
+                        }));
+
+        return new java.util.ArrayList<>(latestMappingsMap.values());
     }
 
     public List<PackageSessionLearnerInvitationToPaymentOption> findByPaymentOptionIds(List<String> paymentOptionIds) {
@@ -100,5 +118,17 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
             return Collections.emptyList();
         return repository.findByEnrollInviteIdsAndStatusWithPackageSession(enrollInviteIds,
                 List.of(StatusEnum.ACTIVE.name()));
+    }
+
+    @Transactional
+    public void assignCpoToPackageSession(String enrollInviteId, AssignCpoToPackageSessionDTO request) {
+        PackageSessionLearnerInvitationToPaymentOption bridge = repository
+                .findActiveByEnrollInviteIdAndPackageSessionId(enrollInviteId, request.getPackageSessionId())
+                .orElseThrow(() -> new VacademyException(
+                        "No active mapping found for enrollInviteId=" + enrollInviteId
+                                + " and packageSessionId=" + request.getPackageSessionId()));
+
+        bridge.setCpoId(request.getCpoId());
+        repository.save(bridge);
     }
 }

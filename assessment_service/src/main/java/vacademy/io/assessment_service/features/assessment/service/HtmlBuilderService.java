@@ -1,6 +1,5 @@
 package vacademy.io.assessment_service.features.assessment.service;
 
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +61,9 @@ public class HtmlBuilderService {
     }
 
     public static String calculateEndTime(Date startTime, Long durationInSeconds) {
+        if (startTime == null) {
+            return "-";
+        }
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
         // Convert Date to LocalDateTime
@@ -70,13 +72,14 @@ public class HtmlBuilderService {
                 .toLocalDateTime();
 
         // Add duration in seconds
-        LocalDateTime endDateTime = localDateTime.plusSeconds(durationInSeconds);
+        LocalDateTime endDateTime = localDateTime.plusSeconds(durationInSeconds != null ? durationInSeconds : 0);
 
         // Return formatted date and time
         return endDateTime.format(formatter);
     }
 
-    public String getQuestionInsightsHtml(CustomUserDetails user, List<String> sectionIds, String assessmentId, String instituteId) {
+    public String getQuestionInsightsHtml(CustomUserDetails user, List<String> sectionIds, String assessmentId,
+            String instituteId) {
         StringBuilder html = new StringBuilder();
 
         html.append("<!DOCTYPE html>");
@@ -88,11 +91,13 @@ public class HtmlBuilderService {
         html.append("<style>");
         html.append("body { font-family: Arial, sans-serif; margin: 20px; }");
         html.append(".question { font-size: 18px; font-weight: bold; }");
-        html.append(".correct-answer { background-color: #FFF9F4; padding: 10px; border-radius: 5px; margin-top: 10px; }");
+        html.append(
+                ".correct-answer { background-color: #FFF9F4; padding: 10px; border-radius: 5px; margin-top: 10px; }");
         html.append(".end { background-color: #f8f8f8; padding: 3px; border-radius: 5px; margin-top: 10px; }");
         html.append(".explanation { margin-top: 10px; }");
         html.append(".top-respondents { margin-top: 5px; }");
-        html.append(".top-respondents div { background-color: #ffebea; padding: 5px; border-radius: 5px; margin: 5px 0; }");
+        html.append(
+                ".top-respondents div { background-color: #ffebea; padding: 5px; border-radius: 5px; margin: 5px 0; }");
         html.append(".stats { margin-top: 20px; }");
         html.append(".stats ul { list-style-type: none; padding: 0; }");
         html.append(".stats li { margin: 5px 0; }");
@@ -102,13 +107,17 @@ public class HtmlBuilderService {
         if (!Objects.isNull(sectionIds)) {
             for (String sectionId : sectionIds) {
                 Optional<Section> sectionOptional = sectionRepository.findById(sectionId);
-                sectionOptional.ifPresent(section -> html.append("<div class=\"title\">").append(section.getName()).append("</div>"));
+                sectionOptional.ifPresent(
+                        section -> html.append("<div class=\"title\">").append(section.getName()).append("</div>"));
 
-                QuestionInsightsResponse questionInsightsResponses = adminAssessmentGetManager.createInsights(user, assessmentId, sectionId);
-                List<QuestionInsightsResponse.QuestionInsightDto> questionInsightDtos = questionInsightsResponses.getQuestionInsightDto();
+                QuestionInsightsResponse questionInsightsResponses = adminAssessmentGetManager.createInsights(user,
+                        assessmentId, sectionId);
+                List<QuestionInsightsResponse.QuestionInsightDto> questionInsightDtos = questionInsightsResponses
+                        .getQuestionInsightDto();
 
                 questionInsightDtos.forEach(questionInsight -> {
-                    AssessmentQuestionPreviewDto assessmentQuestionPreviewDto = questionInsight.getAssessmentQuestionPreviewDto();
+                    AssessmentQuestionPreviewDto assessmentQuestionPreviewDto = questionInsight
+                            .getAssessmentQuestionPreviewDto();
                     if (!Objects.isNull(assessmentQuestionPreviewDto)) {
                         html.append("<div class=\"question\">");
                         html.append(assessmentQuestionPreviewDto.getQuestion().getContent());
@@ -118,19 +127,22 @@ public class HtmlBuilderService {
 
                         try {
                             correctOptionIds = QuestionBasedStrategyFactory
-                                    .getCorrectOptionIds(assessmentQuestionPreviewDto.getEvaluationJson(), assessmentQuestionPreviewDto.getQuestionType());
+                                    .getCorrectOptionIds(assessmentQuestionPreviewDto.getEvaluationJson(),
+                                            assessmentQuestionPreviewDto.getQuestionType());
                         } catch (Exception e) {
                             throw new VacademyException("Failed To generate: " + e.getMessage());
                         }
 
-                        List<String> correctOptionText = getTextFromAssessmentPreviewDto(assessmentQuestionPreviewDto, correctOptionIds);
+                        List<String> correctOptionText = getTextFromAssessmentPreviewDto(assessmentQuestionPreviewDto,
+                                correctOptionIds);
                         correctOptionText.forEach(correctOption -> {
                             html.append("<div class=\"correct-answer\"><strong>Correct answer:</strong> ")
                                     .append(correctOption).append("</div>");
                         });
 
                         html.append("<div class=\"top-respondents\"><strong>Top 3 quick correct responses</strong>");
-                        List<Top3CorrectResponseDto> top3CorrectResponseDtos = questionInsight.getTop3CorrectResponseDto();
+                        List<Top3CorrectResponseDto> top3CorrectResponseDtos = questionInsight
+                                .getTop3CorrectResponseDto();
                         if (!Objects.isNull(top3CorrectResponseDtos)) {
                             for (Top3CorrectResponseDto top3CorrectResponseDto : top3CorrectResponseDtos) {
                                 html.append("<div>");
@@ -151,20 +163,26 @@ public class HtmlBuilderService {
                     double skippedAttemptPer = 0.0;
 
                     Long totalAttempts = questionInsight.getTotalAttempts();
-                    totalAttempts = (totalAttempts != null && totalAttempts > 0) ? totalAttempts : 1; // Avoid division by zero
+                    totalAttempts = (totalAttempts != null && totalAttempts > 0) ? totalAttempts : 1; // Avoid division
+                                                                                                      // by zero
 
                     QuestionStatusDto status = questionInsight.getQuestionStatus();
 
-                    long correctAttempt = (status != null && status.getCorrectAttempt() != null) ? status.getCorrectAttempt() : 0;
-                    long incorrectAttempt = (status != null && status.getIncorrectAttempt() != null) ? status.getIncorrectAttempt() : 0;
-                    long partialCorrectAttempt = (status != null && status.getPartialCorrectAttempt() != null) ? status.getPartialCorrectAttempt() : 0;
+                    long correctAttempt = (status != null && status.getCorrectAttempt() != null)
+                            ? status.getCorrectAttempt()
+                            : 0;
+                    long incorrectAttempt = (status != null && status.getIncorrectAttempt() != null)
+                            ? status.getIncorrectAttempt()
+                            : 0;
+                    long partialCorrectAttempt = (status != null && status.getPartialCorrectAttempt() != null)
+                            ? status.getPartialCorrectAttempt()
+                            : 0;
                     long skippedAttempt = (questionInsight.getSkipped() != null) ? questionInsight.getSkipped() : 0;
 
                     correctAttemptPer = (correctAttempt * 100.0) / totalAttempts;
                     incorrectAttemptPer = (incorrectAttempt * 100.0) / totalAttempts;
                     partialAttemptPer = (partialCorrectAttempt * 100.0) / totalAttempts;
                     skippedAttemptPer = (skippedAttempt * 100.0) / totalAttempts;
-
 
                     html.append("<ul>");
                     html.append("<li>Correct Respondents: ")
@@ -174,7 +192,6 @@ public class HtmlBuilderService {
                     html.append("<li>Partially Correct Respondents: ")
                             .append(questionInsight.getQuestionStatus().getPartialCorrectAttempt())
                             .append(" (").append(incorrectAttemptPer).append("%)");
-
 
                     html.append("<li>Wrong Respondents: ")
                             .append(questionInsight.getQuestionStatus().getIncorrectAttempt())
@@ -198,8 +215,10 @@ public class HtmlBuilderService {
         return html.toString();
     }
 
-    private List<String> getTextFromAssessmentPreviewDto(AssessmentQuestionPreviewDto assessmentQuestionPreviewDto, List<String> correctOptionIds) {
-        if (assessmentQuestionPreviewDto == null || assessmentQuestionPreviewDto.getOptionsWithExplanation() == null || correctOptionIds == null) {
+    private List<String> getTextFromAssessmentPreviewDto(AssessmentQuestionPreviewDto assessmentQuestionPreviewDto,
+            List<String> correctOptionIds) {
+        if (assessmentQuestionPreviewDto == null || assessmentQuestionPreviewDto.getOptionsWithExplanation() == null
+                || correctOptionIds == null) {
             return Collections.emptyList(); // Return an empty list if any input is null
         }
 
@@ -221,7 +240,8 @@ public class HtmlBuilderService {
         html.append("<title>Student Assessment Report</title>");
         html.append("<style>");
         html.append("body { font-family: Arial, sans-serif; margin: 5px; background-color: #ffffff; }");
-        html.append(".container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }");
+        html.append(
+                ".container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }");
         html.append(".header { font-size: 20px; font-weight: bold; color: #ff6f00; }");
         html.append(".section { margin-top: 20px; }");
         html.append(".title { font-size: 18px; font-weight: bold; color: #333; }");
@@ -229,25 +249,42 @@ public class HtmlBuilderService {
         html.append(".score-box { background-color: #fff3e0; padding: 10px; border-radius: 5px; margin-top: 10px; }");
         html.append(".answer-container { display: flex; flex-direction:column; gap:20px }");
         html.append(".answer-box { background-color: #f5f5f5; padding: 10px; border-radius: 5px; margin-top: 10px; }");
-        html.append(".correct-marks-box { background-color: #F2FAF6; padding: 5px; border-radius: 3px; color: green; font-weight: bold; }");
-        html.append(".incorrect-marks-box { background-color: #FEF2F2; padding: 5px; border-radius: 3px; color: green; font-weight: bold; }");
-        html.append(".partial-marks-box { background-color: #FFDD82; padding: 5px; border-radius: 3px; color: green; font-weight: bold; }");
-        html.append(".skip-marks-box { background-color: #EEE; padding: 5px; border-radius: 3px; color: green; font-weight: bold; }");
+        html.append(
+                ".correct-marks-box { background-color: #F2FAF6; padding: 5px; border-radius: 3px; color: green; font-weight: bold; }");
+        html.append(
+                ".incorrect-marks-box { background-color: #FEF2F2; padding: 5px; border-radius: 3px; color: green; font-weight: bold; }");
+        html.append(
+                ".partial-marks-box { background-color: #FFDD82; padding: 5px; border-radius: 3px; color: green; font-weight: bold; }");
+        html.append(
+                ".skip-marks-box { background-color: #EEE; padding: 5px; border-radius: 3px; color: green; font-weight: bold; }");
         html.append("</style>");
         html.append("</head>");
         html.append("<body>");
         html.append("<div class=\"container\">");
         html.append("<div class=\"header\">").append(title).append("</div>");
         html.append("<div class=\"section\">");
-        if (!Objects.isNull(studentReportOverallDetailDto) && !Objects.isNull(studentReportOverallDetailDto.getQuestionOverallDetailDto())) {
+        if (!Objects.isNull(studentReportOverallDetailDto)
+                && !Objects.isNull(studentReportOverallDetailDto.getQuestionOverallDetailDto())) {
             html.append("<div class=\"title\">The Human Eye and The Colourful World</div>");
             html.append("<div class=\"info\">Subject: Physics | Attempt Date: ")
-                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime() != null ? studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime().toString() : "-")
-                    .append(" | Duration: ").append(convertToReadableTime(studentReportOverallDetailDto.getQuestionOverallDetailDto().getCompletionTimeInSeconds()))
+                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime() != null
+                            ? studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime().toString()
+                            : "-")
+                    .append(" | Duration: ")
+                    .append(convertToReadableTime(
+                            studentReportOverallDetailDto.getQuestionOverallDetailDto().getCompletionTimeInSeconds()))
                     .append("</div>");
             html.append("<div class=\"info\">Start Time: ")
-                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime() != null ? studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime().toString() : "-")
-                    .append(" | End Time: ").append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime() != null ? calculateEndTime(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime(), studentReportOverallDetailDto.getQuestionOverallDetailDto().getCompletionTimeInSeconds()) : "-")
+                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime() != null
+                            ? studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime().toString()
+                            : "-")
+                    .append(" | End Time: ")
+                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime() != null
+                            ? calculateEndTime(
+                                    studentReportOverallDetailDto.getQuestionOverallDetailDto().getStartTime(),
+                                    studentReportOverallDetailDto.getQuestionOverallDetailDto()
+                                            .getCompletionTimeInSeconds())
+                            : "-")
                     .append("</div>");
 
             html.append("</div>");
@@ -269,17 +306,23 @@ public class HtmlBuilderService {
 
             html.append("<div>Correct Answers: ")
                     .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getCorrectAttempt())
-                    .append(" (").append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getTotalCorrectMarks()).append(")")
+                    .append(" (")
+                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getTotalCorrectMarks())
+                    .append(")")
                     .append("</div>");
 
             html.append("<div>Partially Correct: ")
                     .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getPartialCorrectAttempt())
-                    .append(" (").append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getTotalPartialMarks()).append(")")
+                    .append(" (")
+                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getTotalPartialMarks())
+                    .append(")")
                     .append("</div>");
 
             html.append("<div>Wrong Answers: ")
                     .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getWrongAttempt())
-                    .append(" (").append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getTotalIncorrectMarks()).append(")")
+                    .append(" (")
+                    .append(studentReportOverallDetailDto.getQuestionOverallDetailDto().getTotalIncorrectMarks())
+                    .append(")")
                     .append("</div>");
 
             html.append("<div>Skipped: ")
@@ -292,15 +335,18 @@ public class HtmlBuilderService {
         html.append("</div>");
         html.append("<div class=\"section\">");
         html.append("<div class=\"title\">Answer Review</div>");
-        if (!Objects.isNull(studentReportOverallDetailDto) && !Objects.isNull(studentReportOverallDetailDto.getAllSections())) {
+        if (!Objects.isNull(studentReportOverallDetailDto)
+                && !Objects.isNull(studentReportOverallDetailDto.getAllSections())) {
 
-            for (Map.Entry<String, List<StudentReportAnswerReviewDto>> entry : studentReportOverallDetailDto.getAllSections().entrySet()) {
+            for (Map.Entry<String, List<StudentReportAnswerReviewDto>> entry : studentReportOverallDetailDto
+                    .getAllSections().entrySet()) {
                 String sectionId = entry.getKey(); // Section Name
                 Optional<Section> sectionOptional = sectionRepository.findById(sectionId);
-                sectionOptional.ifPresent(section -> html.append("<div class=\"title\">").append(section.getName()).append("</div>"));
+                sectionOptional.ifPresent(
+                        section -> html.append("<div class=\"title\">").append(section.getName()).append("</div>"));
 
                 List<StudentReportAnswerReviewDto> reviews = entry.getValue();
-//                reviews.sort(Comparator.comparingInt(StudentReportAnswerReviewDto::getQuestionOrder));
+                // reviews.sort(Comparator.comparingInt(StudentReportAnswerReviewDto::getQuestionOrder));
                 for (StudentReportAnswerReviewDto review : reviews) {
                     html.append("<div class=\"answer-box\">");
                     html.append("<div><b>")
@@ -312,27 +358,37 @@ public class HtmlBuilderService {
                     if (!Objects.isNull(review.getStudentResponseOptions())) {
                         List<String> content = extractResponseContent(review.getStudentResponseOptions());
                         content.forEach(option -> {
-                            html.append("<div style=\"margin-top: 5px;\"><b>Student Answer:</b> ").append(option).append("</div>");
+                            html.append("<div style=\"margin-top: 5px;\"><b>Student Answer:</b> ").append(option)
+                                    .append("</div>");
                         });
                     }
 
-                    if (!Objects.isNull(review.getCorrectOptions()) && !Objects.isNull(review.getAnswerStatus()) && !review.getAnswerStatus().equals("CORRECT")) {
+                    if (!Objects.isNull(review.getCorrectOptions()) && !Objects.isNull(review.getAnswerStatus())
+                            && !review.getAnswerStatus().equals("CORRECT")) {
 
                         extractContent(review.getCorrectOptions()).forEach(option -> {
-                            html.append("<div style=\"margin-top: 5px;\"><b>Correct Answer:</b> ").append(option).append("</div>");
+                            html.append("<div style=\"margin-top: 5px;\"><b>Correct Answer:</b> ").append(option)
+                                    .append("</div>");
                         });
                     }
 
                     if (!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("CORRECT")) {
-                        html.append("<div class=\"correct-marks-box\">+").append(review.getMark()).append(" Marks</div>");
-                    } else if (!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("INCORRECT")) {
-                        html.append("<div class=\"incorrect-marks-box\">").append(review.getMark()).append(" Marks</div>");
-                    } else if (!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("PARTIAL_CORRECT")) {
-                        html.append("<div class=\"partial-marks-box\">+").append(review.getMark()).append(" Marks</div>");
-                    } else if (!Objects.isNull(review.getAnswerStatus()) && review.getAnswerStatus().equals("PENDING")) {
+                        html.append("<div class=\"correct-marks-box\">+").append(review.getMark())
+                                .append(" Marks</div>");
+                    } else if (!Objects.isNull(review.getAnswerStatus())
+                            && review.getAnswerStatus().equals("INCORRECT")) {
+                        html.append("<div class=\"incorrect-marks-box\">").append(review.getMark())
+                                .append(" Marks</div>");
+                    } else if (!Objects.isNull(review.getAnswerStatus())
+                            && review.getAnswerStatus().equals("PARTIAL_CORRECT")) {
+                        html.append("<div class=\"partial-marks-box\">+").append(review.getMark())
+                                .append(" Marks</div>");
+                    } else if (!Objects.isNull(review.getAnswerStatus())
+                            && review.getAnswerStatus().equals("PENDING")) {
                         html.append("<div class=\"skip-marks-box\">").append(review.getMark()).append(" Marks</div>");
                     }
-                    html.append("<div>Explanation: ").append(review.getExplanation() != null ? review.getExplanation() : "-").append("</div>");
+                    html.append("<div>Explanation: ")
+                            .append(review.getExplanation() != null ? review.getExplanation() : "-").append("</div>");
                     html.append("<div style=\"color: gray; font-size: 12px; margin-top: 5px;\">⏳ 42 sec</div>");
                     html.append("</div>");
                 }
@@ -361,7 +417,8 @@ public class HtmlBuilderService {
                     JsonNode nums = root.path("data").path("validAnswers");
                     if (nums.isArray() && !nums.isEmpty())
                         return List.of(nums.get(0).asText());
-                    else return new ArrayList<>();
+                    else
+                        return new ArrayList<>();
 
                 case "LONG_ANSWER":
                     return List.of(root.path("data").path("answer").path("content").asText());
@@ -378,8 +435,8 @@ public class HtmlBuilderService {
                             optionalOption.ifPresent(option -> contents.add(option.getText().getContent()));
                         }
                         return contents;
-                    }
-                    else return new ArrayList<>();
+                    } else
+                        return new ArrayList<>();
 
                 default:
                     throw new VacademyException("Unsupported Type");
@@ -389,7 +446,6 @@ public class HtmlBuilderService {
             return new ArrayList<>();
         }
     }
-
 
     public List<String> extractResponseContent(String jsonString) {
         try {
@@ -411,8 +467,8 @@ public class HtmlBuilderService {
                             optionalOption.ifPresent(option -> optionContents.add(option.getText().getContent()));
                         }
                         return optionContents;
-                    }
-                    else return new ArrayList<>();
+                    } else
+                        return new ArrayList<>();
 
                 case "LONG_ANSWER", "ONE_WORD":
                     return List.of(responseData.path("answer").asText());
@@ -420,7 +476,8 @@ public class HtmlBuilderService {
                 case "NUMERIC":
                     return List.of(responseData.path("validAnswer").asText());
 
-                default: throw new VacademyException("Invalid Question Type");
+                default:
+                    throw new VacademyException("Invalid Question Type");
             }
 
         } catch (Exception e) {

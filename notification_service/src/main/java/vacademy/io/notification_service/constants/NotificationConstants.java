@@ -1,7 +1,8 @@
 package vacademy.io.notification_service.constants;
 
 public class NotificationConstants {
-    private NotificationConstants() {} // prevent instantiation
+    private NotificationConstants() {
+    } // prevent instantiation
 
     // Common JSON keys
     public static final String SETTING = "setting";
@@ -21,7 +22,7 @@ public class NotificationConstants {
     public static final String UTILITY_WHATSAPP = "UTILITY_WHATSAPP";
     public static final String APP_ID = "appId";
     public static final String ACCESS_TOKEN = "accessToken";
-    
+
     // WhatsApp Provider constants
     public static final String PROVIDER = "provider";
     public static final String WATI = "wati";
@@ -34,4 +35,12 @@ public class NotificationConstants {
     // Testing allowlist for WhatsApp sending
     public static final String TEST_PHONE_NUMBER = "TEST_PHONE_NUMBER";
     public static final String FLAG = "flag";
+
+    // OTP Type constants
+    public static final String OTP_TYPE_EMAIL = "EMAIL";
+    public static final String OTP_TYPE_WHATSAPP = "WHATSAPP";
+
+    // OTP Service Type constants
+    public static final String OTP_SERVICE_EMAIL_AUTH = "EMAIL_AUTH";
+    public static final String OTP_SERVICE_WHATSAPP_AUTH = "WHATSAPP_AUTH";
 }

@@ -19,15 +19,19 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.notification_service.constants.NotificationConstants;
-import vacademy.io.notification_service.features.announcements.service.InstituteAnnouncementSettingsService;
 import vacademy.io.notification_service.features.announcements.dto.EmailConfigDTO;
 import vacademy.io.notification_service.features.announcements.service.EmailConfigurationService;
+import vacademy.io.notification_service.features.announcements.service.InstituteAnnouncementSettingsService;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 import vacademy.io.common.logging.SentryLogger;
+import vacademy.io.notification_service.features.bounced_emails.service.BouncedEmailService;
+import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
+import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
+import vacademy.io.notification_service.util.EmailDomainBlocklistUtil;
 
+import java.time.LocalDateTime;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -36,6 +40,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class EmailService {
@@ -56,18 +61,78 @@ public class EmailService {
     private final EmailConfigurationService emailConfigurationService;
     private final ObjectMapper objectMapper;
     private final InstituteAnnouncementSettingsService instituteAnnouncementSettingsService;
+    private final BouncedEmailService bouncedEmailService;
+    private final NotificationLogRepository notificationLogRepository;
 
     @Autowired
     public EmailService(JavaMailSender mailSender, InstituteInternalService internalService,
             ObjectMapper objectMapper, EmailDispatcher emailDispatcher,
             InstituteAnnouncementSettingsService instituteAnnouncementSettingsService,
-            EmailConfigurationService emailConfigurationService) {
+            EmailConfigurationService emailConfigurationService,
+            BouncedEmailService bouncedEmailService,
+            NotificationLogRepository notificationLogRepository) {
         this.mailSender = mailSender;
         this.internalService = internalService;
         this.objectMapper = objectMapper;
         this.emailDispatcher = emailDispatcher;
         this.instituteAnnouncementSettingsService = instituteAnnouncementSettingsService;
         this.emailConfigurationService = emailConfigurationService;
+        this.bouncedEmailService = bouncedEmailService;
+        this.notificationLogRepository = notificationLogRepository;
+    }
+
+    /**
+     * Check if an email should be blocked from sending.
+     * Checks both domain blocklist and bounced email blocklist.
+     * 
+     * @param email The email address to check
+     * @return true if the email should be blocked, false otherwise
+     */
+    private boolean isEmailBlocked(String email) {
+        // Check domain blocklist first (faster, static check)
+        if (EmailDomainBlocklistUtil.isEmailDomainBlocked(email)) {
+            logger.info("Email blocked - domain is in blocklist: {}", email);
+            return true;
+        }
+        
+        // Check bounced email blocklist (database check with caching)
+        if (bouncedEmailService.isEmailBlocked(email)) {
+            logger.info("Email blocked - previously bounced: {}", email);
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Save email notification log to database.
+     * This is required for bounce event processing to link bounce events back to original emails.
+     * 
+     * @param to Recipient email address
+     * @param subject Email subject
+     * @param body Email body/content
+     * @param source Source of the email (e.g., "EMAIL_SERVICE", "OTP_SERVICE")
+     * @param sourceId Optional source ID
+     * @param userId Optional user ID
+     */
+    private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId) {
+        try {
+            NotificationLog notificationLog = new NotificationLog();
+            notificationLog.setId(UUID.randomUUID().toString());
+            notificationLog.setNotificationType("EMAIL");
+            notificationLog.setChannelId(to); // Email address
+            notificationLog.setBody(body != null ? body : subject); // Use body if available, otherwise subject
+            notificationLog.setSource(source != null ? source : "EMAIL_SERVICE");
+            notificationLog.setSourceId(sourceId);
+            notificationLog.setUserId(userId);
+            notificationLog.setNotificationDate(LocalDateTime.now());
+            
+            notificationLogRepository.save(notificationLog);
+            logger.debug("Saved email notification log for: {} with ID: {}", to, notificationLog.getId());
+        } catch (Exception e) {
+            // Log error but don't fail email sending if log save fails
+            logger.error("Failed to save email notification log for: {} - Error: {}", to, e.getMessage(), e);
+        }
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -163,8 +228,9 @@ public class EmailService {
                     }
                 }
             } catch (Exception e) {
-                logger.error("Error parsing institute email settings", e);
-                throw new VacademyException("Error parsing JSON object for email settings");
+                logger.error("Error parsing institute email settings for instituteId: {}. Using default SMTP.",
+                        instituteId, e);
+                // Continue with default settings instead of throwing
             }
         } else {
             logger.info("No instituteId provided, using default SMTP");
@@ -208,11 +274,21 @@ public class EmailService {
         return false;
     }
 
+    /**
+     * Determines if SES Configuration Set header should be included for email tracking.
+     * 
+     * The header is included if:
+     * 1. AWS SQS is enabled (required for bounce detection/blocklist feature), OR
+     * 2. The original institute tracking logic allows it (preserves existing business logic)
+     * 
+     * This ensures bounce detection works globally while preserving existing institute preferences.
+     */
     private boolean shouldIncludeSesConfigurationHeader(String instituteId) {
         if (!awsSqsEnabled) {
             return false;
         }
 
+        // Original logic: check institute tracking preferences
         if (!StringUtils.hasText(instituteId)) {
             return true;
         }
@@ -227,6 +303,12 @@ public class EmailService {
 
     public void sendEmail(String to, String subject, String text, String instituteId) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping simple email for blocked email address: {}", to);
+                return;
+            }
+
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
@@ -247,6 +329,9 @@ public class EmailService {
             logger.info("Email sent successfully to {} using {}", to,
                     StringUtils.hasText(instituteId) ? "custom SMTP" : "default SMTP");
 
+            // Save notification log for bounce event tracking
+            saveEmailNotificationLog(to, subject, text, "EMAIL_SERVICE", null, null);
+
         } catch (Exception e) {
             logger.error("Failed to send email", e);
             SentryLogger.SentryEventBuilder.error(e)
@@ -263,6 +348,12 @@ public class EmailService {
 
     public void sendEmailOtp(String to, String subject, String service, String name, String otp, String instituteId) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping OTP email for blocked email address: {}", to);
+                return;
+            }
+
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
@@ -321,6 +412,9 @@ public class EmailService {
                     logger.info("Sending OTP email to: {}", to);
                     mailSenderToUse.send(message);
                     logger.info("OTP email successfully sent to: {}", to);
+
+                    // Save notification log for bounce event tracking
+                    saveEmailNotificationLog(to, emailSubject, emailBody, "OTP_SERVICE", service, null);
 
                 } catch (Exception e) {
                     logger.error("Error while sending OTP email", e);
@@ -444,6 +538,11 @@ public class EmailService {
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
             String customFromEmail, String customFromName, String emailType) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping HTML email for blocked email address: {}", to);
+                return;
+            }
 
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId, emailType);
             final JavaMailSender finalMailSender = config.getKey();
@@ -496,6 +595,9 @@ public class EmailService {
                     message.setContent(multipart);
                     finalMailSender.send(message);
 
+                    // Save notification log for bounce event tracking
+                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", null, null);
+
                 } catch (Exception e) {
                     logger.error("Failed to send HTML email to: {}", to, e);
                     SentryLogger.SentryEventBuilder.error(e)
@@ -520,6 +622,12 @@ public class EmailService {
     public void sendAttachmentEmail(String to, String subject, String service, String body,
             Map<String, byte[]> attachments, String instituteId) {
         try {
+            // Check if email is blocked (domain blocklist or bounced email blocklist)
+            if (isEmailBlocked(to)) {
+                logger.info("Skipping attachment email for blocked email address: {}", to);
+                return;
+            }
+            
             logger.info("Preparing to send email to: {} with subject: {}", to, subject);
 
             AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
@@ -574,6 +682,9 @@ public class EmailService {
                     logger.info("Sending email to: {}", to);
                     mailSenderToUse.send(message);
                     logger.info("Email successfully sent to: {}", to);
+
+                    // Save notification log for bounce event tracking
+                    saveEmailNotificationLog(to, emailSubject, emailBody, service != null ? service : "ATTACHMENT_EMAIL_SERVICE", null, null);
 
                 } catch (MessagingException e) {
                     logger.error("Error while preparing or sending the email", e);

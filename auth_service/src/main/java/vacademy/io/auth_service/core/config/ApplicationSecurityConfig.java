@@ -30,6 +30,8 @@ import org.springframework.security.oauth2.client.web.AuthorizationRequestReposi
 import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizationRequestRepository;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+
 @Configuration
 @EnableMethodSecurity
 public class ApplicationSecurityConfig {
@@ -40,6 +42,7 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/internal/**",
             "/auth-service/v1/user/internal/create-user",
             "/auth-service/v1/user/internal/create-user-or-get-existing",
+            "/auth-service/v1/user/internal/create-or-get-existing-learner",
             "/auth-service/v1/user/internal/user-details-list",
             "/auth-service/v1/signup-root",
             "/auth-service/v1/refresh-token",
@@ -69,7 +72,15 @@ public class ApplicationSecurityConfig {
             // User Resolution APIs for notification service - OPEN for internal
             // communication
             "/auth-service/v1/users/by-role",
-            "/auth-service/v1/users/by-ids"
+            "/auth-service/v1/users/by-ids",
+
+            // for whatsapp "thanks ak"
+            // for whatsapp "thanks ak"
+            "/auth-service/v1/request-whatsapp-otp",
+            "/auth-service/v1/login-whatsapp-otp",
+            "/auth-service/health/**",
+            "/auth-service/v1/request-generic-whatsapp-otp",
+            "/auth-service/v1/verify-generic-whatsapp-otp"
     };
 
     @Autowired
@@ -150,10 +161,17 @@ public class ApplicationSecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(authz -> authz
-                        .requestMatchers(ALLOWED_PATHS).permitAll()
-                        .requestMatchers(INTERNAL_PATHS).authenticated()
-                        .anyRequest().authenticated())
+                .authorizeHttpRequests(authz -> {
+                    // Use AntPathRequestMatcher for Ant-style pattern matching (compatible with
+                    // Spring 6)
+                    for (String path : ALLOWED_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).permitAll();
+                    }
+                    for (String path : INTERNAL_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).authenticated();
+                    }
+                    authz.anyRequest().authenticated();
+                })
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(internalAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

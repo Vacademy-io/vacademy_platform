@@ -32,25 +32,30 @@ public class LearnerSessionOperationService {
     private final StudentRegistrationManager studentRegistrationManager;
 
     @Transactional
-    public String addPackageSessionsToLearner(LearnerBatchRegisterRequestDTO requestDTO, CustomUserDetails userDetails) {
+    public String addPackageSessionsToLearner(LearnerBatchRegisterRequestDTO requestDTO,
+                                              CustomUserDetails userDetails) {
 
         List<StudentSessionInstituteGroupMapping> mappings = requestDTO.getUserIds().stream()
-                .flatMap(userId -> createStudentMappings(userId, requestDTO.getInstituteId(), requestDTO.getLearnerBatchRegisterInfos()).stream())
+                .flatMap(userId -> createStudentMappings(userId, requestDTO.getInstituteId(),
+                        requestDTO.getLearnerBatchRegisterInfos()).stream())
                 .collect(Collectors.toList());
 
         studentSessionRepository.saveAll(mappings);
         return "success";
     }
 
-    private List<StudentSessionInstituteGroupMapping> createStudentMappings(String userId, String instituteId, List<LearnerBatchRegisterRequestDTO.LearnerBatchRegisterInfo> packageSessionDetails) {
+    private List<StudentSessionInstituteGroupMapping> createStudentMappings(String userId, String instituteId,
+                                                                            List<LearnerBatchRegisterRequestDTO.LearnerBatchRegisterInfo> packageSessionDetails) {
         StudentSessionInstituteGroupMapping existingMapping = getStudentSessionMapping(userId, instituteId);
 
         return packageSessionDetails.stream()
-                .map(packageInfo -> buildStudentSessionMapping(userId, packageInfo.getAccessDays(), packageInfo.getPackageSessionId(), existingMapping))
+                .map(packageInfo -> buildStudentSessionMapping(userId, packageInfo.getAccessDays(),
+                        packageInfo.getPackageSessionId(), existingMapping))
                 .collect(Collectors.toList());
     }
 
-    private StudentSessionInstituteGroupMapping buildStudentSessionMapping(String userId, Integer accessDays, String packageSessionId, StudentSessionInstituteGroupMapping existingMapping) {
+    private StudentSessionInstituteGroupMapping buildStudentSessionMapping(String userId, Integer accessDays,
+                                                                           String packageSessionId, StudentSessionInstituteGroupMapping existingMapping) {
         PackageSession packageSession = packageSessionRepository.findById(packageSessionId)
                 .orElseThrow(() -> new VacademyException("Package session not found"));
 
@@ -71,7 +76,8 @@ public class LearnerSessionOperationService {
                 .orElseThrow(() -> new VacademyException("Student Session not found"));
     }
 
-    private List<PackageSession> fetchPackageSessions(List<LearnerBatchRegisterRequestDTO.LearnerBatchRegisterInfo> packageSessionDetails) {
+    private List<PackageSession> fetchPackageSessions(
+            List<LearnerBatchRegisterRequestDTO.LearnerBatchRegisterInfo> packageSessionDetails) {
         List<String> packageSessionIds = packageSessionDetails.stream()
                 .map(LearnerBatchRegisterRequestDTO.LearnerBatchRegisterInfo::getPackageSessionId)
                 .collect(Collectors.toList());
@@ -94,23 +100,29 @@ public class LearnerSessionOperationService {
 
     private Student checkAndCreateStudent(InstituteStudentDTO instituteStudentDTO) {
         instituteStudentDTO.getUserDetails().setRoles(studentRegistrationManager.getStudentRoles());
-        instituteStudentDTO.getUserDetails().setUsername(instituteStudentDTO.getUserDetails().getUsername().toLowerCase());
-        UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(instituteStudentDTO.getUserDetails(), instituteStudentDTO.getInstituteStudentDetails().getInstituteId(), true);
-        return studentRegistrationManager.createStudentFromRequest(createdUser, instituteStudentDTO.getStudentExtraDetails());
+        instituteStudentDTO.getUserDetails()
+                .setUsername(instituteStudentDTO.getUserDetails().getUsername().toLowerCase());
+        UserDTO createdUser = studentRegistrationManager.createUserFromAuthService(instituteStudentDTO.getUserDetails(),
+                instituteStudentDTO.getInstituteStudentDetails().getInstituteId(), true);
+        return studentRegistrationManager.createStudentFromRequest(createdUser,
+                instituteStudentDTO.getStudentExtraDetails());
     }
 
-    private void createOrUpdateInstituteSessionStudentMapping(Student student, InstituteStudentDetails instituteStudentDetails) {
+    private void createOrUpdateInstituteSessionStudentMapping(Student student,
+                                                              InstituteStudentDetails instituteStudentDetails) {
         try {
-            Optional<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappingOptional =
-                    studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
+            Optional<StudentSessionInstituteGroupMapping> studentSessionInstituteGroupMappingOptional = studentSessionRepository
+                    .findTopByPackageSessionIdAndUserIdAndStatusIn(
                             instituteStudentDetails.getPackageSessionId(),
                             instituteStudentDetails.getInstituteId(),
                             student.getUserId(),
-                            List.of(LearnerSessionStatusEnum.ACTIVE.name(),LearnerSessionStatusEnum.INVITED.name(),LearnerSessionStatusEnum.TERMINATED.name(),LearnerSessionStatusEnum.INACTIVE.name())
-                    );
+                            List.of(LearnerSessionStatusEnum.ACTIVE.name(), LearnerSessionStatusEnum.INVITED.name(),
+                                    LearnerSessionStatusEnum.TERMINATED.name(),
+                                    LearnerSessionStatusEnum.INACTIVE.name()));
 
             if (studentSessionInstituteGroupMappingOptional.isPresent()) {
-                StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping = studentSessionInstituteGroupMappingOptional.get();
+                StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping = studentSessionInstituteGroupMappingOptional
+                        .get();
                 // Always update enrolledDate to current time
                 studentSessionInstituteGroupMapping.setEnrolledDate(new Date());
 
@@ -120,11 +132,14 @@ public class LearnerSessionOperationService {
                 }
 
                 if (instituteStudentDetails.getEnrollmentId() != null) {
-                    studentSessionInstituteGroupMapping.setInstituteEnrolledNumber(instituteStudentDetails.getEnrollmentId());
+                    studentSessionInstituteGroupMapping
+                            .setInstituteEnrolledNumber(instituteStudentDetails.getEnrollmentId());
                 }
 
                 if (instituteStudentDetails.getAccessDays() != null) {
-                    studentSessionInstituteGroupMapping.setExpiryDate(makeExpiryDate(instituteStudentDetails.getEnrollmentDate(), Integer.parseInt(instituteStudentDetails.getAccessDays())));
+                    studentSessionInstituteGroupMapping
+                            .setExpiryDate(makeExpiryDate(instituteStudentDetails.getEnrollmentDate(),
+                                    Integer.parseInt(instituteStudentDetails.getAccessDays())));
                 }
 
                 studentSessionRepository.save(studentSessionInstituteGroupMapping);
@@ -141,13 +156,14 @@ public class LearnerSessionOperationService {
                     instituteStudentDetails.getEnrollmentId(),
                     instituteStudentDetails.getGroupId(),
                     instituteStudentDetails.getInstituteId(),
-                    studentRegistrationManager.makeExpiryDate(instituteStudentDetails.getEnrollmentDate(), instituteStudentDetails.getAccessDays()),
+                    studentRegistrationManager.makeExpiryDate(instituteStudentDetails.getEnrollmentDate(),
+                            instituteStudentDetails.getAccessDays()),
                     instituteStudentDetails.getPackageSessionId(),
                     instituteStudentDetails.getDestinationPackageSessionId(),
                     instituteStudentDetails.getUserPlanId(),
                     instituteStudentDetails.getSubOrgId(),
-                    instituteStudentDetails.getCommaSeparatedOrgRoles()
-            );
+                    instituteStudentDetails.getCommaSeparatedOrgRoles(),
+                    instituteStudentDetails.getType());
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }

@@ -307,6 +307,47 @@ public class UserService {
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
+    public PagedUserWithRolesResponse getUsersByInstituteIdAndStatusPaged(String instituteId, List<String> statuses,
+            List<String> roles, String searchName, int pageNumber, int pageSize, CustomUserDetails userDetails) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(pageNumber,
+                pageSize);
+
+        String name = null;
+        String email = null;
+        String mobile = null;
+
+        if (searchName != null && !searchName.trim().isEmpty()) {
+            if (searchName.contains("@")) {
+                email = searchName;
+            } else if (searchName.matches("^[0-9+\\-\\s]+$")) {
+                mobile = searchName;
+            } else {
+                name = searchName;
+            }
+        }
+
+        List<User> users = userRepository.findUsersByStatusAndInstitutePaged(statuses, roles, instituteId, name, email,
+                mobile, pageable);
+        long totalElements = userRepository.countUsersByStatusAndInstitute(statuses, roles, instituteId, name, email,
+                mobile);
+
+        List<UserWithRolesDTO> content = users.stream()
+                .map(UserWithRolesDTO::new)
+                .collect(Collectors.toList());
+
+        int totalPages = (int) Math.ceil((double) totalElements / pageSize);
+
+        return PagedUserWithRolesResponse.builder()
+                .content(content)
+                .pageNumber(pageNumber)
+                .pageSize(pageSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .first(pageNumber == 0)
+                .last(pageNumber >= totalPages - 1)
+                .build();
+    }
+
     public User updateUser(User user, UserDTO userDTO) {
         if (StringUtils.hasText(userDTO.getUsername()))
             user.setUsername(userDTO.getUsername());
@@ -506,6 +547,74 @@ public class UserService {
             userRepository.save(user);
         } catch (Exception e) {
         }
+    }
+
+    public List<UserDTO> autoSuggestUsers(String instituteId, List<String> roleNames, String query) {
+        List<User> users;
+        if (roleNames == null || roleNames.isEmpty()) {
+            users = userRepository.autoSuggestUsersAllRoles(instituteId, query);
+        } else {
+            users = userRepository.autoSuggestUsers(instituteId, roleNames, query);
+        }
+        return users.stream().map(UserDTO::new).collect(Collectors.toList());
+    }
+
+    /**
+     * Get users with their linked children.
+     * For each parent user ID provided, fetches the parent and their linked child
+     * (if any).
+     * 
+     * @param parentUserIds List of parent user IDs to fetch
+     * @return List of ParentWithChildDTO containing parent and child user
+     *         information
+     */
+    public List<ParentWithChildDTO> getUsersWithChildren(List<String> parentUserIds) {
+        if (parentUserIds == null || parentUserIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Fetch all parent users
+        List<User> parents = userRepository.findByIdIn(parentUserIds);
+        Map<String, User> parentMap = parents.stream()
+                .collect(Collectors.toMap(User::getId, user -> user, (a, b) -> a));
+
+        // Fetch all children linked to these parents
+        List<User> children = userRepository.findByLinkedParentIdIn(parentUserIds);
+
+        // Group children by parent ID
+        Map<String, List<User>> childrenByParentId = children.stream()
+                .filter(child -> child.getLinkedParentId() != null)
+                .collect(Collectors.groupingBy(User::getLinkedParentId));
+
+        // Build ParentWithChildDTO for each requested parent ID
+        List<ParentWithChildDTO> result = new ArrayList<>();
+        for (String parentId : parentUserIds) {
+            User parent = parentMap.get(parentId);
+            if (parent != null) {
+                List<User> linkedChildren = childrenByParentId.get(parentId);
+
+                if (linkedChildren != null && !linkedChildren.isEmpty()) {
+                    // Add an entry for each child
+                    for (User child : linkedChildren) {
+                        ParentWithChildDTO dto = ParentWithChildDTO.builder()
+                                .parent(new UserDTO(parent))
+                                .child(new UserDTO(child))
+                                .build();
+                        result.add(dto);
+                    }
+                } else {
+                    // Parent found but no children linked
+                    ParentWithChildDTO dto = ParentWithChildDTO.builder()
+                            .parent(new UserDTO(parent))
+                            .child(null)
+                            .build();
+                    result.add(dto);
+                }
+            }
+        }
+
+        log.info("Fetched {} parent-child entries for {} requested IDs", result.size(), parentUserIds.size());
+        return result;
     }
 
 }

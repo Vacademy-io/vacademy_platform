@@ -21,7 +21,7 @@ public class SpelEvaluator {
 
     /**
      * Evaluates a SpEL expression with the given context variables.
-     * 
+     *
      * @param expressionString The SpEL expression to evaluate
      * @param contextVars      Context variables available to the expression
      * @return The evaluated result, or null if evaluation fails
@@ -44,6 +44,7 @@ public class SpelEvaluator {
             log.debug("Successfully evaluated SpEL expression: {}", exprStr);
             return result;
         } catch (SpelEvaluationException e) {
+            e.printStackTrace();
             log.error("SpEL evaluation failed for expression: '{}'. Context keys: {}. Error: {}",
                     exprStr, contextVars != null ? contextVars.keySet() : "null", e.getMessage());
 
@@ -54,6 +55,7 @@ public class SpelEvaluator {
                     contextVars,
                     e);
         } catch (SpelParseException e) {
+            e.printStackTrace();
             log.error("SpEL parse failed for expression: '{}'. Error: {}", exprStr, e.getMessage());
 
             throw new SpelEvaluationError(
@@ -62,6 +64,7 @@ public class SpelEvaluator {
                     contextVars,
                     e);
         } catch (Exception e) {
+            e.printStackTrace();
             log.error("Unexpected error evaluating SpEL expression: '{}'. Error: {}", exprStr, e.getMessage(), e);
 
             throw new SpelEvaluationError(
@@ -76,7 +79,7 @@ public class SpelEvaluator {
      * Evaluates a SpEL expression and returns null on failure instead of throwing
      * exception.
      * Useful for optional expressions where failure should not stop execution.
-     * 
+     *
      * @param expressionString The SpEL expression to evaluate
      * @param contextVars      Context variables available to the expression
      * @return The evaluated result, or null if evaluation fails

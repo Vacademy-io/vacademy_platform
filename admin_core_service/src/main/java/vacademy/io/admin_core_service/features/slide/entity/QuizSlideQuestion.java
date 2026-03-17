@@ -67,6 +67,12 @@ public class QuizSlideQuestion {
     @Column(name = "can_skip")
     private Boolean canSkip = true;
 
+    @Column(name = "marks")
+    private Double marks;
+
+    @Column(name = "negative_marking")
+    private Double negativeMarking;
+
     @OneToMany(mappedBy = "quizSlideQuestion", cascade = CascadeType.ALL)
     private List<QuizSlideQuestionOption> quizSlideQuestionOptions;
 
@@ -94,6 +100,8 @@ public class QuizSlideQuestion {
         this.evaluationType = dto.getEvaluationType();
         this.questionOrder = dto.getQuestionOrder();
         this.canSkip = dto.getCanSkip();
+        this.marks = dto.getMarks();
+        this.negativeMarking = dto.getNegativeMarking();
         this.quizSlide = quizSlide;
 
         if (dto.getOptions() != null && !dto.getOptions().isEmpty()) {

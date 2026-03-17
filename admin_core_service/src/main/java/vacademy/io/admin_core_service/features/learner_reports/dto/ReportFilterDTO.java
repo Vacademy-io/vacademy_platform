@@ -13,4 +13,6 @@ public class ReportFilterDTO {
     private Date endDate;
     private String packageSessionId;
     private String userId;
+    // Used for module-specific or chapter-wise reports
+    private String moduleId;
 }

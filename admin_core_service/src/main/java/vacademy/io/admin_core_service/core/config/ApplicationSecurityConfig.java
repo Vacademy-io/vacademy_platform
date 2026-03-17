@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.cors.CorsConfigurationSource;
 import vacademy.io.common.auth.filter.InternalAuthFilter;
@@ -45,15 +46,16 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/api-docs/**",
             "/admin-core-service/learner-invitation-response/**",
             "/admin-core-service/live-session/register-guest-user/**",
-            "admin-core-service/live-session/get-earliest-schedule-id/**",
+            "/admin-core-service/live-session/get-earliest-schedule-id/**",
             "/admin-core-service/live-session/get-registration-data/**",
             "/admin-core-service/live-session/check-email-registration/**",
-            "/admin-core-service/live-session/guest/get-session-by-schedule-id/**",
-            "/admin-core-service/live-session/mark-guest-attendance",
+            "/admin-core-service/live-session/guest/**",
             "/admin-core-service/course/ai/v1/**",
             "/admin-core-service/payments/webhook/callback/**",
             "/admin-core-service/v1/learner/enroll/**",
+            "/admin-core-service/v2/learner/enroll/**",
             "/admin-core-service/workflow/schedule/**",
+            "/admin-core-service/payments/user-plan/**/status/**",
             "/admin-core-service/llm-analytics/**",
             "/admin-core-service/v1/llm-analytics/**",
             "/admin-core-service/v1/embedding/api-docs/**",
@@ -71,7 +73,22 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/v1/recipient-resolution/centralized",
             // Agent SSE stream - EventSource doesn't support auth headers, session is
             // validated internally
-            "/admin-core-service/v1/agent/stream/**"
+            "/admin-core-service/v1/agent/stream/**",
+            "/admin-core-service/api/v1/audience/webhook/**",
+            "/admin-core-service/health/**",
+            // Invoice test endpoints (for testing only)
+            "/admin-core-service/v1/invoices/test/**",
+            // Applicant public APIs for application form
+            "/admin-core-service/applicant/v1/enquiry/**",
+            "/admin-core-service/v1/applicant/**",
+            "/admin-core-service/enrollment-policy/**",
+            "/admin-core-service/v1/admission/submit",
+            // BBB server-to-server callback (no JWT — called by BigBlueButton when meeting ends)
+            "/admin-core-service/live-sessions/provider/meeting/bbb-callback",
+            // BBB recording upload (server-to-server from BBB post-publish script, auth via X-BBB-Secret header)
+            "/admin-core-service/live-sessions/provider/meeting/recording/init-upload",
+            "/admin-core-service/live-sessions/provider/meeting/recording/complete"
+
     };
     @Autowired
     JwtAuthFilter jwtAuthFilter;
@@ -89,10 +106,17 @@ public class ApplicationSecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
-                .authorizeHttpRequests(authz -> authz
-                        .requestMatchers(ALLOWED_PATHS).permitAll()
-                        .requestMatchers(INTERNAL_PATHS).authenticated()
-                        .anyRequest().authenticated())
+                .authorizeHttpRequests(authz -> {
+                    // Use AntPathRequestMatcher for Ant-style pattern matching (compatible with
+                    // Spring 6)
+                    for (String path : ALLOWED_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).permitAll();
+                    }
+                    for (String path : INTERNAL_PATHS) {
+                        authz.requestMatchers(AntPathRequestMatcher.antMatcher(path)).authenticated();
+                    }
+                    authz.anyRequest().authenticated();
+                })
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .anonymous(anonymous -> anonymous.disable())

@@ -51,8 +51,8 @@ class Settings(BaseSettings):
     # CORS
     cors_allow_origins: str = "*"  # comma-separated list
     cors_allow_credentials: bool = True
-    cors_allow_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-    cors_allow_headers: str = "Authorization,Content-Type"
+    cors_allow_methods: str = "*"
+    cors_allow_headers: str = "*"
 
     # Database (connect to admin-core-service DB)
     # Preferred: provide a SQLAlchemy/Psycopg URL via DATABASE_URL
@@ -69,9 +69,10 @@ class Settings(BaseSettings):
 
     # SQLAlchemy pool tuning
     db_pool_size: int = 5
-    db_max_overflow: int = 10
+    db_max_overflow: int = 5
     db_pool_timeout_seconds: int = 30
     db_pool_recycle_seconds: int = 1800  # 30 minutes
+    # Trigger git status
 
     # LLM Configuration - Using OpenRouter (your working API key)
     llm_base_url: str = "https://openrouter.ai/api/v1/chat/completions"
@@ -103,8 +104,23 @@ class Settings(BaseSettings):
     # Google Generative AI Configuration (for Gemini image generation)
     gemini_api_key: Optional[str] = None
 
+    # RunPod Configuration (for avatar video generation via EchoMimic)
+    runpod_api_key: Optional[str] = None
+    runpod_endpoint_id: Optional[str] = None
+
     # YouTube API Configuration
     youtube_api_key: Optional[str] = None
+    
+    # Internal Auth Configuration
+    client_name: str = os.getenv("CLIENT_NAME", "ai_service")
+    client_secret: Optional[str] = os.getenv("CLIENT_SECRET")
+    auth_service_base_url: str = os.getenv("AUTH_SERVICE_BASE_URL", "http://auth-service:8071")
+    
+    # JWT Configuration (Shared with Java services)
+    # Default value works for dev/stage if matching common_service
+    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "357638792F423F4428472B4B6250655368566D597133743677397A2443264629")
+    jwt_algorithm: str = "HS256"
+    jwt_token_expiry_minutes: int = 43200  # 30 days in minutes (matching Java 2592000000ms)
 
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 

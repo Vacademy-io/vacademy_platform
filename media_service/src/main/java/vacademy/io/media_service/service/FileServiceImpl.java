@@ -3,6 +3,7 @@ package vacademy.io.media_service.service;
 import com.amazonaws.HttpMethod;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.CopyObjectRequest;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
@@ -72,6 +73,34 @@ public class FileServiceImpl implements FileService {
         FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(),
                 Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
                 "SERVICE_UPLOAD", "SERVICE_UPLOAD");
+        fileMetadata = fileMetadataRepository.save(fileMetadata);
+        String url = "https://" + publicBucket + ".s3.amazonaws.com/" + key;
+
+        FileDetailsDTO.FileDetailsDTOBuilder builder = FileDetailsDTO.builder()
+                .expiry(addTime(100))
+                .fileName(fileMetadata.getFileName())
+                .fileType(fileMetadata.getFileType())
+                .id(fileMetadata.getId())
+                .source(fileMetadata.getSource())
+                .sourceId(fileMetadata.getSourceId())
+                .url(url)
+                .createdOn(fileMetadata.getCreatedOn())
+                .updatedOn(fileMetadata.getUpdatedOn());
+
+        return builder.build();
+    }
+
+    @Override
+    public FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key)
+            throws FileUploadException, IOException {
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentType(
+                multipartFile.getContentType() != null ? multipartFile.getContentType() : "application/octet-stream");
+        metadata.setContentLength(multipartFile.getSize());
+        s3Client.putObject(publicBucket, key, multipartFile.getInputStream(), metadata);
+        FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(),
+                Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
+                "SCORM_UPLOAD", "SCORM_UPLOAD");
         fileMetadata = fileMetadataRepository.save(fileMetadata);
         String url = "https://" + publicBucket + ".s3.amazonaws.com/" + key;
 

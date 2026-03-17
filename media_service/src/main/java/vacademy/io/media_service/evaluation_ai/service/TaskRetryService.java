@@ -21,6 +21,7 @@ import vacademy.io.media_service.util.JsonUtils;
 import jakarta.annotation.PreDestroy;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.*;
 
 import static vacademy.io.media_service.ai.ExternalAIApiService.getCommaSeparatedQuestionNumbers;
@@ -191,11 +192,14 @@ public class TaskRetryService {
         // Determine which model to use
         String model = aiModelConfig.getModelToUse(modelOverride);
 
-        // Call AI API
+        // Call AI API with institute ID for credit deduction
         DeepSeekResponse response = deepSeekApiService.getChatCompletion(
                 model,
                 prompt.getContents().trim(),
-                aiModelConfig.getDefaultTimeoutMs());
+                aiModelConfig.getDefaultTimeoutMs(),
+                "retry",
+                getInstituteUUID(task),
+                null);
 
         // Handle empty response
         if (response == null || response.getChoices() == null || response.getChoices().isEmpty()) {
@@ -317,5 +321,20 @@ public class TaskRetryService {
             cause = cause.getCause();
         }
         return cause.getMessage() != null ? cause.getMessage() : throwable.getMessage();
+    }
+
+    /**
+     * Helper method to extract institute UUID from TaskStatus.
+     */
+    private UUID getInstituteUUID(TaskStatus task) {
+        if (task == null || task.getInstituteId() == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(task.getInstituteId());
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid institute ID format: {}", task.getInstituteId());
+            return null;
+        }
     }
 }

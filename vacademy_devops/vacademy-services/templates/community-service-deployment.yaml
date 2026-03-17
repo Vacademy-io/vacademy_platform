@@ -20,6 +20,8 @@ spec:
       labels:
         app: community-service
     spec:
+      # ServiceAccount for diagnostics feature - allows reading K8s resources
+      serviceAccountName: diagnostics-service-account
       containers:
         - name: community-service
           image: {{ .Values.services.community_service.image.repository }}:{{ .Values.services.community_service.image.tag }}
@@ -29,11 +31,11 @@ spec:
                 name: myconfigmapv1.0
           resources:
             requests:
-              cpu: "100m"
-              memory: "250Mi"
+              cpu: "500m"
+              memory: "700Mi"
             limits:
-              cpu: "250m"
-              memory: "600Mi"
+              cpu: "2000m"
+              memory: "1400Mi"
           livenessProbe:
             httpGet:
               path: /community-service/actuator/health

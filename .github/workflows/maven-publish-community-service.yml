@@ -5,11 +5,11 @@ on:
     branches:
       - main
     paths:
-      - 'community_service/**'
+      - "community_service/**"
 
 jobs:
   build-and-deploy:
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
@@ -28,7 +28,6 @@ jobs:
           echo "${JAVA_TOKEN}" | docker login ghcr.io -u ${ACCESS_GITHUB_USERNAME} --password-stdin
           mkdir -p ~/.m2
           echo "<settings><servers><server><id>github</id><username>${ACCESS_GITHUB_USERNAME}</username><password>${JAVA_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
-
 
       - name: Build Project
         working-directory: ./community_service
@@ -65,6 +64,7 @@ jobs:
           ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN} --build-arg SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
@@ -94,8 +94,10 @@ jobs:
             APP_USERNAME=${{ secrets.APP_USERNAME }} \
             APP_PASSWORD=${{ secrets.APP_PASSWORD }} \
             CLOUD_FRONT_URL=${{ secrets.CLOUD_FRONT_URL }} \
-            ASSESSMENT_SERVICE_DB_URL=${{ secrets.ASSESSMENT_SERVICE_DB_URL }} \
+            ASSESSMENT_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/assessment_service \
+            COMMUNITY_SERVICE_READ_DB_URL=jdbc:postgresql://pgbouncer:6432/assessment_service_read \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Restart deployment

@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import vacademy.io.common.media.dto.FileDetailsDTO;
+import vacademy.io.media_service.config.cache.CacheScope;
+import vacademy.io.media_service.config.cache.ClientCacheable;
 import vacademy.io.media_service.dto.PreSignedUrlRequest;
 import vacademy.io.media_service.dto.PreSignedUrlResponse;
 import vacademy.io.media_service.exceptions.FileDownloadException;
@@ -32,23 +34,15 @@ public class PublicFileController {
     }
 
     @GetMapping("/get-public-url")
+    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PUBLIC)
     public ResponseEntity<String> getFileUrl(@RequestParam String fileId,
             @RequestParam(required = false) Integer expiryDays,
             @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) throws FileDownloadException {
 
-        String url;
-
         // Generate permanent public URL without expiry
-        url = fileService.getPublicUrl(fileId, bucketName);
+        String url = fileService.getPublicUrl(fileId, bucketName);
 
-        HttpHeaders headers = new HttpHeaders();
-        // Prevent caching anywhere to avoid stale pre-signed URLs being reused from
-        // disk
-        headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
-        headers.setPragma("no-cache");
-        headers.setExpires(0);
-
-        return ResponseEntity.ok().headers(headers).body(url);
+        return ResponseEntity.ok(url);
     }
 
     @GetMapping("/get-details/id")

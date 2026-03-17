@@ -90,6 +90,7 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
     "myClasses",
     "myMembership",
     "myBooks",
+    "upcomingLiveClasses",
   ];
   return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
 }

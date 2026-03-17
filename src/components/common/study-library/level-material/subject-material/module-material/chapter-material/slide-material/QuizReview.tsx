@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import type { ScoreCard } from "./quiz-viewer";
+import type { QuizAttemptLog } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
 
 interface Option {
   id: string;
@@ -38,6 +39,11 @@ interface QuizReviewProps {
   userAnswers: { [questionId: string]: string | number | string[] };
   onRestart: () => void;
   scoreCard?: ScoreCard;
+  showCorrectAnswers?: boolean;
+  passed?: boolean | null;
+  passPercentage?: number | null;
+  attemptNumber?: number;
+  attemptLogs?: QuizAttemptLog[];
 }
 
 const getQuestionText = (q: Question) => {
@@ -101,8 +107,9 @@ const getCorrectAnswers = (q: Question): (string | number)[] => {
   return [];
 };
 
-export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard }) => {
+export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, attemptNumber, attemptLogs }) => {
   const [showFullPassageIdx, setShowFullPassageIdx] = useState<number | null>(null);
+  const [showPastAttempts, setShowPastAttempts] = useState(false);
   const PASSAGE_LIMIT = 200;
 
   // Helper to get plain text from HTML
@@ -133,13 +140,20 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
   return (
     <div className="w-full min-h-[80vh] bg-white rounded-xl shadow-lg p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-primary-800 text-base font-bold">Quiz Review</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-primary-800 text-base font-bold">Quiz Review</h2>
+          {attemptNumber != null && attemptNumber > 0 && (
+            <span className="rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-700">
+              Attempt {attemptNumber}
+            </span>
+          )}
+        </div>
         <button
           className="px-4 py-2 bg-secondary-500 hover:bg-primary-100 text-black font-semibold text-xs border rounded shadow transition-colors"
           onClick={onRestart}
           type="button"
         >
-          Restart
+          Reattempt
         </button>
       </div>
 
@@ -172,6 +186,75 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           </div>
         </div>
       )}
+
+      {/* Pass / Fail Banner */}
+      {passed === true && (
+        <div className="mb-8 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 shadow-sm">
+          <span className="text-2xl">🎉</span>
+          <div>
+            <div className="font-semibold text-green-800">You passed!</div>
+            <div className="text-sm text-green-700">
+              Required: {passPercentage}% — Your score:{" "}
+              {scoreCard && scoreCard.totalMarks > 0
+                ? Math.round((scoreCard.earned / scoreCard.totalMarks) * 100)
+                : 0}
+              %
+            </div>
+          </div>
+        </div>
+      )}
+      {passed === false && (
+        <div className="mb-8 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">😔</span>
+            <div>
+              <div className="font-semibold text-red-800">You did not pass</div>
+              <div className="text-sm text-red-700">
+                Required: {passPercentage}% — Your score:{" "}
+                {scoreCard && scoreCard.totalMarks > 0
+                  ? Math.round((scoreCard.earned / scoreCard.totalMarks) * 100)
+                  : 0}
+                %
+              </div>
+            </div>
+          </div>
+          <button
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-red-700 transition-colors"
+            onClick={onRestart}
+            type="button"
+          >
+            Reattempt Quiz
+          </button>
+        </div>
+      )}
+
+      {/* Past Attempts */}
+      {attemptLogs && attemptLogs.length > 1 && (
+        <div className="mb-8">
+          <button
+            type="button"
+            className="mb-2 text-sm font-semibold text-primary-700 hover:underline"
+            onClick={() => setShowPastAttempts(!showPastAttempts)}
+          >
+            {showPastAttempts ? "▾ Hide" : "▸ View"} Past Attempts ({attemptLogs.length})
+          </button>
+          {showPastAttempts && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="space-y-2">
+                {attemptLogs.map((log, i) => (
+                  <div key={log.id} className="flex items-center justify-between rounded bg-white px-3 py-2 text-sm shadow-sm">
+                    <span className="font-medium text-gray-700">Attempt #{attemptLogs.length - i}</span>
+                    <span className="text-gray-400 text-xs">
+                      {log.end_time ? new Date(log.end_time).toLocaleString() : "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="space-y-10">
         {questions.map((q, idx) => {
           const passage = getPassageText(q);
@@ -266,7 +349,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                           </span>}
                   </div>
                 </div>
-                {correctAnswers.length > 0 && (
+                {showCorrectAnswers && correctAnswers.length > 0 && (
                   <div className="flex-1">
                     <div className="mb-1 text-xs font-semibold text-green-800 flex items-center"><CheckIcon />Correct Answer</div>
                     <div className="w-full rounded-lg bg-green-50 border border-green-200 p-3 flex flex-col gap-2">
@@ -286,7 +369,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                   </div>
                 )}
               </div>
-              {explanation && (
+              {showCorrectAnswers && explanation && (
                 <div className="mt-2 p-4 bg-gray-100 border border-gray-300 rounded-lg">
                   <div className="mb-1 text-xs font-semibold text-gray-700">Explanation</div>
                   <div className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: explanation }} />

@@ -65,6 +65,7 @@ interface QuizViewerProps {
   marksPerQuestion?: number;
   defaultNegativeMarking?: number;
   passPercentage?: number | null;
+  reAttemptCount?: number | null;
 }
 
 const BASE_QUESTION_TYPE_DESCRIPTIONS: Record<string, string> = {
@@ -121,6 +122,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   marksPerQuestion = 1,
   defaultNegativeMarking = 0,
   passPercentage,
+  reAttemptCount,
 }) => {
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<{ [questionId: string]: string | number | string[] }>({});
@@ -466,6 +468,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
     // ensure the current attempt is counted (+1 when logs don't include it yet).
     const logsCount = attemptLogsQuery.data?.length ?? 0;
     const totalAttempts = logsCount > 0 ? logsCount : 1;
+    // If reAttemptCount is set, check if the user has exhausted their attempts
+    const canReattempt = reAttemptCount == null || totalAttempts < reAttemptCount;
     return <QuizReview
       questions={questions}
       userAnswers={answers}
@@ -474,6 +478,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       passed={passed}
       passPercentage={passPercentage}
       attemptNumber={totalAttempts}
+      maxAttempts={reAttemptCount}
+      canReattempt={canReattempt}
       attemptLogs={attemptLogsQuery.data}
       onRestart={() => {
         // ✅ Clear localStorage when retaking quiz

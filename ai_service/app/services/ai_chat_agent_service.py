@@ -678,11 +678,29 @@ class AiChatAgentService:
                     
                 except Exception as e:
                     logger.error(f"LLM call failed: {e}")
-                    # Yield error message
+                    # Provide specific message for 402 payment errors
+                    is_payment_error = "402" in str(e) or "Payment Required" in str(e)
+                    if is_payment_error:
+                        error_content = "AI service credits have been exhausted. Please contact your administrator to add more credits."
+                        logger.error(f"OpenRouter 402 error for session {session_id}, institute {institute_id}: {e}")
+                    else:
+                        error_content = "I encountered an error processing your request. Please try again."
+
+                    # Yield structured error event (consistent with outline/content endpoints)
+                    yield {
+                        "event": "error",
+                        "data": {
+                            "type": "ERROR",
+                            "code": 402 if is_payment_error else 500,
+                            "message": error_content,
+                        }
+                    }
+
+                    # Also save as assistant message for chat history
                     error_msg = self.message_repo.create_message(
                         session_id=session_id,
                         message_type="assistant",
-                        content="I encountered an error processing your request. Please try again.",
+                        content=error_content,
                     )
                     yield {
                         "event": "message",
@@ -840,11 +858,29 @@ class AiChatAgentService:
             
         except Exception as e:
             logger.error(f"Error in agentic processing for session {session_id}: {e}")
-            # Yield error message
+            # Provide specific message for 402 payment errors
+            is_payment_error = "402" in str(e) or "Payment Required" in str(e)
+            if is_payment_error:
+                error_content = "AI service credits have been exhausted. Please contact your administrator to add more credits."
+                logger.error(f"OpenRouter 402 error for session {session_id}: {e}")
+            else:
+                error_content = "I encountered an error processing your request. Please try again."
+
+            # Yield structured error event (consistent with outline/content endpoints)
+            yield {
+                "event": "error",
+                "data": {
+                    "type": "ERROR",
+                    "code": 402 if is_payment_error else 500,
+                    "message": error_content,
+                }
+            }
+
+            # Also save as assistant message for chat history
             error_msg = self.message_repo.create_message(
                 session_id=session_id,
                 message_type="assistant",
-                content="I encountered an error processing your request. Please try again.",
+                content=error_content,
             )
             yield {
                 "event": "message",

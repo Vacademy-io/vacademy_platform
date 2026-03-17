@@ -147,12 +147,25 @@ class ChatLLMClient:
             payload["tool_choice"] = "auto"
         
         response = await self.http_client.post(url, json=payload, headers=headers)
+
+        if response.status_code == 402:
+            error_body = response.text
+            logger.error(
+                f"OpenRouter 402 Payment Required - insufficient credits or quota exceeded. "
+                f"Model: {model}, Status: {response.status_code}, "
+                f"Response: {error_body}"
+            )
+            raise Exception(
+                f"OpenRouter 402 Payment Required: insufficient credits or quota exceeded. "
+                f"Model: {model}. Details: {error_body}"
+            )
+
         response.raise_for_status()
-        
+
         data = response.json()
         choice = data["choices"][0]
         message = choice["message"]
-        
+
         return {
             "content": message.get("content", ""),
             "tool_calls": message.get("tool_calls"),

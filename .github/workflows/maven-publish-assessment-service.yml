@@ -97,7 +97,8 @@ jobs:
             ASSESSMENT_SERVICE_READ_DB_URL=jdbc:postgresql://pgbouncer:6432/assessment_service_read \
             SCHEDULING_TIME_FRAME=${{ secrets.SCHEDULING_TIME_FRAME }} \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} \
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
 
       - name: Restart deployment
         id: restart-deployment

@@ -119,6 +119,9 @@ public class Institute {
     @Column(name = "school_strength")
     private Integer schoolStrength;
 
+    @Column(name = "lead_tag")
+    private String leadTag;
+
     @PrePersist
     @PreUpdate
     private void normalizeEmails() {

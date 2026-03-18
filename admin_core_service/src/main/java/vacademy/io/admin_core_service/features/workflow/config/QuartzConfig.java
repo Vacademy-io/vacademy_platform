@@ -11,7 +11,10 @@ import vacademy.io.admin_core_service.features.workflow.scheduler.WorkflowExecut
 public class QuartzConfig {
 
     /**
-     * Define the workflow execution job
+     * Define the workflow execution job.
+     * Runs every 15 minutes and picks up any due workflow_schedule rows.
+     * The fee installment reminder workflow is included automatically via the
+     * ws_fee_reminder_daily row inserted in V160 migration.
      */
     @Bean
     public JobDetail workflowExecutionJobDetail() {
@@ -23,7 +26,7 @@ public class QuartzConfig {
     }
 
     /**
-     * Define the trigger for workflow execution (runs every 30 minutes)
+     * Define the trigger for workflow execution (runs every 15 minutes)
      */
     @Bean
     public Trigger workflowExecutionTrigger() {
@@ -31,7 +34,7 @@ public class QuartzConfig {
                 .forJob(workflowExecutionJobDetail())
                 .withIdentity("workflowExecutionTrigger", "workflowGroup")
                 .withDescription("Trigger for workflow execution job")
-                .withSchedule(CronScheduleBuilder.cronSchedule("0 0/15 * * * ?")) // Every 30 minutes
+                .withSchedule(CronScheduleBuilder.cronSchedule("0 0/15 * * * ?")) // Every 15 minutes
                 .build();
     }
 }

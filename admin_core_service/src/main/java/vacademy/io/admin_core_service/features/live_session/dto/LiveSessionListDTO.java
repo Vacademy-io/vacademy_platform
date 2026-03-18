@@ -33,6 +33,7 @@ public class LiveSessionListDTO {
     private LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig;
     private String defaultClassLink;
     private String defaultClassName;
+    private String linkType;
 
     // Getters and Setters
 }

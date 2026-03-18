@@ -1,10 +1,13 @@
 package vacademy.io.media_service.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.media_service.entity.InstituteShortLinkDomain;
 import vacademy.io.media_service.entity.ShortLink;
+import vacademy.io.media_service.repository.InstituteShortLinkDomainRepository;
 import vacademy.io.media_service.repository.ShortLinkRepository;
 
 import java.time.LocalDateTime;
@@ -17,8 +20,14 @@ public class ShortLinkService {
     @Autowired
     private ShortLinkRepository shortLinkRepository;
 
+    @Autowired
+    private InstituteShortLinkDomainRepository shortLinkDomainRepository;
+
+    @Value("${short.link.base.url:https://u.vacademy.io}")
+    private String defaultShortLinkBaseUrl;
+
     @Transactional
-    public ShortLink createShortLink(String shortCode, String destinationUrl, String source, String sourceId) {
+    public ShortLink createShortLink(String shortCode, String destinationUrl, String source, String sourceId, String instituteId) {
         if (shortLinkRepository.findByShortName(shortCode).isPresent()) {
             throw new VacademyException("Short code already exists: " + shortCode);
         }
@@ -32,7 +41,31 @@ public class ShortLinkService {
                 .sourceId(sourceId)
                 .build();
 
-        return shortLinkRepository.save(shortLink);
+        ShortLink saved = shortLinkRepository.save(shortLink);
+
+        String host = defaultShortLinkBaseUrl;
+        if (instituteId != null && !instituteId.isBlank()) {
+            Optional<InstituteShortLinkDomain> domainOpt = shortLinkDomainRepository.findByInstituteId(instituteId);
+            if (domainOpt.isPresent() && domainOpt.get().getBaseUrl() != null
+                    && !domainOpt.get().getBaseUrl().isBlank()) {
+                String domain = domainOpt.get().getBaseUrl().trim();
+
+                // If the user just specified the domain (e.g. aanandham.uk or vacademy.io)
+                // Add the fixed u. subdomain and scheme.
+                if (!domain.startsWith("http")) {
+                    host = "https://u." + domain;
+                } else {
+                    host = domain;
+                }
+            }
+        }
+
+        if (host.endsWith("/")) {
+            host = host.substring(0, host.length() - 1);
+        }
+        saved.setAbsoluteUrl(host + "/s/" + saved.getShortName());
+
+        return saved;
     }
 
     @Transactional

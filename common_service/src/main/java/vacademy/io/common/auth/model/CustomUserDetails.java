@@ -44,12 +44,14 @@ public class CustomUserDetails extends User implements UserDetails {
         if (user == null || instituteId == null) {
             throw new IllegalArgumentException("User or Institute cannot be null");
         }
-        // Set the username from the provided User object
+        // Set the username and full name from the provided User object
         this.setUsername(user.getUsername());
+        this.setFullName(user.getFullName());
 
         // Set the password securely from the User object
         this.password = user.getPassword();
         this.userId = user.getId();
+        this.setRootUser(user.isRootUser());
 
         // Create a list to store authorities strings
         List<String> auths = new ArrayList<>();
@@ -71,8 +73,10 @@ public class CustomUserDetails extends User implements UserDetails {
     public CustomUserDetails(UserServiceDTO user) {
         // Set the username from the provided User object
         this.setUsername(user.getUsername());
+        this.setFullName(user.getFullName());
         this.password = "";
         this.userId = user.getUserId();
+        this.setRootUser(user.isRootUser());
 
         // Create a list to store authorities strings
         List<String> auths = new ArrayList<>();

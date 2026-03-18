@@ -29,6 +29,21 @@ jobs:
             --from-literal=userlist.txt="\"${{ secrets.DB_USERNAME }}\" \"${{ secrets.DB_PASSWORD }}\"" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.PGBOUNCER_DB_HOST }}" ]; then
+            echo "::error::PGBOUNCER_DB_HOST secret is not set!"
+            exit 1
+          fi
+          if [ -z "${{ secrets.PGBOUNCER_DB_READ_HOST }}" ]; then
+            echo "::error::PGBOUNCER_DB_READ_HOST secret is not set!"
+            exit 1
+          fi
+          if [ -z "${{ secrets.DB_USERNAME }}" ] || [ -z "${{ secrets.DB_PASSWORD }}" ]; then
+            echo "::error::DB_USERNAME or DB_PASSWORD secret is not set!"
+            exit 1
+          fi
+
       - name: Render and apply PgBouncer ConfigMap
         run: |
           helm template vacademy-services \
@@ -53,3 +68,13 @@ jobs:
       - name: Wait for PgBouncer rollout
         run: |
           kubectl rollout status deployment/pgbouncer --namespace default --timeout=120s
+
+      - name: Verify PgBouncer is healthy (no config errors)
+        run: |
+          sleep 10
+          LOGS=$(kubectl logs deployment/pgbouncer --namespace default --tail=20)
+          echo "$LOGS"
+          if echo "$LOGS" | grep -qE "FATAL|ERROR|DNS lookup failed|REPLACE_WITH"; then
+            echo "::error::PgBouncer has errors after deployment!"
+            exit 1
+          fi

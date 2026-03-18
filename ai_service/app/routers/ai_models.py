@@ -54,11 +54,15 @@ def get_models_service(db: Session = Depends(db_dependency)) -> AIModelsService:
     return AIModelsService(db)
 
 
-def check_root_admin(user: Optional[dict]) -> bool:
-    """Check if user is a ROOT_ADMIN."""
+def check_root_admin(user) -> bool:
+    """Check if user is a root admin (super admin)."""
     if not user:
         return False
-    roles = user.get("roles", [])
+    # Primary check: is_root_user boolean flag (matches Java User.isRootUser)
+    if hasattr(user, "is_root_user") and user.is_root_user:
+        return True
+    # Fallback: check roles list
+    roles = getattr(user, "roles", []) if not isinstance(user, dict) else user.get("roles", [])
     if isinstance(roles, str):
         roles = [r.strip() for r in roles.split(",")]
     return "ROOT_ADMIN" in roles

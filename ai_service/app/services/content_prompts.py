@@ -8,20 +8,22 @@ class ContentGenerationPrompts:
     """
 
     @staticmethod
-    def build_document_prompt(text_prompt: str, title: str, include_diagrams: bool = False) -> str:
+    def build_document_prompt(text_prompt: str, title: str, include_diagrams: bool = False, language: str = "English") -> str:
         """
         Build document generation prompt.
         - If include_diagrams is True, generates markdown with Mermaid diagrams
         - Otherwise, generates HTML format (default behavior)
         """
         # Check if prompt contains diagram-related keywords
-        diagram_keywords = ["include diagrams", "include diagram", "with diagrams", "with diagram", 
+        diagram_keywords = ["include diagrams", "include diagram", "with diagrams", "with diagram",
                            "add diagrams", "add diagram", "diagrams", "mermaid"]
         prompt_lower = text_prompt.lower()
         should_include_diagrams = include_diagrams or any(keyword in prompt_lower for keyword in diagram_keywords)
-        
+
         if should_include_diagrams:
             return f"""**Task**: Generate educational content as Markdown with Mermaid diagrams
+
+**Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
 
 **Topic**: {title}
 
@@ -98,6 +100,8 @@ class ContentGenerationPrompts:
         else:
             return f"""**Task**: Generate educational content as HTML
 
+**Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
+
 **Topic**: {title}
 
 **Content Requirements**:
@@ -114,12 +118,13 @@ class ContentGenerationPrompts:
 """
 
     @staticmethod
-    def build_assessment_prompt(text_prompt: str, title: str) -> str:
+    def build_assessment_prompt(text_prompt: str, title: str, language: str = "English") -> str:
         """
         Build assessment generation prompt matching media-service PROMPT_TO_QUESTIONS template.
         """
         return f"""**Objective** : {text_prompt}
 **Topic** : {title}
+**Language**: Generate ALL questions, options, answers, and explanations in {language}. Do NOT use English if a different language is specified.
                 
 **Instructions**:
 1. Continuation Handling:
@@ -127,9 +132,14 @@ class ContentGenerationPrompts:
    - Strictly avoid duplicate content from existing questions
                 
 2. Content Requirements:
-   - Preserve ALL DS_TAGs in HTML comments
-   - Include relevant images from Objective
-                
+   - Generate all content from the text prompt
+   - For questions that genuinely need a visual (diagrams, shapes, graphs, circuits, maps, experimental setups, etc.), you MAY include an image using ONLY this exact format:
+     <!-- DS_TAG_IMG_START --><img data-img-prompt="VIVID_ENGLISH_DESCRIPTION" src="placeholder.png" alt="description" style="max-width:100%;border-radius:8px;margin:8px 0;"><!-- DS_TAG_IMG_END -->
+   - The data-img-prompt must be a vivid, specific English description — the image pipeline will generate the actual image
+   - NEVER use external URLs (https://example.com, https://..., etc.) as src — ALWAYS use src="placeholder.png"
+   - For simple shapes, equations, or diagrams, prefer inline SVG over an img tag
+   - Only add images when they are truly essential to understand or answer the question — do not add decorative images
+
 3. Question Type Handling:
    - MCQS/MCQM: 4 options with clear single/multiple answers
    - ONE_WORD/LONG_ANSWER:
@@ -150,13 +160,13 @@ class ContentGenerationPrompts:
             "question_number": "number",
             "question": {{
                 "type": "HTML",
-                "content": "string" // Include img tags if present
+                "content": "string" // Text, inline SVG, or img with data-img-prompt (NEVER external URLs)
             }},
             "options": [
                 {{
                     "type": "HTML",
                     "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
-                    "content": "string" // Include img tags if present
+                    "content": "string" // Plain text or inline SVG — no external URLs
                 }}
             ],
             "correct_options": ["1"], // preview_id of correct option or list of correct options
@@ -176,22 +186,24 @@ class ContentGenerationPrompts:
 }}
                 
 **Critical Rules**:
-- If textPrompt is insufficient for questions, try to extract first 5 questions
-- Never modify DS_TAG comments
-- Maintain original HTML structure from source
+- If textPrompt is insufficient for questions, generate at least 5 questions from the topic
 - Strictly validate JSON syntax
 - Ensure question numbers are sequential without gaps
 - Never repeat question stems or options
+- NEVER use external/real/fake image URLs — only src="placeholder.png" with data-img-prompt attribute
+- Always wrap img tags in <!-- DS_TAG_IMG_START --> ... <!-- DS_TAG_IMG_END --> comments
 """
 
 
     @staticmethod
-    def build_code_prompt(text_prompt: str, title: str, video_topic: str) -> str:
+    def build_code_prompt(text_prompt: str, title: str, video_topic: str, language: str = "English") -> str:
         """
         Build code generation prompt for video+code slides.
         Generates code examples that complement the video content.
         """
         return f"""**Task**: Generate educational code examples as Markdown
+
+**Language**: Generate ALL explanations and comments in {language}. Do NOT use English if a different language is specified.
 
 **Topic**: {title}
 **Video Topic**: {video_topic}
@@ -240,12 +252,14 @@ Explanation of the code output or key concepts.
 """
 
     @staticmethod
-    def build_homework_prompt(text_prompt: str, title: str) -> str:
+    def build_homework_prompt(text_prompt: str, title: str, language: str = "English") -> str:
         """
         Build prompt for homework slides. Content should be coding-focused: mini projects,
         setup tasks, implementations—not simple question-answer type.
         """
         return f"""**Task**: Generate HOMEWORK for a chapter. The homework must be CODING- and TASK-oriented, NOT simple Q&A.
+
+**Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
 
 **Topic / Chapter**: {title}
 
@@ -273,7 +287,7 @@ Explanation of the code output or key concepts.
 **Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML. Start with <h1>Assignment</h1>."""
 
     @staticmethod
-    def build_solution_prompt(text_prompt: str, title: str, homework_content: str | None = None) -> str:
+    def build_solution_prompt(text_prompt: str, title: str, homework_content: str | None = None, language: str = "English") -> str:
         """
         Build prompt for solution slides. For the homework: provide HINT first, then Solution.
         If homework_content is provided, the solution must match this exact homework task.
@@ -289,6 +303,8 @@ Explanation of the code output or key concepts.
 {text_prompt}
 """
         return f"""**Task**: Generate the SOLUTION for the homework from the previous slide. The solution MUST have two parts: (1) HINT first, (2) Solution after.
+
+**Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
 
 **Topic / Chapter**: {title}
 

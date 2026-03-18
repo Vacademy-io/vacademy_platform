@@ -12,6 +12,9 @@ import vacademy.io.admin_core_service.features.applicant.dto.ApplicantListReques
 import vacademy.io.admin_core_service.features.applicant.dto.ApplicantListResponseDTO;
 import vacademy.io.admin_core_service.features.applicant.service.ApplicantService;
 import vacademy.io.common.auth.config.PageConstants;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
 /**
  * Admin-facing endpoints for applicant management
@@ -90,7 +93,8 @@ public class ApplicantAdminController {
 
     /**
      * Admin endpoint to manually move applicant to next stage
-     * Updates applicant, creates new applicant_stage entry, and updates audience_response if workflow type completed
+     * Updates applicant, creates new applicant_stage entry, and updates
+     * audience_response if workflow type completed
      */
     @PostMapping("/{applicantId}/move-stage")
     public ResponseEntity<String> moveApplicantToNextStage(@PathVariable String applicantId) {
@@ -103,4 +107,5 @@ public class ApplicantAdminController {
             return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
+
 }

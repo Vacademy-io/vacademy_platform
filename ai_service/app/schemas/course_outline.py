@@ -39,6 +39,10 @@ class GenerationOptions(BaseModel):
         default=None,
         description="Target duration for AI videos. Examples: '2-3 minutes', '5 minutes', '7 minutes', '10 minutes'."
     )
+    language: Optional[str] = Field(
+        default="English",
+        description="Language for all generated course content (e.g. 'English', 'Hindi', 'Spanish', 'French', 'Arabic')"
+    )
 
 
 class CourseUserPromptRequest(BaseModel):

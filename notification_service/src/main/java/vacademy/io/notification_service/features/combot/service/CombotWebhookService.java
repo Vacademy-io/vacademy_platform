@@ -258,17 +258,34 @@ public class CombotWebhookService {
                         .findTopByChannelIdAndSenderBusinessChannelIdAndNotificationTypeOrderByNotificationDateDesc(
                                 userPhone, receivingPhoneId, CombotNotificationType.WHATSAPP_OUTGOING.getType());
 
+                // Fallback: outgoing logs from whatsapp-service may not have senderBusinessChannelId set,
+                // so filter by provider in the body field to only match COMBOT messages
+                if (lastLogOpt.isEmpty()) {
+                    lastLogOpt = notificationLogRepository
+                            .findLatestOutgoingByChannelIdAndProvider(
+                                    userPhone, CombotNotificationType.WHATSAPP_OUTGOING.getType(), "COMBOT");
+                }
+
                 String lastTemplate = CombotConstants.DEFAULT_TEMPLATE;
                 if (lastLogOpt.isPresent()) {
                     lastTemplate = extractTemplateNameFromPayload(lastLogOpt.get().getMessagePayload());
                 }
+                log.info("Flow lookup: phone={}, lastTemplate={}, instituteId={}, channelType={}",
+                        userPhone, lastTemplate, instituteId, channelType);
 
                 Optional<ChannelFlowConfig> flowConfigOpt = flowConfigRepository
                         .findByInstituteIdAndCurrentTemplateNameAndChannelTypeAndIsActiveTrue(
                                 instituteId, lastTemplate, channelType);
 
                 if (flowConfigOpt.isPresent()) {
+                    log.info("Flow config found: id={}, responseConfig={}, actionConfig={}",
+                            flowConfigOpt.get().getId(),
+                            flowConfigOpt.get().getResponseTemplateConfig(),
+                            flowConfigOpt.get().getActionTemplateConfig());
                     executeFlowRule(flowConfigOpt.get(), userText, userPhone, instituteId);
+                } else {
+                    log.warn("No flow config found for phone={}, lastTemplate={}, instituteId={}, channelType={}",
+                            userPhone, lastTemplate, instituteId, channelType);
                 }
             }
         } catch (Exception e) {
@@ -754,14 +771,18 @@ public class CombotWebhookService {
             Map<String, List<String>> rules = objectMapper.readValue(jsonConfig, new TypeReference<>() {
             });
             String input = userText.trim().toLowerCase();
+            log.info("determineNextTemplates: input='{}', rules={}", input, rules.keySet());
 
             for (Map.Entry<String, List<String>> entry : rules.entrySet()) {
                 String keyword = entry.getKey().toLowerCase();
                 if (!keyword.equals("default") && input.contains(keyword)) {
+                    log.info("Matched keyword '{}' -> templates={}", keyword, entry.getValue());
                     return entry.getValue();
                 }
             }
-            return rules.getOrDefault("default", Collections.emptyList());
+            List<String> defaultTemplates = rules.getOrDefault("default", Collections.emptyList());
+            log.info("No keyword matched, using default -> templates={}", defaultTemplates);
+            return defaultTemplates;
         } catch (Exception e) {
             log.error("Failed to parse flow config", e);
             return Collections.emptyList();
@@ -812,8 +833,17 @@ public class CombotWebhookService {
         try {
             Map<String, Object> payload = objectMapper.readValue(payloadJson, new TypeReference<>() {
             });
+            // Format 1: Combot format - {"template": {"name": "..."}}
             Map<String, Object> template = (Map<String, Object>) payload.get(CombotWebhookKeys.TEMPLATE);
-            return (String) template.get(CombotWebhookKeys.NAME);
+            if (template != null) {
+                return (String) template.get(CombotWebhookKeys.NAME);
+            }
+            // Format 2: whatsapp-service format - {"templateName": "..."}
+            String templateName = (String) payload.get("templateName");
+            if (templateName != null) {
+                return templateName;
+            }
+            return CombotConstants.UNKNOWN_TEMPLATE;
         } catch (Exception e) {
             return CombotConstants.UNKNOWN_TEMPLATE;
         }

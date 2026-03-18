@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
 
 import java.sql.Timestamp;
@@ -31,20 +32,29 @@ public class EnquiryRepositoryCustomImpl implements EnquiryRepositoryCustom {
             String destinationPackageSessionId,
             Timestamp createdFrom,
             Timestamp createdTo,
+            String search,
             Pageable pageable) {
+
+        boolean hasSearch = StringUtils.hasText(search);
 
         StringBuilder jpql = new StringBuilder(
                 "SELECT e FROM Enquiry e " +
-                "WHERE EXISTS (" +
-                "  SELECT 1 FROM AudienceResponse ar " +
+                        "WHERE EXISTS (" +
+                        "  SELECT 1 FROM AudienceResponse ar");
+
+        // Only join the Student table when a search term is actually present
+        if (hasSearch) {
+            jpql.append(" LEFT JOIN Student s ON s.userId = ar.studentUserId");
+        }
+
+        jpql.append(
                 "  WHERE ar.enquiryId = CAST(e.id AS string) " +
-                "  AND ar.audienceId = :audienceId"
-        );
+                        "  AND ar.audienceId = :audienceId");
 
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("audienceId", audienceId);
 
-        // Add filters
+        // Existing filters
         if (enquiryStatus != null && !enquiryStatus.isBlank()) {
             jpql.append(" AND e.enquiryStatus = :enquiryStatus");
             parameters.put("enquiryStatus", enquiryStatus);
@@ -70,15 +80,28 @@ public class EnquiryRepositoryCustomImpl implements EnquiryRepositoryCustom {
             parameters.put("createdTo", createdTo);
         }
 
+        // Search: parent phone, parent email, or student full name
+        if (hasSearch) {
+            String searchPattern = "%" + search.trim().toLowerCase() + "%";
+            jpql.append(
+                    " AND (" +
+                            "   LOWER(ar.parentMobile) LIKE :search" +
+                            "   OR LOWER(ar.parentEmail) LIKE :search" +
+                            "   OR (s IS NOT NULL AND LOWER(s.fullName) LIKE :search)" +
+                            " )");
+            parameters.put("search", searchPattern);
+        }
+
         jpql.append(")");
 
-        // Count query - remove ORDER BY from count query
-        String countJpql = jpql.toString().replace("SELECT e FROM Enquiry e", "SELECT COUNT(e) FROM Enquiry e");
+        // Count query
+        String countJpql = jpql.toString()
+                .replace("SELECT e FROM Enquiry e", "SELECT COUNT(e) FROM Enquiry e");
         TypedQuery<Long> countQuery = entityManager.createQuery(countJpql, Long.class);
         parameters.forEach(countQuery::setParameter);
         Long total = countQuery.getSingleResult();
 
-        // Data query - add ORDER BY only to data query
+        // Data query
         String dataJpql = jpql.toString() + " ORDER BY e.createdAt DESC";
         TypedQuery<Enquiry> query = entityManager.createQuery(dataJpql, Enquiry.class);
         parameters.forEach(query::setParameter);

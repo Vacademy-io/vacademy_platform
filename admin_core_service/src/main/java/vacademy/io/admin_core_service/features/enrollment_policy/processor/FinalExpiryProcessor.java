@@ -54,6 +54,7 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
     private final SubOrgPaymentService subOrgPaymentService;
     private final NotificationServiceFactory notificationServiceFactory;
     private final PaymentRenewalCheckService paymentRenewalCheckService;
+    private final vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
 
     // ThreadLocal caches to prevent duplicate payment attempts and extensions
     private static final ThreadLocal<Map<String, PaymentAttemptResult>> paymentAttemptCache = ThreadLocal
@@ -135,6 +136,18 @@ public class FinalExpiryProcessor implements IEnrolmentPolicyProcessor {
                 subOrgId);
         notifyAdminsOfExpiry(subOrgId, packageSessionId, context);
         moveAllMappingsToInvitedAndExpireUserPlan(allSubOrgMappings, userPlan);
+
+        // Deactivate scoped FREE invites for this sub-org
+        try {
+            String instituteId = userPlan.getEnrollInvite() != null
+                    ? userPlan.getEnrollInvite().getInstituteId() : null;
+            if (instituteId != null) {
+                subOrgSubscriptionService.deactivateScopedInvites(subOrgId, instituteId);
+                log.info("Deactivated scoped invites for sub-org={} after org plan expiry", subOrgId);
+            }
+        } catch (Exception e) {
+            log.error("Error deactivating scoped invites for sub-org={}: {}", subOrgId, e.getMessage());
+        }
     }
 
     private void handleIndividualUserExpiry(EnrolmentContext context, UserPlan userPlan) {

@@ -35,6 +35,12 @@ public class AftInstallment {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    @Column(name = "end_date")
+    private LocalDate endDate;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 }

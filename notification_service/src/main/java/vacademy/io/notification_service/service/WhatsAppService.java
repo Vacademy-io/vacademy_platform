@@ -253,7 +253,7 @@ public class WhatsAppService {
                     "Notification - " + templateName);
 
             // Log each sent message to notification_log table
-            logWhatsAppMessages(templateName, bodyParams, null, languageCode, null, "WATI", results);
+            logWhatsAppMessages(templateName, bodyParams, null, languageCode, null, "WATI", results, null);
 
             return results;
 
@@ -361,7 +361,7 @@ public class WhatsAppService {
             }
             
             // Log messages
-            logWhatsAppMessages(templateName, bodyParams, headerParams, languageCode, headerType, "COMBOT", results);
+            logWhatsAppMessages(templateName, bodyParams, headerParams, languageCode, headerType, "COMBOT", results, phoneNumberId);
             
             return results;
             
@@ -561,7 +561,7 @@ public class WhatsAppService {
                 .collect(Collectors.toList());
 
         // Log each sent message to notification_log table
-        logWhatsAppMessages(templateName, bodyParams, headerParams, languageCode, headerType, "META", results);
+        logWhatsAppMessages(templateName, bodyParams, headerParams, languageCode, headerType, "META", results, null);
 
         return results;
     }
@@ -686,7 +686,8 @@ public class WhatsAppService {
                                     String languageCode,
                                     String headerType,
                                     String provider,
-                                    List<Map<String, Boolean>> results) {
+                                    List<Map<String, Boolean>> results,
+                                    String senderBusinessChannelId) {
         try {
             List<NotificationLog> logs = new ArrayList<>();
             
@@ -729,7 +730,7 @@ public class WhatsAppService {
                 
                 // Create notification log
                 NotificationLog log = new NotificationLog();
-                log.setNotificationType("WHATSAPP");
+                log.setNotificationType("WHATSAPP_MESSAGE_OUTGOING");
                 log.setChannelId(phoneNumber);
                 log.setBody(bodyMessage);
                 log.setSource("whatsapp-service");
@@ -737,6 +738,7 @@ public class WhatsAppService {
                 log.setUserId(userId);
                 log.setNotificationDate(LocalDateTime.now());
                 log.setMessagePayload(payloadJson);
+                log.setSenderBusinessChannelId(senderBusinessChannelId);
                 
                 logs.add(log);
             }

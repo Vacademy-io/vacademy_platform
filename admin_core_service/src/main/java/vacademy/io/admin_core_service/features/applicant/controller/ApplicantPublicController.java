@@ -36,12 +36,13 @@ public class ApplicantPublicController {
 
     /**
      * Submit application form - handles both pre-filled (from enquiry) and manual
-     * (direct) submissions
+     * (direct) submissions. workflowType is hardcoded to APPLICATION on the backend.
      */
     @PostMapping("/apply")
     public ResponseEntity<ApplyResponseDTO> submitApplication(@RequestBody ApplyRequestDTO request) {
         logger.info("Request to submit application. InstituteId: {}, Source: {}, SourceId: {}, EnquiryId: {}",
                 request.getInstituteId(), request.getSource(), request.getSourceId(), request.getEnquiryId());
+        request.setWorkflowType("APPLICATION");
         ApplyResponseDTO response = applicantService.submitApplication(request);
         return ResponseEntity.ok(response);
     }
@@ -57,7 +58,16 @@ public class ApplicantPublicController {
             @RequestBody PaymentInitiationRequestDTO requestDTO,
             @RequestAttribute(name = "user", required = false) CustomUserDetails userDetails) {
 
-        logger.info("Request to initiate payment. Applicant: {}, Option: {}", applicantId, paymentOptionId);
+        logger.info("Request to initiate payment. Applicant: {}, Option: {}, Vendor: {}", applicantId, paymentOptionId,
+                requestDTO.getVendor());
+
+        // MANUAL (offline/cash) payments are admin-only — reject unauthenticated
+        // callers
+        if ("MANUAL".equalsIgnoreCase(requestDTO.getVendor()) && userDetails == null) {
+            logger.warn("Rejected unauthenticated attempt to record manual payment for applicant: {}", applicantId);
+            return ResponseEntity.status(403).build();
+        }
+
         PaymentResponseDTO response = applicantService.preparePayment(applicantId, paymentOptionId,
                 requestDTO, userDetails);
         return ResponseEntity.ok(response);

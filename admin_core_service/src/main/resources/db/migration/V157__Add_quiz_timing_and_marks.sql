@@ -1,0 +1,8 @@
+ALTER TABLE quiz_slide
+    ADD COLUMN IF NOT EXISTS time_limit_in_minutes  INTEGER       DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS marks_per_question     DECIMAL(10,2) NOT NULL DEFAULT 1.0,
+    ADD COLUMN IF NOT EXISTS negative_marking       DECIMAL(10,2) NOT NULL DEFAULT 0.0;
+
+ALTER TABLE quiz_slide_question
+    ADD COLUMN IF NOT EXISTS marks           DECIMAL(10,2) DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS negative_marking DECIMAL(10,2) DEFAULT NULL;

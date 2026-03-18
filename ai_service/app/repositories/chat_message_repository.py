@@ -158,4 +158,24 @@ class ChatMessageRepository:
         return result.scalars().first()
 
 
+    def find_by_idempotency_key(self, session_id: str, key: str) -> Optional[ChatMessage]:
+        """Find a message by idempotency key in metadata."""
+        try:
+            from sqlalchemy import text
+            query = text("""
+                SELECT id FROM chat_messages
+                WHERE session_id = :session_id
+                AND meta_data->>'idempotency_key' = :key
+                AND message_type = 'user'
+                LIMIT 1
+            """)
+            result = self.db.execute(query, {"session_id": session_id, "key": key}).fetchone()
+            if result:
+                return self.db.query(ChatMessage).filter(ChatMessage.id == result[0]).first()
+            return None
+        except Exception as e:
+            logger.error(f"Error finding message by idempotency key: {e}")
+            return None
+
+
 __all__ = ["ChatMessageRepository"]

@@ -19,6 +19,8 @@ import java.util.Optional;
 public interface SessionScheduleRepository extends JpaRepository<SessionSchedule, String> {
     List<SessionSchedule> findBySessionId(String sessionId);
 
+    List<SessionSchedule> findByProviderMeetingId(String providerMeetingId);
+
     @Transactional
     void deleteBySessionId(String sessionId);
 
@@ -101,6 +103,10 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
 
         String getTimezone();
 
+        String getProviderHostUrl();
+
+        String getProviderMeetingId();
+
     }
 
     @Query(value = """
@@ -141,10 +147,13 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                     ss.daily_attendance AS dailyAttendance,           -- NEW
                     s.allow_rewind AS allowRewind,
                     s.allow_play_pause AS allowPlayPause,
-                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
+                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+                    ss.provider_recordings_json AS providerRecordingsJson
                 FROM live_session s
                 LEFT JOIN session_schedules ss ON s.id = ss.session_id
                 WHERE s.id = :sessionId
+                  AND (ss.id IS NULL OR ss.status != 'DELETED')
+                ORDER BY ss.meeting_date ASC
             """, nativeQuery = true)
     List<ScheduleDTO> findSchedulesBySessionId(@Param("sessionId") String sessionId);
 
@@ -188,7 +197,9 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                     ss.thumbnail_file_id AS scheduleThumbnailFileId,  -- NEW
                     ss.daily_attendance AS dailyAttendance,           -- NEW
                     s.allow_play_pause As allowPlayPause,
-                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone
+                    COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+                    ss.provider_host_url AS providerHostUrl,
+                    ss.provider_meeting_id AS providerMeetingId
                 FROM session_schedules ss
                 JOIN live_session s ON ss.session_id = s.id
                 WHERE ss.id = :scheduleId
@@ -362,5 +373,62 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             @Param("newDate") java.sql.Date newDate,
             @Param("newStartTime") java.sql.Time newStartTime,
             @Param("newEndTime") java.sql.Time newEndTime);
+
+    /**
+     * Used by the hourly provider sync scheduler.
+     * Returns schedules that have a provider meeting ID set for the given provider
+     * and whose attendance hasn't been synced recently.
+     */
+    @Query(value = """
+                SELECT ss.* FROM session_schedules ss
+                JOIN live_session ls ON ls.id = ss.session_id
+                WHERE ss.provider_meeting_id IS NOT NULL
+                  AND (ls.link_type = :provider OR ls.link_type = :providerAlt)
+                  AND ss.status != 'DELETED'
+                  AND (ss.last_attendance_sync_at IS NULL OR ss.last_attendance_sync_at < :before)
+            """, nativeQuery = true)
+    List<SessionSchedule> findNeedingAttendanceSync(
+            @Param("provider") String provider,
+            @Param("providerAlt") String providerAlt,
+            @Param("before") java.util.Date before);
+
+    /**
+     * Used by the hourly provider sync scheduler.
+     * Returns schedules that have a provider meeting ID set for the given provider
+     * and whose recordings haven't been synced recently.
+     */
+    @Query(value = """
+                SELECT ss.* FROM session_schedules ss
+                JOIN live_session ls ON ls.id = ss.session_id
+                WHERE ss.provider_meeting_id IS NOT NULL
+                  AND (ls.link_type = :provider OR ls.link_type = :providerAlt)
+                  AND ss.status != 'DELETED'
+                  AND (
+                      ss.last_recording_sync_at IS NULL
+                      OR ss.last_recording_sync_at < :before
+                      OR (ss.provider_recordings_json IS NOT NULL AND ss.provider_recordings_json LIKE '%"playbackUrl":null%')
+                  )
+                  AND (
+                      ss.meeting_date < CURRENT_DATE
+                      OR (ss.meeting_date = CURRENT_DATE AND ss.last_entry_time < CURRENT_TIME)
+                  )
+            """, nativeQuery = true)
+    List<SessionSchedule> findNeedingRecordingSync(
+            @Param("provider") String provider,
+            @Param("providerAlt") String providerAlt,
+            @Param("before") java.util.Date before);
+
+    /**
+     * Fetches the institute_id for a given schedule by joining through
+     * live_session.
+     * Used by the sync scheduler to resolve instituteId from a SessionSchedule.
+     */
+    @Query(value = """
+                SELECT ls.institute_id
+                FROM session_schedules ss
+                JOIN live_session ls ON ls.id = ss.session_id
+                WHERE ss.id = :scheduleId
+            """, nativeQuery = true)
+    Optional<String> findInstituteIdByScheduleId(@Param("scheduleId") String scheduleId);
 
 }

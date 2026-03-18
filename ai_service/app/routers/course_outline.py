@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 import uuid
 import json
@@ -14,6 +14,7 @@ from ..schemas.course_outline import (
     CourseUserPromptRequest
 )
 from ..services.course_outline_service import CourseOutlineGenerationService
+from ..core.exceptions import PaymentRequiredError
 
 
 router = APIRouter(prefix="/course", tags=["course-outline"])
@@ -33,7 +34,13 @@ async def generate_course_outline(
     based on user prompt, optional existing course tree, and optional course
     metadata from admin-core-service.
     """
-    return await service.generate_outline(payload)
+    try:
+        return await service.generate_outline(payload)
+    except PaymentRequiredError as exc:
+        raise HTTPException(
+            status_code=402,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(
@@ -76,9 +83,17 @@ async def stream_course_outline(
     request_id = str(uuid.uuid4())
 
     async def event_generator():
-        async for event in service.stream_outline_events(internal_request, request_id):
-            # Format as SSE: "data: <content>\n\n"
-            yield f"data: {event}\n\n"
+        try:
+            async for event in service.stream_outline_events(internal_request, request_id):
+                # Format as SSE: "data: <content>\n\n"
+                yield f"data: {event}\n\n"
+        except PaymentRequiredError as exc:
+            error_payload = json.dumps({
+                "type": "ERROR",
+                "code": 402,
+                "message": str(exc),
+            })
+            yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(
         event_generator(),

@@ -238,6 +238,84 @@ class CreditService:
         )
 
     # ========================================================================
+    # Admin Credit Deduction
+    # ========================================================================
+
+    def admin_deduct_credits(
+        self,
+        institute_id: str,
+        request: CreditGrantRequest,
+        deducted_by: str
+    ) -> CreditGrantResponse:
+        """Deduct credits from an institute (admin action)."""
+        self.ensure_credits_exist(institute_id)
+
+        # Check current balance
+        balance = self.get_balance(institute_id)
+        if balance and balance.current_balance < request.amount:
+            return CreditGrantResponse(
+                success=False,
+                institute_id=institute_id,
+                amount_granted=Decimal("0"),
+                new_balance=balance.current_balance if balance else Decimal("0"),
+                transaction_id="",
+                message=f"Insufficient balance. Current: {balance.current_balance}, Requested: {request.amount}",
+            )
+
+        now = datetime.utcnow()
+        transaction_id = str(uuid4())
+
+        # Update balance
+        update_query = text("""
+            UPDATE institute_credits
+            SET used_credits = used_credits + :amount,
+                current_balance = current_balance - :amount,
+                updated_at = :now
+            WHERE institute_id = :institute_id
+            RETURNING current_balance
+        """)
+        result = self.db.execute(update_query, {
+            "amount": request.amount,
+            "now": now,
+            "institute_id": institute_id,
+        })
+        row = result.fetchone()
+        new_balance = row.current_balance if row else Decimal("0")
+
+        # Record transaction
+        insert_txn = text("""
+            INSERT INTO credit_transactions (id, institute_id, transaction_type, amount, balance_after,
+                                             description, granted_by, created_at)
+            VALUES (:id, :institute_id, :type, :amount, :balance, :desc, :granted_by, :now)
+        """)
+        self.db.execute(insert_txn, {
+            "id": transaction_id,
+            "institute_id": institute_id,
+            "type": TransactionType.ADMIN_DEDUCTION.value,
+            "amount": -request.amount,
+            "balance": new_balance,
+            "desc": request.description or "Admin credit deduction",
+            "granted_by": deducted_by,
+            "now": now,
+        })
+
+        self.db.commit()
+
+        # Check and create alerts if needed
+        self._check_and_create_alerts(institute_id, new_balance)
+
+        logger.info(f"Deducted {request.amount} credits from institute {institute_id} by {deducted_by}")
+
+        return CreditGrantResponse(
+            success=True,
+            institute_id=institute_id,
+            amount_granted=request.amount,
+            new_balance=new_balance,
+            transaction_id=transaction_id,
+            message=f"Successfully deducted {request.amount} credits",
+        )
+
+    # ========================================================================
     # Credit Check (Pre-flight)
     # ========================================================================
 
@@ -438,8 +516,8 @@ class CreditService:
         """Get pricing multiplier for a model."""
         if not model:
             return Decimal("1.0")
-        
-        # Try to get from DB first
+
+        # Try model_pricing table first (pattern-based)
         try:
             query = text("""
                 SELECT multiplier
@@ -450,18 +528,36 @@ class CreditService:
             """)
             result = self.db.execute(query, {"model": model})
             row = result.fetchone()
-            
+
             if row:
                 return row.multiplier
         except Exception as e:
-            logger.warning(f"Failed to get model multiplier from DB: {e}")
-        
+            logger.warning(f"Failed to get model multiplier from model_pricing: {e}")
+
+        # Try ai_models table (DB-backed model registry)
+        try:
+            query = text("""
+                SELECT credit_multiplier, is_free
+                FROM ai_models
+                WHERE model_id = :model_id AND is_active = TRUE
+                LIMIT 1
+            """)
+            result = self.db.execute(query, {"model_id": model})
+            row = result.fetchone()
+
+            if row:
+                if row.is_free:
+                    return Decimal("0")
+                return Decimal(str(row.credit_multiplier)) if row.credit_multiplier else Decimal("1.0")
+        except Exception as e:
+            logger.warning(f"Failed to get model multiplier from ai_models: {e}")
+
         # Fallback to in-code mapping
         model_lower = model.lower()
         for pattern, tier in MODEL_TIER_MAPPING.items():
             if pattern in model_lower:
                 return MODEL_TIER_MULTIPLIERS[tier]
-        
+
         # Default to standard tier
         return Decimal("1.0")
 

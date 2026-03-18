@@ -64,6 +64,7 @@ jobs:
           ACCESS_GITHUB_USERNAME: ${{ secrets.ACCESS_GITHUB_USERNAME }}
           JAVA_TOKEN: ${{ secrets.JAVA_TOKEN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG . --build-arg GITHUB_TOKEN=${GITHUB_TOKEN} --build-arg ACCESS_GITHUB_USERNAME=${ACCESS_GITHUB_USERNAME} --build-arg JAVA_TOKEN=${JAVA_TOKEN} --build-arg SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
@@ -96,6 +97,7 @@ jobs:
             ASSESSMENT_SERVICE_DB_URL=jdbc:postgresql://pgbouncer:6432/assessment_service \
             COMMUNITY_SERVICE_READ_DB_URL=jdbc:postgresql://pgbouncer:6432/assessment_service_read \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Restart deployment

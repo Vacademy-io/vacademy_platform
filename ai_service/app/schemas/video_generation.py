@@ -21,7 +21,8 @@ ContentTypeEnum = Literal[
     "WORKSHEET",          # Printable/interactive homework
     "CODE_PLAYGROUND",    # Interactive code exercises
     "TIMELINE",           # Chronological event visualization
-    "CONVERSATION"        # Language learning dialogues
+    "CONVERSATION",       # Language learning dialogues
+    "SLIDES"              # HTML-based presentation / PPT-style slide deck
 ]
 
 
@@ -54,8 +55,12 @@ class VideoGenerationRequest(BaseModel):
         description="User identifier (optional, for logging/context)"
     )
     model: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="AI Model to use for generation (e.g. 'xiaomi/mimo-v2-flash:free')"
+    )
+    quality_tier: str = Field(
+        default="ultra",
+        description="Quality tier: 'free', 'standard', 'premium', 'ultra'. Controls two-pass script review, HTML validation, image prompt enhancement, and other quality features."
     )
     voice_gender: str = Field(
         default="female",

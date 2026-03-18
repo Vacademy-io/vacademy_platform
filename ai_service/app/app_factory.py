@@ -21,6 +21,9 @@ from .routers.external_video_generation import router as external_video_generati
 from .routers.auth_test import router as auth_test_router
 from .routers.credits import router as credits_router
 from .routers.ai_models import router as ai_models_router
+from .routers.super_admin import router as super_admin_router
+from .routers.content_ingestion import router as content_ingestion_router
+from .routers.learning_analytics import router as learning_analytics_router
 
 
 
@@ -82,8 +85,9 @@ def create_app() -> FastAPI:
     app.include_router(auth_test_router, prefix=settings.api_base_path)
     app.include_router(credits_router, prefix=settings.api_base_path)
     app.include_router(ai_models_router, prefix=settings.api_base_path)
-
-
+    app.include_router(super_admin_router, prefix=settings.api_base_path)
+    app.include_router(content_ingestion_router, prefix=settings.api_base_path)
+    app.include_router(learning_analytics_router, prefix=settings.api_base_path)
 
     return app
 

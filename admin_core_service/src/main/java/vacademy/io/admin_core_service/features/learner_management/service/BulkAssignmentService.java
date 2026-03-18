@@ -9,7 +9,10 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
+import vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails;
+import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.notification.LearnerEnrollmentNotificationService;
@@ -53,6 +56,7 @@ public class BulkAssignmentService {
     private final LearnerEnrollmentNotificationService learnerEnrollmentNotificationService;
     private final LearnerService learnerService;
     private final CustomFieldValueService customFieldValueService;
+    private final StudentRegistrationManager studentRegistrationManager;
 
     private static final String DUPLICATE_SKIP = "SKIP";
     private static final String DUPLICATE_ERROR = "ERROR";
@@ -73,6 +77,7 @@ public class BulkAssignmentService {
         String duplicateHandling = StringUtils.hasText(options.getDuplicateHandling())
                 ? options.getDuplicateHandling()
                 : DUPLICATE_SKIP;
+        boolean sendCredentials = options.isSendCredentials();
 
         // 1. Create new users (if any) and collect their IDs
         Set<String> allUserIds = resolveUserIds(request);
@@ -83,7 +88,7 @@ public class BulkAssignmentService {
         if (!CollectionUtils.isEmpty(request.getNewUsers()) && !dryRun) {
             for (NewUserDTO newUser : request.getNewUsers()) {
                 try {
-                    String createdUserId = createNewUser(newUser, request.getInstituteId());
+                    String createdUserId = createNewUser(newUser, request.getInstituteId(), sendCredentials);
                     allUserIds.add(createdUserId);
                     newUserDataMap.put(createdUserId, newUser);
                     log.info("Created new user: email={}, userId={}", newUser.getEmail(), createdUserId);
@@ -149,7 +154,7 @@ public class BulkAssignmentService {
 
             for (String userId : allUserIds) {
                 BulkAssignResultItemDTO result = processAssignment(
-                        userId, userMap, assignment, config,
+                        userId, userMap, newUserDataMap, assignment, config,
                         request.getInstituteId(), duplicateHandling, dryRun);
                 results.add(result);
 
@@ -231,7 +236,7 @@ public class BulkAssignmentService {
      * Creates a new user via AuthService and returns the created user's ID.
      * Maps all available profile fields (address, DOB, etc.) to UserDTO.
      */
-    private String createNewUser(NewUserDTO newUser, String instituteId) {
+    private String createNewUser(NewUserDTO newUser, String instituteId, boolean sendCredentials) {
         UserDTO.UserDTOBuilder builder = UserDTO.builder()
                 .email(newUser.getEmail())
                 .fullName(newUser.getFullName())
@@ -271,7 +276,7 @@ public class BulkAssignmentService {
         UserDTO userDTO = builder.build();
 
         UserDTO created = authService.createUserFromAuthServiceForLearnerEnrollment(
-                userDTO, instituteId, false);
+                userDTO, instituteId, sendCredentials);
 
         if (created == null || !StringUtils.hasText(created.getId())) {
             throw new VacademyException("User creation returned empty result for " + newUser.getEmail());
@@ -297,6 +302,7 @@ public class BulkAssignmentService {
     private BulkAssignResultItemDTO processAssignment(
             String userId,
             Map<String, UserDTO> userMap,
+            Map<String, NewUserDTO> newUserDataMap,
             AssignmentItemDTO assignment,
             DefaultInviteResolver.ResolvedConfig config,
             String instituteId,
@@ -304,9 +310,9 @@ public class BulkAssignmentService {
             boolean dryRun) {
 
         String packageSessionId = assignment.getPackageSessionId();
-        String userEmail = userMap.containsKey(userId)
-                ? userMap.get(userId).getEmail()
-                : null;
+        UserDTO userDTO = userMap.get(userId);
+        String userEmail = userDTO != null ? userDTO.getEmail() : null;
+        StudentExtraDetails extraDetails = buildStudentExtraDetails(newUserDataMap.get(userId));
 
         try {
             // Check for existing enrollment
@@ -317,7 +323,8 @@ public class BulkAssignmentService {
                                     LearnerSessionStatusEnum.ACTIVE.name(),
                                     LearnerSessionStatusEnum.INVITED.name(),
                                     LearnerSessionStatusEnum.TERMINATED.name(),
-                                    LearnerSessionStatusEnum.INACTIVE.name()));
+                                    LearnerSessionStatusEnum.INACTIVE.name(),
+                                    LearnerSessionStatusEnum.EXPIRED.name()));
 
             if (existingMapping.isPresent()) {
                 StudentSessionInstituteGroupMapping mapping = existingMapping.get();
@@ -338,10 +345,10 @@ public class BulkAssignmentService {
                             .build();
                 }
 
-                // Case B: TERMINATED / INACTIVE → RE_ENROLL or SKIP
+                // Case B: TERMINATED / INACTIVE / EXPIRED → RE_ENROLL or SKIP
                 if (DUPLICATE_RE_ENROLL.equals(duplicateHandling)) {
                     return handleReEnroll(mapping, userId, userEmail, config,
-                            instituteId, dryRun);
+                            instituteId, dryRun, userDTO, extraDetails);
                 } else if (DUPLICATE_ERROR.equals(duplicateHandling)) {
                     return buildFailedResult(userId, userMap, packageSessionId,
                             "Existing enrollment found with status: " + existingStatus);
@@ -357,7 +364,7 @@ public class BulkAssignmentService {
             }
 
             // Case C: No existing mapping → create new
-            return handleNewEnrollment(userId, userEmail, config, instituteId, dryRun);
+            return handleNewEnrollment(userId, userEmail, config, instituteId, dryRun, userDTO, extraDetails);
 
         } catch (Exception e) {
             log.error("Error processing assignment userId={}, packageSessionId={}: {}",
@@ -367,12 +374,20 @@ public class BulkAssignmentService {
     }
 
     /**
-     * Creates a fresh enrollment: UserPlan + StudentSessionInstituteGroupMapping.
+     * Creates a fresh enrollment: UserPlan + Student record +
+     * StudentSessionInstituteGroupMapping.
+     * Now follows the same flow as manual enrollment (AdminDirectEnrollService):
+     * 1. Creates UserPlan
+     * 2. Creates Student record via StudentRegistrationManager
+     * 3. Links student to institute via linkStudentToInstitute (applies enrollment
+     * policies)
+     * 4. Triggers enrollment workflow (notifications, coupon codes, etc.)
      */
     private BulkAssignResultItemDTO handleNewEnrollment(
             String userId, String userEmail,
             DefaultInviteResolver.ResolvedConfig config,
-            String instituteId, boolean dryRun) {
+            String instituteId, boolean dryRun,
+            UserDTO userDTO, StudentExtraDetails extraDetails) {
 
         if (dryRun) {
             return BulkAssignResultItemDTO.builder()
@@ -396,19 +411,51 @@ public class BulkAssignmentService {
                 null, // no payment initiation request
                 UserPlanStatusEnum.ACTIVE.name());
 
-        // Create StudentSessionInstituteGroupMapping
-        StudentSessionInstituteGroupMapping mapping = createActiveMapping(
-                userId, config, instituteId, userPlan.getId());
-        mapping = studentSessionRepository.save(mapping);
+        String mappingId;
+
+        if (userDTO != null) {
+            // Create Student record with extra details (same as manual flow)
+            Student student = studentRegistrationManager.createStudentFromRequest(userDTO, extraDetails);
+
+            // Use linkStudentToInstitute for proper enrollment policy handling (same as
+            // manual flow)
+            InstituteStudentDetails details = InstituteStudentDetails.builder()
+                    .instituteId(instituteId)
+                    .packageSessionId(config.getPackageSession().getId())
+                    .enrollmentStatus(LearnerSessionStatusEnum.ACTIVE.name())
+                    .enrollmentDate(new Date())
+                    .accessDays(config.getAccessDays() != null
+                            ? config.getAccessDays().toString()
+                            : null)
+                    .userPlanId(userPlan.getId())
+                    .build();
+
+            mappingId = studentRegistrationManager.linkStudentToInstitute(student, details);
+
+            // Trigger enrollment workflow (same as manual flow)
+            try {
+                studentRegistrationManager.triggerEnrollmentWorkflow(
+                        instituteId, userDTO, config.getPackageSession().getId(), null);
+            } catch (Exception e) {
+                log.warn("Failed to trigger enrollment workflow for userId={}: {}",
+                        userId, e.getMessage());
+            }
+        } else {
+            // Fallback: create mapping directly if userDTO is not available
+            StudentSessionInstituteGroupMapping mapping = createActiveMapping(
+                    userId, config, instituteId, userPlan.getId());
+            mapping = studentSessionRepository.save(mapping);
+            mappingId = mapping.getId();
+        }
 
         log.info("Created enrollment: userId={}, packageSession={}, userPlan={}, mapping={}",
-                userId, config.getPackageSession().getId(), userPlan.getId(), mapping.getId());
+                userId, config.getPackageSession().getId(), userPlan.getId(), mappingId);
 
         return BulkAssignResultItemDTO.builder()
                 .userId(userId).userEmail(userEmail)
                 .packageSessionId(config.getPackageSession().getId())
                 .status("SUCCESS").actionTaken("CREATED")
-                .mappingId(mapping.getId())
+                .mappingId(mappingId)
                 .userPlanId(userPlan.getId())
                 .enrollInviteIdUsed(config.getEnrollInvite().getId())
                 .build();
@@ -416,12 +463,15 @@ public class BulkAssignmentService {
 
     /**
      * Re-enrolls a previously TERMINATED/INACTIVE user.
+     * Now also ensures Student record exists and triggers enrollment workflow
+     * (same as manual flow).
      */
     private BulkAssignResultItemDTO handleReEnroll(
             StudentSessionInstituteGroupMapping existingMapping,
             String userId, String userEmail,
             DefaultInviteResolver.ResolvedConfig config,
-            String instituteId, boolean dryRun) {
+            String instituteId, boolean dryRun,
+            UserDTO userDTO, StudentExtraDetails extraDetails) {
 
         if (dryRun) {
             return BulkAssignResultItemDTO.builder()
@@ -443,6 +493,11 @@ public class BulkAssignmentService {
                 null,
                 UserPlanStatusEnum.ACTIVE.name());
 
+        // Ensure Student record exists with extra details (same as manual flow)
+        if (userDTO != null) {
+            studentRegistrationManager.createStudentFromRequest(userDTO, extraDetails);
+        }
+
         // Update existing mapping
         existingMapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
         existingMapping.setEnrolledDate(new Date());
@@ -455,6 +510,17 @@ public class BulkAssignmentService {
         }
 
         studentSessionRepository.save(existingMapping);
+
+        // Trigger enrollment workflow (same as manual flow)
+        if (userDTO != null) {
+            try {
+                studentRegistrationManager.triggerEnrollmentWorkflow(
+                        instituteId, userDTO, config.getPackageSession().getId(), null);
+            } catch (Exception e) {
+                log.warn("Failed to trigger enrollment workflow for re-enrollment userId={}: {}",
+                        userId, e.getMessage());
+            }
+        }
 
         log.info("Re-enrolled: userId={}, packageSession={}, userPlan={}, mapping={}",
                 userId, config.getPackageSession().getId(),
@@ -719,6 +785,35 @@ public class BulkAssignmentService {
         }
 
         return new ArrayList<>(merged.values());
+    }
+
+    /**
+     * Builds StudentExtraDetails from NewUserDTO for parent/guardian info.
+     * Returns null if no NewUserDTO is available (existing user, not a new user).
+     */
+    private StudentExtraDetails buildStudentExtraDetails(NewUserDTO newUser) {
+        if (newUser == null) {
+            return null;
+        }
+        boolean hasExtraDetails = StringUtils.hasText(newUser.getFathersName()) ||
+                StringUtils.hasText(newUser.getMothersName()) ||
+                StringUtils.hasText(newUser.getParentsMobileNumber()) ||
+                StringUtils.hasText(newUser.getParentsEmail()) ||
+                StringUtils.hasText(newUser.getParentsToMotherMobileNumber()) ||
+                StringUtils.hasText(newUser.getParentsToMotherEmail()) ||
+                StringUtils.hasText(newUser.getLinkedInstituteName());
+        if (!hasExtraDetails) {
+            return null;
+        }
+        StudentExtraDetails details = new StudentExtraDetails();
+        details.setFathersName(newUser.getFathersName());
+        details.setMothersName(newUser.getMothersName());
+        details.setParentsMobileNumber(newUser.getParentsMobileNumber());
+        details.setParentsEmail(newUser.getParentsEmail());
+        details.setParentsToMotherMobileNumber(newUser.getParentsToMotherMobileNumber());
+        details.setParentsToMotherEmail(newUser.getParentsToMotherEmail());
+        details.setLinkedInstituteName(newUser.getLinkedInstituteName());
+        return details;
     }
 
     private boolean hasAnyAssignmentCustomFields(BulkAssignRequestDTO request) {

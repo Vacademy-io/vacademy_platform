@@ -103,6 +103,30 @@ public class FileService {
         }
     }
 
+    /**
+     * Gets a presigned S3 upload URL and creates a FileMetadata entry via the media service.
+     * @return Map with "id" (file metadata ID) and "url" (presigned PUT URL)
+     */
+    public Map<String, String> getPresignedUploadUrl(String fileName, String fileType, String source, String sourceId) {
+        log.debug("Getting presigned upload URL for file: {}", fileName);
+
+        String route = MediaConstant.presignedUrlPostRoute
+                + "?fileName=" + fileName
+                + "&fileType=" + fileType
+                + "&source=" + source
+                + "&sourceId=" + sourceId;
+
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName, HttpMethod.POST.name(), mediaServerBaseUrl, route, null);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            return objectMapper.readValue(response.getBody(), new TypeReference<Map<String, String>>() {});
+        } catch (JsonProcessingException e) {
+            throw new VacademyException("Failed to get presigned URL: " + e.getMessage());
+        }
+    }
+
     public List<FileDetailsDTO> getFileDetailsForFileIds(List<String> fileIds) {
         if (fileIds == null || fileIds.isEmpty()) {
             return new ArrayList<>();

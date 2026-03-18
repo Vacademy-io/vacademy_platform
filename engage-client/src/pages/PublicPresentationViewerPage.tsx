@@ -224,7 +224,7 @@ export const PublicPresentationViewerPage: React.FC = () => {
       <div ref={revealElementRef} className="reveal w-full h-full relative z-10">
         <div className="slides">
           <section className="text-center">
-            <h1 className="text-3xl font-semibold mb-4 text-white" dangerouslySetInnerHTML={createMarkup(presentation.title)} />
+            <h1 className="text-3xl font-semibold mb-4 text-white [&_*]:![color:inherit] [&_*]:!bg-transparent" dangerouslySetInnerHTML={createMarkup(presentation.title)} />
             <p className="text-white/70">Number of slides: {sortedSlides.length}</p>
             {presentationId && <p className="text-sm text-white/60 mt-2">ID: {presentationId}</p>}
           </section>
@@ -233,7 +233,7 @@ export const PublicPresentationViewerPage: React.FC = () => {
             <section key={slide.id} data-slide-id={slide.id} data-slide-order={slide.slide_order} className="text-left">
               {slide.title && slide.source.toLowerCase() !== 'question' && 
                 <div className="absolute bottom-2 left-2 px-2 py-1 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg text-white z-10 shadow-lg">
-                  <h5 className="text-xs font-medium" dangerouslySetInnerHTML={createMarkup(slide.title)} />
+                  <h5 className="text-xs font-medium [&_*]:![color:inherit] [&_*]:!bg-transparent" dangerouslySetInnerHTML={createMarkup(slide.title)} />
                 </div>
               }
 
@@ -258,11 +258,11 @@ export const PublicPresentationViewerPage: React.FC = () => {
               {slide.source.toLowerCase() === 'question' && slide.added_question && (
                 <div className="p-6 h-full flex flex-col">
                   <div className="flex-grow overflow-y-auto pr-2">
-                                         <div className="text-lg font-semibold mb-6 text-white" dangerouslySetInnerHTML={createMarkup(slide.added_question.text?.content)} />
+                                         <div className="text-lg font-semibold mb-6 text-white [&_*]:![color:inherit] [&_*]:!bg-transparent" dangerouslySetInnerHTML={createMarkup(slide.added_question.text?.content)} />
                     {slide.added_question.options && slide.added_question.options.length > 0 && (
                       <ul className="list-none pl-0 space-y-3 text-base mb-6">
                         {slide.added_question.options.map(option => (
-                          <li key={option.id} className="p-3 bg-white/10 border border-white/20 rounded-xl text-white backdrop-blur-sm hover:bg-white/15 transition-all duration-300 ease-out" dangerouslySetInnerHTML={createMarkup(option.text?.content)} />
+                          <li key={option.id} className="p-3 bg-white/10 border border-white/20 rounded-xl text-white backdrop-blur-sm hover:bg-white/15 transition-all duration-300 ease-out [&_*]:![color:inherit] [&_*]:!bg-transparent" dangerouslySetInnerHTML={createMarkup(option.text?.content)} />
                         ))}
                       </ul>
                     )}

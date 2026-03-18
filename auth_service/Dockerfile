@@ -37,4 +37,4 @@ COPY --from=build /build/target/auth_service.jar auth_service.jar
 EXPOSE 8071
 
 # Define the command to run the application
-CMD ["java", "-jar", "-Dspring.profiles.active=stage", "auth_service.jar"]
+CMD ["java", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=200", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-Dspring.profiles.active=stage", "-jar", "auth_service.jar"]

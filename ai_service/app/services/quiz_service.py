@@ -126,7 +126,8 @@ IMPORTANT: Return ONLY valid JSON, no additional text or markdown code blocks ar
             
             # Parse JSON from response (handle markdown code blocks)
             json_content = self._extract_json(content)
-            quiz_json = json.loads(json_content)
+            # Sanitize control characters that LLMs sometimes emit inside JSON strings
+            quiz_json = json.loads(json_content, strict=False)
             
             # Build quiz data
             questions = []
@@ -327,7 +328,7 @@ Return as JSON:
             
             content = response.get("content", "")
             json_content = self._extract_json(content)
-            feedback_json = json.loads(json_content)
+            feedback_json = json.loads(json_content, strict=False)
             
             return (
                 feedback_json.get("overall_feedback", self._get_default_feedback(percentage)),

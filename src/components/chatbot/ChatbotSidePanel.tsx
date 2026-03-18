@@ -197,9 +197,52 @@ export const ChatbotSidePanel: React.FC = () => {
   const [pendingAttachments, setPendingAttachments] = useState<Array<{type: string; url: string; name?: string; previewUrl?: string}>>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showLatexHelper, setShowLatexHelper] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drag and drop image handler
+  const handleImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const previewUrl = URL.createObjectURL(file);
+    const tempIdx = pendingAttachments.length;
+    setPendingAttachments(prev => [...prev, { type: 'image', url: '', name: file.name, previewUrl }]);
+    setIsUploadingImage(true);
+    try {
+      const userId = await getUserId();
+      const fileId = await UploadFileInS3(file, () => {}, userId || '', 'CHATBOT_IMAGES', 'LEARNER');
+      if (fileId) {
+        const publicUrl = await getPublicUrl(fileId);
+        setPendingAttachments(prev => prev.map((att, i) =>
+          i === tempIdx ? { ...att, url: publicUrl } : att
+        ));
+      }
+    } catch (err) {
+      console.error('Failed to upload image:', err);
+      setPendingAttachments(prev => prev.filter((_, i) => i !== tempIdx));
+      URL.revokeObjectURL(previewUrl);
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleImageFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
 
   // Handle resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -272,7 +315,13 @@ export const ChatbotSidePanel: React.FC = () => {
     <div
       ref={panelRef}
       style={{ width: panelWidth }}
-      className="h-full flex flex-col bg-background/95 backdrop-blur-sm border-l border-border/50 relative shrink-0 shadow-xl"
+      className={cn(
+        "h-full flex flex-col bg-background/95 backdrop-blur-sm border-l border-border/50 relative shrink-0 shadow-xl",
+        isDragOver && "ring-2 ring-inset ring-primary/50"
+      )}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
     >
       {/* Resize Handle */}
       <div
@@ -357,7 +406,7 @@ export const ChatbotSidePanel: React.FC = () => {
       </CardHeader>
 
       {/* Messages Area */}
-      <CardContent className="flex-1 p-0 overflow-hidden bg-gradient-to-b from-muted/20 to-background">
+      <CardContent className="flex-1 min-h-0 p-0 overflow-hidden bg-gradient-to-b from-muted/20 to-background">
         <ScrollArea className="h-full px-2.5 py-2">
           <div className="flex flex-col space-y-2.5">
             {isInitializing && messages.length === 0 && (
@@ -681,7 +730,17 @@ export const ChatbotSidePanel: React.FC = () => {
       </CardContent>
 
       {/* Input Area */}
-      <CardFooter className="border-t border-border/40 px-2.5 py-2 shrink-0 flex-col gap-2 bg-background">
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/5 backdrop-blur-[2px] pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-primary">
+            <ImagePlus className="h-8 w-8" />
+            <span className="text-sm font-medium">Drop image here</span>
+          </div>
+        </div>
+      )}
+
+      <CardFooter className="border-t border-border/40 px-2.5 py-2 shrink-0 max-h-[45%] overflow-y-auto flex-col gap-2 bg-background">
         {/* Quick Action Chips - only show when no messages yet or input is empty */}
         {messages.length === 0 && !inputValue.trim() && (
           <div className="w-full flex flex-wrap gap-1.5">
@@ -759,30 +818,10 @@ export const ChatbotSidePanel: React.FC = () => {
           type="file"
           accept="image/*"
           className="hidden"
-          onChange={async (e) => {
+          onChange={(e) => {
             const file = e.target.files?.[0];
-            if (!file) return;
+            if (file) handleImageFile(file);
             e.target.value = '';
-            const previewUrl = URL.createObjectURL(file);
-            const tempIdx = pendingAttachments.length;
-            setPendingAttachments(prev => [...prev, { type: 'image', url: '', name: file.name, previewUrl }]);
-            setIsUploadingImage(true);
-            try {
-              const userId = await getUserId();
-              const fileId = await UploadFileInS3(file, () => {}, userId || '', 'CHATBOT_IMAGES', 'LEARNER');
-              if (fileId) {
-                const publicUrl = await getPublicUrl(fileId);
-                setPendingAttachments(prev => prev.map((att, i) =>
-                  i === tempIdx ? { ...att, url: publicUrl } : att
-                ));
-              }
-            } catch (err) {
-              console.error('Failed to upload image:', err);
-              setPendingAttachments(prev => prev.filter((_, i) => i !== tempIdx));
-              URL.revokeObjectURL(previewUrl);
-            } finally {
-              setIsUploadingImage(false);
-            }
           }}
         />
 

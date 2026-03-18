@@ -65,6 +65,15 @@ public class UserOperationService {
             return "Invalid data for sending passwords";
         }
 
+        // Extract institute ID from the first user's roles for email configuration
+        String instituteId = null;
+        for (User user : users) {
+            if (user.getRoles() != null && !user.getRoles().isEmpty()) {
+                instituteId = user.getRoles().iterator().next().getInstituteId();
+                break; // Use the first available institute ID
+            }
+        }
+
         NotificationDTO notificationDTO = new NotificationDTO();
         notificationDTO.setBody(NotificationEmailBody.sendUserPasswords("auth-service"));
         notificationDTO.setSubject("Login credentials!!");
@@ -94,7 +103,7 @@ public class UserOperationService {
         }
 
         notificationDTO.setUsers(notifyUsers);
-        return notificationService.sendEmailToUsers(notificationDTO);
+        return notificationService.sendEmailToUsers(notificationDTO, instituteId);
     }
 
     public String updateUserPassword(UserCredentials userCredentials, CustomUserDetails userDetails) {

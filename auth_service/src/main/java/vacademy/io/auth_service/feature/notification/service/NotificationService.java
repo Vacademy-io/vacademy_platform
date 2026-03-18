@@ -115,16 +115,22 @@ public class NotificationService {
     }
 
     public String sendEmailToUsers(NotificationDTO notificationDTO) {
-        // Removed the redundant 'clientName' parameter, we can use the injected
-        // clientName field here
+        return sendEmailToUsers(notificationDTO, null);
+    }
+
+    public String sendEmailToUsers(NotificationDTO notificationDTO, String instituteId) {
+        String endpoint = NotificationConstant.EMAIL_TO_USERS;
+        if (StringUtils.hasText(instituteId)) {
+            endpoint += "?instituteId=" + instituteId;
+        }
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
-                clientName, // Directly use the injected 'clientName'
+                clientName,
                 HttpMethod.POST.name(),
                 notificationServerBaseUrl,
-                NotificationConstant.EMAIL_TO_USERS,
+                endpoint,
                 notificationDTO);
         return response.getBody();
-
     }
 
     public String sendWhatsAppOtp(WhatsAppOTPRequest whatsAppOTPRequest) {

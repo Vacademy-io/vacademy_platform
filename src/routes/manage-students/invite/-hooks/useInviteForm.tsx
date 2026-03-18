@@ -4,24 +4,39 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { inviteFormSchema, InviteForm, defaultFormValues } from '../-schema/InviteFormSchema';
 import { DropdownOption } from '../-components/create-invite/AddCustomFieldDialog';
+import { getCachedInstituteBranding } from '@/services/domain-routing';
 
 export const useInviteForm = (initialValues?: InviteForm) => {
     const [copySuccess, setCopySuccess] = useState<string | null>(null);
+
+    const domainRouting = getCachedInstituteBranding();
+    const isPhoneAuth = domainRouting?.allowPhoneAuth === true;
+
+    // Adjust default values based on phone auth
+    const adjustedDefaultFormValues = { ...defaultFormValues };
+    if (isPhoneAuth && adjustedDefaultFormValues.custom_fields) {
+        adjustedDefaultFormValues.custom_fields = adjustedDefaultFormValues.custom_fields.map(cf => {
+            if (cf.name === 'Email') {
+                return { ...cf, isRequired: false };
+            }
+            return cf;
+        });
+    }
 
     // Initialize form
     const form = useForm<InviteForm>({
         resolver: zodResolver(inviteFormSchema),
         defaultValues: initialValues
             ? {
-                  inviteLink: initialValues.inviteLink,
-                  activeStatus: initialValues.activeStatus,
-                  custom_fields: initialValues.custom_fields,
-                  batches: initialValues.batches,
-                  studentExpiryDays: initialValues.studentExpiryDays,
-                  inviteeEmail: initialValues.inviteeEmail,
-                  inviteeEmails: initialValues.inviteeEmails,
-              }
-            : defaultFormValues,
+                inviteLink: initialValues.inviteLink,
+                activeStatus: initialValues.activeStatus,
+                custom_fields: initialValues.custom_fields,
+                batches: initialValues.batches,
+                studentExpiryDays: initialValues.studentExpiryDays,
+                inviteeEmail: initialValues.inviteeEmail,
+                inviteeEmails: initialValues.inviteeEmails,
+            }
+            : adjustedDefaultFormValues,
         mode: 'onChange',
     });
     const { setValue, getValues } = form;

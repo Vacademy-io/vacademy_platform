@@ -14,7 +14,7 @@ import { Card } from '@/components/ui/card';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { EnquiryTable } from './-components/EnquiryTable';
 import { MyButton } from '@/components/design-system/button';
-import { Copy, Plus, X } from 'lucide-react';
+import { Copy, Plus, X, UserPlus} from 'lucide-react';
 import createCampaignLink from '@/routes/audience-manager/list/-utils/createCampaignLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { FilterChips } from '@/components/design-system/chips';
@@ -22,8 +22,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import { toast } from 'sonner';
-import { CreateEnquiryDialog } from './-components/create-enquiry-dialog/CreateEnquiryDialog';
+import { useNavigate } from '@tanstack/react-router';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
+import { CreateEnquiryDialog } from './-components/create-enquiry-dialog/CreateEnquiryDialog';
 export const Route = createFileRoute('/admissions/enquiries/')({
     component: RouteComponent,
 });
@@ -116,6 +117,7 @@ function EnquiryPage() {
     const [searchInput, setSearchInput] = useState('');
     const [searchFilter, setSearchFilter] = useState('');
     const { setNavHeading } = useNavHeadingStore();
+    const navigate = useNavigate();
 
     // Fetch all enquiries (campaigns)
     const { data: enquiriesData, refetch: refetchEnquiries } = useSuspenseQuery(
@@ -126,8 +128,10 @@ function EnquiryPage() {
         })
     );
 
-    const enquiries = useMemo(() => enquiriesData?.content || [], [enquiriesData?.content]);
-
+    const enquiries = useMemo(
+        () => (enquiriesData?.content || []).filter((enquiry: any) => enquiry.session_id !== null && enquiry.session_id !== undefined),
+        [enquiriesData?.content]
+    );
     useEffect(() => {
         setNavHeading('Enquiries');
     }, [setNavHeading]);
@@ -213,15 +217,20 @@ function EnquiryPage() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold">Enquiries</h1>
-                <div className="flex items-center gap-4">
+                <div className="flex items-stretch gap-4">
                     <Select value={selectedEnquiryId} onValueChange={setSelectedEnquiryId}>
-                        <SelectTrigger className="w-[280px]">
+                        <SelectTrigger className="h-auto w-[280px] py-1.5 px-3">
                             <SelectValue placeholder="Select Enquiry" />
                         </SelectTrigger>
                         <SelectContent>
                             {enquiries.map((enquiry) => (
                                 <SelectItem key={enquiry.id} value={enquiry.id || ''}>
-                                    {enquiry.campaign_name}
+                                    <div className="flex flex-col items-start gap-0.5 text-left">
+                                        <span className="text-sm font-medium">{enquiry.campaign_name}</span>
+                                        <span className="text-xs font-light text-muted-foreground">
+                                            Enquiry type: {enquiry.campaign_type}
+                                        </span>
+                                    </div>
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -229,17 +238,17 @@ function EnquiryPage() {
                     <MyButton
                         buttonType="primary"
                         scale="small"
-                        onClick={() => setIsCreateDialogOpen(true)}
-                        className="h-8"
+                        onClick={() => navigate({ to: `/admissions/new-enquiry/${selectedEnquiryId}` })}
+                        className="h-full"
                     >
                         <Plus className="mr-1 size-4" />
-                        New Enquiry Form
+                        Add New Enquiry Response
                     </MyButton>
                     <MyButton
                         buttonType="secondary"
                         scale="small"
                         onClick={handleCopy}
-                        className="h-8"
+                        className="h-full"
                         title="Copy enquiry link to clipboard"
                         aria-label="Copy enquiry link to clipboard"
                     >
@@ -329,7 +338,7 @@ function EnquiryPage() {
                 )}
 
                 {/* Search Bar */}
-                <div className="ml-auto flex items-center gap-2">
+                <div className="flex items-center gap-2">
                     <Input
                         type="text"
                         placeholder="Search by name or mobile..."
@@ -387,6 +396,17 @@ function EnquiryPage() {
                     </p>
                 </Card>
             )}
+
+            {/* Disconnected Create Button */}
+            <div className="fixed bottom-8 right-8 z-[50]">
+                <Button
+                    onClick={() => setIsCreateDialogOpen(true)}
+                    className="h-12 md:h-14 rounded-full bg-[#f37033] hover:bg-[#d65f29] text-white px-6 shadow-xl transition-all hover:-translate-y-1 hover:shadow-2xl"
+                >
+                    <Plus className="mr-2 size-5" />
+                    Create New Enquiry Form
+                </Button>
+            </div>
 
             {/* Create Enquiry Dialog */}
             <CreateEnquiryDialog isOpen={isCreateDialogOpen} onClose={handleCreateSuccess} />

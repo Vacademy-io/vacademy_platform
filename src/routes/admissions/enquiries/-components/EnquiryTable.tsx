@@ -607,14 +607,6 @@ const EnquiryTableInner = ({
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => navigate({ to: `/admissions/new-enquiry/${enquiryId}` })}
-                    >
-                        <UserPlus className="mr-2 size-4" />
-                        Add New Enquiry Response
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
                         onClick={handleDownload}
                         disabled={isDownloading || !tableData?.total_elements}
                     >

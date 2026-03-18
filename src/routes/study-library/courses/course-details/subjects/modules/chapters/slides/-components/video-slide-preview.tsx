@@ -389,6 +389,27 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
         );
     }
 
+    // Vimeo embed
+    if (videoSourceType === 'VIMEO') {
+        const vimeoUrl =
+            activeItem.video_slide?.published_url ||
+            activeItem.video_slide?.url ||
+            '';
+        const vimeoIdMatch = vimeoUrl.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/);
+        const vimeoId = vimeoIdMatch?.[1] || '';
+        return (
+            <div key={`video-${activeItem.id}`} className="size-full">
+                <iframe
+                    src={`https://player.vimeo.com/video/${vimeoId}?badge=0&autopause=0&player_id=0`}
+                    className="aspect-video w-full rounded-lg"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    allowFullScreen
+                    title="Vimeo video player"
+                />
+            </div>
+        );
+    }
+
     // YouTube embed fallback for 'VIDEO'
     return (
         <div key={`video-${activeItem.id}`} className="size-full">

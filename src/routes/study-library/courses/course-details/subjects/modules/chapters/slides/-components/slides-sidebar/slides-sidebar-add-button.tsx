@@ -21,6 +21,7 @@ import {
 } from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { AddVideoDialog } from './add-video-dialog';
+import { AddVimeoDialog } from './add-vimeo-dialog';
 import { AddVideoFileDialog } from './add-video-file-dialog';
 import { AddDocDialog } from './add-doc-dialog';
 import { AddPdfDialog } from './add-pdf-dialog';
@@ -132,6 +133,9 @@ export const ChapterSidebarAddButton = () => {
         closePptDialog,
         openScormDialog,
         closeScormDialog,
+        isVimeoDialogOpen,
+        openVimeoDialog,
+        closeVimeoDialog,
     } = useDialogStore();
 
     // Function to reorder slides after adding a new one at the top
@@ -219,6 +223,11 @@ export const ChapterSidebarAddButton = () => {
                         value: 'youtube-video',
                         description: 'Add YouTube link',
                     },
+                    {
+                        label: 'Vimeo video',
+                        value: 'vimeo-video',
+                        description: 'Add Vimeo link',
+                    },
                 ],
             },
             {
@@ -294,6 +303,7 @@ export const ChapterSidebarAddButton = () => {
                 case 'video':
                 case 'upload-video':
                 case 'youtube-video':
+                case 'vimeo-video':
                     return ct.video?.enabled !== false;
                 case 'question':
                     return ct.question !== false;
@@ -404,6 +414,9 @@ export const ChapterSidebarAddButton = () => {
             }
             case 'youtube-video':
                 openVideoDialog();
+                break;
+            case 'vimeo-video':
+                openVimeoDialog();
                 break;
             case 'upload-video':
                 openVideoFileDialog(); // Open the new video file upload dialog
@@ -838,6 +851,18 @@ export const ChapterSidebarAddButton = () => {
             >
                 <div className="duration-300 animate-in fade-in slide-in-from-bottom-4">
                     <AddScormDialog openState={(open) => !open && closeScormDialog()} />
+                </div>
+            </MyDialog>
+
+            <MyDialog
+                trigger={<></>}
+                heading="Add Vimeo Video"
+                dialogWidth="min-w-[400px]"
+                open={isVimeoDialogOpen}
+                onOpenChange={closeVimeoDialog}
+            >
+                <div className="duration-300 animate-in fade-in slide-in-from-bottom-4">
+                    <AddVimeoDialog openState={(open) => !open && closeVimeoDialog()} />
                 </div>
             </MyDialog>
         </div>

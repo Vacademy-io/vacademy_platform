@@ -26,7 +26,7 @@ module.exports = {
       },
       fontFamily: {
         sans: [
-          "Figtree",
+          "Open Sans",
           "system-ui",
           "-apple-system",
           "BlinkMacSystemFont",

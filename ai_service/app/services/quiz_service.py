@@ -34,7 +34,7 @@ class QuizService:
         self,
         topic: str,
         context: Dict[str, Any],
-        num_questions: int = 5,
+        num_questions: int = 10,
         difficulty: str = "medium",
         institute_id: str = None,
         user_id: str = None,
@@ -167,23 +167,15 @@ IMPORTANT: Return ONLY valid JSON, no additional text or markdown code blocks ar
         return content
     
     def _generate_fallback_quiz(self, topic: str, num_questions: int) -> QuizData:
-        """Generate a basic fallback quiz if LLM generation fails."""
-        questions = []
-        for i in range(min(num_questions, 3)):
-            questions.append(QuizQuestion(
-                id=f"q{i+1}",
-                question=f"Sample question {i+1} about {topic}?",
-                options=["Option A", "Option B", "Option C", "Option D"],
-                correct_answer_index=0,
-                explanation="This is a fallback question.",
-            ))
-        
+        """Generate a fallback quiz if LLM generation fails. Returns empty quiz with error message."""
+        logger.warning(f"Using fallback quiz for topic: {topic}")
+        # Return an empty quiz — the frontend will show the title as feedback
         return QuizData(
             quiz_id=str(uuid4()),
-            title=f"Practice Quiz on {topic}",
+            title=f"Could not generate quiz on {topic}",
             topic=topic,
-            questions=questions,
-            total_questions=len(questions),
+            questions=[],
+            total_questions=0,
         )
     
     def get_quiz_for_frontend(self, quiz_data: QuizData) -> Dict[str, Any]:

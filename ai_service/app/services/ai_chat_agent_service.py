@@ -1013,22 +1013,64 @@ class AiChatAgentService:
                 }
             }
             
+            # Enrich context with user message (may contain Mathpix-extracted LaTeX)
+            quiz_context = dict(context)
+            if "context_data" not in quiz_context:
+                quiz_context["context_data"] = {}
+            # Append user message to content so quiz generator sees the full picture
+            existing_content = quiz_context["context_data"].get("content", "")
+            quiz_context["context_data"]["content"] = (
+                f"{existing_content}\n\nUser's request: {user_message}" if existing_content
+                else f"User's request: {user_message}"
+            )
+
             # Generate quiz
             quiz_data = await self.quiz_service.generate_quiz(
                 topic=topic,
-                context=context,
-                num_questions=5,
+                context=quiz_context,
+                num_questions=10,
                 difficulty="medium",
                 institute_id=institute_id,
                 user_id=user_id,
             )
             
+            # If quiz generation failed (0 questions), ask user to specify topic
+            if not quiz_data.questions:
+                fallback_msg = self.message_repo.create_message(
+                    session_id=session_id,
+                    message_type="assistant",
+                    content=(
+                        "I couldn't generate quiz questions for that. "
+                        "Could you tell me the specific topic you'd like to practice? "
+                        "For example:\n"
+                        "- \"Quiz me on quadratic equations\"\n"
+                        "- \"Practice questions on photosynthesis\"\n"
+                        "- \"Test me on Newton's laws\""
+                    ),
+                )
+                yield {
+                    "event": "message",
+                    "data": {
+                        "id": fallback_msg.id,
+                        "type": fallback_msg.message_type,
+                        "content": fallback_msg.content,
+                        "metadata": fallback_msg.meta_data,
+                        "created_at": fallback_msg.created_at.isoformat()
+                    }
+                }
+                # Reset status
+                yield {
+                    "event": "status",
+                    "data": {"ai_status": "idle"}
+                }
+                return
+
             # Store quiz for later evaluation
             self._active_quizzes[session_id] = quiz_data
-            
+
             # Prepare quiz data for frontend (strip correct answers)
             frontend_quiz_data = self.quiz_service.get_quiz_for_frontend(quiz_data)
-            
+
             # Create quiz message
             quiz_msg = self.message_repo.create_message(
                 session_id=session_id,
@@ -1036,7 +1078,7 @@ class AiChatAgentService:
                 content=f"Here's your quiz on **{topic}**! Answer all {quiz_data.total_questions} questions and submit when ready.",
                 metadata={"quiz_data": frontend_quiz_data}
             )
-            
+
             yield {
                 "event": "message",
                 "data": {
@@ -1047,7 +1089,7 @@ class AiChatAgentService:
                     "created_at": quiz_msg.created_at.isoformat()
                 }
             }
-            
+
             logger.info(f"Quiz generated for session {session_id}: {quiz_data.quiz_id}")
             
         except Exception as e:

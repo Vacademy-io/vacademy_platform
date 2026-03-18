@@ -32,20 +32,25 @@ class LearningAnalyticsRepository:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> LearningAnalytics:
         """Create a new analytics event."""
-        event = LearningAnalytics(
-            user_id=user_id,
-            institute_id=institute_id,
-            session_id=session_id,
-            event_type=event_type,
-            topic=topic,
-            score=score,
-            total=total,
-            metadata=metadata or {},
-        )
-        self.db.add(event)
-        self.db.commit()
-        self.db.refresh(event)
-        return event
+        try:
+            event = LearningAnalytics(
+                user_id=user_id,
+                institute_id=institute_id,
+                session_id=session_id,
+                event_type=event_type,
+                topic=topic,
+                score=score,
+                total=total,
+                meta_data=metadata or {},
+            )
+            self.db.add(event)
+            self.db.commit()
+            self.db.refresh(event)
+            return event
+        except Exception as e:
+            self.db.rollback()
+            logger.warning(f"Failed to create analytics event: {e}")
+            return None
 
     def get_doubt_patterns(self, user_id: str, days: int = 30) -> List[Dict[str, Any]]:
         """Get doubt frequency by topic for the last N days."""
@@ -64,6 +69,7 @@ class LearningAnalyticsRepository:
             result = self.db.execute(stmt, {"user_id": user_id, "days": days})
             return [{"topic": r[0], "count": r[1], "last_asked": r[2].isoformat() if r[2] else None} for r in result.fetchall()]
         except Exception as e:
+            self.db.rollback()
             logger.error(f"Error getting doubt patterns: {e}")
             return []
 
@@ -97,6 +103,7 @@ class LearningAnalyticsRepository:
                 "date": r[4].isoformat() if r[4] else None,
             } for r in result.fetchall()]
         except Exception as e:
+            self.db.rollback()
             logger.error(f"Error getting quiz performance: {e}")
             return []
 
@@ -120,6 +127,7 @@ class LearningAnalyticsRepository:
                 "last_interaction": r[3].isoformat() if r[3] else None,
             } for r in result.fetchall()]
         except Exception as e:
+            self.db.rollback()
             logger.error(f"Error getting topic coverage: {e}")
             return []
 

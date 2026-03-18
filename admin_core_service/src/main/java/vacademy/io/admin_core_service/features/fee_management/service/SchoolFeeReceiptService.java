@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.fee_management.service;
 
+import org.springframework.scheduling.annotation.Async;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itextpdf.styledxmlparser.jsoup.Jsoup;
 import com.itextpdf.styledxmlparser.jsoup.nodes.Document;
@@ -107,6 +108,7 @@ public class SchoolFeeReceiptService {
      * @param transactionId Manual payment reference (e.g., "CASH-001")
      * @param paymentMode   Payment mode (e.g., "OFFLINE")
      */
+    @Async
     @Transactional
     public void generateAndSendReceipt(String userId, String userPlanId, String paymentLogId,
             String instituteId, BigDecimal amountPaid, String transactionId, String paymentMode) {
@@ -214,6 +216,7 @@ public class SchoolFeeReceiptService {
      * @param paymentMode         Payment mode (e.g., "OFFLINE")
      * @param paidInstallmentIds  List of student_fee_payment IDs that were paid/partially paid in this allocation
      */
+    @Async
     @Transactional
     public void generateAndSendReceipt(String userId, String paymentLogId,
             String instituteId, BigDecimal amountPaid, String transactionId, String paymentMode,
@@ -314,6 +317,63 @@ public class SchoolFeeReceiptService {
                     userId, instituteId, e);
             // Don't throw — receipt failure should never break allocation
         }
+    }
+
+    /**
+     * Generate an invoice/statement PDF for admin-selected installments (no payment required).
+     * Shows current status of each installment (PAID, PENDING, PARTIAL_PAID, etc.).
+     * Returns the S3 file ID of the generated PDF.
+     */
+    @Transactional
+    public String generateInvoiceForInstallments(String userId, String instituteId,
+                                                  List<String> installmentIds) {
+        Institute institute = instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new VacademyException("Institute not found: " + instituteId));
+
+        Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+        String currency = (String) invoiceSettings.getOrDefault("currency", "INR");
+
+        UserDTO user = authService.getUsersFromAuthServiceByUserIds(List.of(userId)).get(0);
+        if (user == null) {
+            throw new VacademyException("User not found: " + userId);
+        }
+
+        List<StudentFeePayment> feePayments = studentFeePaymentRepository.findAllById(installmentIds);
+        if (feePayments == null || feePayments.isEmpty()) {
+            throw new VacademyException("No installments found for the provided IDs");
+        }
+
+        feePayments.sort(Comparator.comparing(StudentFeePayment::getDueDate,
+                Comparator.nullsLast(Comparator.naturalOrder())));
+
+        BigDecimal totalExpected = BigDecimal.ZERO;
+        BigDecimal totalPaid = BigDecimal.ZERO;
+        BigDecimal totalDiscount = BigDecimal.ZERO;
+
+        for (StudentFeePayment fp : feePayments) {
+            totalExpected = totalExpected
+                    .add(fp.getAmountExpected() != null ? fp.getAmountExpected() : BigDecimal.ZERO);
+            totalPaid = totalPaid.add(fp.getAmountPaid() != null ? fp.getAmountPaid() : BigDecimal.ZERO);
+            totalDiscount = totalDiscount
+                    .add(fp.getDiscountAmount() != null ? fp.getDiscountAmount() : BigDecimal.ZERO);
+        }
+        BigDecimal balanceDue = totalExpected.subtract(totalPaid).subtract(totalDiscount);
+
+        String receiptNumber = generateReceiptNumber(instituteId);
+        String templateHtml = loadSchoolFeeReceiptTemplate(instituteId);
+
+        String filledTemplate = replacePlaceholders(templateHtml, user, institute, feePayments,
+                receiptNumber, totalPaid, receiptNumber, "STATEMENT",
+                totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+
+        byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
+        String pdfFileId = uploadReceiptToS3(pdfBytes, receiptNumber, instituteId);
+
+        // Save invoice record
+        saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
+                totalPaid, totalExpected, totalPaid, totalDiscount, balanceDue, currency);
+
+        return pdfFileId;
     }
 
     // ─── Invoice Settings ────────────────────────────────────────────────────

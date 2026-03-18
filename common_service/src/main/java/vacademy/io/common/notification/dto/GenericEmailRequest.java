@@ -15,4 +15,13 @@ public class GenericEmailRequest {
     private String service;
     private String body;
     private String emailType; // Email type to use (e.g., UTILITY_EMAIL, MARKETING_EMAIL)
+
+    // Explicit getter for emailType to ensure it's available during compilation
+    public String getEmailType() {
+        return emailType;
+    }
+
+    public void setEmailType(String emailType) {
+        this.emailType = emailType;
+    }
 }

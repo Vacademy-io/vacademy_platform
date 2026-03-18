@@ -250,6 +250,7 @@ export function RegistrationFormPage() {
         // Prefill child details
         if (enquiryData.child) {
             updates.studentName = enquiryData.child.name || '';
+            updates.selectedPackageSessionId = enquiryData.child.destination_package_session_id || '';
             if (enquiryData.child.dob) {
                 // Convert ISO date to YYYY-MM-DD format
                 const date = new Date(enquiryData.child.dob);

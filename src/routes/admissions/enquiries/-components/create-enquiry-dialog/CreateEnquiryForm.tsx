@@ -370,7 +370,7 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
     };
 
     const isSaving = isSubmitting || createCampaign.isPending;
-    const primaryButtonLabel = isSaving ? 'Creating...' : 'Create Enquiry';
+    const primaryButtonLabel = isSaving ? 'Creating...' : 'Create Enquiry Form';
 
     return (
         <form onSubmit={onFormSubmit} className="w-full space-y-6">
@@ -442,11 +442,9 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
                             }}
                             placeholder="Select enquiry type"
                             initialOptions={[
-                                { value: 'Website', label: 'Website' },
-                                { value: 'Walk-in', label: 'Walk-in' },
-                                { value: 'Phone Call', label: 'Phone Call' },
-                                { value: 'Email', label: 'Email' },
-                                { value: 'Social Media', label: 'Social Media' },
+                                { value: 'Admission', label: 'Admission' },
+                                { value: 'Mid-term', label: 'Mid-term' },
+                                { value: 'Summer Camp', label: 'Summer Camp' },
                             ]}
                         />
                     </div>

@@ -12,7 +12,7 @@ export const CreateEnquiryDialog: React.FC<CreateEnquiryDialogProps> = ({ isOpen
         <MyDialog
             open={isOpen}
             onOpenChange={(open) => !open && onClose()}
-            heading="Create Enquiry"
+            heading="Create Enquiry Form"
             dialogWidth="max-w-3xl"
         >
             <CreateEnquiryForm onSuccess={onClose} />

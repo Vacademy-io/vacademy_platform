@@ -4,6 +4,7 @@ import { Helmet } from 'react-helmet';
 import { MyButton } from '@/components/design-system/button';
 import { MagnifyingGlass, Plus, CaretRight, X, FileText, UserPlus } from '@phosphor-icons/react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useNavigate } from '@tanstack/react-router';
 import {
     Select,
     SelectContent,
@@ -80,6 +81,7 @@ function RegistrationListPageInner({
 }) {
     const { setSelectedStudent } = useStudentSidebar();
     const { setNavHeading } = useNavHeadingStore();
+    const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
     const { getAllSessions, instituteDetails } = useInstituteDetailsStore();
@@ -176,9 +178,9 @@ function RegistrationListPageInner({
     const handleNewApplication = () => {
         setShowRegistrationTypeModal(false);
         if (selectedSessionId) {
-            window.location.href = `/admissions/application/new?sessionId=${selectedSessionId}`;
+            navigate({ to: `/admissions/application/new?sessionId=${selectedSessionId}` });
         } else {
-            window.location.href = '/admissions/application/new';
+            navigate({ to: '/admissions/application/new' });
         }
     };
 
@@ -209,9 +211,9 @@ function RegistrationListPageInner({
             // Navigate to registration form with enquiry data
             const encodedData = encodeURIComponent(JSON.stringify(enquiryData));
             if (selectedSessionId) {
-                window.location.href = `/admissions/application/new?sessionId=${selectedSessionId}&enquiryData=${encodedData}`;
+                navigate({ to: `/admissions/application/new?sessionId=${selectedSessionId}&enquiryData=${encodedData}` });
             } else {
-                window.location.href = `/admissions/application/new?enquiryData=${encodedData}`;
+                navigate({ to: `/admissions/application/new?enquiryData=${encodedData}` });
             }
         } catch (error) {
             console.error('Error fetching enquiry:', error);
@@ -227,13 +229,13 @@ function RegistrationListPageInner({
     };
 
     return (
-        <div className="flex h-full flex-col">
+        <div className="flex h-full w-full min-w-0 flex-1 flex-col">
             <Helmet>
                 <title>Applications - Admissions</title>
             </Helmet>
 
-            <div className="mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-4">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-4">
                     <div className="relative">
                         <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                         <input
@@ -260,7 +262,7 @@ function RegistrationListPageInner({
                     />
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                     <Select
                         value={selectedSessionId}
                         onValueChange={setSelectedSessionId}
@@ -289,7 +291,7 @@ function RegistrationListPageInner({
                 </div>
             </div>
 
-            <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+            <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white shadow-sm">
                 {isLoading ? (
                     <div className="flex items-center justify-center p-12">
                         <div className="text-neutral-500">Loading applications...</div>

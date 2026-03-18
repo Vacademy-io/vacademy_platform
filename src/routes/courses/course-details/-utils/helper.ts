@@ -8,6 +8,18 @@ export function isYouTubeUrl(url: string): boolean {
   return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(url);
 }
 
+// Utility functions for Vimeo URL handling
+export function isVimeoUrl(url: string): boolean {
+  if (!url) return false;
+  return /^(https?:\/\/)?(www\.)?(player\.)?vimeo\.com\/.+/.test(url);
+}
+
+export function getVimeoVideoId(url: string): string | null {
+  if (!url) return null;
+  const match = url.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/);
+  return match ? match[1] : null;
+}
+
 interface SubjectType {
   id: string;
   subject_name: string;

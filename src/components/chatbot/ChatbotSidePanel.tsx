@@ -14,6 +14,9 @@ import {
   Repeat,
   HelpCircle,
   GripVertical,
+  Sigma,
+  ImagePlus,
+  Loader2,
 } from "lucide-react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -47,6 +50,8 @@ import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { MessageIntent } from "@/services/chatbot-api";
+import { UploadFileInS3, getPublicUrl } from "@/services/upload_file";
+import { getUserId } from "@/constants/getUserId";
 import { AnimatePresence } from "framer-motion";
 import { ToolIndicator } from "./ToolIndicator";
 
@@ -189,8 +194,12 @@ export const ChatbotSidePanel: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const [selectedIntent, setSelectedIntent] =
     useState<MessageIntent>("general");
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{type: string; url: string; name?: string; previewUrl?: string}>>([]);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [showLatexHelper, setShowLatexHelper] = useState(false);
   const resizeRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Handle resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -235,7 +244,10 @@ export const ChatbotSidePanel: React.FC = () => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(inputValue, selectedIntent);
+      const readyAttachments = pendingAttachments.filter(a => a.url);
+      sendMessage(inputValue, selectedIntent, readyAttachments.length > 0 ? readyAttachments : undefined);
+      pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+      setPendingAttachments([]);
     }
   };
 
@@ -527,28 +539,20 @@ export const ChatbotSidePanel: React.FC = () => {
                               li: ({ ...props }) => (
                                 <li className="ml-2" {...props} />
                               ),
-                              code: ((props: {
-                                inline?: boolean;
-                                children?: React.ReactNode;
-                                [key: string]: unknown;
-                              }) => {
-                                const { inline, ...rest } = props;
-                                return inline ? (
+                              code: ({ children, className, ...rest }: React.HTMLAttributes<HTMLElement>) => {
+                                const isInline = !className?.includes('language-');
+                                return isInline ? (
                                   <code
                                     className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono"
-                                    {...(rest as React.HTMLAttributes<HTMLElement>)}
-                                  />
+                                    {...rest}
+                                  >{children}</code>
                                 ) : (
                                   <code
                                     className="block bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto"
-                                    {...(rest as React.HTMLAttributes<HTMLElement>)}
-                                  />
+                                    {...rest}
+                                  >{children}</code>
                                 );
-                              }) as unknown as React.ComponentType<{
-                                inline?: boolean;
-                                children?: React.ReactNode;
-                                [key: string]: unknown;
-                              }>,
+                              },
                               blockquote: ({ ...props }) => (
                                 <blockquote
                                   className="border-l-4 border-primary pl-3 py-1 my-3 italic text-muted-foreground text-sm"
@@ -724,23 +728,156 @@ export const ChatbotSidePanel: React.FC = () => {
           </Select>
         </div>
 
-        {/* Modern Unified Input Box */}
-        <div className="w-full flex items-center gap-2 bg-muted/40 rounded-xl p-1 ring-1 ring-border/50 focus-within:ring-2 focus-within:ring-primary/30 transition-all">
+        {/* Attachment previews */}
+        {pendingAttachments.length > 0 && (
+          <div className="flex gap-1.5 w-full px-1 py-1">
+            {pendingAttachments.map((att, i) => (
+              <div key={i} className="relative size-10 rounded border overflow-hidden">
+                <img src={att.previewUrl || att.url} alt={att.name || 'attachment'} className="size-full object-cover" />
+                {!att.url && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <Loader2 className="h-3 w-3 text-white animate-spin" />
+                  </div>
+                )}
+                <button
+                  className="absolute -top-0.5 -right-0.5 size-3.5 rounded-full bg-destructive text-destructive-foreground text-[8px] flex items-center justify-center"
+                  onClick={() => {
+                    if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+                    setPendingAttachments(prev => prev.filter((_, idx) => idx !== i));
+                  }}
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Hidden file input — uploads to S3 */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            e.target.value = '';
+            const previewUrl = URL.createObjectURL(file);
+            const tempIdx = pendingAttachments.length;
+            setPendingAttachments(prev => [...prev, { type: 'image', url: '', name: file.name, previewUrl }]);
+            setIsUploadingImage(true);
+            try {
+              const userId = await getUserId();
+              const fileId = await UploadFileInS3(file, () => {}, userId || '', 'CHATBOT_IMAGES', 'LEARNER');
+              if (fileId) {
+                const publicUrl = await getPublicUrl(fileId);
+                setPendingAttachments(prev => prev.map((att, i) =>
+                  i === tempIdx ? { ...att, url: publicUrl } : att
+                ));
+              }
+            } catch (err) {
+              console.error('Failed to upload image:', err);
+              setPendingAttachments(prev => prev.filter((_, i) => i !== tempIdx));
+              URL.revokeObjectURL(previewUrl);
+            } finally {
+              setIsUploadingImage(false);
+            }
+          }}
+        />
+
+        {/* LaTeX quick-insert helper */}
+        {showLatexHelper && (
+          <div className="w-full flex flex-wrap gap-1 px-1 py-1 bg-muted/30 rounded-lg border border-border/50">
+            {[
+              { label: '√', insert: '\\sqrt{}' },
+              { label: 'x²', insert: '^{2}' },
+              { label: 'xₙ', insert: '_{n}' },
+              { label: '∫', insert: '\\int_{a}^{b}' },
+              { label: 'Σ', insert: '\\sum_{i=1}^{n}' },
+              { label: 'π', insert: '\\pi' },
+              { label: 'α', insert: '\\alpha' },
+              { label: 'θ', insert: '\\theta' },
+              { label: '∞', insert: '\\infty' },
+              { label: '≠', insert: '\\neq' },
+              { label: '≤', insert: '\\leq' },
+              { label: '÷', insert: '\\frac{}{}' },
+              { label: 'lim', insert: '\\lim_{x \\to }' },
+              { label: '±', insert: '\\pm' },
+            ].map((item) => (
+              <button
+                key={item.label}
+                className="h-6 min-w-[28px] px-1 text-[10px] font-mono rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/50 transition-colors"
+                onClick={() => {
+                  const hasOpenDelimiter = inputValue.lastIndexOf('$') > inputValue.lastIndexOf(' ');
+                  const toInsert = hasOpenDelimiter ? item.insert : `$${item.insert}$`;
+                  setInputValue(prev => prev + toInsert);
+                }}
+                title={item.insert}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* LaTeX preview */}
+        {inputValue.includes('$') && (
+          <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto">
+            <span className="text-muted-foreground text-[10px] block mb-0.5">Preview:</span>
+            <ReactMarkdown
+              remarkPlugins={[remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {inputValue}
+            </ReactMarkdown>
+          </div>
+        )}
+
+        {/* Unified Input Box */}
+        <div className="w-full flex items-center gap-1 bg-muted/40 rounded-xl p-1 ring-1 ring-border/50 focus-within:ring-2 focus-within:ring-primary/30 transition-all">
           <Input
-            placeholder="Ask a question..."
+            placeholder="Ask a question... ($ for math)"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={!sessionId || isLoading}
-            className="flex-1 h-8 px-3 text-[13px] bg-transparent border-0 shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/50"
+            className="flex-1 h-8 px-3 text-[13px] font-mono bg-transparent border-0 shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/50"
           />
+          <button
+            className={cn(
+              "h-7 w-7 shrink-0 rounded-lg flex items-center justify-center transition-colors",
+              showLatexHelper ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+            )}
+            onClick={() => setShowLatexHelper(prev => !prev)}
+            title="Math symbols"
+          >
+            <Sigma className="h-3.5 w-3.5" />
+          </button>
+          <button
+            className="h-7 w-7 shrink-0 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!sessionId || isLoading || isUploadingImage}
+            title="Attach image"
+          >
+            {isUploadingImage ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ImagePlus className="h-3.5 w-3.5" />
+            )}
+          </button>
           <Button
-            onClick={() => sendMessage(inputValue, selectedIntent)}
-            disabled={!inputValue.trim() || isLoading}
+            onClick={() => {
+              const readyAttachments = pendingAttachments.filter(a => a.url);
+              sendMessage(inputValue, selectedIntent, readyAttachments.length > 0 ? readyAttachments : undefined);
+              pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
+              setPendingAttachments([]);
+            }}
+            disabled={(!inputValue.trim() && pendingAttachments.filter(a => a.url).length === 0) || isLoading || isUploadingImage}
             size="icon"
             className={cn(
               "h-8 w-8 shrink-0 rounded-lg transition-all",
-              inputValue.trim()
+              inputValue.trim() || pendingAttachments.some(a => a.url)
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "bg-muted text-muted-foreground",
             )}

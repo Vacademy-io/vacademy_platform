@@ -687,7 +687,7 @@ public class ConstantAiTemplate {
 
                 **Your Role:** Visual Information Designer
 
-                **Your Goal:** Tell a visual story by deconstructing the input into 4-6 logical, sequential slides. Each slide must be a complete Excalidraw JSON object, designed as a professional infographic.
+                **Your Goal:** Tell a visual story by deconstructing the input into logical, sequential slides. Determine the appropriate number of slides based on the complexity and breadth of the input content — there is no minimum or maximum limit. Each slide must be a complete Excalidraw JSON object, designed as a professional infographic.
 
                 **Instructions:**
 
@@ -741,7 +741,7 @@ public class ConstantAiTemplate {
 
                 **Your Role:** Expert Assessment Creator
 
-                **Your Goal:** Generate a set of high-quality questions that probe for genuine understanding, application, and analysis of the information presented in the input text.
+                **Your Goal:** Generate questions that probe for genuine understanding, application, and analysis of the information presented in the input text. Determine the appropriate number of questions based on the complexity and breadth of the input content — there is no minimum or maximum limit. If the user's prompt specifies a desired number of questions, follow that instruction.
 
                 **Guiding Principle:** Move beyond simple fact-checking. Your goal is to create questions that assess a learner's ability to think critically *with* the material. Avoid trivial questions about metadata (e.g., "Who wrote the text?").
 
@@ -888,7 +888,7 @@ public class ConstantAiTemplate {
                  }},
 
                  "title": "Critical Analysis of Global Warming",
-                 "slides_order": [Q0,S1,S2,S3,Q1,Q2,Q3,S4,Q4] // give an order of slides in the presentation
+                 "slides_order": [Q0,S1,S2,Q1,S3,Q2,Q3,S4,Q4,S5,Q5] // give an order of slides and questions in the presentation — the count should match the actual number of slides and questions generated
                 }}
                 """;
     }

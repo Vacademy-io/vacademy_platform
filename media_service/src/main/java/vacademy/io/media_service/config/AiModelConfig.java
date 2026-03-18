@@ -25,6 +25,7 @@ public class AiModelConfig {
      */
     private List<String> allowedModels = List.of(
             "google/gemini-2.5-flash",
+            "google/gemini-2.5-pro-preview",
             "google/gemini-2.0-flash",
             "openai/gpt-4o-mini",
             "openai/gpt-4o",

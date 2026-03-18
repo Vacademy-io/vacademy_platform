@@ -55,6 +55,11 @@ public class NotificationService {
             endpoint += "?instituteId=" + instituteId;
         }
 
+        // If emailType is not set in the request, default to UTILITY_EMAIL
+        if (request.getEmailType() == null || request.getEmailType().isEmpty()) {
+            request.setEmailType("UTILITY_EMAIL");
+        }
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
                 notificationServerBaseUrl, endpoint, request);
 
@@ -80,6 +85,14 @@ public class NotificationService {
         if (StringUtils.hasText(instituteId)) {
             endpoint += "?instituteId=" + instituteId;
         }
+
+        // Set emailType to UTILITY_EMAIL for invoice emails if not already set
+        for (AttachmentNotificationDTO dto : attachmentNotificationDTOs) {
+            if (dto.getEmailType() == null || dto.getEmailType().isEmpty()) {
+                dto.setEmailType("UTILITY_EMAIL");
+            }
+        }
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
                 notificationServerBaseUrl, endpoint, attachmentNotificationDTOs);
 

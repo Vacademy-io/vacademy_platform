@@ -99,16 +99,19 @@ public class FeeLedgerAllocationService {
 
     /**
      * Offline/admin flow using the existing controller endpoint:
-     *  - Fetches an existing PaymentLog by ID (template/source record)
-     *  - Creates a NEW PaymentLog row representing this concrete payment with status PAID
-     *  - Allocates that new payment across unpaid installments
-     *  - Writes separate ledger rows per student_fee_payment_id pointing to the NEW PaymentLog
+     * - Fetches an existing PaymentLog by ID (template/source record)
+     * - Creates a NEW PaymentLog row representing this concrete payment with status
+     * PAID
+     * - Allocates that new payment across unpaid installments
+     * - Writes separate ledger rows per student_fee_payment_id pointing to the NEW
+     * PaymentLog
      *
-     * The original {@link #allocatePayment(String, BigDecimal, String)} method is left
+     * The original {@link #allocatePayment(String, BigDecimal, String)} method is
+     * left
      * unchanged; this method no longer calls it.
      */
     @Transactional
-    public void  allocatePaymentForLog(String paymentLogId) {
+    public void allocatePaymentForLog(String paymentLogId) {
         PaymentLog sourceLog = paymentLogRepository.findById(paymentLogId)
                 .orElseThrow(() -> new IllegalArgumentException("PaymentLog not found for id: " + paymentLogId));
 
@@ -202,8 +205,93 @@ public class FeeLedgerAllocationService {
         }
     }
 
+    @Transactional
+    public void allocatePaymentForSelectedInstallments(String userId, String instituteId,
+            List<String> studentFeePaymentIds,
+            BigDecimal amount, String remarks) {
+        if (studentFeePaymentIds == null || studentFeePaymentIds.isEmpty()) {
+            throw new IllegalArgumentException("At least one installment must be selected");
+        }
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Payment amount must be positive");
+        }
+
+        // Fetch selected bills
+        List<StudentFeePayment> selectedBills = studentFeePaymentRepository.findAllById(studentFeePaymentIds);
+
+        if (selectedBills.size() != studentFeePaymentIds.size()) {
+            List<String> foundIds = selectedBills.stream().map(StudentFeePayment::getId).collect(Collectors.toList());
+            List<String> missing = studentFeePaymentIds.stream()
+                    .filter(id -> !foundIds.contains(id)).collect(Collectors.toList());
+            throw new IllegalArgumentException("Installments not found: " + missing);
+        }
+
+        // Validate all belong to user and are not fully paid
+        for (StudentFeePayment bill : selectedBills) {
+            if (!bill.getUserId().equals(userId)) {
+                throw new IllegalArgumentException("Installment " + bill.getId()
+                        + " does not belong to user " + userId);
+            }
+            if ("PAID".equals(bill.getStatus())) {
+                throw new IllegalArgumentException("Installment " + bill.getId() + " is already fully paid");
+            }
+        }
+
+        // Create PaymentLog
+        PaymentLog paymentLog = new PaymentLog();
+        paymentLog.setStatus("ACTIVE");
+        paymentLog.setPaymentStatus("PAID");
+        paymentLog.setUserId(userId);
+        paymentLog.setVendor("OFFLINE");
+        paymentLog.setDate(new Date());
+        paymentLog.setCurrency("INR");
+        paymentLog.setPaymentAmount(amount.doubleValue());
+        paymentLog = paymentLogRepository.save(paymentLog);
+
+        // Use FeeAllocationEngine to distribute across ONLY selected bills using
+        // priority
+        BigDecimal remaining = feeAllocationEngine.allocate(
+                selectedBills, amount, paymentLog.getId(), instituteId, AllocationScope.ALL_DUES);
+
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            paymentLog.setUnallocatedAmount(remaining.doubleValue());
+            paymentLogRepository.save(paymentLog);
+            log.warn("Payment {} had excess amount {} after allocating to selected installments for user {}",
+                    paymentLog.getId(), remaining, userId);
+        }
+
+        // Update ledger entries with admin remarks
+        List<StudentFeeAllocationLedger> ledgerEntries = studentFeeAllocationLedgerRepository
+                .findByPaymentLogId(paymentLog.getId());
+        if (remarks != null && !remarks.isBlank()) {
+            for (StudentFeeAllocationLedger entry : ledgerEntries) {
+                entry.setRemarks(remarks);
+            }
+            studentFeeAllocationLedgerRepository.saveAll(ledgerEntries);
+        }
+
+        // Generate receipt
+        BigDecimal allocatedAmount = amount.subtract(remaining);
+        if (allocatedAmount.compareTo(BigDecimal.ZERO) > 0 && !ledgerEntries.isEmpty()) {
+            List<String> paidInstallmentIds = ledgerEntries.stream()
+                    .map(StudentFeeAllocationLedger::getStudentFeePaymentId)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            schoolFeeReceiptService.generateAndSendReceipt(
+                    userId,
+                    paymentLog.getId(),
+                    instituteId,
+                    allocatedAmount,
+                    paymentLog.getId(),
+                    "OFFLINE",
+                    paidInstallmentIds);
+        }
+    }
+
     /**
-     * Backward-compatible wrapper that defaults to ALL_DUES with no institute priority.
+     * Backward-compatible wrapper that defaults to ALL_DUES with no institute
+     * priority.
      */
     @Transactional
     public void allocatePaymentForUser(String userId, BigDecimal amount) {
@@ -215,21 +303,26 @@ public class FeeLedgerAllocationService {
      * <p>
      * Multi-pass allocation strategy:
      * <ul>
-     *   <li>OVERDUE_ONLY  → 1st pass: overdue with priority, 2nd pass: ALL_DUES (fallback) on remaining</li>
-     *   <li>UPCOMING_ONLY → 1st pass: upcoming with priority, 2nd pass: ALL_DUES (fallback) on remaining</li>
-     *   <li>ALL_DUES      → single pass: overdue-first + upcoming, using priority if configured</li>
+     * <li>OVERDUE_ONLY → 1st pass: overdue with priority, 2nd pass: ALL_DUES
+     * (fallback) on remaining</li>
+     * <li>UPCOMING_ONLY → 1st pass: upcoming with priority, 2nd pass: ALL_DUES
+     * (fallback) on remaining</li>
+     * <li>ALL_DUES → single pass: overdue-first + upcoming, using priority if
+     * configured</li>
      * </ul>
      * The final ALL_DUES pass ensures no money is left unallocated when there are
-     * still unpaid bills, even if the institute only configured priority for one scope.
+     * still unpaid bills, even if the institute only configured priority for one
+     * scope.
      *
      * @param userId      the student whose installments are to be updated
      * @param amount      payment amount (must be &gt; 0)
-     * @param instituteId institute whose fee-type priority config to apply (nullable → fallback)
+     * @param instituteId institute whose fee-type priority config to apply
+     *                    (nullable → fallback)
      * @param scope       OVERDUE_ONLY, UPCOMING_ONLY, or ALL_DUES
      */
     @Transactional
     public void allocatePaymentForUser(String userId, BigDecimal amount,
-                                       String instituteId, AllocationScope scope) {
+            String instituteId, AllocationScope scope) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Payment amount must be positive");
         }
@@ -277,8 +370,10 @@ public class FeeLedgerAllocationService {
         // Pass 2 (always runs): ALL_DUES on whatever is left
         // - If scope was ALL_DUES, this is the only pass.
         // - If scope was OVERDUE_ONLY / UPCOMING_ONLY, this catches any leftover
-        //   amount and applies it to remaining unpaid bills (overdue-first, then upcoming).
-        // - Bills already paid in Pass 1 will have amountDue=0 and are skipped automatically.
+        // amount and applies it to remaining unpaid bills (overdue-first, then
+        // upcoming).
+        // - Bills already paid in Pass 1 will have amountDue=0 and are skipped
+        // automatically.
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
             remaining = feeAllocationEngine.allocate(
                     unpaidBills, remaining, paymentLog.getId(), instituteId, AllocationScope.ALL_DUES);
@@ -292,8 +387,8 @@ public class FeeLedgerAllocationService {
         // Generate receipt and send email using SchoolFeeReceiptService
         BigDecimal allocatedAmount = amount.subtract(remaining);
         if (allocatedAmount.compareTo(BigDecimal.ZERO) > 0) {
-            List<StudentFeeAllocationLedger> allocations =
-                    studentFeeAllocationLedgerRepository.findByPaymentLogId(paymentLog.getId());
+            List<StudentFeeAllocationLedger> allocations = studentFeeAllocationLedgerRepository
+                    .findByPaymentLogId(paymentLog.getId());
 
             if (!allocations.isEmpty()) {
                 List<String> paidInstallmentIds = allocations.stream()
@@ -308,8 +403,7 @@ public class FeeLedgerAllocationService {
                         allocatedAmount,
                         paymentLog.getId(),
                         "OFFLINE",
-                        paidInstallmentIds
-                );
+                        paidInstallmentIds);
             }
         }
     }

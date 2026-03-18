@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.fee_management.dto.FeeSearchFilterDTO;
+import vacademy.io.admin_core_service.features.fee_management.dto.SelectiveAllocationRequest;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeeAllocationLedgerDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.StudentFeePaymentRowDTO;
@@ -50,6 +51,9 @@ public class FeeTrackingAdminController {
 
     @Autowired
     private MediaService mediaService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.service.SchoolFeeReceiptService schoolFeeReceiptService;
 
     @PostMapping("/{userId}/dues")
     public ResponseEntity<List<StudentFeePaymentDTO>> getStudentDues(
@@ -135,6 +139,32 @@ public class FeeTrackingAdminController {
         }
 
         feeLedgerAllocationService.allocatePaymentForUser(userId, amount, instituteId, allocationScope);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Allocate payment to admin-selected installments.
+     * The admin picks specific installments and the amount to pay on each.
+     */
+    @PostMapping("/{userId}/allocate-selected")
+    public ResponseEntity<Void> allocatePaymentForSelectedInstallments(
+            @PathVariable("userId") String userId,
+            @RequestBody SelectiveAllocationRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+
+        if (request.getInstituteId() == null || request.getInstituteId().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (request.getStudentFeePaymentIds() == null || request.getStudentFeePaymentIds().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (request.getAmount() == null || request.getAmount().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        feeLedgerAllocationService.allocatePaymentForSelectedInstallments(
+                userId, request.getInstituteId(), request.getStudentFeePaymentIds(),
+                request.getAmount(), request.getRemarks());
         return ResponseEntity.noContent().build();
     }
 
@@ -260,6 +290,34 @@ public class FeeTrackingAdminController {
                 "download_url", signedUrl,
                 "invoice_number", invoice.getInvoiceNumber(),
                 "file_name", "receipt_" + invoice.getInvoiceNumber() + ".pdf"
+        ));
+    }
+
+    /**
+     * Generate an invoice/statement PDF for selected installments.
+     * Returns the S3 file ID and download URL for the generated PDF.
+     * Shows current status of each installment (PAID, PENDING, PARTIAL_PAID, etc.).
+     */
+    @PostMapping("/{userId}/generate-invoice")
+    public ResponseEntity<?> generateInvoiceForInstallments(
+            @PathVariable("userId") String userId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody Map<String, Object> request) {
+
+        @SuppressWarnings("unchecked")
+        List<String> installmentIds = (List<String>) request.get("installment_ids");
+        if (installmentIds == null || installmentIds.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "installment_ids is required"));
+        }
+
+        String pdfFileId = schoolFeeReceiptService.generateInvoiceForInstallments(
+                userId, instituteId, installmentIds);
+
+        String downloadUrl = mediaService.getFilePublicUrlById(pdfFileId);
+
+        return ResponseEntity.ok(Map.of(
+                "file_id", pdfFileId,
+                "download_url", downloadUrl != null ? downloadUrl : ""
         ));
     }
 

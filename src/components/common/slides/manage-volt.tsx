@@ -58,6 +58,14 @@ import { AiGeneratingLoader, aiSteps, pptSteps } from './AiGeneratingLoader';
 import { PRODUCT_NAME } from '@/config/branding';
 import { VoltFeaturesGrid } from '@/components/landing/VoltFeaturesGrid';
 import { useFileUpload } from "@/hooks/use-file-upload";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { GET_AVAILABLE_AI_MODELS } from '@/constants/urls';
 
 import type { PresentationData } from './types';
 import { SessionLeaderboardModal } from './components/SessionLeaderboardModal';
@@ -82,6 +90,9 @@ export default function ManageVolt() {
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
     const [aiTopic, setAiTopic] = useState('');
     const [aiLanguage, setAiLanguage] = useState('English');
+    const [aiModel, setAiModel] = useState('');
+    const [availableModels, setAvailableModels] = useState<string[]>([]);
+    const [defaultModel, setDefaultModel] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
 
     const [isPptModalOpen, setIsPptModalOpen] = useState(false);
@@ -110,6 +121,20 @@ export default function ManageVolt() {
             setIsHelpModalOpen(true);
         }
     }, []);
+
+    useEffect(() => {
+        if (isAiModalOpen && availableModels.length === 0) {
+            authenticatedAxiosInstance
+                .get(GET_AVAILABLE_AI_MODELS)
+                .then((res) => {
+                    const data = res.data;
+                    setAvailableModels(data.availableModels || []);
+                    setDefaultModel(data.defaultModel || '');
+                    if (!aiModel) setAiModel(data.defaultModel || '');
+                })
+                .catch(() => {});
+        }
+    }, [isAiModalOpen]);
 
     const handleHelpModalClose = () => {
         localStorage.setItem(VOLT_FIRST_VISIT_KEY, 'true');
@@ -236,6 +261,7 @@ export default function ManageVolt() {
                     language: aiLanguage,
                     text: aiTopic,
                     institute_id: getInstituteId(),
+                    model: aiModel || undefined,
                 },
                 { headers: { 'Content-Type': 'application/json' } }
             );
@@ -925,6 +951,24 @@ export default function ManageVolt() {
                                         placeholder="e.g., English"
                                         required
                                     />
+                                </div>
+                                <div>
+                                    <Label htmlFor="ai-model" className="text-sm font-medium">
+                                        AI Model
+                                    </Label>
+                                    <Select value={aiModel} onValueChange={setAiModel}>
+                                        <SelectTrigger className="mt-1.5 w-full">
+                                            <SelectValue placeholder="Select a model" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {availableModels.map((model) => (
+                                                <SelectItem key={model} value={model}>
+                                                    {model}
+                                                    {model === defaultModel ? ' (default)' : ''}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                                 <DialogFooter className="mt-6 !justify-stretch space-y-2 sm:flex sm:flex-row sm:space-x-3 sm:space-y-0">
                                     <MyButton

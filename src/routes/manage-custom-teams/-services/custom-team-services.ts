@@ -211,6 +211,7 @@ export interface CreateSubOrgSubscriptionRequest {
     validity_in_days: number;
     vendor?: string;
     vendor_id?: string;
+    auth_roles?: string[];
 }
 
 export interface CreateSubOrgSubscriptionResponse {

@@ -17,6 +17,7 @@ import * as z from 'zod';
 import {
     createSubOrg,
     createSubOrgWithSubscription,
+    getAllRoles,
     type CreateSubOrgSubscriptionRequest,
 } from '../../-services/custom-team-services';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -87,6 +88,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     const [step1Data, setStep1Data] = useState<Step1Values | null>(null);
     const [selectedPackageSessionIds, setSelectedPackageSessionIds] = useState<string[]>([]);
     const [expandedPackageId, setExpandedPackageId] = useState<string | null>(null);
+    const [selectedAuthRoles, setSelectedAuthRoles] = useState<string[]>([]);
 
     // Step 1 form
     const step1Form = useForm<Step1Values>({
@@ -118,6 +120,14 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         queryKey: ['package-sessions', expandedPackageId],
         queryFn: () => fetchCourseBatches(expandedPackageId!),
         enabled: !!expandedPackageId,
+    });
+
+    // Fetch roles from parent institute
+    const { data: rolesList = [] } = useQuery<{ id: string; name: string }[]>({
+        queryKey: ['roles'],
+        queryFn: getAllRoles,
+        staleTime: 1000 * 60 * 5,
+        enabled: open,
     });
 
     // Fetch payment vendors for institute
@@ -183,6 +193,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         setSelectedPackageSessionIds([]);
         setExpandedPackageId(null);
         setLogoPreview(null);
+        setSelectedAuthRoles([]);
         step1Form.reset();
         step3Form.reset({
             paymentType: 'FREE',
@@ -260,6 +271,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
             validity_in_days: data.validityInDays,
             vendor: data.vendor,
             vendor_id: data.vendorId,
+            auth_roles: selectedAuthRoles.length > 0 ? selectedAuthRoles : undefined,
         };
         subscriptionMutation.mutate(request);
     };
@@ -607,6 +619,39 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                         </div>
                                     </>
                                 )}
+
+                                {/* Auth Roles for sub-org admin */}
+                                <div className="space-y-2 sm:col-span-2">
+                                    <Label>Admin Roles (auth service)</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Roles assigned to users who join via this invite
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 rounded-md border p-2">
+                                        {rolesList.map((role) => (
+                                            <label
+                                                key={role.id}
+                                                className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-muted"
+                                            >
+                                                <Checkbox
+                                                    checked={selectedAuthRoles.includes(role.name)}
+                                                    onCheckedChange={(checked) => {
+                                                        setSelectedAuthRoles((prev) =>
+                                                            checked
+                                                                ? [...prev, role.name]
+                                                                : prev.filter((r) => r !== role.name)
+                                                        );
+                                                    }}
+                                                />
+                                                {role.name}
+                                            </label>
+                                        ))}
+                                        {rolesList.length === 0 && (
+                                            <span className="text-xs text-muted-foreground">
+                                                No roles found
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
 
                                 <div className="space-y-2">
                                     <Label>Seat Limit</Label>

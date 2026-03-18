@@ -15,10 +15,8 @@ import {
     type SubOrgSubscriptionStatus,
     type AddSubOrgMemberRequest,
 } from '../../-services/custom-team-services';
-import {
-    fetchSubOrgAdmins,
-    type SubOrgAdminsResponse,
-} from '@/routes/manage-students/students-list/-services/sub-org-service';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { GET_SUB_ORG_ALL_ADMINS } from '@/constants/urls';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { Copy, Link2, BookOpen, ShieldCheck, ExternalLink, UserPlus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -170,8 +168,9 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
                                                 className="h-5 w-5 p-0"
                                                 onClick={() =>
                                                     copyToClipboard(
-                                                        subscriptionStatus.invite_code,
-                                                        'Invite code'
+                                                        subscriptionStatus.short_url ||
+                                                            createInviteLink(subscriptionStatus.invite_code),
+                                                        'Invite link'
                                                     )
                                                 }
                                             >
@@ -288,7 +287,6 @@ function AddUserToSubOrgSection({
     const [mobileNumber, setMobileNumber] = useState('');
     const [selectedInviteId, setSelectedInviteId] = useState('');
     const [selectedRoleId, setSelectedRoleId] = useState('');
-    const [subOrgRole, setSubOrgRole] = useState('ADMIN');
 
     // Fetch roles from parent institute
     const { data: roles = [] } = useQuery({
@@ -324,7 +322,6 @@ function AddUserToSubOrgSection({
         setMobileNumber('');
         setSelectedInviteId('');
         setSelectedRoleId('');
-        setSubOrgRole('ADMIN');
         setShowForm(false);
     };
 
@@ -363,7 +360,7 @@ function AddUserToSubOrgSection({
             package_session_id: packageSessionId,
             sub_org_id: subOrgId,
             institute_id: instituteId,
-            comma_separated_org_roles: subOrgRole,
+            comma_separated_org_roles: 'ROOT_ADMIN',
         };
         mutation.mutate(request);
     };
@@ -371,24 +368,22 @@ function AddUserToSubOrgSection({
     if (scopedInvites.length === 0) return null;
 
     return (
-        <div className="space-y-2 border-t pt-4">
-            <div className="flex items-center justify-between">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                    <UserPlus className="h-4 w-4" />
+        <div className="space-y-3 border-t pt-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <UserPlus className="h-4 w-4" />
+                Add User
+            </h3>
+            {!showForm && (
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowForm(true)}
+                >
+                    <UserPlus className="mr-1 h-3 w-3" />
                     Add User
-                </h3>
-                {!showForm && (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowForm(true)}
-                    >
-                        <UserPlus className="mr-1 h-3 w-3" />
-                        Add User
-                    </Button>
-                )}
-            </div>
+                </Button>
+            )}
 
             {showForm && (
                 <div className="space-y-3 rounded-md border bg-muted/30 p-3">
@@ -454,19 +449,6 @@ function AddUserToSubOrgSection({
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-1">
-                            <Label className="text-xs">Sub-Org Role *</Label>
-                            <Select value={subOrgRole} onValueChange={setSubOrgRole}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="ADMIN">Admin</SelectItem>
-                                    <SelectItem value="LEARNER">Learner</SelectItem>
-                                    <SelectItem value="ROOT_ADMIN">Root Admin</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
                     </div>
                     <div className="flex justify-end gap-2">
                         <Button
@@ -497,13 +479,16 @@ function AddUserToSubOrgSection({
 }
 
 function SubOrgAdminsSection({ subOrgId }: { subOrgId: string }) {
-    // We need to fetch admins. The existing endpoint requires userId + packageSessionId + subOrgId.
-    // For an institute-level view, we pass empty/placeholder values since the backend
-    // resolves admins by subOrgId primarily.
-    // If this endpoint doesn't support it, we'll show a fallback.
-    const { data: adminsData, isLoading } = useQuery<SubOrgAdminsResponse>({
+    const { data: adminsData, isLoading } = useQuery<{
+        admins: { user_id: string; name: string; role: string }[];
+    }>({
         queryKey: ['sub-org-admins-detail', subOrgId],
-        queryFn: () => fetchSubOrgAdmins('', '', subOrgId),
+        queryFn: async () => {
+            const response = await authenticatedAxiosInstance.get(GET_SUB_ORG_ALL_ADMINS, {
+                params: { subOrgId },
+            });
+            return response.data;
+        },
         enabled: !!subOrgId,
     });
 

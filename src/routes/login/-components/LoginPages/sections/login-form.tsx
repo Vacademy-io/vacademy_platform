@@ -23,6 +23,7 @@ import { handleOAuthLogin } from '@/hooks/login/oauth-login';
 import { GitHubIcon } from '@/components/icons/GitHubIcon';
 import { GoogleIcon } from '@/components/icons/GoogleIcon';
 import { EmailLogin } from './EmailOtpForm';
+import { PhoneLoginForm } from './PhoneLoginForm';
 import { useState } from 'react';
 import { amplitudeEvents, trackEvent } from '@/lib/amplitude';
 import { InstituteSelection } from './InstituteSelection';
@@ -46,12 +47,13 @@ export function LoginForm() {
     const instituteName = cachedBranding?.instituteName;
     const portalRoleLabel = cachedBranding?.role === 'TEACHER' ? 'Teacher' : 'Admin';
     const portalInstitute = instituteName || 'Vacademy';
-    const [isEmailLogin, setIsEmailLogin] = useState(false);
+    const [authMethod, setAuthMethod] = useState<'EMAIL' | 'USERNAME' | 'PHONE'>('USERNAME');
     const [providerFlags, setProviderFlags] = useState({
         allowGoogleAuth: true,
         allowGithubAuth: true,
         allowEmailOtpAuth: true,
         allowUsernamePasswordAuth: true,
+        allowPhoneAuth: true,
     });
     const [allowSignup, setAllowSignup] = useState(false);
     const [showInstituteSelection, setShowInstituteSelection] = useState(false);
@@ -84,6 +86,7 @@ export function LoginForm() {
                     allowGithubAuth: cached.allowGithubAuth !== false,
                     allowEmailOtpAuth: cached.allowEmailOtpAuth !== false,
                     allowUsernamePasswordAuth: cached.allowUsernamePasswordAuth !== false,
+                    allowPhoneAuth: cached.allowPhoneAuth !== false,
                 });
                 setAllowSignup(cached.allowSignup !== false);
 
@@ -92,7 +95,13 @@ export function LoginForm() {
                     cached.allowUsernamePasswordAuth === false &&
                     cached.allowEmailOtpAuth !== false
                 ) {
-                    setIsEmailLogin(true);
+                    setAuthMethod('EMAIL');
+                } else if (
+                    cached.allowUsernamePasswordAuth === false &&
+                    cached.allowEmailOtpAuth === false &&
+                    cached.allowPhoneAuth !== false
+                ) {
+                    setAuthMethod('PHONE');
                 }
             }
         } catch (_e) {
@@ -357,11 +366,15 @@ export function LoginForm() {
     // };
 
     const handleSwitchToEmail = () => {
-        setIsEmailLogin(true);
+        setAuthMethod('EMAIL');
     };
 
     const handleSwitchToUsername = () => {
-        setIsEmailLogin(false);
+        setAuthMethod('USERNAME');
+    };
+
+    const handleSwitchToPhone = () => {
+        setAuthMethod('PHONE');
     };
 
     const handleInstituteSelect = async (instituteId: string) => {
@@ -502,116 +515,160 @@ export function LoginForm() {
                                         </div>
                                     )}
 
-                                {isEmailLogin ? (
-                                    <EmailLogin onSwitchToUsername={handleSwitchToUsername} />
-                                ) : (
-                                    <Form {...form}>
-                                        <form
-                                            onSubmit={form.handleSubmit(onSubmit)}
-                                            className="w-full space-y-4"
-                                        >
-                                            <FormField
-                                                control={form.control}
-                                                name="username"
-                                                render={({
-                                                    field: { onChange, value, ...field },
-                                                }) => (
-                                                    <FormItem>
-                                                        <FormControl>
-                                                            <MyInput
-                                                                inputType="text"
-                                                                inputPlaceholder="Enter your username"
-                                                                input={value}
-                                                                onChangeFunction={onChange}
-                                                                error={
-                                                                    form.formState.errors.username
-                                                                        ?.message
-                                                                }
-                                                                required={true}
-                                                                size="large"
-                                                                label="Username"
-                                                                {...field}
-                                                                className="w-full"
-                                                            />
-                                                        </FormControl>
-                                                    </FormItem>
-                                                )}
+                                {(() => {
+                                    const allowEmail = providerFlags.allowEmailOtpAuth;
+                                    const allowUserPass = providerFlags.allowUsernamePasswordAuth;
+                                    const allowPhone = providerFlags.allowPhoneAuth;
+
+                                    let activeMethod = authMethod;
+                                    if (activeMethod === "EMAIL" && !allowEmail) {
+                                        activeMethod = allowUserPass ? "USERNAME" : (allowPhone ? "PHONE" : "USERNAME");
+                                    } else if (activeMethod === "USERNAME" && !allowUserPass) {
+                                        activeMethod = allowEmail ? "EMAIL" : (allowPhone ? "PHONE" : "EMAIL");
+                                    } else if (activeMethod === "PHONE" && !allowPhone) {
+                                        activeMethod = allowEmail ? "EMAIL" : (allowUserPass ? "USERNAME" : "EMAIL");
+                                    }
+
+                                    if (activeMethod === "PHONE" && allowPhone) {
+                                        return (
+                                            <PhoneLoginForm
+                                                onSwitchToUsername={handleSwitchToUsername}
+                                                onSwitchToEmail={handleSwitchToEmail}
+                                                allowUsernamePasswordAuth={allowUserPass}
+                                                allowEmailOtpAuth={allowEmail}
                                             />
-                                            <div className="space-y-1">
-                                                <FormField
-                                                    control={form.control}
-                                                    name="password"
-                                                    render={({
-                                                        field: { onChange, value, ...field },
-                                                    }) => (
-                                                        <FormItem>
-                                                            <FormControl>
-                                                                <MyInput
-                                                                    inputType="password"
-                                                                    inputPlaceholder="••••••••"
-                                                                    input={value}
-                                                                    onChangeFunction={onChange}
-                                                                    error={
-                                                                        form.formState.errors
-                                                                            .password?.message
-                                                                    }
-                                                                    required={true}
-                                                                    size="large"
-                                                                    label="Password"
-                                                                    {...field}
-                                                                    className="w-full"
-                                                                />
-                                                            </FormControl>
-                                                        </FormItem>
-                                                    )}
-                                                />
-                                                <div className="flex items-center justify-end">
-                                                    <Link to="/login/forgot-password">
-                                                        <div className="hover:text-primary-700 cursor-pointer text-xs font-medium text-primary-600 transition-colors">
-                                                            Forgot Password?
-                                                        </div>
-                                                    </Link>
-                                                </div>
-                                            </div>
+                                        );
+                                    }
 
-                                            {providerFlags.allowEmailOtpAuth &&
-                                                providerFlags.allowUsernamePasswordAuth && (
-                                                    <div className="flex w-full items-center justify-center pt-1">
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleSwitchToEmail}
-                                                            className="hover:text-primary-700 cursor-pointer text-xs font-medium text-primary-600 transition-colors"
-                                                        >
-                                                            Prefer email login?
-                                                        </button>
-                                                    </div>
-                                                )}
+                                    if (activeMethod === "EMAIL" && allowEmail) {
+                                        return <EmailLogin
+                                            onSwitchToUsername={handleSwitchToUsername}
+                                            onSwitchToPhone={handleSwitchToPhone}
+                                        />;
+                                    }
 
-                                            <div className="flex flex-col items-center gap-2 pt-2">
-                                                <MyButton
-                                                    type="submit"
-                                                    scale="large"
-                                                    buttonType="primary"
-                                                    layoutVariant="default"
-                                                    disabled={mutation.isPending}
+                                    if (activeMethod === "USERNAME" && allowUserPass) {
+                                        return (
+                                            <Form {...form}>
+                                                <form
+                                                    onSubmit={form.handleSubmit(onSubmit)}
+                                                    className="w-full space-y-4"
                                                 >
-                                                    {mutation.isPending ? 'Logging in...' : 'Login'}
-                                                </MyButton>
-                                                {allowSignup && (
-                                                    <p className="text-xs text-neutral-700">
-                                                        Don&apos;t have an account?&nbsp;&nbsp;
-                                                        <span
-                                                            className="hover:text-primary-700 cursor-pointer font-medium text-primary-600 transition-colors"
-                                                            onClick={handleNavigateSignup}
+                                                    <FormField
+                                                        control={form.control}
+                                                        name="username"
+                                                        render={({
+                                                            field: { onChange, value, ...field },
+                                                        }) => (
+                                                            <FormItem>
+                                                                <FormControl>
+                                                                    <MyInput
+                                                                        inputType="text"
+                                                                        inputPlaceholder="Enter your username"
+                                                                        input={value}
+                                                                        onChangeFunction={onChange}
+                                                                        error={
+                                                                            form.formState.errors.username
+                                                                                ?.message
+                                                                        }
+                                                                        required={true}
+                                                                        size="large"
+                                                                        label="Username"
+                                                                        {...field}
+                                                                        className="w-full"
+                                                                    />
+                                                                </FormControl>
+                                                            </FormItem>
+                                                        )}
+                                                    />
+                                                    <div className="space-y-1">
+                                                        <FormField
+                                                            control={form.control}
+                                                            name="password"
+                                                            render={({
+                                                                field: { onChange, value, ...field },
+                                                            }) => (
+                                                                <FormItem>
+                                                                    <FormControl>
+                                                                        <MyInput
+                                                                            inputType="password"
+                                                                            inputPlaceholder="••••••••"
+                                                                            input={value}
+                                                                            onChangeFunction={onChange}
+                                                                            error={
+                                                                                form.formState.errors
+                                                                                    .password?.message
+                                                                            }
+                                                                            required={true}
+                                                                            size="large"
+                                                                            label="Password"
+                                                                            {...field}
+                                                                            className="w-full"
+                                                                        />
+                                                                    </FormControl>
+                                                                </FormItem>
+                                                            )}
+                                                        />
+                                                        <div className="flex items-center justify-end">
+                                                            <Link to="/login/forgot-password">
+                                                                <div className="hover:text-primary-700 cursor-pointer text-xs font-medium text-primary-600 transition-colors">
+                                                                    Forgot Password?
+                                                                </div>
+                                                            </Link>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex w-full items-center justify-center gap-4 pt-1">
+                                                        {allowEmail && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleSwitchToEmail}
+                                                                className="hover:text-primary-700 cursor-pointer text-xs font-medium text-primary-600 transition-colors"
+                                                            >
+                                                                Use Email OTP
+                                                            </button>
+                                                        )}
+
+                                                        {allowPhone && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleSwitchToPhone}
+                                                                className="hover:text-primary-700 cursor-pointer text-xs font-medium text-primary-600 transition-colors"
+                                                            >
+                                                                Use Phone OTP
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex flex-col items-center gap-2 pt-2">
+                                                        <MyButton
+                                                            type="submit"
+                                                            scale="large"
+                                                            buttonType="primary"
+                                                            layoutVariant="default"
+                                                            disabled={mutation.isPending}
                                                         >
-                                                            Create One
-                                                        </span>
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </form>
-                                    </Form>
-                                )}
+                                                            {mutation.isPending ? 'Logging in...' : 'Login'}
+                                                        </MyButton>
+                                                        {allowSignup && (
+                                                            <p className="text-xs text-neutral-700">
+                                                                Don&apos;t have an account?&nbsp;&nbsp;
+                                                                <span
+                                                                    className="hover:text-primary-700 cursor-pointer font-medium text-primary-600 transition-colors"
+                                                                    onClick={handleNavigateSignup}
+                                                                >
+                                                                    Create One
+                                                                </span>
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </form>
+                                            </Form>
+                                        );
+                                    }
+
+                                    return null;
+                                })()}
                             </div>
                         </div>
                     </div>

@@ -33,7 +33,13 @@ const otpSchema = z.object({
 type EmailFormValues = z.infer<typeof emailSchema>;
 type OtpFormValues = { otp: string[] };
 
-export function EmailLogin({ onSwitchToUsername }: { onSwitchToUsername: () => void }) {
+export function EmailLogin({
+    onSwitchToUsername,
+    onSwitchToPhone
+}: {
+    onSwitchToUsername: () => void;
+    onSwitchToPhone?: () => void;
+}) {
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [email, setEmail] = useState('');
     const [timer, setTimer] = useState(0);
@@ -44,6 +50,7 @@ export function EmailLogin({ onSwitchToUsername }: { onSwitchToUsername: () => v
     const [isLoading, setIsLoading] = useState(false);
     const [allowSignup, setAllowSignup] = useState(false);
     const [allowUsernamePasswordAuth, setAllowUsernamePasswordAuth] = useState(false);
+    const [allowPhoneAuth, setAllowPhoneAuth] = useState(false);
 
     const emailForm = useForm<EmailFormValues>({
         resolver: zodResolver(emailSchema),
@@ -73,6 +80,7 @@ export function EmailLogin({ onSwitchToUsername }: { onSwitchToUsername: () => v
             if (cached) {
                 setAllowSignup(cached.allowSignup !== false);
                 setAllowUsernamePasswordAuth(cached.allowUsernamePasswordAuth !== false);
+                setAllowPhoneAuth(cached.allowPhoneAuth !== false);
             }
         } catch (_e) {
             // ignore
@@ -365,8 +373,8 @@ export function EmailLogin({ onSwitchToUsername }: { onSwitchToUsername: () => v
                                                             <Input
                                                                 {...field}
                                                                 ref={(el) =>
-                                                                    (otpInputRefs.current[index] =
-                                                                        el)
+                                                                (otpInputRefs.current[index] =
+                                                                    el)
                                                                 }
                                                                 type="text"
                                                                 inputMode="numeric"
@@ -439,11 +447,10 @@ export function EmailLogin({ onSwitchToUsername }: { onSwitchToUsername: () => v
                                         <div className="h-3 w-px bg-gray-300"></div>
                                         <button
                                             type="button"
-                                            className={`transition-colors ${
-                                                timer > 0
+                                            className={`transition-colors ${timer > 0
                                                     ? 'cursor-not-allowed text-gray-400'
                                                     : 'hover:text-primary-600 text-primary-500'
-                                            }`}
+                                                }`}
                                             onClick={() =>
                                                 timer === 0 && sendOtpMutation.mutate(email)
                                             }
@@ -471,6 +478,18 @@ export function EmailLogin({ onSwitchToUsername }: { onSwitchToUsername: () => v
                         onClick={onSwitchToUsername}
                     >
                         Prefer username login?
+                    </button>
+                </div>
+            )}
+
+            {allowPhoneAuth && onSwitchToPhone && (
+                <div className="mt-2 text-center">
+                    <button
+                        type="button"
+                        className="hover:text-primary-600 text-sm text-primary-500 transition-colors"
+                        onClick={onSwitchToPhone}
+                    >
+                        Use Phone OTP Instead?
                     </button>
                 </div>
             )}

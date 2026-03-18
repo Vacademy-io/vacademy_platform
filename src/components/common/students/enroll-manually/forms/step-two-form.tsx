@@ -18,6 +18,7 @@ import {
     SystemField,
     CustomField,
 } from '@/services/custom-field-settings';
+import { getCachedInstituteBranding } from '@/services/domain-routing';
 import PhoneInputField from '@/components/design-system/phone-input-field';
 
 interface SystemFieldConfig {
@@ -269,7 +270,16 @@ export const StepTwoForm = ({
                 }
 
                 // Mandatory fields (name, email, phone) are always visible
-                const isMandatory = ['full_name', 'email', 'mobile_number'].includes(formKey);
+                const domainRouting = getCachedInstituteBranding();
+                const isPhoneAuth = domainRouting?.allowPhoneAuth === true;
+
+                // If phone auth is allowed, email is not mandatory
+                const mandatoryFields = ['full_name', 'mobile_number'];
+                if (!isPhoneAuth) {
+                    mandatoryFields.push('email');
+                }
+
+                const isMandatory = mandatoryFields.includes(formKey);
                 const isVisible = isMandatory || field.visibility;
 
                 if (isVisible) {

@@ -53,3 +53,30 @@ export interface InstallmentDetailDTO {
     due_date: string; // ISO datetime
     status: 'PAID' | 'OVERDUE' | 'PARTIAL' | 'PENDING';
 }
+
+// ─── Student Dues (Pay Installments) ───────────────────────────────────────
+export interface StudentFeeDueDTO {
+    id: string;
+    user_plan_id: string;
+    cpo_id: string;
+    cpo_name: string;
+    fee_type_name: string;
+    fee_type_code: string;
+    fee_type_description: string;
+    amount_expected: number;
+    discount_amount: number;
+    amount_paid: number;
+    amount_due: number;
+    due_date: string; // ISO datetime
+    status: string;
+    is_overdue: boolean;
+    days_overdue: number;
+}
+
+// ─── Allocate Selected Payment Request ─────────────────────────────────────
+export interface AllocateSelectedRequest {
+    institute_id: string;
+    student_fee_payment_ids: string[];
+    amount: number;
+    remarks?: string;
+}

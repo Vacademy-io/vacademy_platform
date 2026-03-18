@@ -206,6 +206,11 @@ export const SidebarItemsData: SidebarItemsType[] = [
                 subItemLink: '/financial-management/collection-dashboard',
                 subItemId: 'collection-dashboard',
             },
+            {
+                subItem: 'Pay Installments',
+                subItemLink: '/financial-management/pay-installments',
+                subItemId: 'pay-installments',
+            },
         ],
     },
     {

@@ -284,7 +284,7 @@ export const ChatbotSidePanel: React.FC = () => {
     setStorePanelOpen(isOpen);
   }, [isOpen, setStorePanelOpen]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const readyAttachments = pendingAttachments.filter(a => a.url);
@@ -874,14 +874,21 @@ export const ChatbotSidePanel: React.FC = () => {
         )}
 
         {/* Unified Input Box */}
-        <div className="w-full flex items-center gap-1 bg-muted/40 rounded-xl p-1 ring-1 ring-border/50 focus-within:ring-2 focus-within:ring-primary/30 transition-all">
-          <Input
+        <div className="w-full flex items-end gap-1 bg-muted/40 rounded-xl p-1 ring-1 ring-border/50 focus-within:ring-2 focus-within:ring-primary/30 transition-all">
+          <textarea
             placeholder="Ask a question... ($ for math)"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={!sessionId || isLoading}
-            className="flex-1 h-8 px-3 text-[13px] font-mono bg-transparent border-0 shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/50"
+            rows={1}
+            className="flex-1 min-h-[32px] max-h-[120px] px-3 py-1.5 text-[13px] font-mono bg-transparent border-0 shadow-none focus:outline-none focus-visible:ring-0 placeholder:text-muted-foreground/50 resize-none"
+            style={{ height: 'auto', overflow: 'hidden' }}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = 'auto';
+              target.style.height = Math.min(target.scrollHeight, 120) + 'px';
+            }}
           />
           <button
             className={cn(

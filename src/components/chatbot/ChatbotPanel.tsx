@@ -418,7 +418,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
     return null;
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage(inputValue, selectedIntent, pendingAttachments.length > 0 ? pendingAttachments : undefined);
@@ -1055,7 +1055,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 )}
 
                 {/* Input Row */}
-                <div className="w-full flex items-center gap-1.5">
+                <div className="w-full flex items-end gap-1.5">
                   <Select
                     value={selectedIntent}
                     onValueChange={(value) => setSelectedIntent(value as MessageIntent)}
@@ -1069,13 +1069,20 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                       <SelectItem value="practice">Practice</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input
+                  <textarea
                     placeholder="Type message... (use $ for math)"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     disabled={!sessionId || isLoading}
-                    className="text-sm h-9 flex-1 font-mono"
+                    rows={1}
+                    className="text-sm min-h-[36px] max-h-[120px] flex-1 font-mono px-3 py-2 bg-transparent border rounded-md border-input focus:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none disabled:opacity-50"
+                    style={{ height: 'auto', overflow: 'hidden' }}
+                    onInput={(e) => {
+                      const target = e.target as HTMLTextAreaElement;
+                      target.style.height = 'auto';
+                      target.style.height = Math.min(target.scrollHeight, 120) + 'px';
+                    }}
                   />
                   <Button
                     variant="ghost"

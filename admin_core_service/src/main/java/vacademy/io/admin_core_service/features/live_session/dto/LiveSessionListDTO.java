@@ -7,10 +7,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.sql.Time;
 import java.sql.Date;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
 @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
 public class LiveSessionListDTO {
@@ -34,6 +34,45 @@ public class LiveSessionListDTO {
     private String defaultClassLink;
     private String defaultClassName;
     private String linkType;
+    private List<PackageSessionInfo> packageSessionDetails;
 
-    // Getters and Setters
+    public LiveSessionListDTO(String sessionId, Integer waitingRoomTime, String thumbnailFileId,
+            String backgroundScoreFileId, String sessionStreamingServiceType, String scheduleId,
+            Date meetingDate, Time startTime, Time lastEntryTime, String recurrenceType,
+            String accessLevel, String title, String subject, String meetingLink,
+            String registrationFormLinkForPublicSessions, String timezone,
+            LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig,
+            String defaultClassLink, String defaultClassName, String linkType) {
+        this.sessionId = sessionId;
+        this.waitingRoomTime = waitingRoomTime;
+        this.thumbnailFileId = thumbnailFileId;
+        this.backgroundScoreFileId = backgroundScoreFileId;
+        this.sessionStreamingServiceType = sessionStreamingServiceType;
+        this.scheduleId = scheduleId;
+        this.meetingDate = meetingDate;
+        this.startTime = startTime;
+        this.lastEntryTime = lastEntryTime;
+        this.recurrenceType = recurrenceType;
+        this.accessLevel = accessLevel;
+        this.title = title;
+        this.subject = subject;
+        this.meetingLink = meetingLink;
+        this.registrationFormLinkForPublicSessions = registrationFormLinkForPublicSessions;
+        this.timezone = timezone;
+        this.learnerButtonConfig = learnerButtonConfig;
+        this.defaultClassLink = defaultClassLink;
+        this.defaultClassName = defaultClassName;
+        this.linkType = linkType;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class PackageSessionInfo {
+        private String packageSessionId;
+        private String packageName;
+        private String levelName;
+        private String sessionName;
+    }
 }

@@ -727,6 +727,7 @@ public class ApplicantService {
                                                                 .name(childUser.getFullName())
                                                                 .dob(childUser.getDateOfBirth())
                                                                 .gender(childUser.getGender())
+                                                                .destinationPackageSessionId(audienceResponse.getDestinationPackageSessionId())
                                                                 .build();
                                         }
                                 }

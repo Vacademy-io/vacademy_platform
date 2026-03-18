@@ -76,8 +76,12 @@ public class NotificationService {
     }
 
     public Boolean sendAttachmentEmail(List<AttachmentNotificationDTO> attachmentNotificationDTOs, String instituteId) {
+        String endpoint = NotificationConstant.SEND_ATTACHMENT_EMAIL;
+        if (StringUtils.hasText(instituteId)) {
+            endpoint += "?instituteId=" + instituteId;
+        }
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
-                notificationServerBaseUrl, NotificationConstant.SEND_ATTACHMENT_EMAIL, attachmentNotificationDTOs);
+                notificationServerBaseUrl, endpoint, attachmentNotificationDTOs);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {

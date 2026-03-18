@@ -230,6 +230,19 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("subOrgId") String subOrgId,
       @Param("userId") String userId);
 
+  // Find all admins for a sub-org (across all package sessions)
+  @Query(value = """
+      SELECT DISTINCT ssigm.user_id AS user_id,
+             s.full_name AS full_name,
+             ssigm.comma_separated_org_roles AS roles
+      FROM student_session_institute_group_mapping ssigm
+      JOIN student s ON s.user_id = ssigm.user_id
+      WHERE ssigm.sub_org_id = :subOrgId
+        AND ssigm.comma_separated_org_roles LIKE '%ADMIN%'
+        AND ssigm.status = 'ACTIVE'
+      """, nativeQuery = true)
+  List<Object[]> findAdminsBySubOrg(@Param("subOrgId") String subOrgId);
+
   List<StudentSessionInstituteGroupMapping> findByUserPlanIdAndStatus(String userPlanId, String status);
 
   long countByPackageSessionIdAndStatus(String packageSessionId, String status);

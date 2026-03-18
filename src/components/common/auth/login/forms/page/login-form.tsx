@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth/sessionUtility";
 import { EmailLogin } from "./EmailOtpForm";
 import { UsernameLogin } from "./UsernamePasswordForm";
+import { PhoneLoginForm } from "./PhoneLoginForm";
 import { Preferences } from "@capacitor/preferences";
 import { FcGoogle } from "react-icons/fc";
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
@@ -66,19 +67,22 @@ export function LoginForm({
     username: string;
     password: string;
   } | null>(null);
-  const [isEmailLogin, setIsEmailLogin] = useState(
-    isPublic === "true" && !fromPaymentSuccess
-  );
+  const [authMethod, setAuthMethod] = useState<"EMAIL" | "USERNAME" | "PHONE">(() => {
+    if (isPublic === "true" && !fromPaymentSuccess) return "EMAIL";
+    return "USERNAME";
+  });
   const [providerFlags, setProviderFlags] = useState<{
     allowGoogleAuth: boolean;
     allowGithubAuth: boolean;
     allowEmailOtpAuth: boolean;
     allowUsernamePasswordAuth: boolean;
+    allowPhoneAuth: boolean;
   }>({
     allowGoogleAuth: true,
     allowGithubAuth: true,
     allowEmailOtpAuth: true,
     allowUsernamePasswordAuth: true,
+    allowPhoneAuth: true,
   });
   const { setInstituteId } = useInstituteFeatureStore();
   const domainRouting = useDomainRouting();
@@ -103,12 +107,19 @@ export function LoginForm({
           allowEmailOtpAuth: parsed?.allowEmailOtpAuth !== false,
           allowUsernamePasswordAuth:
             parsed?.allowUsernamePasswordAuth !== false,
+          allowPhoneAuth: parsed?.allowPhoneAuth !== false,
         });
         if (
           parsed?.allowUsernamePasswordAuth === false &&
           parsed?.allowEmailOtpAuth !== false
         ) {
-          setIsEmailLogin(true);
+          setAuthMethod("EMAIL");
+        } else if (
+          parsed?.allowUsernamePasswordAuth === false &&
+          parsed?.allowEmailOtpAuth === false &&
+          parsed?.allowPhoneAuth !== false
+        ) {
+          setAuthMethod("PHONE");
         }
         if (parsed?.fontFamily) {
           const mapFamily = (f: string) => {
@@ -159,12 +170,12 @@ export function LoginForm({
           username: parsed.username,
           password: parsed.password,
         });
-        setIsEmailLogin(false);
+        setAuthMethod("USERNAME");
         if (parsed.instituteId) {
           Preferences.set({
             key: "InstituteId",
             value: parsed.instituteId,
-          }).catch(() => {});
+          }).catch(() => { });
         }
       }
     } catch {
@@ -197,7 +208,7 @@ export function LoginForm({
           console.log("[LoginForm] ✅ Detected popup via window.name");
           return true;
         }
-      } catch {}
+      } catch { }
 
       // Check for popup parameter in URL
       try {
@@ -206,7 +217,7 @@ export function LoginForm({
           console.log("[LoginForm] ✅ Detected popup via ?popup=1");
           return true;
         }
-      } catch {}
+      } catch { }
 
       console.log("[LoginForm] ❌ Not detected as popup window");
       console.log("[LoginForm] Debug:", {
@@ -961,62 +972,43 @@ export function LoginForm({
                   <AnimatePresence mode="wait">
                     {(() => {
                       const allowEmail = providerFlags.allowEmailOtpAuth;
-                      const allowUserPass =
-                        providerFlags.allowUsernamePasswordAuth;
+                      const allowUserPass = providerFlags.allowUsernamePasswordAuth;
+                      const allowPhone = providerFlags.allowPhoneAuth;
 
-                      // Only Email OTP allowed
-                      if (allowEmail && !allowUserPass) {
+                      // Determine active method (fallback strategy)
+                      let activeMethod = authMethod;
+                      if (activeMethod === "EMAIL" && !allowEmail) {
+                        activeMethod = allowUserPass ? "USERNAME" : (allowPhone ? "PHONE" : "USERNAME");
+                      } else if (activeMethod === "USERNAME" && !allowUserPass) {
+                        activeMethod = allowEmail ? "EMAIL" : (allowPhone ? "PHONE" : "EMAIL");
+                      } else if (activeMethod === "PHONE" && !allowPhone) {
+                        activeMethod = allowEmail ? "EMAIL" : (allowUserPass ? "USERNAME" : "EMAIL");
+                      }
+
+                      if (activeMethod === "PHONE" && allowPhone) {
                         return (
                           <motion.div
-                            key="email-only"
+                            key="phone"
                             initial={{ x: 200, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: -200, opacity: 0 }}
                             transition={{ duration: 0.2 }}
                           >
-                            <EmailLogin
-                              onSwitchToUsername={() => {
-                                /* hidden via child check */
-                              }}
+                            <PhoneLoginForm
+                              onSwitchToUsername={() => setAuthMethod("USERNAME")}
+                              onSwitchToEmail={() => setAuthMethod("EMAIL")}
+                              allowUsernamePasswordAuth={allowUserPass}
+                              allowEmailOtpAuth={allowEmail}
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
-                              allowUsernamePasswordAuth={
-                                providerFlags.allowUsernamePasswordAuth
-                              }
                             />
                           </motion.div>
                         );
                       }
 
-                      // Only Username/Password allowed
-                      if (!allowEmail && allowUserPass) {
+                      if (activeMethod === "EMAIL" && allowEmail) {
                         return (
-                          <motion.div
-                            key="username-only"
-                            initial={{ x: 200, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
-                            exit={{ x: -200, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <UsernameLogin
-                              onSwitchToEmail={() => {
-                                /* no email route enabled */
-                              }}
-                              allowEmailOtpAuth={false}
-                              type={type}
-                              courseId={courseId}
-                              onSwitchToSignup={onSwitchToSignup}
-                              initialUsername={postPaymentCreds?.username}
-                              initialPassword={postPaymentCreds?.password}
-                            />
-                          </motion.div>
-                        );
-                      }
-
-                      // Both allowed: preserve toggle behavior
-                      if (allowEmail && allowUserPass) {
-                        return isEmailLogin ? (
                           <motion.div
                             key="email"
                             initial={{ x: 200, opacity: 0 }}
@@ -1025,16 +1017,20 @@ export function LoginForm({
                             transition={{ duration: 0.2 }}
                           >
                             <EmailLogin
-                              onSwitchToUsername={() => setIsEmailLogin(false)}
+                              onSwitchToUsername={() => setAuthMethod("USERNAME")}
+                              onSwitchToPhone={() => setAuthMethod("PHONE")}
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
-                              allowUsernamePasswordAuth={
-                                providerFlags.allowUsernamePasswordAuth
-                              }
+                              allowUsernamePasswordAuth={allowUserPass}
+                              allowPhoneAuth={allowPhone}
                             />
                           </motion.div>
-                        ) : (
+                        );
+                      }
+
+                      if (activeMethod === "USERNAME" && allowUserPass) {
+                        return (
                           <motion.div
                             key="username"
                             initial={{ x: 200, opacity: 0 }}
@@ -1043,10 +1039,10 @@ export function LoginForm({
                             transition={{ duration: 0.2 }}
                           >
                             <UsernameLogin
-                              onSwitchToEmail={() => setIsEmailLogin(true)}
-                              allowEmailOtpAuth={
-                                providerFlags.allowEmailOtpAuth
-                              }
+                              onSwitchToEmail={() => setAuthMethod("EMAIL")}
+                              onSwitchToPhone={() => setAuthMethod("PHONE")}
+                              allowEmailOtpAuth={allowEmail}
+                              allowPhoneAuth={allowPhone}
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
@@ -1057,7 +1053,6 @@ export function LoginForm({
                         );
                       }
 
-                      // None allowed: render nothing or a message
                       return null;
                     })()}
                   </AnimatePresence>

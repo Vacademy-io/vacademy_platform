@@ -59,13 +59,17 @@ export function EmailLogin({
   onSwitchToSignup,
   onEmailVerificationSuccess,
   allowUsernamePasswordAuth,
+  allowPhoneAuth,
+  onSwitchToPhone,
 }: {
   onSwitchToUsername: () => void;
+  onSwitchToPhone?: () => void;
   type?: string;
   courseId?: string;
   onSwitchToSignup?: () => void;
   onEmailVerificationSuccess?: (email: string) => void;
   allowUsernamePasswordAuth?: boolean;
+  allowPhoneAuth?: boolean;
 }) {
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [email, setEmail] = useState("");
@@ -683,11 +687,10 @@ export function EmailLogin({
                       type="button"
                       whileHover={timer === 0 ? { scale: 1.02 } : {}}
                       whileTap={timer === 0 ? { scale: 0.98 } : {}}
-                      className={`transition-colors duration-200 font-medium ${
-                        timer > 0
+                      className={`transition-colors duration-200 font-medium ${timer > 0
                           ? "text-gray-400 cursor-not-allowed"
                           : "text-gray-700 hover:text-gray-900"
-                      }`}
+                        }`}
                       onClick={() =>
                         timer === 0 &&
                         sendOtpMutation.mutate({
@@ -731,6 +734,18 @@ export function EmailLogin({
             onClick={onSwitchToUsername}
           >
             Use username & password instead?
+            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+          </motion.button>
+        )}
+
+        {(allowPhoneAuth ?? true) && onSwitchToPhone && (
+          <motion.button
+            type="button"
+            whileHover={{ scale: 1.02 }}
+            className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium pt-2"
+            onClick={onSwitchToPhone}
+          >
+            Use Phone OTP Instead?
             <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
           </motion.button>
         )}

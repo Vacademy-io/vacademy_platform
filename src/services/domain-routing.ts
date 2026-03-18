@@ -27,6 +27,7 @@ export interface DomainRoutingResponse {
   allowGithubAuth?: boolean | null;
   allowEmailOtpAuth?: boolean | null;
   allowUsernamePasswordAuth?: boolean | null;
+  allowPhoneAuth?: boolean | null;
   // App Links
   playStoreAppLink?: string | null;
   appStoreAppLink?: string | null;

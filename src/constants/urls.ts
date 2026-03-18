@@ -117,6 +117,7 @@ export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/sen
 export const LIVE_SESSION_VERIFY_OTP = `${BASE_URL}/notification-service/v1/verify-email-otp`;
 export const REQUEST_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/request-generic-whatsapp-otp`;
 export const VERIFY_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp`;
+export const VERIFY_WHATSAPP_OTP_LOGIN = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp-login`;
 export const LEAD_COLLECTION_ENROLL_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll/detail`;
 export const LIVE_SESSION_GET_REGISTRATION_DATA = `${BASE_URL}/admin-core-service/live-session/get-registration-data`;
 export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${BASE_URL}/admin-core-service/get-sessions/learner/live-and-upcoming`;

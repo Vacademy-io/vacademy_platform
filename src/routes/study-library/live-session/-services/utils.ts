@@ -109,6 +109,12 @@ export interface Schedule {
     meeting_date: string | null;
     timezone?: string;
     package_session_ids: string[];
+    package_session_details?: Array<{
+        package_session_id: string;
+        package_name: string;
+        level_name: string;
+        session_name: string;
+    }> | null;
     added_schedules: Array<{
         day: string;
         startTime: string;
@@ -399,6 +405,12 @@ export interface SessionSearchResponseItem {
         text_color: string;
         visible: boolean;
     } | null;
+    package_session_details?: Array<{
+        package_session_id: string;
+        package_name: string;
+        level_name: string;
+        session_name: string;
+    }> | null;
 }
 
 export interface PaginationMetadata {

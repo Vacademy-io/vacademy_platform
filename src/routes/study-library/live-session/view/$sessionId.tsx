@@ -1285,20 +1285,41 @@ function ViewLiveSession() {
                             </Card>
                         )}
 
-                        {/* Associatd Batches */}
+                        {/* Associated Batches */}
                         {schedule.package_session_ids && schedule.package_session_ids.length > 0 && (
                                 <Card className="overflow-hidden border-border/60 shadow-sm">
                                     <CardHeader className="bg-muted/40 px-6 py-4">
                                     <CardTitle className="text-lg font-semibold">Associated Batches</CardTitle>
+                                    <CardDescription>{schedule.package_session_ids.length} batch{schedule.package_session_ids.length > 1 ? 'es' : ''} linked</CardDescription>
                                     </CardHeader>
                                     <Separator />
                                     <CardContent className="p-6">
-                                        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 p-4 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
-                                            <span className="font-medium">Linked Batches</span>
-                                            <Badge className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600">
-                                                {schedule.package_session_ids.length}
-                                            </Badge>
-                                        </div>
+                                        {schedule.package_session_details && schedule.package_session_details.length > 0 ? (
+                                            <div className="flex flex-col gap-3">
+                                                {schedule.package_session_details.map((detail) => (
+                                                    <div
+                                                        key={detail.package_session_id}
+                                                        className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 p-4 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+                                                    >
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <span className="font-medium">{detail.level_name} {detail.package_name}</span>
+                                                            <span className="text-xs text-blue-500">{detail.session_name}</span>
+                                                        </div>
+                                                        <Badge className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600">
+                                                            <Users className="mr-1 h-3 w-3" />
+                                                            Batch
+                                                        </Badge>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 p-4 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                                                <span className="font-medium">Linked Batches</span>
+                                                <Badge className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600">
+                                                    {schedule.package_session_ids.length}
+                                                </Badge>
+                                            </div>
+                                        )}
                                     </CardContent>
                                 </Card>
                             )}

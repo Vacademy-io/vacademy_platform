@@ -685,6 +685,7 @@ export default function SessionListPage() {
                                 default_class_link: session.default_class_link,
                                 defaultClassName: session.default_class_name,
                                 learner_button_config: session.learner_button_config,
+                                package_session_details: session.package_session_details,
                             };
 
                             if (selectedTab === SessionStatus.PAST) {

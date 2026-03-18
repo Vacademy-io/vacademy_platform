@@ -320,6 +320,16 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                     <span className="text-black">End Time:</span>
                     <span>{session.last_entry_time}</span>
                 </div>
+                {session.package_session_details && session.package_session_details.length > 0 && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-black">Batches:</span>
+                        <span>
+                            {session.package_session_details
+                                .map((d) => `${d.level_name} ${d.package_name}`)
+                                .join(', ')}
+                        </span>
+                    </div>
+                )}
                 <div
                     className="flex items-center gap-4 text-primary-500"
                     onClick={(e) => e.stopPropagation()}

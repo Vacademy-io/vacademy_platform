@@ -29,6 +29,13 @@ export interface GetLiveSessionsRequest {
     };
 }
 
+export interface PackageSessionDetail {
+    package_session_id: string;
+    package_name: string;
+    level_name: string;
+    session_name: string;
+}
+
 export interface LiveSession {
     session_id: string;
     schedule_id: string;
@@ -53,6 +60,7 @@ export interface LiveSession {
         text_color: string;
         visible: boolean;
     } | null;
+    package_session_details?: PackageSessionDetail[] | null;
 }
 
 export const createLiveSessionStep1 = async (data: LiveSessionStep1RequestDTO) => {

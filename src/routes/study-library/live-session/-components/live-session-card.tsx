@@ -324,6 +324,16 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
                         <span className="text-black">Meeting Type:</span>
                         <span>{session.recurrence_type}</span>
                     </div>
+                    {session.package_session_details && session.package_session_details.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-black">Batches:</span>
+                            <span>
+                                {session.package_session_details
+                                    .map((d) => `${d.level_name} ${d.package_name}`)
+                                    .join(', ')}
+                            </span>
+                        </div>
+                    )}
                 </div>
                 <div className="flex justify-between">
                     <div className="flex items-center gap-4 overflow-hidden text-sm text-neutral-500">

@@ -25,6 +25,7 @@ from ..services.intent_classifier_service import IntentClassifierService
 from ..services.context_window_service import ContextWindowService
 from ..services.learning_analytics_service import LearningAnalyticsService
 from ..models.chat_message import ChatMessage
+from ..services.mathpix_service import MathpixService
 from ..schemas.chat_agent import (
     MessageIntent,
     QuizData,
@@ -192,6 +193,23 @@ class AiChatAgentService:
                 logger.info(f"Duplicate message detected for idempotency key {idempotency_key}")
                 return (existing.id, "idle")
 
+        # Extract LaTeX from image attachments via Mathpix OCR
+        enriched_message = message
+        if attachments:
+            mathpix = MathpixService()
+            for att in attachments:
+                att_dict = att if isinstance(att, dict) else {}
+                att_type = att_dict.get("type", "")
+                att_url = att_dict.get("url", "")
+                if att_type == "image" and att_url:
+                    try:
+                        ocr_result = await mathpix.ocr_image(att_url)
+                        latex_content = ocr_result.get("latex", "")
+                        if latex_content:
+                            enriched_message += f"\n\n[Math from image: ${latex_content}$]"
+                    except Exception as e:
+                        logger.warning(f"Mathpix OCR failed for attachment: {e}")
+
         # Build metadata for the message
         metadata = {}
         if intent:
@@ -207,7 +225,7 @@ class AiChatAgentService:
         msg = self.message_repo.create_message(
             session_id=session_id,
             message_type="user",
-            content=message,
+            content=enriched_message,
             metadata=metadata if metadata else None,
         )
         

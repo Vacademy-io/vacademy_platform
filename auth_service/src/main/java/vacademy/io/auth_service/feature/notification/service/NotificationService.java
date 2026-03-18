@@ -94,6 +94,12 @@ public class NotificationService {
         if (StringUtils.hasText(instituteId)) {
             endpoint += "?instituteId=" + instituteId;
         }
+
+        // If emailType is not set in the request, default to UTILITY_EMAIL for password reset emails
+        if (request.getEmailType() == null || request.getEmailType().isEmpty()) {
+            request.setEmailType("UTILITY_EMAIL");
+        }
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
                 notificationServerBaseUrl, endpoint, request);
 

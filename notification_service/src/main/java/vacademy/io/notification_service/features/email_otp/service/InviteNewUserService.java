@@ -2,7 +2,9 @@ package vacademy.io.notification_service.features.email_otp.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.service.EmailService;
 
 @Service
@@ -12,9 +14,11 @@ public class InviteNewUserService {
     EmailService emailService;
 
 
-    public Boolean sendEmail(String to, String subject, String service, String body,String instituteId) {
+    public Boolean sendEmail(String to, String subject, String service, String body, String instituteId, String emailType) {
         try {
-            emailService.sendHtmlEmail(to, subject, service, body,instituteId);
+            // Default to UTILITY_EMAIL if no emailType is specified
+            String finalEmailType = StringUtils.hasText(emailType) ? emailType : NotificationConstants.UTILITY_EMAIL;
+            emailService.sendHtmlEmail(to, subject, service, body, instituteId, null, null, finalEmailType);
         } catch (Exception e) {
             return false;
         }

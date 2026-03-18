@@ -15,4 +15,5 @@ public class AttachmentNotificationDTO {
     private String sourceId;
     private List<AttachmentUsersDTO> users;
     private String attachmentName;
+    private String emailType; // Email type to use (e.g., UTILITY_EMAIL, MARKETING_EMAIL)
 }

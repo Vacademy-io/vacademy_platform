@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.common.notification.dto.EmailOTPRequest;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.dto.EmailRequest;
 import vacademy.io.notification_service.dto.NotificationDTO;
 import vacademy.io.notification_service.features.email_otp.service.OTPService;
@@ -51,7 +52,12 @@ public class EmailController {
     @PostMapping("/send-html-email")
     public ResponseEntity<Boolean> sendEmail(@RequestBody GenericEmailRequest request,@RequestParam(name = "instituteId",required = false)String instituteId) {
         try {
-            emailService.sendHtmlEmail(request.getTo(), request.getSubject(), request.getService(), request.getBody(),instituteId);
+            // Use emailType from request, default to UTILITY_EMAIL if not specified
+            String emailType = (request.getEmailType() != null && !request.getEmailType().isEmpty())
+                ? request.getEmailType()
+                : NotificationConstants.UTILITY_EMAIL;
+
+            emailService.sendHtmlEmail(request.getTo(), request.getSubject(), request.getService(), request.getBody(), instituteId, null, null, emailType);
             return ResponseEntity.ok(true);
         } catch (Exception e) {
             return ResponseEntity.ok(false);

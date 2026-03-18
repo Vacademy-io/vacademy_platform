@@ -14,4 +14,5 @@ public class GenericEmailRequest {
     private String subject;
     private String service;
     private String body;
+    private String emailType; // Email type to use (e.g., UTILITY_EMAIL, MARKETING_EMAIL)
 }

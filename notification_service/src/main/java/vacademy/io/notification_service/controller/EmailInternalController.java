@@ -24,7 +24,7 @@ public class EmailInternalController {
 
     @PostMapping("/send-html-email")
     public ResponseEntity<Boolean> sendEmail(@RequestBody GenericEmailRequest request,@RequestParam(name = "instituteId" , required = false)String instituteId) {
-        return ResponseEntity.ok(inviteNewUserService.sendEmail(request.getTo(), request.getSubject(), request.getService(), request.getBody(),instituteId));
+        return ResponseEntity.ok(inviteNewUserService.sendEmail(request.getTo(), request.getSubject(), request.getService(), request.getBody(), instituteId, request.getEmailType()));
     }
 
     @PostMapping("/send-email-to-users")

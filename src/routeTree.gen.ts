@@ -68,6 +68,7 @@ import { Route as ManageInstituteBatchesIndexRouteImport } from "./routes/manage
 import { Route as LoginForgotPasswordIndexRouteImport } from "./routes/login/forgot-password/index"
 import { Route as LoginKeyIndexRouteImport } from "./routes/login/$key/index"
 import { Route as HomeworkCreationAssessmentListIndexRouteImport } from "./routes/homework-creation/assessment-list/index"
+import { Route as FinancialManagementPayInstallmentsIndexRouteImport } from "./routes/financial-management/pay-installments/index"
 import { Route as FinancialManagementManageFinancesIndexRouteImport } from "./routes/financial-management/manage-finances/index"
 import { Route as FinancialManagementFeePlansIndexRouteImport } from "./routes/financial-management/fee-plans/index"
 import { Route as FinancialManagementCollectionDashboardIndexRouteImport } from "./routes/financial-management/collection-dashboard/index"
@@ -584,6 +585,16 @@ const HomeworkCreationAssessmentListIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/homework-creation/assessment-list/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const FinancialManagementPayInstallmentsIndexRoute =
+  FinancialManagementPayInstallmentsIndexRouteImport.update({
+    id: "/financial-management/pay-installments/",
+    path: "/financial-management/pay-installments/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/financial-management/pay-installments/index.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -1284,6 +1295,7 @@ export interface FileRoutesByFullPath {
   "/financial-management/collection-dashboard/": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
   "/financial-management/manage-finances/": typeof FinancialManagementManageFinancesIndexRoute
+  "/financial-management/pay-installments/": typeof FinancialManagementPayInstallmentsIndexRoute
   "/homework-creation/assessment-list/": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key/": typeof LoginKeyIndexRoute
   "/login/forgot-password/": typeof LoginForgotPasswordIndexRoute
@@ -1421,6 +1433,7 @@ export interface FileRoutesByTo {
   "/financial-management/collection-dashboard": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans": typeof FinancialManagementFeePlansIndexRoute
   "/financial-management/manage-finances": typeof FinancialManagementManageFinancesIndexRoute
+  "/financial-management/pay-installments": typeof FinancialManagementPayInstallmentsIndexRoute
   "/homework-creation/assessment-list": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key": typeof LoginKeyIndexRoute
   "/login/forgot-password": typeof LoginForgotPasswordIndexRoute
@@ -1560,6 +1573,7 @@ export interface FileRoutesById {
   "/financial-management/collection-dashboard/": typeof FinancialManagementCollectionDashboardIndexRoute
   "/financial-management/fee-plans/": typeof FinancialManagementFeePlansIndexRoute
   "/financial-management/manage-finances/": typeof FinancialManagementManageFinancesIndexRoute
+  "/financial-management/pay-installments/": typeof FinancialManagementPayInstallmentsIndexRoute
   "/homework-creation/assessment-list/": typeof HomeworkCreationAssessmentListIndexRoute
   "/login/$key/": typeof LoginKeyIndexRoute
   "/login/forgot-password/": typeof LoginForgotPasswordIndexRoute
@@ -1700,6 +1714,7 @@ export interface FileRouteTypes {
     | "/financial-management/collection-dashboard/"
     | "/financial-management/fee-plans/"
     | "/financial-management/manage-finances/"
+    | "/financial-management/pay-installments/"
     | "/homework-creation/assessment-list/"
     | "/login/$key/"
     | "/login/forgot-password/"
@@ -1837,6 +1852,7 @@ export interface FileRouteTypes {
     | "/financial-management/collection-dashboard"
     | "/financial-management/fee-plans"
     | "/financial-management/manage-finances"
+    | "/financial-management/pay-installments"
     | "/homework-creation/assessment-list"
     | "/login/$key"
     | "/login/forgot-password"
@@ -1975,6 +1991,7 @@ export interface FileRouteTypes {
     | "/financial-management/collection-dashboard/"
     | "/financial-management/fee-plans/"
     | "/financial-management/manage-finances/"
+    | "/financial-management/pay-installments/"
     | "/homework-creation/assessment-list/"
     | "/login/$key/"
     | "/login/forgot-password/"
@@ -2113,6 +2130,7 @@ export interface RootRouteChildren {
   FinancialManagementCollectionDashboardIndexRoute: typeof FinancialManagementCollectionDashboardIndexRoute
   FinancialManagementFeePlansIndexRoute: typeof FinancialManagementFeePlansIndexRoute
   FinancialManagementManageFinancesIndexRoute: typeof FinancialManagementManageFinancesIndexRoute
+  FinancialManagementPayInstallmentsIndexRoute: typeof FinancialManagementPayInstallmentsIndexRoute
   HomeworkCreationAssessmentListIndexRoute: typeof HomeworkCreationAssessmentListIndexRoute
   LoginKeyIndexRoute: typeof LoginKeyIndexRoute
   LoginForgotPasswordIndexRoute: typeof LoginForgotPasswordIndexRoute
@@ -2610,6 +2628,13 @@ declare module "@tanstack/react-router" {
       path: "/homework-creation/assessment-list"
       fullPath: "/homework-creation/assessment-list/"
       preLoaderRoute: typeof HomeworkCreationAssessmentListIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/financial-management/pay-installments/": {
+      id: "/financial-management/pay-installments/"
+      path: "/financial-management/pay-installments"
+      fullPath: "/financial-management/pay-installments/"
+      preLoaderRoute: typeof FinancialManagementPayInstallmentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/financial-management/manage-finances/": {
@@ -3224,6 +3249,8 @@ const rootRouteChildren: RootRouteChildren = {
   FinancialManagementFeePlansIndexRoute: FinancialManagementFeePlansIndexRoute,
   FinancialManagementManageFinancesIndexRoute:
     FinancialManagementManageFinancesIndexRoute,
+  FinancialManagementPayInstallmentsIndexRoute:
+    FinancialManagementPayInstallmentsIndexRoute,
   HomeworkCreationAssessmentListIndexRoute:
     HomeworkCreationAssessmentListIndexRoute,
   LoginKeyIndexRoute: LoginKeyIndexRoute,

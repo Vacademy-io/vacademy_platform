@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import PackageSelector from '@/components/design-system/PackageSelector';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -25,6 +25,29 @@ export function ManageFinancesFilters({
     onClearFilters,
 }: ManageFinancesFiltersProps) {
     const [showPackageFilter, setShowPackageFilter] = useState(false);
+    const [searchInput, setSearchInput] = useState(filter.filters.studentSearchQuery || '');
+    const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+    useEffect(() => {
+        debounceRef.current = setTimeout(() => {
+            onFilterChange({
+                ...filter,
+                page: 0,
+                filters: {
+                    ...filter.filters,
+                    studentSearchQuery: searchInput || undefined,
+                },
+            });
+        }, 300);
+        return () => clearTimeout(debounceRef.current);
+    }, [searchInput]);
+
+    // Sync local input when filters are cleared externally
+    useEffect(() => {
+        if (!filter.filters.studentSearchQuery && searchInput) {
+            setSearchInput('');
+        }
+    }, [filter.filters.studentSearchQuery]);
 
     const handlePackageSessionChange = (selection: {
         packageSessionId: string | null;
@@ -40,17 +63,6 @@ export function ManageFinancesFilters({
                     : selection.packageSessionId
                       ? [selection.packageSessionId]
                       : [],
-            },
-        });
-    };
-
-    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onFilterChange({
-            ...filter,
-            page: 0,
-            filters: {
-                ...filter.filters,
-                studentSearchQuery: e.target.value,
             },
         });
     };
@@ -107,8 +119,8 @@ export function ManageFinancesFilters({
                         type="search"
                         placeholder="Search student name or phone..."
                         className="pl-10 h-9 rounded-md border-gray-300 bg-gray-50 text-sm font-medium text-gray-700 focus:border-blue-500 hover:bg-white"
-                        value={filter.filters.studentSearchQuery || ''}
-                        onChange={handleSearchChange}
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
                     />
                 </div>
 

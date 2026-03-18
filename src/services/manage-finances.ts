@@ -4,6 +4,8 @@ import {
     FeeSearchFilterDTO,
     FinancalManagementPaginatedResponse,
     InstallmentDetailDTO,
+    StudentFeeDueDTO,
+    AllocateSelectedRequest,
 } from '@/types/manage-finances';
 import { BASE_URL } from '@/constants/urls';
 
@@ -53,6 +55,56 @@ export const fetchInstallmentDetails = async (
         {
             params: { studentId, cpoId },
         }
+    );
+    return response.data;
+};
+
+// ─── Student Dues (Pay Installments) ───────────────────────────────────────
+
+export const getStudentDuesQueryKey = (userId: string) => ['STUDENT_DUES', userId];
+
+export const fetchStudentDues = async (userId: string): Promise<StudentFeeDueDTO[]> => {
+    const instituteId = getInstituteId();
+    if (!instituteId) throw new Error('Institute ID not found');
+
+    const response = await authenticatedAxiosInstance.post<StudentFeeDueDTO[]>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/dues`,
+        {},
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+// ─── Allocate Selected Payment ─────────────────────────────────────────────
+
+export const allocateSelectedPayment = async (
+    userId: string,
+    body: AllocateSelectedRequest
+): Promise<void> => {
+    await authenticatedAxiosInstance.post(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/allocate-selected`,
+        body
+    );
+};
+
+// ─── Generate Invoice for Selected Installments ────────────────────────────
+
+export interface GenerateInvoiceResponse {
+    file_id: string;
+    download_url: string;
+}
+
+export const generateInvoiceForInstallments = async (
+    userId: string,
+    installmentIds: string[]
+): Promise<GenerateInvoiceResponse> => {
+    const instituteId = getInstituteId();
+    if (!instituteId) throw new Error('Institute ID not found');
+
+    const response = await authenticatedAxiosInstance.post<GenerateInvoiceResponse>(
+        `${BASE_URL}/admin-core-service/v1/admin/student-fee/${userId}/generate-invoice`,
+        { installment_ids: installmentIds },
+        { params: { instituteId } }
     );
     return response.data;
 };

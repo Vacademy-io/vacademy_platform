@@ -22,7 +22,6 @@ export type DomainResolveResponse = {
     allowEmailOtpAuth?: boolean;
     allowPhoneAuth?: boolean;
     allowUsernamePasswordAuth?: boolean;
-    allowPhoneAuth?: boolean;
     learnerPortalUrl?: string | null;
     instructorPortalUrl?: string | null;
     convertUsernamePasswordToLowercase?: boolean;

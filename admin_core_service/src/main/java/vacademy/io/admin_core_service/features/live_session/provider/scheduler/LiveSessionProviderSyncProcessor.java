@@ -86,13 +86,50 @@ public class LiveSessionProviderSyncProcessor {
         for (SessionSchedule schedule : schedules) {
             try {
                 String instituteId = getInstituteId(schedule);
-                List<MeetingRecordingDTO> recordings = strategy.getRecordings(schedule.getProviderMeetingId(),
-                        instituteId);
+                List<MeetingRecordingDTO> providerRecordings = strategy.getRecordings(
+                        schedule.getProviderMeetingId(), instituteId);
 
-                schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
+                // Merge with existing recordings — never discard S3-uploaded recordings
+                // (those have a fileId set by the post-publish hook).
+                List<MeetingRecordingDTO> existing = List.of();
+                if (schedule.getProviderRecordingsJson() != null
+                        && !schedule.getProviderRecordingsJson().isBlank()) {
+                    try {
+                        existing = objectMapper.readValue(schedule.getProviderRecordingsJson(),
+                                objectMapper.getTypeFactory().constructCollectionType(
+                                        List.class, MeetingRecordingDTO.class));
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                // Keep any existing recording that has a fileId (uploaded to S3)
+                // — these must not be overwritten by provider API results
+                java.util.Map<String, MeetingRecordingDTO> merged = new java.util.LinkedHashMap<>();
+                for (MeetingRecordingDTO rec : existing) {
+                    if (rec.getFileId() != null && !rec.getFileId().isBlank()) {
+                        String key = rec.getRecordingId() != null ? rec.getRecordingId() : rec.getFileId();
+                        merged.put(key, rec);
+                    }
+                }
+                // Add/update from provider API (won't overwrite S3 records with same key)
+                for (int i = 0; i < providerRecordings.size(); i++) {
+                    MeetingRecordingDTO rec = providerRecordings.get(i);
+                    String key = rec.getRecordingId() != null ? rec.getRecordingId()
+                            : "provider-" + schedule.getProviderMeetingId() + "-" + i;
+                    if (!merged.containsKey(key)) {
+                        merged.put(key, rec);
+                    }
+                }
+
+                schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(
+                        new java.util.ArrayList<>(merged.values())));
                 schedule.setLastRecordingSyncAt(new Date());
                 scheduleRepository.save(schedule);
-                log.info("[Sync] Saved {} recordings for schedule {}", recordings.size(), schedule.getId());
+                log.info("[Sync] Saved {} recordings ({} from S3, {} from provider) for schedule {}",
+                        merged.size(),
+                        merged.values().stream().filter(r -> r.getFileId() != null && !r.getFileId().isBlank()).count(),
+                        providerRecordings.size(),
+                        schedule.getId());
             } catch (Exception e) {
                 log.warn("[Sync] Recordings failed for schedule {}: {}", schedule.getId(), e.getMessage());
             }

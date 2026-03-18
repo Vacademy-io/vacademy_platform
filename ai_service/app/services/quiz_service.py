@@ -117,6 +117,7 @@ IMPORTANT: Return ONLY valid JSON, no additional text or markdown code blocks ar
                 ],
                 tools=None,
                 temperature=0.7,
+                max_tokens=16384,
                 institute_id=institute_id,
                 user_id=user_id,
             )
@@ -148,8 +149,8 @@ IMPORTANT: Return ONLY valid JSON, no additional text or markdown code blocks ar
             )
             
         except Exception as e:
-            logger.error(f"Failed to generate quiz: {e}")
-            # Return a fallback quiz with basic questions
+            logger.error(f"Failed to generate quiz: {e}", exc_info=True)
+            # Return an empty fallback quiz — caller will ask user to specify topic
             return self._generate_fallback_quiz(topic, num_questions)
     
     def _extract_json(self, content: str) -> str:

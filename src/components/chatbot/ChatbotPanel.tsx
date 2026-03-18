@@ -19,6 +19,8 @@ import {
   HelpCircle,
   WifiOff,
   ImagePlus,
+  Sigma,
+  Loader2,
 } from "lucide-react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -52,6 +54,9 @@ import { QuizComponent } from "./QuizComponent";
 import { QuizFeedbackComponent } from "./QuizFeedbackComponent";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { ToolIndicator } from "./ToolIndicator";
+import { UploadFileInS3 } from "@/services/upload_file";
+import { getPublicUrl } from "@/services/upload_file";
+import { getUserId } from "@/constants/getUserId";
 
 // Sound notification for new messages
 const playNotificationSound = () => {
@@ -202,7 +207,9 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, panelX: 0, panelY: 0 });
   
   const [selectedIntent, setSelectedIntent] = useState<MessageIntent>("general");
-  const [pendingAttachments, setPendingAttachments] = useState<Array<{type: string; url: string; name?: string}>>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{type: string; url: string; name?: string; previewUrl?: string}>>([]);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [showLatexHelper, setShowLatexHelper] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Detect mobile viewport
@@ -746,30 +753,20 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                     li: ({ ...props }) => (
                                       <li className="ml-2" {...props} />
                                     ),
-                                    code: (({
-                                      inline,
-                                      ...props
-                                    }: {
-                                      inline?: boolean;
-                                      children?: React.ReactNode;
-                                      [key: string]: unknown;
-                                    }) => {
-                                      return inline ? (
+                                    code: ({ children, className, ...rest }: React.HTMLAttributes<HTMLElement>) => {
+                                      const isInline = !className?.includes('language-');
+                                      return isInline ? (
                                         <code
                                           className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono"
-                                          {...(props as React.HTMLAttributes<HTMLElement>)}
-                                        />
+                                          {...rest}
+                                        >{children}</code>
                                       ) : (
                                         <code
                                           className="block bg-muted p-2 rounded-lg text-xs font-mono mb-3 overflow-x-auto"
-                                          {...(props as React.HTMLAttributes<HTMLElement>)}
-                                        />
+                                          {...rest}
+                                        >{children}</code>
                                       );
-                                    }) as unknown as React.ComponentType<{
-                                      inline?: boolean;
-                                      children?: React.ReactNode;
-                                      [key: string]: unknown;
-                                    }>,
+                                    },
                                     blockquote: ({ ...props }) => (
                                       <blockquote
                                         className="border-l-4 border-primary pl-3 py-1 my-3 italic text-muted-foreground text-sm"
@@ -914,11 +911,16 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                   <div className="flex gap-2 w-full px-1 py-1.5">
                     {pendingAttachments.map((att, i) => (
                       <div key={i} className="relative size-12 rounded border overflow-hidden">
-                        <img src={att.url} alt={att.name || 'attachment'} className="size-full object-cover" />
+                        <img src={att.previewUrl || att.url} alt={att.name || 'attachment'} className="size-full object-cover" />
+                        {!att.url && (
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <Loader2 className="h-4 w-4 text-white animate-spin" />
+                          </div>
+                        )}
                         <button
                           className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center"
                           onClick={() => {
-                            URL.revokeObjectURL(att.url);
+                            if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
                             setPendingAttachments(prev => prev.filter((_, idx) => idx !== i));
                           }}
                         >
@@ -929,29 +931,100 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                   </div>
                 )}
 
-                {/* Hidden file input for image upload */}
-                {/* TODO: For production, upload to S3 via useFileUpload and use the returned URL instead of object URL */}
+                {/* Hidden file input — uploads to S3 */}
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    const url = URL.createObjectURL(file);
-                    setPendingAttachments(prev => [...prev, { type: 'image', url, name: file.name }]);
                     e.target.value = '';
+                    const previewUrl = URL.createObjectURL(file);
+                    // Show preview immediately with a placeholder
+                    const tempIdx = pendingAttachments.length;
+                    setPendingAttachments(prev => [...prev, { type: 'image', url: '', name: file.name, previewUrl }]);
+                    setIsUploadingImage(true);
+                    try {
+                      const userId = await getUserId();
+                      const fileId = await UploadFileInS3(file, () => {}, userId || '', 'CHATBOT_IMAGES', 'LEARNER');
+                      if (fileId) {
+                        const publicUrl = await getPublicUrl(fileId);
+                        setPendingAttachments(prev => prev.map((att, i) =>
+                          i === tempIdx ? { ...att, url: publicUrl } : att
+                        ));
+                      }
+                    } catch (err) {
+                      console.error('Failed to upload image:', err);
+                      setPendingAttachments(prev => prev.filter((_, i) => i !== tempIdx));
+                      URL.revokeObjectURL(previewUrl);
+                    } finally {
+                      setIsUploadingImage(false);
+                    }
                   }}
                 />
 
+                {/* LaTeX quick-insert helper */}
+                {showLatexHelper && (
+                  <div className="w-full flex flex-wrap gap-1 px-1 py-1 bg-muted/30 rounded-lg border border-border/50">
+                    {[
+                      { label: '√', insert: '\\sqrt{}' },
+                      { label: 'x²', insert: '^{2}' },
+                      { label: 'xₙ', insert: '_{n}' },
+                      { label: '∫', insert: '\\int_{a}^{b}' },
+                      { label: 'Σ', insert: '\\sum_{i=1}^{n}' },
+                      { label: 'π', insert: '\\pi' },
+                      { label: 'α', insert: '\\alpha' },
+                      { label: 'β', insert: '\\beta' },
+                      { label: 'θ', insert: '\\theta' },
+                      { label: '∞', insert: '\\infty' },
+                      { label: '≠', insert: '\\neq' },
+                      { label: '≤', insert: '\\leq' },
+                      { label: '≥', insert: '\\geq' },
+                      { label: '÷', insert: '\\frac{}{}' },
+                      { label: 'lim', insert: '\\lim_{x \\to }' },
+                      { label: 'dx', insert: '\\frac{d}{dx}' },
+                      { label: '∂', insert: '\\partial' },
+                      { label: '±', insert: '\\pm' },
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        className="h-7 min-w-[32px] px-1.5 text-xs font-mono rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/50 transition-colors"
+                        onClick={() => {
+                          // Wrap in $ delimiters if not already in a math context
+                          const hasOpenDelimiter = inputValue.lastIndexOf('$') > inputValue.lastIndexOf(' ');
+                          const toInsert = hasOpenDelimiter ? item.insert : `$${item.insert}$`;
+                          setInputValue(prev => prev + toInsert);
+                        }}
+                        title={item.insert}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* LaTeX preview — show rendered formula when user types $ */}
+                {inputValue.includes('$') && (
+                  <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto">
+                    <span className="text-muted-foreground text-[10px] block mb-0.5">Preview:</span>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                    >
+                      {inputValue}
+                    </ReactMarkdown>
+                  </div>
+                )}
+
                 {/* Input Row */}
-                <div className="w-full flex gap-2">
+                <div className="w-full flex items-center gap-1.5">
                   <Select
                     value={selectedIntent}
                     onValueChange={(value) => setSelectedIntent(value as MessageIntent)}
                   >
-                    <SelectTrigger className="w-[100px] h-9 text-xs">
+                    <SelectTrigger className="w-[90px] h-9 text-xs">
                       <SelectValue placeholder="Intent" />
                     </SelectTrigger>
                     <SelectContent className="z-[10006]">
@@ -961,29 +1034,48 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     </SelectContent>
                   </Select>
                   <Input
-                    placeholder="Type your message..."
+                    placeholder="Type message... (use $ for math)"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyDown}
                     disabled={!sessionId || isLoading}
-                    className="text-sm h-9 flex-1"
+                    className="text-sm h-9 flex-1 font-mono"
                   />
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={!sessionId || isLoading}
-                    title="Attach image"
+                    className={cn(
+                      "h-8 w-8 shrink-0 rounded-lg",
+                      showLatexHelper && "bg-primary/10 text-primary"
+                    )}
+                    onClick={() => setShowLatexHelper(prev => !prev)}
+                    title="Math symbols"
                   >
-                    <ImagePlus className="h-4 w-4" />
+                    <Sigma className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 rounded-lg"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!sessionId || isLoading || isUploadingImage}
+                    title="Attach image (math photos auto-detected)"
+                  >
+                    {isUploadingImage ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ImagePlus className="h-4 w-4" />
+                    )}
                   </Button>
                   <Button
                     onClick={() => {
-                      sendMessage(inputValue, selectedIntent, pendingAttachments.length > 0 ? pendingAttachments : undefined);
+                      const readyAttachments = pendingAttachments.filter(a => a.url);
+                      sendMessage(inputValue, selectedIntent, readyAttachments.length > 0 ? readyAttachments : undefined);
+                      // Clean up preview URLs
+                      pendingAttachments.forEach(a => { if (a.previewUrl) URL.revokeObjectURL(a.previewUrl); });
                       setPendingAttachments([]);
                     }}
-                    disabled={(!inputValue.trim() && pendingAttachments.length === 0) || isLoading}
+                    disabled={(!inputValue.trim() && pendingAttachments.filter(a => a.url).length === 0) || isLoading || isUploadingImage}
                     size="icon"
                     className="h-9 w-9 shrink-0"
                   >

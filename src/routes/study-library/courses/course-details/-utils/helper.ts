@@ -25,8 +25,26 @@ export function getYouTubeVideoId(url: string): string | null {
 export function convertToYouTubeEmbedUrl(url: string): string {
     const videoId = getYouTubeVideoId(url);
     if (!videoId) return url;
-    
+
     return `https://www.youtube.com/embed/${videoId}`;
+}
+
+// Utility functions for Vimeo URL handling
+export function isVimeoUrl(url: string): boolean {
+    if (!url) return false;
+    return /^(https?:\/\/)?(www\.)?(player\.)?vimeo\.com\/.+/.test(url);
+}
+
+export function getVimeoVideoId(url: string): string | null {
+    if (!url) return null;
+    const match = url.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/);
+    return match ? match[1] : null;
+}
+
+export function convertToVimeoEmbedUrl(url: string): string {
+    const videoId = getVimeoVideoId(url);
+    if (!videoId) return url;
+    return `https://player.vimeo.com/video/${videoId}`;
 }
 
 interface SubjectType {

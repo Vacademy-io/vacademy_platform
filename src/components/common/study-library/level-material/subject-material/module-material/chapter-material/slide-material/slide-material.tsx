@@ -3,6 +3,7 @@ import PDFViewer from "./pdf-viewer";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { EmptySlideMaterial } from "@/assets/svgs";
 import YouTubePlayerWrapper from "./youtube-player";
+import VimeoPlayerWrapper from "./vimeo-player";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { extractVideoId } from "@/utils/study-library/tracking/extractVideoId";
@@ -488,6 +489,29 @@ export const SlideMaterial = () => {
               : videoSlide?.url;
 
           switch (videoSourceType) {
+            case "VIMEO": {
+              const vimeoUrl = videoSlide?.published_url || videoSlide?.url || "";
+              const vimeoIdMatch = vimeoUrl.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/);
+              const vimeoId = vimeoIdMatch?.[1] || "";
+              setContent(
+                <div
+                  key={`video-${activeItem.id}`}
+                  className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+                >
+                  <div className="h-full w-full bg-black rounded-lg overflow-hidden border border-neutral-200">
+                    <VimeoPlayerWrapper
+                      videoId={vimeoId}
+                      onTimeUpdate={handleVideoTimeUpdate}
+                      ref={playerRef}
+                      ms={activeItem.progress_marker}
+                      questions={videoSlide?.questions || []}
+                      concentrationSettings={concentrationSettings}
+                    />
+                  </div>
+                </div>
+              );
+              break;
+            }
             case "FILE_ID": {
               if (!fileId) throw new Error("Video file ID not available");
               const videoUrl = await getPublicUrl(fileId);

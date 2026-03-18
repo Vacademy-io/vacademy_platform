@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSettingDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
@@ -131,6 +132,30 @@ public class LearnerEnrollRequestService {
             Map<String, Object> extraData) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
+            // B2B: Override auth roles from invite settingJson if it's a SUB_ORG invite
+            if (StringUtils.hasText(enrollDTO.getEnrollInviteId())) {
+                EnrollInvite preCheckInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
+                if (EnrollInviteTag.SUB_ORG.name().equals(preCheckInvite.getTag())
+                        && StringUtils.hasText(preCheckInvite.getSettingJson())) {
+                    try {
+                        ObjectMapper mapper = new ObjectMapper();
+                        EnrollInviteSettingDTO settingDTO = mapper.readValue(
+                                preCheckInvite.getSettingJson(), EnrollInviteSettingDTO.class);
+                        if (settingDTO.getSetting() != null
+                                && settingDTO.getSetting().getSubOrgSetting() != null
+                                && settingDTO.getSetting().getSubOrgSetting().getAuthRoles() != null
+                                && !settingDTO.getSetting().getSubOrgSetting().getAuthRoles().isEmpty()) {
+                            learnerEnrollRequestDTO.getUser().setRoles(
+                                    settingDTO.getSetting().getSubOrgSetting().getAuthRoles());
+                            log.info("Overrode user roles from SUB_ORG invite settingJson: {}",
+                                    settingDTO.getSetting().getSubOrgSetting().getAuthRoles());
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to parse settingJson for role override: {}", e.getMessage());
+                    }
+                }
+            }
+
             boolean sendCredentials = getSendCredentialsFlag(
                     learnerEnrollRequestDTO.getInstituteId(),
                     enrollDTO.getPackageSessionIds());

@@ -74,8 +74,6 @@ public class EnrollInviteService {
     @Autowired
     private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
 
-    private static final String HAS_FACULTY_ASSIGNED = "HAS_FACULTY_ASSIGNED";
-
     @org.springframework.beans.factory.annotation.Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerBaseUrl;
 
@@ -242,10 +240,10 @@ public class EnrollInviteService {
         Pageable pageable = PageRequest.of(pageNo, pageSize, sortColumns);
         Page<EnrollInviteWithSessionsProjection> pageResult;
 
-        // Check if user has HAS_FACULTY_ASSIGNED permission — scope to their assigned enroll invites
-        // No entries in faculty mapping = no restriction = full access
+        // Filter by faculty mapping: if user has EnrollInvite entries, scope to those only.
+        // No entries = full access.
         List<String> allowedEnrollInviteIds = null;
-        if (user != null && hasFacultyAssignedPermission(user)) {
+        if (user != null) {
             List<String> accessIds = facultyMappingRepository
                     .findEnrollInviteAccessIdsByUserIdAndInstituteId(
                             user.getUserId(), instituteId, List.of("ACTIVE"));
@@ -280,11 +278,6 @@ public class EnrollInviteService {
         }
 
         return pageResult;
-    }
-
-    private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
-        return user.getAuthorities().stream()
-                .anyMatch(auth -> HAS_FACULTY_ASSIGNED.equalsIgnoreCase(auth.getAuthority()));
     }
 
     public EnrollInviteDTO findByEnrollInviteId(String enrollInviteId, String instituteId) {

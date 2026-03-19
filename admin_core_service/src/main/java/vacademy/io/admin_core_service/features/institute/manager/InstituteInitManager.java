@@ -46,6 +46,8 @@ import java.util.stream.Stream;
 @Component
 public class InstituteInitManager {
 
+        private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(InstituteInitManager.class);
+
         @Autowired
         InstituteModuleService instituteModuleService;
         @Autowired
@@ -71,8 +73,6 @@ public class InstituteInitManager {
 
         @Autowired
         private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
-
-        private static final String HAS_FACULTY_ASSIGNED = "HAS_FACULTY_ASSIGNED";
 
         @Transactional
         public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches) {
@@ -188,17 +188,22 @@ public class InstituteInitManager {
                                         () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
                                                         activeStatuses));
 
-                        // If user has HAS_FACULTY_ASSIGNED permission, filter to only their assigned package sessions
-                        // No entries in faculty mapping = no restriction = full access
-                        if (user != null && hasFacultyAssignedPermission(user)) {
+                        // Filter by faculty mapping: if user has entries in faculty_subject_package_session_mapping,
+                        // scope to only their assigned package sessions. No entries = full access.
+                        if (user != null) {
                                 List<String> allowedAccessIds = facultyMappingRepository
                                                 .findAccessIdsByUserIdAndInstituteId(
                                                                 user.getUserId(), instId, List.of("ACTIVE"));
+                                log.info("[FACULTY-FILTER] userId={}, instituteId={}, allowedAccessIds={}",
+                                                user.getUserId(), instId, allowedAccessIds);
                                 if (!allowedAccessIds.isEmpty()) {
                                         Set<String> allowedSet = new HashSet<>(allowedAccessIds);
+                                        int beforeSize = packageSessions.size();
                                         packageSessions = packageSessions.stream()
                                                         .filter(ps -> allowedSet.contains(ps.getId()))
                                                         .toList();
+                                        log.info("[FACULTY-FILTER] filtered packageSessions from {} to {}", beforeSize,
+                                                        packageSessions.size());
                                 }
                         }
 
@@ -237,11 +242,6 @@ public class InstituteInitManager {
                 dto.setSubModules(new ArrayList<>());
 
                 return dto;
-        }
-
-        private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
-                return user.getAuthorities().stream()
-                                .anyMatch(auth -> HAS_FACULTY_ASSIGNED.equalsIgnoreCase(auth.getAuthority()));
         }
 
         private InstituteInfoDTOForTableSetup buildInstituteInfoDTOForTableSetup(String instituteId,

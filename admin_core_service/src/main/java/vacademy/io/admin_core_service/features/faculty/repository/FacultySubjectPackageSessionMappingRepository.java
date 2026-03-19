@@ -156,14 +156,26 @@ public interface FacultySubjectPackageSessionMappingRepository
       @Param("statusList") List<String> statusList);
 
   @Query(value = """
-      SELECT DISTINCT f.access_id
-      FROM faculty_subject_package_session_mapping f
-      JOIN package_session ps ON ps.id = f.access_id
-      JOIN package_institute pi ON pi.package_id = ps.package_id
-      WHERE f.user_id = :userId
-        AND f.access_type = 'PACKAGE_SESSION'
-        AND pi.institute_id = :instituteId
-        AND f.status IN (:statusList)
+      SELECT DISTINCT ps_id FROM (
+          SELECT f.access_id AS ps_id
+          FROM faculty_subject_package_session_mapping f
+          JOIN package_session ps ON ps.id = f.access_id
+          JOIN package_institute pi ON pi.package_id = ps.package_id
+          WHERE f.user_id = :userId
+            AND f.access_type = 'PACKAGE_SESSION'
+            AND pi.institute_id = :instituteId
+            AND f.status IN (:statusList)
+          UNION
+          SELECT f.package_session_id AS ps_id
+          FROM faculty_subject_package_session_mapping f
+          JOIN package_session ps ON ps.id = f.package_session_id
+          JOIN package_institute pi ON pi.package_id = ps.package_id
+          WHERE f.user_id = :userId
+            AND (f.access_type IS NULL OR f.access_type NOT IN ('Package', 'EnrollInvite'))
+            AND f.package_session_id IS NOT NULL
+            AND pi.institute_id = :instituteId
+            AND f.status IN (:statusList)
+      ) combined
       """, nativeQuery = true)
   List<String> findAccessIdsByUserIdAndInstituteId(
       @Param("userId") String userId,

@@ -9,8 +9,8 @@
 
 /* Safe area insets for Capacitor (iOS notch, Android cutout, home indicator) */
 html, body {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-top: calc(env(safe-area-inset-top) - 20px);
+  padding-bottom: calc(env(safe-area-inset-bottom) - 20px);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
 }

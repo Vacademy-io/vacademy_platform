@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { IntroPage } from '../-types/course-catalogue-types';
 import { ChevronLeftIcon, ChevronRightIcon, X } from 'lucide-react';
 import { useDomainRouting } from '@/hooks/use-domain-routing';
@@ -24,6 +25,8 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
   instituteId,
 }) => {
   const domainRouting = useDomainRouting();
+  const isAndroid = Capacitor.getPlatform() === 'android';
+  const isIOS = Capacitor.getPlatform() === 'ios';
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isScrolling, setIsScrolling] = useState(false);
   const [instituteLogoUrl, setInstituteLogoUrl] = useState<string | null>(null);
@@ -486,7 +489,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
 
       {/* Mobile Action Buttons - Fixed at bottom */}
       {!showLeadForm && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
+        <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-gray-200 p-4 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
           <div className="flex flex-col gap-3">
             {/* Next Button - Full width on mobile */}
             {processedImages.length > 1 && (

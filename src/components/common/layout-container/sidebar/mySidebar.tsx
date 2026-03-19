@@ -49,6 +49,8 @@ import type {
 } from "../../../../types/layout-container-types";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { useIsIOS } from "@/hooks/useIsIOS";
+import { Capacitor } from "@capacitor/core";
+import { X } from "lucide-react";
 
 // Local letter-based icon factory for tabs without predefined icons
 const createLetterIcon =
@@ -78,7 +80,8 @@ export const MySidebar = ({
   sidebarComponent?: React.ReactNode;
 }) => {
   const navigate = useNavigate();
-  const { state, isMobile } = useSidebar();
+  const { state, isMobile, toggleSidebar } = useSidebar();
+  const isAndroid = Capacitor.getPlatform() === 'android';
   const {
     sideBarState,
     instituteName,
@@ -208,9 +211,17 @@ export const MySidebar = ({
 
   return (
     <Sidebar side="left" collapsible={sidebarComponent ? "offcanvas" : "icon"}>
-      <SidebarContent className={`sidebar-content flex flex-col bg-white dark:bg-neutral-900 py-1 transition-all duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
+      <SidebarContent className={`sidebar-content flex flex-col bg-white dark:bg-neutral-900 py-1 transition-all  duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
         <SidebarHeader>
-          <SidebarMenu className="px-2">
+          {isAndroid && (
+            <button
+              onClick={toggleSidebar}
+              className="absolute top-4 mt-6 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+            >
+              <X size={18} />
+            </button>
+          )}
+          <SidebarMenu className={`px-2 ${isAndroid || isIOS ? 'mt-12' : ''}`}>
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="default"

@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.ScheduleDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
 import vacademy.io.admin_core_service.features.live_session.repository.*;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 
 import java.time.Duration;
 import java.time.LocalTime;
@@ -38,6 +39,8 @@ public class GetSessionByIdService {
     private final CustomFieldRepository customFieldRepository;
     @Autowired
     private final LiveSessionRepository liveSessionRepository;
+    @Autowired
+    private final PackageSessionRepository packageSessionRepository;
 
     @Data
     public static class SessionDetailsResponse {
@@ -140,6 +143,22 @@ public class GetSessionByIdService {
 
         dto.setAddedSchedules(addedSchedules);
         dto.setPackageSessionIds(packageSessionIds);
+
+        // Resolve package session details (package name, level name, session name)
+        if (!packageSessionIds.isEmpty()) {
+            List<PackageSessionRepository.PackageSessionDetailProjection> details =
+                    packageSessionRepository.findPackageSessionDetailsByIds(packageSessionIds);
+            List<GetSessionByIdResponseDTO.PackageSessionDetail> detailDTOs = new ArrayList<>();
+            for (var d : details) {
+                GetSessionByIdResponseDTO.PackageSessionDetail detail = new GetSessionByIdResponseDTO.PackageSessionDetail();
+                detail.setPackageSessionId(d.getPackageSessionId());
+                detail.setPackageName(d.getPackageName());
+                detail.setLevelName(d.getLevelName());
+                detail.setSessionName(d.getSessionName());
+                detailDTOs.add(detail);
+            }
+            dto.setPackageSessionDetails(detailDTOs);
+        }
 
         // Load BBB config from LiveSession entity if available
         if (first != null && first.getSessionId() != null) {

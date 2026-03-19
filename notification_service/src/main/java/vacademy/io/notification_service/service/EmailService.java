@@ -621,16 +621,22 @@ public class EmailService {
 
     public void sendAttachmentEmail(String to, String subject, String service, String body,
             Map<String, byte[]> attachments, String instituteId) {
+        sendAttachmentEmail(to, subject, service, body, attachments, instituteId, null);
+    }
+
+    public void sendAttachmentEmail(String to, String subject, String service, String body,
+            Map<String, byte[]> attachments, String instituteId, String emailType) {
         try {
             // Check if email is blocked (domain blocklist or bounced email blocklist)
             if (isEmailBlocked(to)) {
                 logger.info("Skipping attachment email for blocked email address: {}", to);
                 return;
             }
-            
+
             logger.info("Preparing to send email to: {} with subject: {}", to, subject);
 
-            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId);
+            // Use emailType parameter, default to UTILITY_EMAIL if not specified
+            AbstractMap.SimpleEntry<JavaMailSender, String> config = getMailSenderConfig(instituteId, emailType);
             JavaMailSender mailSenderToUse = config.getKey();
             String fromToUse = config.getValue();
 

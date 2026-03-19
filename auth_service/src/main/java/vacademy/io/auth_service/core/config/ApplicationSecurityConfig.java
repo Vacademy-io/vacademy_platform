@@ -80,7 +80,8 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/login-whatsapp-otp",
             "/auth-service/health/**",
             "/auth-service/v1/request-generic-whatsapp-otp",
-            "/auth-service/v1/verify-generic-whatsapp-otp"
+            "/auth-service/v1/verify-generic-whatsapp-otp",
+            "/auth-service/v1/verify-generic-whatsapp-otp-login"
     };
 
     @Autowired

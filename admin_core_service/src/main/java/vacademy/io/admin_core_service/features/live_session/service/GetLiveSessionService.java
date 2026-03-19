@@ -12,10 +12,12 @@ import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListD
 import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchRequest;
 import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchResponse;
 import vacademy.io.admin_core_service.features.live_session.enums.NotificationStatusEnum;
+import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.admin_core_service.features.live_session.scheduler.LiveSessionNotificationProcessor;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.*;
@@ -32,9 +34,14 @@ public class GetLiveSessionService {
     @Autowired
     private LiveSessionNotificationProcessor notificationProcessor;
 
-        @Autowired
+    @Autowired
+    private ScheduleNotificationRepository scheduleNotificationRepository;
 
-        private ScheduleNotificationRepository scheduleNotificationRepository;
+    @Autowired
+    private LiveSessionParticipantRepository liveSessionParticipantRepository;
+
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
 
         private GroupedSessionsByDateDTO createGroupedSessionsByDateDTO(Date date, List<LiveSessionListDTO> sessions) {
                 String defaultLink = null;
@@ -67,7 +74,7 @@ public class GetLiveSessionService {
                 List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
                                 .findCurrentlyLiveSessions(instituteId);
 
-        return projections.stream().map(p -> new LiveSessionListDTO(
+        List<LiveSessionListDTO> result = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),
@@ -88,14 +95,17 @@ public class GetLiveSessionService {
                 p.getDefaultClassLink(),
                 p.getDefaultClassName(),
                 p.getLinkType()
-        )).toList();
+        )).toList());
+
+        enrichWithPackageSessionDetails(result);
+        return result;
     }
 
         public List<GroupedSessionsByDateDTO> getUpcomingSession(String instituteId, CustomUserDetails user) {
                 List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
                                 .findUpcomingSessions(instituteId);
 
-        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
+        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),
@@ -116,7 +126,9 @@ public class GetLiveSessionService {
                 p.getDefaultClassLink(),
                 p.getDefaultClassName(),
                 p.getLinkType()
-        )).toList();
+        )).toList());
+
+        enrichWithPackageSessionDetails(flatList);
 
         // Group by date
         return flatList.stream()
@@ -135,7 +147,7 @@ public class GetLiveSessionService {
                 List<LiveSessionRepository.LiveSessionListProjection> projections = sessionRepository
                                 .findPreviousSessions(instituteId);
 
-        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
+        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),
@@ -156,7 +168,9 @@ public class GetLiveSessionService {
                 p.getDefaultClassLink(),
                 p.getDefaultClassName(),
                 p.getLinkType()
-        )).toList();
+        )).toList());
+
+        enrichWithPackageSessionDetails(flatList);
 
         // Group by date
         return flatList.stream()
@@ -242,7 +256,9 @@ public class GetLiveSessionService {
             }
         }
 
-        return new ArrayList<>(uniqueSessions.values());
+        List<LiveSessionListDTO> result = new ArrayList<>(uniqueSessions.values());
+        enrichWithPackageSessionDetails(result);
+        return result;
     }
 
 
@@ -250,7 +266,7 @@ public class GetLiveSessionService {
         List<LiveSessionRepository.LiveSessionListProjection> projections =
                 sessionRepository.findUpcomingSessionsForBatch(instituteId);
 
-        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
+        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),
@@ -271,7 +287,9 @@ public class GetLiveSessionService {
                 p.getDefaultClassLink(),
                 p.getDefaultClassName(),
                 p.getLinkType()
-        )).toList();
+        )).toList());
+
+        enrichWithPackageSessionDetails(flatList);
 
         // Group by date
         return flatList.stream()
@@ -290,7 +308,7 @@ public class GetLiveSessionService {
         List<LiveSessionRepository.LiveSessionListProjection> projections =
                 sessionRepository.findUpcomingSessionsForUser(userId);
 
-        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
+        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),
@@ -311,7 +329,9 @@ public class GetLiveSessionService {
                 p.getDefaultClassLink(),
                 p.getDefaultClassName(),
                 p.getLinkType()
-        )).toList();
+        )).toList());
+
+        enrichWithPackageSessionDetails(flatList);
 
         // Group by date
         return flatList.stream()
@@ -337,7 +357,7 @@ public class GetLiveSessionService {
                 sessionRepository.findUpcomingSessionsForUserAndBatchWithFilters(batchId, userId, startDate, endDate, offset, size);
 
         // Map projections to DTOs
-        List<LiveSessionListDTO> flatList = projections.stream().map(p -> new LiveSessionListDTO(
+        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),
@@ -358,7 +378,9 @@ public class GetLiveSessionService {
                 p.getDefaultClassLink(),
                 p.getDefaultClassName(),
                 p.getLinkType()
-        )).toList();
+        )).toList());
+
+                enrichWithPackageSessionDetails(flatList);
 
                 // Group by date
                 return flatList.stream()
@@ -405,7 +427,9 @@ public class GetLiveSessionService {
                 p.getLinkType()
             ))
             .collect(Collectors.toList());
-        
+
+        enrichWithPackageSessionDetails(sessions);
+
         // Build pagination metadata
         SessionSearchResponse.PageMetadata pagination = new SessionSearchResponse.PageMetadata(
             page.getNumber(),
@@ -482,6 +506,57 @@ public class GetLiveSessionService {
             }
         }
         return type + " is deleted";
+    }
+
+    private void enrichWithPackageSessionDetails(List<LiveSessionListDTO> sessions) {
+        if (sessions == null || sessions.isEmpty()) return;
+
+        List<String> sessionIds = sessions.stream()
+                .map(LiveSessionListDTO::getSessionId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        // Get batch (package_session) IDs for all sessions in one query
+        List<LiveSessionParticipantRepository.SessionBatchProjection> batchMappings =
+                liveSessionParticipantRepository.findBatchSourceIdsBySessionIds(sessionIds);
+
+        // Group by sessionId
+        Map<String, List<String>> sessionToBatchIds = batchMappings.stream()
+                .collect(Collectors.groupingBy(
+                        LiveSessionParticipantRepository.SessionBatchProjection::getSessionId,
+                        Collectors.mapping(LiveSessionParticipantRepository.SessionBatchProjection::getSourceId, Collectors.toList())
+                ));
+
+        // Collect all unique package_session_ids
+        List<String> allBatchIds = batchMappings.stream()
+                .map(LiveSessionParticipantRepository.SessionBatchProjection::getSourceId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (allBatchIds.isEmpty()) return;
+
+        // Resolve package session details in one query
+        Map<String, PackageSessionRepository.PackageSessionDetailProjection> detailsMap =
+                packageSessionRepository.findPackageSessionDetailsByIds(allBatchIds).stream()
+                        .collect(Collectors.toMap(
+                                PackageSessionRepository.PackageSessionDetailProjection::getPackageSessionId,
+                                d -> d,
+                                (a, b) -> a
+                        ));
+
+        // Enrich each session DTO
+        for (LiveSessionListDTO session : sessions) {
+            List<String> batchIds = sessionToBatchIds.get(session.getSessionId());
+            if (batchIds != null && !batchIds.isEmpty()) {
+                List<LiveSessionListDTO.PackageSessionInfo> details = batchIds.stream()
+                        .map(detailsMap::get)
+                        .filter(Objects::nonNull)
+                        .map(d -> new LiveSessionListDTO.PackageSessionInfo(
+                                d.getPackageSessionId(), d.getPackageName(), d.getLevelName(), d.getSessionName()))
+                        .collect(Collectors.toList());
+                session.setPackageSessionDetails(details);
+            }
+        }
     }
 
         private vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.LearnerButtonConfigDTO deserializeLearnerButtonConfig(

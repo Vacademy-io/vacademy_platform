@@ -905,4 +905,27 @@ public class SubOrgLearnerService {
                 .totalAdmins(admins.size())
                 .build();
     }
+
+    @Transactional(readOnly = true)
+    public SubOrgAdminsResponseDTO getAllAdminsBySubOrg(String subOrgId) {
+        log.info("Fetching all admins for subOrgId: {}", subOrgId);
+
+        List<Object[]> adminResults = mappingRepository.findAdminsBySubOrg(subOrgId);
+
+        List<AdminDetailsDTO> admins = adminResults.stream()
+                .map(result -> AdminDetailsDTO.builder()
+                        .userId((String) result[0])
+                        .name((String) result[1])
+                        .role((String) result[2])
+                        .build())
+                .collect(Collectors.toList());
+
+        log.info("Found {} admins for subOrgId: {}", admins.size(), subOrgId);
+
+        return SubOrgAdminsResponseDTO.builder()
+                .subOrgId(subOrgId)
+                .admins(admins)
+                .totalAdmins(admins.size())
+                .build();
+    }
 }

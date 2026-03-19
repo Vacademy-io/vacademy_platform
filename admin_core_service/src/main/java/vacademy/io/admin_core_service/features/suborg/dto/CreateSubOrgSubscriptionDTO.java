@@ -20,4 +20,5 @@ public class CreateSubOrgSubscriptionDTO {
     private Integer validityInDays;
     private String vendor;
     private String vendorId;
+    private List<String> authRoles;   // Auth service roles for sub-org admin (e.g. ["TEACHER"])
 }

@@ -1,11 +1,13 @@
 package vacademy.io.admin_core_service.features.suborg.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSettingDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
@@ -67,6 +69,23 @@ public class SubOrgSubscriptionService {
         invite.setVendorId(request.getVendorId());
         invite.setCurrency(request.getCurrency());
         invite.setLearnerAccessDays(request.getValidityInDays());
+
+        // Build settingJson with auth roles if provided
+        if (!CollectionUtils.isEmpty(request.getAuthRoles())) {
+            try {
+                EnrollInviteSettingDTO settingDTO = new EnrollInviteSettingDTO();
+                EnrollInviteSettingDTO.Settings settings = new EnrollInviteSettingDTO.Settings();
+                EnrollInviteSettingDTO.SubOrgSetting subOrgSetting = new EnrollInviteSettingDTO.SubOrgSetting();
+                subOrgSetting.setAuthRoles(request.getAuthRoles());
+                settings.setSubOrgSetting(subOrgSetting);
+                settingDTO.setSetting(settings);
+                ObjectMapper mapper = new ObjectMapper();
+                invite.setSettingJson(mapper.writeValueAsString(settingDTO));
+            } catch (Exception e) {
+                log.warn("Failed to serialize authRoles to settingJson: {}", e.getMessage());
+            }
+        }
+
         invite = enrollInviteRepository.save(invite);
         log.info("Created org-level EnrollInvite id={} for sub-org={}", invite.getId(), subOrgId);
 

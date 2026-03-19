@@ -165,7 +165,7 @@ class ChatMessageRepository:
             query = text("""
                 SELECT id FROM chat_messages
                 WHERE session_id = :session_id
-                AND meta_data->>'idempotency_key' = :key
+                AND metadata->>'idempotency_key' = :key
                 AND message_type = 'user'
                 LIMIT 1
             """)
@@ -174,6 +174,7 @@ class ChatMessageRepository:
                 return self.db.query(ChatMessage).filter(ChatMessage.id == result[0]).first()
             return None
         except Exception as e:
+            self.db.rollback()
             logger.error(f"Error finding message by idempotency key: {e}")
             return None
 

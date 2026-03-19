@@ -55,6 +55,11 @@ public class NotificationService {
             endpoint += "?instituteId=" + instituteId;
         }
 
+        // If emailType is not set in the request, default to UTILITY_EMAIL
+        if (request.getEmailType() == null || request.getEmailType().isEmpty()) {
+            request.setEmailType("UTILITY_EMAIL");
+        }
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
                 notificationServerBaseUrl, endpoint, request);
 
@@ -76,8 +81,20 @@ public class NotificationService {
     }
 
     public Boolean sendAttachmentEmail(List<AttachmentNotificationDTO> attachmentNotificationDTOs, String instituteId) {
+        String endpoint = NotificationConstant.SEND_ATTACHMENT_EMAIL;
+        if (StringUtils.hasText(instituteId)) {
+            endpoint += "?instituteId=" + instituteId;
+        }
+
+        // Set emailType to UTILITY_EMAIL for invoice emails if not already set
+        for (AttachmentNotificationDTO dto : attachmentNotificationDTOs) {
+            if (dto.getEmailType() == null || dto.getEmailType().isEmpty()) {
+                dto.setEmailType("UTILITY_EMAIL");
+            }
+        }
+
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(clientName, HttpMethod.POST.name(),
-                notificationServerBaseUrl, NotificationConstant.SEND_ATTACHMENT_EMAIL, attachmentNotificationDTOs);
+                notificationServerBaseUrl, endpoint, attachmentNotificationDTOs);
 
         ObjectMapper objectMapper = new ObjectMapper();
         try {

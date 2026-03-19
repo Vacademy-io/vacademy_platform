@@ -503,6 +503,38 @@ public class AuthManager {
     }
 
     /**
+     * Verify generic WhatsApp OTP and login the user.
+     * Looks up the user by phone number after OTP verification
+     * and returns access + refresh tokens.
+     */
+    public JwtResponseDto verifyGenericWhatsAppOtpAndLogin(AuthRequestDto authRequestDTO) {
+        if (authRequestDTO.getOtp() == null || authRequestDTO.getPhoneNumber() == null) {
+            throw new VacademyException("OTP and phone number are required");
+        }
+
+        // Verify the OTP first
+        WhatsAppOTPVerifyRequest verifyRequest = WhatsAppOTPVerifyRequest.builder()
+                .phoneNumber(authRequestDTO.getPhoneNumber())
+                .otp(authRequestDTO.getOtp())
+                .build();
+
+        boolean isValidOtp = notificationService.verifyWhatsAppOTP(verifyRequest);
+        if (!isValidOtp) {
+            throw new VacademyException("Invalid or expired OTP");
+        }
+
+        // Find user by phone number
+        Optional<User> userOptional = userRepository.findLatestUserByMobileNumber(
+                authRequestDTO.getPhoneNumber().replaceAll("[^0-9]", ""));
+
+        if (userOptional.isEmpty()) {
+            throw new VacademyException("No user found with phone number: " + authRequestDTO.getPhoneNumber());
+        }
+
+        return generateJwtResponse(authRequestDTO, userOptional.get());
+    }
+
+    /**
      * Resolves the user identifier strategy for the given institute.
      * Returns "EMAIL" (default) if institute is not found or user_identifier is
      * null.

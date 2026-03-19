@@ -43,6 +43,7 @@ public class GetSessionByIdResponseDTO {
     private String timezone;
     private Map<String, Object> bbbConfig;
     private List<String> packageSessionIds;
+    private List<PackageSessionDetail> packageSessionDetails;
     private List<ScheduleItem> addedSchedules;
 
     @Getter
@@ -94,6 +95,15 @@ public class GetSessionByIdResponseDTO {
     static public class NotificationConfigResponse {
         private List<NotificationAction> addedNotificationActions;
         private List<Field> addedFields = new ArrayList<>();
+    }
+
+    @Data
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class PackageSessionDetail {
+        private String packageSessionId;
+        private String packageName;
+        private String levelName;
+        private String sessionName;
     }
 
     @Data

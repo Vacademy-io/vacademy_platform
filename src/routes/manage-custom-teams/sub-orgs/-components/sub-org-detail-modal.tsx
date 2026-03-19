@@ -12,13 +12,14 @@ import {
     getScopedInvites,
     addSubOrgMember,
     getAllRoles,
+    createCustomRole,
     type SubOrgSubscriptionStatus,
     type AddSubOrgMemberRequest,
 } from '../../-services/custom-team-services';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_SUB_ORG_ALL_ADMINS } from '@/constants/urls';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { Copy, Link2, BookOpen, ShieldCheck, ExternalLink, UserPlus, Loader2 } from 'lucide-react';
+import { Copy, Link2, BookOpen, ShieldCheck, ExternalLink, UserPlus, Loader2, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -287,6 +288,8 @@ function AddUserToSubOrgSection({
     const [mobileNumber, setMobileNumber] = useState('');
     const [selectedInviteId, setSelectedInviteId] = useState('');
     const [selectedRoleId, setSelectedRoleId] = useState('');
+    const [showNewRoleInput, setShowNewRoleInput] = useState(false);
+    const [newRoleName, setNewRoleName] = useState('');
 
     // Fetch roles from parent institute
     const { data: roles = [] } = useQuery({
@@ -295,6 +298,29 @@ function AddUserToSubOrgSection({
         staleTime: 1000 * 60 * 5,
         enabled: showForm,
     });
+
+    // Mutation for creating a new role
+    const createRoleMutation = useMutation({
+        mutationFn: (name: string) => createCustomRole({ name, permissionIds: ['109'] }),
+        onSuccess: () => {
+            toast.success('Role created successfully');
+            queryClient.invalidateQueries({ queryKey: ['roles'] });
+            setNewRoleName('');
+            setShowNewRoleInput(false);
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || 'Failed to create role');
+        },
+    });
+
+    const handleCreateRole = () => {
+        const trimmed = newRoleName.trim();
+        if (!trimmed) {
+            toast.error('Role name is required');
+            return;
+        }
+        createRoleMutation.mutate(trimmed);
+    };
 
     // Derive package_session_id from selected scoped invite
     const selectedInvite = scopedInvites.find((inv: any) => inv.id === selectedInviteId);
@@ -322,6 +348,8 @@ function AddUserToSubOrgSection({
         setMobileNumber('');
         setSelectedInviteId('');
         setSelectedRoleId('');
+        setShowNewRoleInput(false);
+        setNewRoleName('');
         setShowForm(false);
     };
 
@@ -433,21 +461,77 @@ function AddUserToSubOrgSection({
                         </div>
                         <div className="space-y-1">
                             <Label className="text-xs">Institute Role *</Label>
-                            <Select
-                                value={selectedRoleId}
-                                onValueChange={setSelectedRoleId}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select role" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {roles.map((role: any) => (
-                                        <SelectItem key={role.id} value={role.id}>
-                                            {role.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            {showNewRoleInput ? (
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        placeholder="Enter role name"
+                                        value={newRoleName}
+                                        onChange={(e) => setNewRoleName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleCreateRole();
+                                            }
+                                        }}
+                                        disabled={createRoleMutation.isPending}
+                                        className="h-8"
+                                    />
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={handleCreateRole}
+                                        disabled={createRoleMutation.isPending}
+                                        className="h-8 shrink-0"
+                                    >
+                                        {createRoleMutation.isPending ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                            'Create'
+                                        )}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                            setShowNewRoleInput(false);
+                                            setNewRoleName('');
+                                        }}
+                                        disabled={createRoleMutation.isPending}
+                                        className="h-8 shrink-0 px-2"
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <Select
+                                        value={selectedRoleId}
+                                        onValueChange={setSelectedRoleId}
+                                    >
+                                        <SelectTrigger className="flex-1">
+                                            <SelectValue placeholder="Select role" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {roles.map((role: any) => (
+                                                <SelectItem key={role.id} value={role.id}>
+                                                    {role.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setShowNewRoleInput(true)}
+                                        className="h-8 shrink-0 px-2"
+                                        title="Add new role"
+                                    >
+                                        <Plus className="h-3 w-3" />
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="flex justify-end gap-2">
